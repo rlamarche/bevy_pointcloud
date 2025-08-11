@@ -1,26 +1,26 @@
-//! A shader that renders a mesh multiple times in one draw call.
-//!
-//! Bevy will automatically batch and instance your meshes assuming you use the same
-//! `Handle<Material>` and `Handle<Mesh>` for all of your instances.
-//!
-//! This example is intended for advanced users and shows how to make a custom instancing
-//! implementation using bevy's low level rendering api.
-//! It's generally recommended to try the built-in instancing before going with this approach.
+mod aabb;
+mod components;
+mod custom_uniform;
+mod point_cloud;
 
-use crate::point_cloud::{GpuPointCloudData, PointCloudData, PointCloudInstance};
+pub use components::PointCloud3d;
+
+use crate::pointcloud::{PointCloud, PointCloudData};
+use crate::render::aabb::compute_point_cloud_aabb;
+use crate::render::custom_uniform::{CustomUniform, SetCustomUniformGroup, prepare_custom_uniform};
+use crate::render::point_cloud::RenderPointCloud;
 use bevy_app::prelude::*;
 use bevy_asset::prelude::*;
 use bevy_asset::{load_internal_asset, weak_handle};
 use bevy_core_pipeline::core_3d::{CORE_3D_DEPTH_FORMAT, Transparent3d};
-use bevy_ecs::{
-    prelude::*,
-    system::{SystemParamItem, lifetimeless::*},
-};
+use bevy_ecs::prelude::*;
+use bevy_ecs::system::{SystemParamItem, lifetimeless::*};
 use bevy_log::prelude::*;
-use bevy_math::prelude::*;
 use bevy_pbr::{
     MeshPipeline, MeshPipelineKey, RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup,
 };
+use bevy_render::render_asset::RenderAssetPlugin;
+use bevy_render::renderer::RenderDevice;
 use bevy_render::{
     Render, RenderApp, RenderSet,
     extract_component::ExtractComponentPlugin,
@@ -32,8 +32,6 @@ use bevy_render::{
         RenderCommandResult, SetItemPipeline, TrackedRenderPass, ViewSortedRenderPhases,
     },
     render_resource::*,
-    renderer::RenderDevice,
-    renderer::RenderQueue,
     sync_world::MainEntity,
     view::ExtractedView,
 };
@@ -45,58 +43,35 @@ pub struct RenderPipelinePlugin;
 
 impl Plugin for RenderPipelinePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(ExtractComponentPlugin::<PointCloudInstance>::default());
-
-        app.sub_app_mut(RenderApp)
+        app.register_type::<PointCloud>()
+            .init_asset::<PointCloud>()
+            .register_asset_reflect::<PointCloud>()
+            .add_plugins(RenderAssetPlugin::<RenderPointCloud>::default())
+            .add_plugins(ExtractComponentPlugin::<PointCloud3d>::default())
+            // compute point cloud aabb **before** [`bevy_render::view::calculate_bounds`] to prevent using mesh's aabb.
+            .add_systems(
+                PostUpdate,
+                compute_point_cloud_aabb.before(bevy_render::view::calculate_bounds),
+            )
+            .sub_app_mut(RenderApp)
             .add_render_command::<Transparent3d, DrawCustom>()
             .init_resource::<SpecializedMeshPipelines<CustomPipeline>>()
+            .add_systems(Render, queue_custom.in_set(RenderSet::QueueMeshes))
             .add_systems(
                 Render,
-                (
-                    queue_custom.in_set(RenderSet::QueueMeshes),
-                    prepare_instance_buffers.in_set(RenderSet::PrepareResources),
-                ),
+                prepare_custom_uniform.in_set(RenderSet::PrepareResources),
             );
 
         load_internal_asset!(
             app,
             POINTCLOUD_SHADER_HANDLE,
-            "pointcloud.wgsl",
+            "point_cloud.wgsl",
             Shader::from_wgsl
         );
     }
 
     fn finish(&self, app: &mut App) {
         app.sub_app_mut(RenderApp).init_resource::<CustomPipeline>();
-    }
-}
-
-fn prepare_instance_buffers(
-    mut commands: Commands,
-    query: Query<(Entity, &PointCloudInstance, Option<&GpuPointCloudData>)>,
-    render_device: Res<RenderDevice>,
-    render_queue: Res<RenderQueue>,
-) {
-    for (entity, instance_data, instance_buffer_opt) in &query {
-        if let Some(instance_buffer) = instance_buffer_opt {
-            // Buffer exists, we update it if necessary
-            // render_queue.write_buffer(
-            //     &instance_buffer.buffer,
-            //     0,
-            //     bytemuck::cast_slice(instance_data.as_slice()),
-            // );
-        } else {
-            // Buffer not existing, create it
-            let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-                label: Some("instance data buffer"),
-                contents: bytemuck::cast_slice(instance_data.as_slice()),
-                usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-            });
-            commands.entity(entity).insert(GpuPointCloudData {
-                buffer,
-                length: instance_data.len(),
-            });
-        }
     }
 }
 
@@ -107,7 +82,7 @@ fn queue_custom(
     pipeline_cache: Res<PipelineCache>,
     meshes: Res<RenderAssets<RenderMesh>>,
     render_mesh_instances: Res<RenderMeshInstances>,
-    material_meshes: Query<(Entity, &MainEntity), With<PointCloudInstance>>,
+    point_clouds: Query<(Entity, &MainEntity), With<PointCloud3d>>,
     mut transparent_render_phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
     views: Query<(&ExtractedView, &Msaa)>,
 ) {
@@ -123,8 +98,7 @@ fn queue_custom(
 
         let view_key = msaa_key | MeshPipelineKey::from_hdr(view.hdr);
         let rangefinder = view.rangefinder3d();
-        for (entity, main_entity) in &material_meshes {
-            // info!("Queueing entity {}", entity.index());
+        for (entity, main_entity) in &point_clouds {
             let Some(mesh_instance) = render_mesh_instances.render_mesh_queue_data(*main_entity)
             else {
                 continue;
@@ -137,7 +111,6 @@ fn queue_custom(
             let pipeline = pipelines
                 .specialize(&pipeline_cache, &custom_pipeline, key, &mesh.layout)
                 .unwrap();
-            // info!("Add phase entity {}", entity.index());
             transparent_phase.add(Transparent3d {
                 entity: (entity, *main_entity),
                 pipeline,
@@ -152,18 +125,22 @@ fn queue_custom(
 }
 
 #[derive(Resource)]
-struct CustomPipeline {
+pub struct CustomPipeline {
     shader: Handle<Shader>,
     mesh_pipeline: MeshPipeline,
+    custom_layout: BindGroupLayout,
 }
 
 impl FromWorld for CustomPipeline {
     fn from_world(world: &mut World) -> Self {
         let mesh_pipeline = world.resource::<MeshPipeline>();
+        let render_device = world.resource::<RenderDevice>();
+        let custom_layout = CustomUniform::bind_group_layout(render_device);
 
         CustomPipeline {
             shader: POINTCLOUD_SHADER_HANDLE,
             mesh_pipeline: mesh_pipeline.clone(),
+            custom_layout,
         }
     }
 }
@@ -177,6 +154,9 @@ impl SpecializedMeshPipeline for CustomPipeline {
         layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
         let mut descriptor = self.mesh_pipeline.specialize(key, layout)?;
+
+        // add our custom uniform layout
+        descriptor.layout.push(self.custom_layout.clone());
 
         descriptor.depth_stencil = Some(DepthStencilState {
             format: CORE_3D_DEPTH_FORMAT,
@@ -242,6 +222,7 @@ type DrawCustom = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetMeshBindGroup<1>,
+    SetCustomUniformGroup<2>,
     DrawMeshInstanced,
 );
 
@@ -252,33 +233,43 @@ impl<P: PhaseItem> RenderCommand<P> for DrawMeshInstanced {
         SRes<RenderAssets<RenderMesh>>,
         SRes<RenderMeshInstances>,
         SRes<MeshAllocator>,
+        SRes<RenderAssets<RenderPointCloud>>,
     );
     type ViewQuery = ();
-    type ItemQuery = Read<GpuPointCloudData>;
+    type ItemQuery = Read<PointCloud3d>;
 
     #[inline]
     fn render<'w>(
         item: &P,
         _view: (),
-        gpu_point_cloud_buffer: Option<&'w GpuPointCloudData>,
-        (meshes, render_mesh_instances, mesh_allocator): SystemParamItem<'w, '_, Self::Param>,
+        point_cloud_3d: Option<&'w PointCloud3d>,
+        (meshes, render_mesh_instances, mesh_allocator, render_point_clouds): SystemParamItem<
+            'w,
+            '_,
+            Self::Param,
+        >,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         // A borrow check workaround.
         let mesh_allocator = mesh_allocator.into_inner();
+        let render_point_clouds = render_point_clouds.into_inner();
 
         let Some(mesh_instance) = render_mesh_instances.render_mesh_queue_data(item.main_entity())
         else {
             return RenderCommandResult::Skip;
         };
+
         let Some(gpu_mesh) = meshes.into_inner().get(mesh_instance.mesh_asset_id) else {
             return RenderCommandResult::Skip;
         };
-        let Some(gpu_point_cloud_buffer) = gpu_point_cloud_buffer else {
-            info!("Skip !!");
+        let Some(point_cloud_3d) = point_cloud_3d else {
+            warn!("Point cloud 3d not found !");
             return RenderCommandResult::Skip;
         };
-        // info!("Render mesh with {} points", instance_buffer.length);
+        let Some(render_point_cloud) = render_point_clouds.get(point_cloud_3d) else {
+            warn!("Point cloud not found !");
+            return RenderCommandResult::Skip;
+        };
 
         let Some(vertex_buffer_slice) =
             mesh_allocator.mesh_vertex_slice(&mesh_instance.mesh_asset_id)
@@ -287,7 +278,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawMeshInstanced {
         };
 
         pass.set_vertex_buffer(0, vertex_buffer_slice.buffer.slice(..));
-        pass.set_vertex_buffer(1, gpu_point_cloud_buffer.buffer.slice(..));
+        pass.set_vertex_buffer(1, render_point_cloud.buffer.slice(..));
 
         match &gpu_mesh.buffer_info {
             RenderMeshBufferInfo::Indexed {
@@ -304,13 +295,13 @@ impl<P: PhaseItem> RenderCommand<P> for DrawMeshInstanced {
                 pass.draw_indexed(
                     index_buffer_slice.range.start..(index_buffer_slice.range.start + count),
                     vertex_buffer_slice.range.start as i32,
-                    0..gpu_point_cloud_buffer.length as u32,
+                    0..render_point_cloud.length as u32,
                 );
             }
             RenderMeshBufferInfo::NonIndexed => {
                 pass.draw(
                     vertex_buffer_slice.range,
-                    0..gpu_point_cloud_buffer.length as u32,
+                    0..render_point_cloud.length as u32,
                 );
             }
         }

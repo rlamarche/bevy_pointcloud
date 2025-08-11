@@ -4,23 +4,15 @@ mod camera_controller;
 use bevy::color::palettes::basic::GREEN;
 use bevy::dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin};
 use bevy::text::FontSmoothing;
-use bevy::{
-    prelude::*,
-    render::{
-        render_resource::*,
-        view::{NoFrustumCulling, NoIndirectDrawing},
-    },
-};
-use bevy_asset::RenderAssetUsages;
+use bevy::window::PresentMode;
+use bevy::{prelude::*, render::view::NoIndirectDrawing};
 use bevy_pointcloud::PointCloudPlugin;
-use bevy_pointcloud::point_cloud::{PointCloudData, PointCloudInstance};
-use bevy_render::mesh::Indices;
+use bevy_pointcloud::pointcloud::{PointCloud, PointCloudData};
+use bevy_pointcloud::render::PointCloud3d;
 use camera_controller::{CameraController, CameraControllerPlugin};
 use rand::Rng;
-use std::sync::Arc;
 
 /// This example uses a shader source file from the assets subdirectory
-const SHADER_ASSET_PATH: &str = "shaders/instancing.wgsl";
 
 fn main() {
     App::new()
@@ -48,11 +40,11 @@ fn main() {
 }
 
 fn setup_window(mut windows: Query<&mut Window>) {
-    let window = windows.single_mut().unwrap();
-    // window.present_mode = PresentMode::Immediate;
+    let mut window = windows.single_mut().unwrap();
+    window.present_mode = PresentMode::Immediate;
 }
 
-fn setup(mut commands: Commands, meshes: ResMut<Assets<Mesh>>) {
+fn setup(mut commands: Commands) {
     // camera
     commands.spawn((
         Camera3d::default(),
@@ -65,24 +57,10 @@ fn setup(mut commands: Commands, meshes: ResMut<Assets<Mesh>>) {
     ));
 }
 
-fn load_pointcloud(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
-    let mesh = Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::default(),
-    )
-    .with_inserted_attribute(
-        Mesh::ATTRIBUTE_POSITION,
-        vec![
-            [-0.5, -0.5, 0.0],
-            [0.5, -0.5, 0.0],
-            [0.5, 0.5, 0.0],
-            [-0.5, 0.5, 0.0],
-        ],
-    )
-    .with_inserted_indices(Indices::U32(vec![0, 1, 2, 2, 3, 0]));
-
+fn load_pointcloud(mut commands: Commands, mut point_clouds: ResMut<Assets<PointCloud>>) {
+    // Generate a random point cloud
     let mut rng = rand::rng();
-    let instance_data = (0..100000)
+    let points = (0..1000000)
         .map(|_| {
             let position = Vec3::new(
                 rng.random_range(-10.0..10.0),
@@ -97,16 +75,18 @@ fn load_pointcloud(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
             ];
             PointCloudData {
                 position,
-                point_size: 50.0,
+                point_size: rng.random_range(100.0..300.0),
                 color,
             }
         })
         .collect::<Vec<_>>();
-    //
-    // let mut instance_data = Vec::new();
+
+    // let mut points = Vec::new();
     //
     // use las::Reader;
     // let mut reader = Reader::from_path("assets/pointclouds/Palac_Moszna.laz").unwrap();
+    // // let mut reader = Reader::from_path("assets/pointclouds/G_Sw_Anny.laz").unwrap();
+    //
     //
     // let mut min = Vec3::new(f32::MAX, f32::MAX, f32::MAX);
     // let mut max = Vec3::new(f32::MIN, f32::MIN, f32::MIN);
@@ -125,13 +105,13 @@ fn load_pointcloud(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
     //     let point = wrapped_point.unwrap();
     //
     //     if let Some(color) = point.color {
-    //         instance_data.push(InstanceData {
+    //         points.push(PointCloudData {
     //             position: Vec3::new(
     //                 point.x as f32 - min.x,
     //                 point.z as f32 - min.z,
     //                 point.y as f32 - min.y,
     //             ),
-    //             scale: 1.0,
+    //             point_size: 500.0,
     //             // color,
     //             color: [
     //                 color.red as f32 / u16::MAX as f32,
@@ -143,21 +123,25 @@ fn load_pointcloud(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
     //     }
     // }
 
-    info!("Points count: {}", instance_data.len());
+    // Create chunks of point cloud
+    // TODO chunk it using octrees or BVH
+    let step = points.len() / 64;
 
-    // let mesh_handle = meshes.add(mesh);
-
-    let step = 10000;
-    for i in (0..instance_data.len()).step_by(step) {
-        let max = instance_data.len().min(i + step);
-        let instance_data = (&instance_data[i..max]).to_vec();
-
-        info!("Spawn a mesh with {} points", instance_data.len());
-        commands.spawn((
-            // Mesh3d(mesh_handle.clone()),
-            Mesh3d(meshes.add(mesh.clone())),
-            PointCloudInstance(Arc::new(instance_data)),
-            NoFrustumCulling,
-        ));
+    for i in 0..4 {
+        for j in 0..4 {
+            for k in 0..4 {
+                let start = (i + j + k) * 64;
+                let end = points.len().min(start + step);
+                let point_cloud = PointCloud {
+                    points: (&points[start..end]).to_vec(),
+                };
+                info!("Spawn a mesh with {} points", point_cloud.points.len());
+                commands.spawn((
+                    PointCloud3d(point_clouds.add(point_cloud)),
+                    Transform::from_xyz(i as f32 * 30.0, j as f32 * 30.0, k as f32 * 30.0),
+                    // Transform::from_xyz(0.0, 0.0, 0.0),
+                ));
+            }
+        }
     }
 }

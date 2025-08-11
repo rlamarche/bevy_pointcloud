@@ -19,23 +19,17 @@ bevy_pbr = { version = "0.16" }
 bevy_render = { version = "0.16" }
 bevy_core_pipeline = { version = "0.16" }
 bevy_asset = { version = "0.16" }
-bevy_image = { version = "0.16" }
 bevy_log = { version = "0.16" }
-bevy_input = { version = "0.16" }
-bevy_picking = { version = "0.16" }
 bevy_math = { version = "0.16" }
-bevy_window = { version = "0.16" }
-bevy_utils = { version = "0.16" }
 bevy_derive = { version = "0.16" }
-bevy_platform = { version = "0.16" }
-crossbeam-channel = "0.5"
-
-anyhow = "1"
+bevy_reflect = { version = "0.16" }
+bevy_transform = { version = "0.16" }
 bytemuck = "1"
 
 [dev-dependencies]
 bevy = { version = "0.16", features = ["bevy_dev_tools"] }
 rand = "0.9"
+las = { version = "0.9", features = ["laz"] }
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]

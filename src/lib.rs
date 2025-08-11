@@ -1,6 +1,6 @@
 use bevy_app::prelude::*;
 
-pub mod point_cloud;
+pub mod pointcloud;
 pub mod render;
 
 pub struct PointCloudPlugin;
