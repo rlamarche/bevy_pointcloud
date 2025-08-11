@@ -13,6 +13,9 @@ Roadmap :
 - [ ] Efficiently load/unload chunks based on camera location
 - [ ] ...
 
+1 million random points:
 ![1 million random points](screenshots/random_points.jpg)
+
+St. Anna Mountain, 33 millions points:
 
 ![St. Anna Mountain, 33 millions points](screenshots/G_Sw_Anny.jpg)
