@@ -14,7 +14,7 @@ Roadmap :
 - [ ] ...
 
 Takanawa Lion with multi pass rendering pipeline inspired by Potree:
-![Lion Takanawa](screenshots/lion_takanawa.copc.jpg
+![Lion Takanawa](screenshots/lion_takanawa.copc.jpg)
 
 
 1 million random points:
