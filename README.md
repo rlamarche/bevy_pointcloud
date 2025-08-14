@@ -13,6 +13,10 @@ Roadmap :
 - [ ] Efficiently load/unload chunks based on camera location
 - [ ] ...
 
+Takanawa Lion with multi pass rendering pipeline inspired by Potree:
+![Lion Takanawa](screenshots/lion_takanawa.copc.jpg
+
+
 1 million random points:
 ![1 million random points](screenshots/random_points.jpg)
 
