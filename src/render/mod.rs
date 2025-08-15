@@ -118,11 +118,9 @@ impl<P: PhaseItem> RenderCommand<P> for DrawMeshInstanced {
             return RenderCommandResult::Skip;
         };
         let Some(point_cloud_3d) = point_cloud_3d else {
-            warn!("Point cloud 3d not found !");
             return RenderCommandResult::Skip;
         };
         let Some(render_point_cloud) = render_point_clouds.get(point_cloud_3d) else {
-            warn!("Point cloud not found !");
             return RenderCommandResult::Skip;
         };
 

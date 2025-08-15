@@ -20,10 +20,17 @@
 // You don't need to worry about this too much since bevy will compute the correct UVs for you.
 #import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput
 
+#ifdef MULTISAMPLED
+
+@group(0) @binding(0) var depth_texture: texture_multisampled_2d<u32>;
+@group(0) @binding(1) var attribute_texture: texture_multisampled_2d<f32>;
+
+#else // MULTISAMPLED
+
 @group(0) @binding(0) var depth_texture: texture_2d<u32>;
 @group(0) @binding(1) var attribute_texture: texture_2d<f32>;
 
-
+#endif // MULTISAMPLED
 
 struct FragmentOutput {
     @location(0) color: vec4<f32>,

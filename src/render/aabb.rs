@@ -5,6 +5,9 @@ use bevy_ecs::prelude::*;
 use bevy_render::primitives::Aabb;
 use bevy_render::view::NoFrustumCulling;
 
+#[derive(Component)]
+pub struct AabbComputed;
+
 /// Compute AABB for point clouds
 ///
 /// # Arguments
@@ -23,7 +26,7 @@ use bevy_render::view::NoFrustumCulling;
 pub fn compute_point_cloud_aabb(
     point_clouds_without_aabb: Query<
         (Entity, &PointCloud3d),
-        (With<PointCloud3d>, Without<Aabb>, Without<NoFrustumCulling>),
+        (With<PointCloud3d>, Without<NoFrustumCulling>, Without<AabbComputed>),
     >,
     point_clouds: Res<Assets<PointCloud>>,
     mut commands: Commands,
@@ -37,6 +40,6 @@ pub fn compute_point_cloud_aabb(
             continue;
         };
 
-        commands.entity(entity).insert(aabb);
+        commands.entity(entity).insert((aabb, AabbComputed));
     }
 }

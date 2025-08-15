@@ -30,11 +30,14 @@ bevy_image = { version = "0.16" }
 bevy_color = { version = "0.16" }
 bytemuck = "1"
 nonmax = "0.5"
+thiserror = "2.0"
+serde = { version = "1", features = ["derive"] }
+las = { version = "0.9", features = ["laz"] }
 
 [dev-dependencies]
 bevy = { version = "0.16", features = ["bevy_dev_tools"] }
 rand = "0.9"
-las = { version = "0.9", features = ["laz"] }
+
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]

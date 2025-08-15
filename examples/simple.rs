@@ -8,9 +8,9 @@ use bevy::window::PresentMode;
 use bevy::{prelude::*, render::view::NoIndirectDrawing};
 use bevy_color::palettes::basic::{RED, SILVER};
 use bevy_pointcloud::PointCloudPlugin;
+use bevy_pointcloud::loader::las::LasLoaderPlugin;
 use bevy_pointcloud::pointcloud::{PointCloud, PointCloudData};
 use bevy_pointcloud::render::PointCloud3d;
-use bevy_pointcloud::render::post_process::PostProcessSettings;
 use camera_controller::{CameraController, CameraControllerPlugin};
 use rand::Rng;
 
@@ -18,7 +18,12 @@ use rand::Rng;
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, CameraControllerPlugin, PointCloudPlugin))
+        .add_plugins((
+            DefaultPlugins,
+            CameraControllerPlugin,
+            PointCloudPlugin,
+            LasLoaderPlugin,
+        ))
         .add_plugins(FpsOverlayPlugin {
             config: FpsOverlayConfig {
                 text_config: TextFont {
@@ -62,12 +67,8 @@ fn setup(mut commands: Commands) {
         // `DrawMeshInstanced::render`.
         NoIndirectDrawing,
         CameraController::default(),
-        // disable msaa for simplicity
+        // disable msaa for WASM/WebGL (but works in native mode)
         Msaa::Off,
-        // PostProcessSettings {
-        //     intensity: 0.02,
-        //     ..default()
-        // },
     ));
 }
 
@@ -103,8 +104,12 @@ fn load_meshes(
 fn load_pointcloud(
     mut commands: Commands,
     mut point_clouds: ResMut<Assets<PointCloud>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
 ) {
+    let point_cloud = asset_server.load::<PointCloud>("pointclouds/lion_takanawa.copc.laz");
+    info!("Point cloud handle got");
+    commands.spawn((PointCloud3d(point_cloud),));
+
     // Generate a random point cloud
     let mut rng = rand::rng();
     let points = (0..1000000)
@@ -127,60 +132,6 @@ fn load_pointcloud(
             }
         })
         .collect::<Vec<_>>();
-    //
-    // let mut points = Vec::new();
-    //
-    // use las::Reader;
-    // let mut reader = Reader::from_path("assets/pointclouds/lion_takanawa.copc.laz").unwrap();
-    // // let mut reader = Reader::from_path("assets/pointclouds/Palac_Moszna.laz").unwrap();
-    // // let mut reader = Reader::from_path("assets/pointclouds/G_Sw_Anny.laz").unwrap();
-    //
-    // let mut min = Vec3::new(f32::MAX, f32::MAX, f32::MAX);
-    // let mut max = Vec3::new(f32::MIN, f32::MIN, f32::MIN);
-    //
-    // reader.points().into_iter().for_each(|point| {
-    //     let point = point.unwrap();
-    //     let vec = Vec3::new(point.x as f32, point.y as f32, point.z as f32);
-    //
-    //     min = min.min(vec);
-    //     max = max.max(vec);
-    // });
-    //
-    // reader.seek(0).unwrap();
-    //
-    // for wrapped_point in reader.points() {
-    //     let point = wrapped_point.unwrap();
-    //
-    //     let delta = -min;
-    //     // let delta = (max - min) / 2.0;
-    //
-    //     if let Some(color) = point.color {
-    //         points.push(PointCloudData {
-    //             position: Vec3::new(
-    //                 point.x as f32 + delta.x,
-    //                 point.z as f32 + delta.z,
-    //                 point.y as f32 + delta.y,
-    //             ),
-    //             point_size: 50.0,
-    //             // color,
-    //             color: [
-    //                 color.red as f32 / u16::MAX as f32,
-    //                 color.green as f32 / u16::MAX as f32,
-    //                 color.blue as f32 / u16::MAX as f32,
-    //                 1.0,
-    //             ],
-    //         });
-    //     }
-    // }
-    //
-    // let point_cloud = PointCloud { points };
-    // // info!("Spawn a mesh with {} points", point_cloud.points.len());
-    // commands.spawn((
-    //     PointCloud3d(point_clouds.add(point_cloud)),
-    //     // Transform::from_xyz(i as f32 * 30.0, j as f32 * 30.0, k as f32 * 30.0),
-    //     // MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
-    //     // Transform::from_xyz(0.0, 0.0, 0.0),
-    // ));
 
     // Create chunks of point cloud
     // TODO chunk it using octrees or BVH
@@ -199,8 +150,6 @@ fn load_pointcloud(
                 commands.spawn((
                     PointCloud3d(point_clouds.add(point_cloud)),
                     Transform::from_xyz(i as f32 * 30.0, j as f32 * 30.0, k as f32 * 30.0),
-                    // MeshMaterial3d(materials.add(Color::srgb_u8(124, 144, 255))),
-                    // Transform::from_xyz(0.0, 0.0, 0.0),
                 ));
             }
         }

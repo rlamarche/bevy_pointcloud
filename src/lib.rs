@@ -2,7 +2,7 @@ use bevy_app::prelude::*;
 
 pub mod pointcloud;
 pub mod render;
-
+pub mod loader;
 pub struct PointCloudPlugin;
 
 impl Plugin for PointCloudPlugin {
