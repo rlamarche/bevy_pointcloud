@@ -1,5 +1,5 @@
-use super::PostProcessPipeline;
-use crate::render::normalize_pass::texture::PostProcessBindGroup;
+use crate::render::normalize_pass::pipeline::NormalizePassPipelineId;
+use crate::render::normalize_pass::texture::NormalizePassBindGroup;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::QueryItem;
 use bevy_render::view::ViewDepthTexture;
@@ -21,21 +21,20 @@ impl ViewNode for NormalizePassNode {
     type ViewQuery = (
         &'static ViewTarget,
         &'static ViewDepthTexture,
-        &'static PostProcessBindGroup,
+        &'static NormalizePassBindGroup,
+        &'static NormalizePassPipelineId,
     );
 
     fn run(
         &self,
         _graph: &mut RenderGraphContext,
         render_context: &mut RenderContext,
-        (view_target, depth, post_process_bind_group): QueryItem<Self::ViewQuery>,
+        (view_target, depth, bind_group, pipeline_id): QueryItem<Self::ViewQuery>,
         world: &World,
     ) -> Result<(), NodeRunError> {
-        let post_process_pipeline = world.resource::<PostProcessPipeline>();
         let pipeline_cache = world.resource::<PipelineCache>();
 
-        let Some(pipeline) = pipeline_cache.get_render_pipeline(post_process_pipeline.pipeline_id)
-        else {
+        let Some(pipeline) = pipeline_cache.get_render_pipeline(pipeline_id.0) else {
             return Ok(());
         };
 
@@ -50,7 +49,7 @@ impl ViewNode for NormalizePassNode {
         });
 
         render_pass.set_render_pipeline(pipeline);
-        render_pass.set_bind_group(0, &post_process_bind_group.value, &[]);
+        render_pass.set_bind_group(0, &bind_group.value, &[]);
         render_pass.draw(0..3, 0..1);
 
         Ok(())

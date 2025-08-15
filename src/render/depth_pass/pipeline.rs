@@ -123,9 +123,11 @@ impl SpecializedMeshPipeline for DepthPipeline {
                 stencil: StencilState::default(),
                 bias: DepthBiasState::default(),
             }),
-            // It's generally recommended to specialize your pipeline for MSAA,
-            // but it's not always possible
-            multisample: MultisampleState::default(),
+            multisample: MultisampleState {
+                count: key.msaa_samples(),
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
             zero_initialize_workgroup_memory: false,
         })
     }

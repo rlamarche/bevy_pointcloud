@@ -133,7 +133,11 @@ impl SpecializedMeshPipeline for AttributePassPipeline {
                 stencil: StencilState::default(),
                 bias: DepthBiasState::default(),
             }),
-            multisample: MultisampleState::default(),
+            multisample: MultisampleState {
+                count: key.msaa_samples(),
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
             zero_initialize_workgroup_memory: false,
         })
     }

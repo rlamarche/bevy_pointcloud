@@ -68,7 +68,7 @@ pub fn prepare_attribute_pass_textures(
                 };
 
                 let descriptor = TextureDescriptor {
-                    label: Some("attribute_pass_texture"),
+                    label: Some("pcl_attribute_pass_texture"),
                     size,
                     mip_level_count: 1,
                     sample_count: msaa.samples(),

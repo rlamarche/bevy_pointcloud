@@ -30,7 +30,7 @@ impl ViewDepthPrepassTextures {
     }
 }
 
-pub fn prepare_pcl3d_depth_textures(
+pub fn prepare_depth_pass_textures(
     mut commands: Commands,
     mut texture_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
@@ -75,7 +75,7 @@ pub fn prepare_pcl3d_depth_textures(
             .entry(camera.target.clone())
             .or_insert_with(|| {
                 let descriptor = TextureDescriptor {
-                    label: Some("prepass_depth_texture"),
+                    label: Some("pcl_depth_pass_texture"),
                     size,
                     mip_level_count: 1,
                     sample_count: msaa.samples(),

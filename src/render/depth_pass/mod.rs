@@ -7,7 +7,7 @@ use std::ops::Range;
 use crate::render::DrawMeshInstanced;
 use crate::render::depth_pass::node::{CustomDrawNode, DepthPassLabel};
 use crate::render::depth_pass::pipeline::DepthPipeline;
-use crate::render::depth_pass::texture::{DepthPassLayout, prepare_pcl3d_depth_textures};
+use crate::render::depth_pass::texture::{DepthPassLayout, prepare_depth_pass_textures};
 use crate::render::point_cloud_uniform::SetPointCloudUniformGroup;
 use bevy_app::prelude::*;
 use bevy_core_pipeline::core_3d::Camera3d;
@@ -56,7 +56,7 @@ impl Plugin for DepthPassPlugin {
             .add_systems(
                 Render,
                 (
-                    prepare_pcl3d_depth_textures.in_set(RenderSet::PrepareResources),
+                    prepare_depth_pass_textures.in_set(RenderSet::PrepareResources),
                     queue_depth_pass.in_set(RenderSet::QueueMeshes),
                     // No need to sort points clouds for the moment, and not working in WASM/WEBGL
                     // sort_phase_system::<Depth3d>.in_set(RenderSet::PhaseSort),
