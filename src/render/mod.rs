@@ -2,41 +2,35 @@ mod aabb;
 pub mod attribute_pass;
 mod components;
 pub mod depth_pass;
+pub mod normalize_pass;
 mod point_cloud;
 mod point_cloud_uniform;
-pub mod post_process;
 
 pub use components::PointCloud3d;
 
 use crate::pointcloud::PointCloud;
 use aabb::compute_point_cloud_aabb;
-use attribute_pass::texture::AttributePassLayout;
 use attribute_pass::AttributePassPlugin;
 use bevy_app::prelude::*;
 use bevy_asset::prelude::*;
 use bevy_asset::{load_internal_asset, weak_handle};
 use bevy_ecs::prelude::*;
-use bevy_ecs::system::{lifetimeless::*, SystemParamItem};
+use bevy_ecs::system::{SystemParamItem, lifetimeless::*};
 use bevy_log::prelude::*;
 use bevy_pbr::RenderMeshInstances;
 use bevy_render::render_asset::RenderAssetPlugin;
 use bevy_render::{
-    extract_component::ExtractComponentPlugin, mesh::{allocator::MeshAllocator, RenderMesh, RenderMeshBufferInfo}, prelude::*,
+    Render, RenderApp, RenderSet,
+    extract_component::ExtractComponentPlugin,
+    mesh::{RenderMesh, RenderMeshBufferInfo, allocator::MeshAllocator},
+    prelude::*,
     render_asset::RenderAssets,
-    render_phase::{
-        PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass,
-    },
-    Render,
-    RenderApp,
-    RenderSet,
+    render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
 };
-use depth_pass::texture::DepthPassLayout;
 use depth_pass::DepthPassPlugin;
+use normalize_pass::NormalizePassPlugin;
 use point_cloud::RenderPointCloud;
-use point_cloud_uniform::{
-    prepare_point_cloud_uniform, PointCloudUniformLayout,
-};
-use post_process::PostProcessPlugin;
+use point_cloud_uniform::{PointCloudUniformLayout, prepare_point_cloud_uniform};
 
 const POINTCLOUD_SHADER_HANDLE: Handle<Shader> =
     weak_handle!("9c7d8df3-86dd-4412-a9cc-dad5c7916a8c");
@@ -64,7 +58,7 @@ impl Plugin for RenderPipelinePlugin {
                 prepare_point_cloud_uniform.in_set(RenderSet::PrepareResources),
             );
 
-        app.add_plugins((DepthPassPlugin, AttributePassPlugin, PostProcessPlugin));
+        app.add_plugins((DepthPassPlugin, AttributePassPlugin, NormalizePassPlugin));
 
         load_internal_asset!(
             app,
@@ -83,13 +77,7 @@ impl Plugin for RenderPipelinePlugin {
 
     fn finish(&self, app: &mut App) {
         app.sub_app_mut(RenderApp)
-            .init_resource::<PointCloudUniformLayout>()
-            // initialized here because it needs to be available for [`ColorPipeline`]
-            .init_resource::<DepthPassLayout>()
-            // initialized here because it needs to be available for [`ColorPipeline`]
-            .init_resource::<AttributePassLayout>()
-            // .init_resource::<ColorPipeline>()
-        ;
+            .init_resource::<PointCloudUniformLayout>();
     }
 }
 

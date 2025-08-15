@@ -1,46 +1,19 @@
 use crate::render::attribute_pass::texture::ViewAttributePrepassTextures;
 use crate::render::depth_pass::texture::ViewDepthPrepassTextures;
+use crate::render::normalize_pass::pipeline::PostProcessPipeline;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
-use bevy_render::prelude::*;
-use bevy_render::render_phase::PhaseItem;
-use bevy_render::render_resource::binding_types::texture_2d;
-use bevy_render::render_resource::{
-    BindGroup, BindGroupEntry, BindGroupLayout, IntoBinding, ShaderStages,
-    TextureSampleType,
-};
+use bevy_render::render_resource::{BindGroup, BindGroupEntry, IntoBinding};
 use bevy_render::renderer::RenderDevice;
-
-#[derive(Resource)]
-pub struct PostProcessLayout {
-    pub layout: BindGroupLayout,
-}
 
 #[derive(Component)]
 pub struct PostProcessBindGroup {
     pub value: BindGroup,
 }
 
-impl FromWorld for PostProcessLayout {
-    fn from_world(world: &mut World) -> Self {
-        let render_device = world.resource::<RenderDevice>();
-
-        PostProcessLayout {
-            layout: render_device.create_bind_group_layout(
-                "pcl_postprocess_layout",
-                &vec![
-                    texture_2d(TextureSampleType::Depth).build(0, ShaderStages::FRAGMENT),
-                    texture_2d(TextureSampleType::Float { filterable: false })
-                        .build(1, ShaderStages::FRAGMENT),
-                ],
-            ),
-        }
-    }
-}
-
-pub fn prepare_post_process_bind_groups(
+pub fn prepare_normalize_pass_bind_groups(
     mut commands: Commands,
-    depth_pass_layout: Res<PostProcessLayout>,
+    pipeline: Res<PostProcessPipeline>,
     render_device: Res<RenderDevice>,
     views: Query<(
         Entity,
@@ -50,11 +23,11 @@ pub fn prepare_post_process_bind_groups(
 ) {
     for (entity, prepass_textures, attribute_textures) in &views {
         let Some(depth_texture) = &prepass_textures.depth else {
-            warn!("No depth texture for {}", entity);
+            warn!("No depth pass texture for {}", entity);
             continue;
         };
         let Some(attribute_texture) = &attribute_textures.attribute else {
-            warn!("No attribute texture for {}", entity);
+            warn!("No attribute pass texture for {}", entity);
             continue;
         };
 
@@ -63,8 +36,8 @@ pub fn prepare_post_process_bind_groups(
 
         commands.entity(entity).insert(PostProcessBindGroup {
             value: render_device.create_bind_group(
-                "pcl_prepass_view_bind_group",
-                &depth_pass_layout.layout,
+                "pcl_normalize_pass_view_bind_group",
+                &pipeline.texture_layout,
                 &vec![
                     BindGroupEntry {
                         binding: 0,

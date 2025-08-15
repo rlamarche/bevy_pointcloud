@@ -1,5 +1,5 @@
 use super::PostProcessPipeline;
-use crate::render::post_process::texture::PostProcessBindGroup;
+use crate::render::normalize_pass::texture::PostProcessBindGroup;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::QueryItem;
 use bevy_render::view::ViewDepthTexture;
@@ -11,14 +11,13 @@ use bevy_render::{
 };
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-pub struct PostProcessLabel;
+pub struct NormalizePassLabel;
 
-// The post process node used for the render graph
 #[derive(Default)]
-pub struct PostProcessNode;
+pub struct NormalizePassNode;
 
 // The ViewNode trait is required by the ViewNodeRunner
-impl ViewNode for PostProcessNode {
+impl ViewNode for NormalizePassNode {
     type ViewQuery = (
         &'static ViewTarget,
         &'static ViewDepthTexture,
@@ -29,9 +28,7 @@ impl ViewNode for PostProcessNode {
         &self,
         _graph: &mut RenderGraphContext,
         render_context: &mut RenderContext,
-        (view_target, depth, post_process_bind_group): QueryItem<
-            Self::ViewQuery,
-        >,
+        (view_target, depth, post_process_bind_group): QueryItem<Self::ViewQuery>,
         world: &World,
     ) -> Result<(), NodeRunError> {
         let post_process_pipeline = world.resource::<PostProcessPipeline>();
@@ -45,7 +42,7 @@ impl ViewNode for PostProcessNode {
         let depth_stencil_attachment = Some(depth.get_attachment(StoreOp::Store));
 
         let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
-            label: Some("post_process_pass"),
+            label: Some("pcl_normalize_pass"),
             color_attachments: &[Some(view_target.get_color_attachment())],
             depth_stencil_attachment,
             timestamp_writes: None,

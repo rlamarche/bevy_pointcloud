@@ -80,12 +80,12 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     return out;
 }
 
-
-@group(3) @binding(0)
-var depth_texture: texture_depth_2d;
-
 struct FragmentOutput {
+#ifdef DEPTH_PASS
+    @location(0) depth_texture: u32,
+#else
     @location(0) color: vec4<f32>,
+#endif
     @builtin(frag_depth) depth: f32,
 }
 
@@ -98,13 +98,16 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
         discard;
     }
 
-
     var output: FragmentOutput;
 
-    output.color = vec4(in.color.xyz, 1.0);
     output.depth = in.clip_position.z;
 
-#ifdef PARABOLOID_POINT_SHAPE
+#ifdef DEPTH_PASS
+    output.depth_texture = 1;
+#else
+    output.color = vec4(in.color.xyz, 1.0);
+
+    #ifdef PARABOLOID_POINT_SHAPE
     let v_radius = in.v_radius;
     let wi = 0.0 - cc;
     var pos = in.view_position;
@@ -115,14 +118,16 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
     let exp_depth = clip_pos.z * 2.0 - 1.0;
 
     output.depth = clip_pos.z;
-#endif
+    #endif
 
-#ifdef WEIGHTED_SPLATS
+    #ifdef WEIGHTED_SPLATS
     let distance = sqrt(cc);
     var weight = max(0.0, 1.0 - distance);
     weight = pow(weight, 1.5);
 
     output.color = vec4(in.color.xyz * weight, weight);
+    #endif
+
 #endif
 
     return output;

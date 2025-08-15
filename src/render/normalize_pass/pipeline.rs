@@ -9,36 +9,34 @@ use bevy_render::{
 
 #[derive(Resource)]
 pub struct PostProcessPipeline {
-    layout: BindGroupLayout,
-    sampler: Sampler,
+    pub texture_layout: BindGroupLayout,
     pub pipeline_id: CachedRenderPipelineId,
 }
 
 impl FromWorld for PostProcessPipeline {
     fn from_world(world: &mut World) -> Self {
         let render_device = world.resource::<RenderDevice>();
-        let layout = render_device.create_bind_group_layout(
-            "post_process_bind_group_layout",
+        let textures_layout = render_device.create_bind_group_layout(
+            "pcl_normalize_pass_bind_group_layout",
             &BindGroupLayoutEntries::sequential(
-                // The layout entries will only be visible in the fragment stage
                 ShaderStages::FRAGMENT,
                 (
-                    // The screen texture
-                    texture_2d(TextureSampleType::Depth),
+                    // The texture containing the mask
+                    // We could transmit the complete depth as f32, but we don't need
+                    // Binding Depth buffer is not supported in WASM/WebGL
+                    texture_2d(TextureSampleType::Uint),
+                    // The texture containing the rendered point cloud (rgb = weighted sum, a = sum of weights)
                     texture_2d(TextureSampleType::Float { filterable: false }),
                 ),
             ),
         );
-
-        // We can create the sampler here since it won't change at runtime and doesn't depend on the view
-        let sampler = render_device.create_sampler(&SamplerDescriptor::default());
 
         let pipeline_id = world
             .resource_mut::<PipelineCache>()
             // This will add the pipeline to the cache and queue its creation
             .queue_render_pipeline(RenderPipelineDescriptor {
                 label: Some("post_process_pipeline".into()),
-                layout: vec![layout.clone()],
+                layout: vec![textures_layout.clone()],
                 // This will setup a fullscreen triangle for the vertex state
                 vertex: fullscreen_shader_vertex_state(),
                 fragment: Some(FragmentState {
@@ -54,8 +52,9 @@ impl FromWorld for PostProcessPipeline {
                 primitive: PrimitiveState::default(),
                 depth_stencil: Some(DepthStencilState {
                     format: TextureFormat::Depth32Float,
-                    depth_write_enabled: true,
-                    depth_compare: CompareFunction::GreaterEqual,
+                    // Do not write the depth, because it has already been written in the depth pass, and we don't have access to it
+                    depth_write_enabled: false,
+                    depth_compare: CompareFunction::Always,
                     stencil: Default::default(),
                     bias: Default::default(),
                 }),
@@ -65,8 +64,7 @@ impl FromWorld for PostProcessPipeline {
             });
 
         Self {
-            layout,
-            sampler,
+            texture_layout: textures_layout,
             pipeline_id,
         }
     }

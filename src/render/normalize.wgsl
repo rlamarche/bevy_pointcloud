@@ -20,33 +20,29 @@
 // You don't need to worry about this too much since bevy will compute the correct UVs for you.
 #import bevy_core_pipeline::fullscreen_vertex_shader::FullscreenVertexOutput
 
-@group(0) @binding(0) var depth_texture: texture_depth_2d;
+@group(0) @binding(0) var depth_texture: texture_2d<u32>;
 @group(0) @binding(1) var attribute_texture: texture_2d<f32>;
 
 
 
 struct FragmentOutput {
     @location(0) color: vec4<f32>,
-    @builtin(frag_depth) depth: f32,
 }
 
 
 @fragment
 fn fragment(in: FullscreenVertexOutput) -> FragmentOutput {
-    let stored_depth = textureLoad(depth_texture, vec2<i32>(in.position.xy), 0);
-    let stored_color = textureLoad(attribute_texture, vec2<i32>(in.position.xy), 0);
+    let depth_mask = textureLoad(depth_texture, vec2<i32>(in.position.xy), 0).r;
 
-    var output: FragmentOutput;
-
-
-    if (stored_depth == 0) {
+    if (depth_mask == 0) {
         discard;
     }
 
+    let stored_color = textureLoad(attribute_texture, vec2<i32>(in.position.xy), 0);
+
+    var output: FragmentOutput;
     output.color = stored_color / stored_color.a;
     output.color.a = 1.0;
-
-    output.depth = stored_depth;
 
     return output;
 }

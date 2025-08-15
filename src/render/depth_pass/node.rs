@@ -1,16 +1,17 @@
-use crate::render::depth_pass::Depth3d;
-use crate::render::depth_pass::texture::{ViewDepthPrepassTextures, ViewDepthTexture};
+use crate::render::depth_pass::DepthPass3d;
+use crate::render::depth_pass::texture::ViewDepthPrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::error;
 use bevy_render::render_phase::TrackedRenderPass;
 use bevy_render::render_resource::{CommandEncoderDescriptor, StoreOp};
+use bevy_render::view::ViewDepthTexture;
 use bevy_render::{
     camera::ExtractedCamera,
     render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode},
     render_phase::ViewSortedRenderPhases,
     render_resource::RenderPassDescriptor,
     renderer::RenderContext,
-    view::{ExtractedView, ViewTarget},
+    view::ExtractedView,
 };
 
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
@@ -22,7 +23,6 @@ impl ViewNode for CustomDrawNode {
     type ViewQuery = (
         &'static ExtractedCamera,
         &'static ExtractedView,
-        &'static ViewTarget,
         Option<&'static ViewDepthTexture>,
         &'static ViewDepthPrepassTextures,
     );
@@ -31,20 +31,25 @@ impl ViewNode for CustomDrawNode {
         &self,
         graph: &mut RenderGraphContext,
         render_context: &mut RenderContext<'w>,
-        (camera, view, target, view_depth_texture, view_prepass_textures): QueryItem<
-            'w,
-            Self::ViewQuery,
-        >,
+        (camera, view, view_depth_texture, view_prepass_textures): QueryItem<'w, Self::ViewQuery>,
         world: &'w World,
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource
-        let Some(stencil_phases) = world.get_resource::<ViewSortedRenderPhases<Depth3d>>() else {
+        let Some(stencil_phases) = world.get_resource::<ViewSortedRenderPhases<DepthPass3d>>()
+        else {
             return Ok(());
         };
 
         let Some(view_depth_texture) = view_depth_texture else {
             return Ok(());
         };
+
+        let color_attachments = vec![
+            view_prepass_textures
+                .depth
+                .as_ref()
+                .map(|attribute_texture| attribute_texture.get_attachment()),
+        ];
 
         let depth_stencil_attachment = Some(view_depth_texture.get_attachment(StoreOp::Store));
 
@@ -60,15 +65,16 @@ impl ViewNode for CustomDrawNode {
             // Command encoder setup
             let mut command_encoder =
                 render_device.create_command_encoder(&CommandEncoderDescriptor {
-                    label: Some("prepass_command_encoder"),
+                    label: Some("pcl_depth_pass_command_encoder"),
                 });
 
             // Render pass setup
             let render_pass = command_encoder.begin_render_pass(&RenderPassDescriptor {
-                label: Some("depth pass"),
-                // No need for the color output in depth phase
-                color_attachments: &[],
-                // But we store the depth
+                label: Some("pcl_depth_pass"),
+                // In the depth phase, we write a depth mask to reuse it in normalize pass
+                // We could use the depth buffer, but with WebGL we can't bind it in a shader
+                color_attachments: &color_attachments,
+                // We store the depth for usage in attribute pass
                 depth_stencil_attachment,
                 timestamp_writes: None,
                 occlusion_query_set: None,
@@ -84,14 +90,6 @@ impl ViewNode for CustomDrawNode {
             }
 
             drop(render_pass);
-
-            if let Some(prepass_depth_texture) = &view_prepass_textures.depth {
-                command_encoder.copy_texture_to_texture(
-                    view_depth_texture.texture.as_image_copy(),
-                    prepass_depth_texture.texture.texture.as_image_copy(),
-                    view_prepass_textures.size,
-                );
-            }
 
             command_encoder.finish()
         });

@@ -4,52 +4,47 @@ pub mod texture;
 
 use std::ops::Range;
 
-use crate::render::attribute_pass::pipeline::AttributePassPipeline;
-use crate::render::depth_pass::node::DepthPassLabel;
-use crate::render::depth_pass::SetDepthTextureBindGroup;
-use crate::render::point_cloud_uniform::SetPointCloudUniformGroup;
 use crate::render::DrawMeshInstanced;
+use crate::render::attribute_pass::pipeline::AttributePassPipeline;
+use crate::render::attribute_pass::texture::AttributePassLayout;
+use crate::render::depth_pass::node::DepthPassLabel;
+use crate::render::point_cloud_uniform::SetPointCloudUniformGroup;
 use bevy_app::prelude::*;
-use bevy_core_pipeline::core_3d::graph::Core3d;
 use bevy_core_pipeline::core_3d::Camera3d;
-use bevy_ecs::query::ROQueryItem;
-use bevy_ecs::system::lifetimeless::Read;
-use bevy_ecs::{prelude::*, system::SystemParamItem};
+use bevy_core_pipeline::core_3d::graph::Core3d;
+use bevy_ecs::prelude::*;
 use bevy_log::error;
 use bevy_math::FloatOrd;
 use bevy_pbr::{
     MeshPipeline, MeshPipelineKey, RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup,
 };
 use bevy_platform::collections::HashSet;
-use bevy_render::render_phase::{RenderCommand, RenderCommandResult, TrackedRenderPass};
 use bevy_render::{
-    batching::gpu_preprocessing::batch_and_prepare_sorted_render_phase, mesh::RenderMesh, prelude::*, render_asset::RenderAssets, render_graph::{RenderGraphApp, ViewNodeRunner}, render_phase::{
-        sort_phase_system, AddRenderCommand, CachedRenderPipelinePhaseItem, DrawFunctionId, DrawFunctions,
-        PhaseItem, PhaseItemExtraIndex, SetItemPipeline, SortedPhaseItem,
-        SortedRenderPhasePlugin, ViewSortedRenderPhases,
+    Extract, ExtractSchedule, Render, RenderApp, RenderDebugFlags, RenderSet,
+    mesh::RenderMesh,
+    prelude::*,
+    render_asset::RenderAssets,
+    render_graph::{RenderGraphApp, ViewNodeRunner},
+    render_phase::{
+        AddRenderCommand, CachedRenderPipelinePhaseItem, DrawFunctionId, DrawFunctions, PhaseItem,
+        PhaseItemExtraIndex, SetItemPipeline, SortedPhaseItem, SortedRenderPhasePlugin,
+        ViewSortedRenderPhases,
     },
-    render_resource::{
-        CachedRenderPipelineId, PipelineCache, SpecializedMeshPipeline, SpecializedMeshPipelines,
-    },
+    render_resource::{CachedRenderPipelineId, PipelineCache, SpecializedMeshPipelines},
     sync_world::MainEntity,
     view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity},
-    Extract,
-    ExtractSchedule,
-    Render,
-    RenderApp,
-    RenderDebugFlags,
-    RenderSet,
 };
 use node::{AttributePassLabel, AttributePassNode};
-use texture::AttributePassViewBindGroup;
-use texture::{prepare_attribute_pass_textures, prepare_attribute_pass_view_bind_groups};
+use texture::prepare_attribute_pass_textures;
 
 pub struct AttributePassPlugin;
 impl Plugin for AttributePassPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(SortedRenderPhasePlugin::<AttributePass, MeshPipeline>::new(
-            RenderDebugFlags::default(),
-        ));
+        app.add_plugins(
+            SortedRenderPhasePlugin::<AttributePass3d, MeshPipeline>::new(
+                RenderDebugFlags::default(),
+            ),
+        );
 
         // We need to get the render app from the main app
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -57,46 +52,44 @@ impl Plugin for AttributePassPlugin {
         };
         render_app
             .init_resource::<SpecializedMeshPipelines<AttributePassPipeline>>()
-            .init_resource::<DrawFunctions<AttributePass>>()
-            .add_render_command::<AttributePass, DrawAttributePass>()
+            .init_resource::<DrawFunctions<AttributePass3d>>()
+            .add_render_command::<AttributePass3d, DrawAttributePass>()
+            // No need to sort points clouds for the moment, and not working in WASM/WEBGL
             // .init_resource::<ViewSortedRenderPhases<AttributePass>>()
             .add_systems(ExtractSchedule, extract_camera_phases)
             .add_systems(
                 Render,
                 (
-                    prepare_attribute_pass_view_bind_groups.in_set(RenderSet::PrepareBindGroups),
                     prepare_attribute_pass_textures.in_set(RenderSet::PrepareResources),
                     queue_attribute_pass.in_set(RenderSet::QueueMeshes),
+                    // No need to sort points clouds for the moment, and not working in WASM/WEBGL
                     // sort_phase_system::<AttributePass>.in_set(RenderSet::PhaseSort),
                     // batch_and_prepare_sorted_render_phase::<AttributePass, AttributePassPipeline>
                     //     .in_set(RenderSet::PrepareResources),
                 ),
             )
             .add_render_graph_node::<ViewNodeRunner<AttributePassNode>>(Core3d, AttributePassLabel)
-            // Tell the node to run after depth pass
             .add_render_graph_edges(Core3d, (DepthPassLabel, AttributePassLabel));
     }
 
     fn finish(&self, app: &mut App) {
-        // We need to get the render app from the main app
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
-        render_app.init_resource::<AttributePassPipeline>();
+        // The pipeline needs the RenderDevice to be created and it's only available once plugins
+        // are initialized
+        render_app
+            .init_resource::<AttributePassLayout>()
+            .init_resource::<AttributePassPipeline>();
     }
 }
 
 // We will reuse render commands already defined by bevy to draw a 3d mesh
 type DrawAttributePass = (
     SetItemPipeline,
-    // This will set the view bindings in group 0
     SetMeshViewBindGroup<0>,
-    // This will set the mesh bindings in group 1
     SetMeshBindGroup<1>,
     SetPointCloudUniformGroup<2>,
-    SetDepthTextureBindGroup<3>,
-    // This will draw the mesh
-    // DrawMesh,
     DrawMeshInstanced,
 );
 
@@ -107,7 +100,7 @@ type DrawAttributePass = (
 //
 // If you want to see how a batched phase implementation looks, you should look at the Opaque2d
 // phase.
-struct AttributePass {
+struct AttributePass3d {
     pub sort_key: FloatOrd,
     pub entity: (Entity, MainEntity),
     pub pipeline: CachedRenderPipelineId,
@@ -120,7 +113,7 @@ struct AttributePass {
 }
 
 // For more information about writing a phase item, please look at the custom_phase_item example
-impl PhaseItem for AttributePass {
+impl PhaseItem for AttributePass3d {
     #[inline]
     fn entity(&self) -> Entity {
         self.entity.0
@@ -157,7 +150,7 @@ impl PhaseItem for AttributePass {
     }
 }
 
-impl SortedPhaseItem for AttributePass {
+impl SortedPhaseItem for AttributePass3d {
     type SortKey = FloatOrd;
 
     #[inline]
@@ -167,7 +160,6 @@ impl SortedPhaseItem for AttributePass {
 
     #[inline]
     fn sort(items: &mut [Self]) {
-        // info!("Got items: {:#?}", items);
         // bevy normally uses radsort instead of the std slice::sort_by_key
         // radsort is a stable radix sort that performed better than `slice::sort_by_key` or `slice::sort_unstable_by_key`.
         // Since it is not re-exported by bevy, we just use the std sort for the purpose of the example
@@ -180,18 +172,15 @@ impl SortedPhaseItem for AttributePass {
     }
 }
 
-impl CachedRenderPipelinePhaseItem for AttributePass {
+impl CachedRenderPipelinePhaseItem for AttributePass3d {
     #[inline]
     fn cached_pipeline(&self) -> CachedRenderPipelineId {
         self.pipeline
     }
 }
 
-// When defining a phase, we need to extract it from the main world and add it to a resource
-// that will be used by the render world. We need to give that resource all views that will use
-// that phase
 fn extract_camera_phases(
-    mut stencil_phases: ResMut<ViewSortedRenderPhases<AttributePass>>,
+    mut stencil_phases: ResMut<ViewSortedRenderPhases<AttributePass3d>>,
     cameras: Extract<Query<(Entity, &Camera), With<Camera3d>>>,
     mut live_entities: Local<HashSet<RetainedViewEntity>>,
 ) {
@@ -212,13 +201,13 @@ fn extract_camera_phases(
 }
 
 fn queue_attribute_pass(
-    custom_draw_functions: Res<DrawFunctions<AttributePass>>,
+    custom_draw_functions: Res<DrawFunctions<AttributePass3d>>,
     mut pipelines: ResMut<SpecializedMeshPipelines<AttributePassPipeline>>,
     pipeline_cache: Res<PipelineCache>,
     custom_draw_pipeline: Res<AttributePassPipeline>,
     render_meshes: Res<RenderAssets<RenderMesh>>,
     render_mesh_instances: Res<RenderMeshInstances>,
-    mut custom_render_phases: ResMut<ViewSortedRenderPhases<AttributePass>>,
+    mut custom_render_phases: ResMut<ViewSortedRenderPhases<AttributePass3d>>,
     mut views: Query<(&ExtractedView, &RenderVisibleEntities, &Msaa)>,
 ) {
     for (view, visible_entities, msaa) in &mut views {
@@ -266,7 +255,7 @@ fn queue_attribute_pass(
             let distance = rangefinder.distance_translation(&mesh_instance.translation);
             // At this point we have all the data we need to create a phase item and add it to our
             // phase
-            custom_phase.add(AttributePass {
+            custom_phase.add(AttributePass3d {
                 // Sort the data based on the distance to the view
                 sort_key: FloatOrd(distance),
                 entity: (*render_entity, *visible_entity),
@@ -278,23 +267,5 @@ fn queue_attribute_pass(
                 indexed: mesh.indexed(),
             });
         }
-    }
-}
-
-pub struct SetAttributePassTextureBindGroup<const I: usize>;
-impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetAttributePassTextureBindGroup<I> {
-    type Param = ();
-    type ViewQuery = Read<AttributePassViewBindGroup>;
-    type ItemQuery = ();
-
-    fn render<'w>(
-        _item: &P,
-        depth_view_bind_group: ROQueryItem<'w, Self::ViewQuery>,
-        _entity: Option<ROQueryItem<'w, Self::ItemQuery>>,
-        _param: SystemParamItem<'w, '_, Self::Param>,
-        pass: &mut TrackedRenderPass<'w>,
-    ) -> RenderCommandResult {
-        pass.set_bind_group(I, &depth_view_bind_group.value, &[]);
-        RenderCommandResult::Success
     }
 }

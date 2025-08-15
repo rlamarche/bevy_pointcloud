@@ -1,49 +1,19 @@
 use bevy_color::LinearRgba;
-use bevy_core_pipeline::core_3d::{
-    AlphaMask3d, CORE_3D_DEPTH_FORMAT, Camera3d, Camera3dDepthLoadOp, Opaque3d, Transmissive3d,
-    Transparent3d,
-};
+use bevy_core_pipeline::core_3d::{AlphaMask3d, Camera3d, Opaque3d, Transmissive3d, Transparent3d};
 use bevy_ecs::prelude::*;
-use bevy_log::warn;
 use bevy_platform::collections::HashMap;
 use bevy_render::camera::ExtractedCamera;
 use bevy_render::prelude::*;
-use bevy_render::render_phase::{PhaseItem, ViewBinnedRenderPhases, ViewSortedRenderPhases};
+use bevy_render::render_phase::{ViewBinnedRenderPhases, ViewSortedRenderPhases};
+use bevy_render::render_resource::TextureFormat::R8Uint;
 use bevy_render::render_resource::binding_types::texture_2d;
 use bevy_render::render_resource::{
-    BindGroup, BindGroupEntry, BindGroupLayout, Extent3d, FilterMode, IntoBinding, RenderPassDepthStencilAttachment, SamplerDescriptor, ShaderStages, StoreOp,
-    Texture, TextureAspect, TextureDescriptor, TextureDimension, TextureSampleType, TextureUsages,
-    TextureView, TextureViewDescriptor,
+    BindGroup, BindGroupLayout, Extent3d, ShaderStages, TextureDescriptor, TextureDimension,
+    TextureSampleType, TextureUsages, TextureView,
 };
 use bevy_render::renderer::RenderDevice;
-use bevy_render::texture::{CachedTexture, ColorAttachment, DepthAttachment, TextureCache};
+use bevy_render::texture::{ColorAttachment, TextureCache};
 use bevy_render::view::ExtractedView;
-use bevy_utils::default;
-
-#[derive(Component)]
-pub struct ViewDepthTexture {
-    pub texture: Texture,
-    attachment: DepthAttachment,
-    // clear_value: Option<f32>,
-    // view: TextureView,
-}
-
-impl ViewDepthTexture {
-    pub fn new(texture: CachedTexture, clear_value: Option<f32>) -> Self {
-        Self {
-            texture: texture.texture,
-            attachment: DepthAttachment::new(texture.default_view, clear_value),
-        }
-    }
-
-    pub fn get_attachment(&self, store: StoreOp) -> RenderPassDepthStencilAttachment {
-        self.attachment.get_attachment(store)
-    }
-
-    pub fn view(&self) -> &TextureView {
-        &self.attachment.view
-    }
-}
 
 /// Textures that are written to by the prepass.
 #[derive(Component)]
@@ -81,10 +51,7 @@ pub fn prepare_pcl3d_depth_textures(
         };
 
         // Default usage required to write to the depth texture
-        let mut usage: TextureUsages = camera_3d.depth_texture_usages.into();
-
-        // Required to read the output of the prepass
-        usage |= TextureUsages::COPY_SRC;
+        let usage: TextureUsages = camera_3d.depth_texture_usages.into();
 
         render_target_usage
             .entry(camera.target.clone())
@@ -92,9 +59,8 @@ pub fn prepare_pcl3d_depth_textures(
             .or_insert_with(|| usage);
     }
 
-    let mut textures = <HashMap<_, _>>::default();
     let mut depth_textures = <HashMap<_, _>>::default();
-    for (entity, camera, _, camera_3d, msaa) in &views_3d {
+    for (entity, camera, _, _, msaa) in &views_3d {
         let Some(physical_target_size) = camera.physical_target_size else {
             continue;
         };
@@ -105,35 +71,6 @@ pub fn prepare_pcl3d_depth_textures(
             height: physical_target_size.y,
         };
 
-        let cached_texture = textures
-            .entry((camera.target.clone(), msaa))
-            .or_insert_with(|| {
-                // The size of the depth texture
-                let size = Extent3d {
-                    depth_or_array_layers: 1,
-                    width: physical_target_size.x,
-                    height: physical_target_size.y,
-                };
-
-                let usage = *render_target_usage
-                    .get(&camera.target.clone())
-                    .expect("The depth texture usage should already exist for this target");
-
-                let descriptor = TextureDescriptor {
-                    label: Some("view_depth_texture"),
-                    size,
-                    mip_level_count: 1,
-                    sample_count: msaa.samples(),
-                    dimension: TextureDimension::D2,
-                    format: CORE_3D_DEPTH_FORMAT,
-                    usage,
-                    view_formats: &[],
-                };
-
-                texture_cache.get(&render_device, descriptor)
-            })
-            .clone();
-
         let cached_depth_texture = depth_textures
             .entry(camera.target.clone())
             .or_insert_with(|| {
@@ -143,23 +80,13 @@ pub fn prepare_pcl3d_depth_textures(
                     mip_level_count: 1,
                     sample_count: msaa.samples(),
                     dimension: TextureDimension::D2,
-                    format: CORE_3D_DEPTH_FORMAT,
-                    usage: TextureUsages::COPY_DST
-                        | TextureUsages::RENDER_ATTACHMENT
-                        | TextureUsages::TEXTURE_BINDING,
+                    format: R8Uint,
+                    usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
                     view_formats: &[],
                 };
                 texture_cache.get(&render_device, descriptor)
             })
             .clone();
-
-        commands.entity(entity).insert(ViewDepthTexture::new(
-            cached_texture,
-            match camera_3d.depth_load_op {
-                Camera3dDepthLoadOp::Clear(v) => Some(v),
-                Camera3dDepthLoadOp::Load => None,
-            },
-        ));
 
         commands.entity(entity).insert(ViewDepthPrepassTextures {
             depth: Some(ColorAttachment::new(
@@ -189,45 +116,43 @@ impl FromWorld for DepthPassLayout {
         DepthPassLayout {
             layout: render_device.create_bind_group_layout(
                 "pcl_depth_layout",
-                &vec![
-                    texture_2d(TextureSampleType::Depth).build(0, ShaderStages::FRAGMENT),
-                ],
+                &vec![texture_2d(TextureSampleType::Depth).build(0, ShaderStages::FRAGMENT)],
             ),
         }
     }
 }
 
-pub fn prepare_depth_view_bind_groups(
-    mut commands: Commands,
-    depth_pass_layout: Res<DepthPassLayout>,
-    render_device: Res<RenderDevice>,
-    views: Query<(Entity, &ViewDepthPrepassTextures)>,
-) {
-    for (entity, prepass_textures) in &views {
-        let Some(depth_texture) = &prepass_textures.depth else {
-            warn!("No depth texture for {}", entity);
-            continue;
-        };
-
-        let depth_desc = TextureViewDescriptor {
-            label: Some("prepass_depth"),
-            aspect: TextureAspect::DepthOnly,
-            ..default()
-        };
-
-        let depth_view = depth_texture.texture.texture.create_view(&depth_desc);
-
-        commands.entity(entity).insert(DepthPassViewBindGroup {
-            value: render_device.create_bind_group(
-                "pcl_depth_view_bind_group",
-                &depth_pass_layout.layout,
-                &vec![
-                    BindGroupEntry {
-                        binding: 0,
-                        resource: depth_view.into_binding(),
-                    },
-                ],
-            ),
-        });
-    }
-}
+// pub fn prepare_depth_view_bind_groups(
+//     mut commands: Commands,
+//     depth_pass_layout: Res<DepthPassLayout>,
+//     render_device: Res<RenderDevice>,
+//     views: Query<(Entity, &ViewDepthPrepassTextures)>,
+// ) {
+//     for (entity, prepass_textures) in &views {
+//         let Some(depth_texture) = &prepass_textures.depth else {
+//             warn!("No depth texture for {}", entity);
+//             continue;
+//         };
+//
+//         let depth_desc = TextureViewDescriptor {
+//             label: Some("prepass_depth"),
+//             aspect: TextureAspect::All,
+//             ..default()
+//         };
+//
+//         let depth_view = depth_texture.texture.texture.create_view(&depth_desc);
+//
+//         commands.entity(entity).insert(DepthPassViewBindGroup {
+//             value: render_device.create_bind_group(
+//                 "pcl_depth_view_bind_group",
+//                 &depth_pass_layout.layout,
+//                 &vec![
+//                     BindGroupEntry {
+//                         binding: 0,
+//                         resource: depth_view.into_binding(),
+//                     },
+//                 ],
+//             ),
+//         });
+//     }
+// }

@@ -1,4 +1,5 @@
 use crate::pointcloud::PointCloud;
+use crate::render::point_cloud_uniform::PointCloudUniform;
 use bevy_asset::{AsAssetId, AssetId, Assets, Handle, RenderAssetUsages};
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::component::HookContext;
@@ -9,7 +10,6 @@ use bevy_reflect::{Reflect, std_traits::ReflectDefault};
 use bevy_render::extract_component::ExtractComponent;
 use bevy_render::mesh::{Indices, Mesh, Mesh3d, PrimitiveTopology};
 use bevy_transform::prelude::GlobalTransform;
-use crate::render::point_cloud_uniform::PointCloudUniform;
 
 const QUAD_POSITIONS: &[[f32; 3]] = &[
     [-0.5, -0.5, 0.0],
@@ -29,7 +29,9 @@ impl ExtractComponent for PointCloud3d {
     type QueryFilter = ();
     type Out = (PointCloud3d, PointCloudUniform);
 
-    fn extract_component((point_cloud_3d, global_transform): QueryItem<'_, Self::QueryData>) -> Option<Self::Out> {
+    fn extract_component(
+        (point_cloud_3d, global_transform): QueryItem<'_, Self::QueryData>,
+    ) -> Option<Self::Out> {
         let custom_uniform = PointCloudUniform {
             world_from_local: global_transform.compute_matrix(),
         };
@@ -88,7 +90,6 @@ where
         world.commands().entity(entity).insert(Mesh3d(mesh_handle));
     }
 }
-
 
 // This is the component that will get passed to the shader
 // #[derive(Component, Default, Clone, Copy, ExtractComponent, ShaderType)]

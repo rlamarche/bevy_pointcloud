@@ -1,7 +1,7 @@
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::ROQueryItem;
-use bevy_ecs::system::lifetimeless::Read;
 use bevy_ecs::system::SystemParamItem;
+use bevy_ecs::system::lifetimeless::Read;
 use bevy_math::Mat4;
 use bevy_reflect::TypePath;
 use bevy_render::render_asset::RenderAssets;
@@ -49,7 +49,11 @@ pub fn prepare_point_cloud_uniform<'w>(
 
     for (entity, custom_uniform) in &query {
         let prepared = custom_uniform
-            .as_bind_group(&point_cloud_uniform_layout.layout, render_device, &mut material)
+            .as_bind_group(
+                &point_cloud_uniform_layout.layout,
+                render_device,
+                &mut material,
+            )
             .expect("Unable to build bind group from PointCloudUniform.");
 
         commands
