@@ -1,15 +1,12 @@
-use crate::pointcloud::PointCloud;
-use crate::render::point_cloud_uniform::PointCloudUniform;
-use bevy_asset::{AsAssetId, AssetId, Assets, Handle, RenderAssetUsages};
+use bevy_asset::{AsAssetId, Asset, AssetId, Assets, Handle, RenderAssetUsages};
 use bevy_derive::{Deref, DerefMut};
-use bevy_ecs::component::HookContext;
-use bevy_ecs::query::QueryItem;
+use bevy_ecs::component::{Component, HookContext};
+use bevy_ecs::reflect::ReflectComponent;
 use bevy_ecs::world::DeferredWorld;
-use bevy_ecs::{component::Component, reflect::ReflectComponent};
-use bevy_reflect::{Reflect, std_traits::ReflectDefault};
-use bevy_render::extract_component::ExtractComponent;
+use bevy_math::Vec3;
+use bevy_reflect::{std_traits::ReflectDefault, Reflect};
 use bevy_render::mesh::{Indices, Mesh, Mesh3d, PrimitiveTopology};
-use bevy_transform::prelude::GlobalTransform;
+use bytemuck::{Pod, Zeroable};
 
 const QUAD_POSITIONS: &[[f32; 3]] = &[
     [-0.5, -0.5, 0.0],
@@ -19,29 +16,27 @@ const QUAD_POSITIONS: &[[f32; 3]] = &[
 ];
 const QUAD_INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
 
+#[derive(Debug, Clone, Asset, Reflect)]
+pub struct PointCloud {
+    pub points: Vec<PointCloudData>,
+}
+
+#[derive(Debug, Clone, Copy, Reflect, Pod, Zeroable)]
+#[repr(C)]
+pub struct PointCloudData {
+    pub position: Vec3,
+    pub point_size: f32,
+    pub color: [f32; 4],
+}
+
 #[derive(Component, Clone, Debug, Default, Deref, DerefMut, Reflect, PartialEq, Eq)]
 #[reflect(Component, Default, Clone, PartialEq)]
 #[component(on_add = add_pointcloud_mesh::<PointCloud3d>)]
 pub struct PointCloud3d(pub Handle<PointCloud>);
 
-impl ExtractComponent for PointCloud3d {
-    type QueryData = (&'static PointCloud3d, &'static GlobalTransform);
-    type QueryFilter = ();
-    type Out = (PointCloud3d, PointCloudUniform);
-
-    fn extract_component(
-        (point_cloud_3d, global_transform): QueryItem<'_, Self::QueryData>,
-    ) -> Option<Self::Out> {
-        let custom_uniform = PointCloudUniform {
-            world_from_local: global_transform.compute_matrix(),
-        };
-        Some((point_cloud_3d.clone(), custom_uniform))
-    }
-}
-
 impl From<PointCloud3d> for AssetId<PointCloud> {
-    fn from(pointcloud: PointCloud3d) -> Self {
-        pointcloud.id()
+    fn from(point_cloud: PointCloud3d) -> Self {
+        point_cloud.id()
     }
 }
 
@@ -90,9 +85,3 @@ where
         world.commands().entity(entity).insert(Mesh3d(mesh_handle));
     }
 }
-
-// This is the component that will get passed to the shader
-// #[derive(Component, Default, Clone, Copy, ExtractComponent, ShaderType)]
-// pub struct PointCloudHQMaterial {
-//     // pub intensity: f32,
-// }

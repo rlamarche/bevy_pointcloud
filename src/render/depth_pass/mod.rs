@@ -5,7 +5,7 @@ pub mod texture;
 use std::ops::Range;
 
 use crate::render::DrawMeshInstanced;
-use crate::render::depth_pass::node::{CustomDrawNode, DepthPassLabel};
+use crate::render::depth_pass::node::{DepthPassNode, DepthPassLabel};
 use crate::render::depth_pass::pipeline::DepthPipeline;
 use crate::render::depth_pass::texture::{DepthPassLayout, prepare_depth_pass_textures};
 use crate::render::point_cloud_uniform::SetPointCloudUniformGroup;
@@ -34,6 +34,7 @@ use bevy_render::{
     sync_world::MainEntity,
     view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity},
 };
+use crate::render::material::SetPointCloudMaterialGroup;
 
 pub struct DepthPassPlugin;
 impl Plugin for DepthPassPlugin {
@@ -66,7 +67,7 @@ impl Plugin for DepthPassPlugin {
             );
 
         render_app
-            .add_render_graph_node::<ViewNodeRunner<CustomDrawNode>>(Core3d, DepthPassLabel)
+            .add_render_graph_node::<ViewNodeRunner<DepthPassNode>>(Core3d, DepthPassLabel)
             // Tell the node to run before the main transparent pass
             .add_render_graph_edges(Core3d, (Node3d::MainOpaquePass, DepthPassLabel));
     }
@@ -89,6 +90,7 @@ type DrawDepthPass = (
     SetMeshViewBindGroup<0>,
     SetMeshBindGroup<1>,
     SetPointCloudUniformGroup<2>,
+    SetPointCloudMaterialGroup<3>,
     DrawMeshInstanced,
 );
 

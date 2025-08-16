@@ -36,6 +36,7 @@ use bevy_render::{
 };
 use node::{AttributePassLabel, AttributePassNode};
 use texture::prepare_attribute_pass_textures;
+use crate::render::material::SetPointCloudMaterialGroup;
 
 pub struct AttributePassPlugin;
 impl Plugin for AttributePassPlugin {
@@ -90,6 +91,7 @@ type DrawAttributePass = (
     SetMeshViewBindGroup<0>,
     SetMeshBindGroup<1>,
     SetPointCloudUniformGroup<2>,
+    SetPointCloudMaterialGroup<3>,
     DrawMeshInstanced,
 );
 

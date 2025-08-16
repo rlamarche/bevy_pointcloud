@@ -1,14 +1,15 @@
 mod aabb;
 pub mod attribute_pass;
-mod components;
 pub mod depth_pass;
+mod extract;
+pub mod material;
 pub mod normalize_pass;
 mod point_cloud;
 mod point_cloud_uniform;
 
-pub use components::PointCloud3d;
-
-use crate::pointcloud::PointCloud;
+use crate::point_cloud::PointCloud3d;
+use crate::render::material::{RenderPointCloudMaterial, RenderPointCloudMaterialLayout};
+use crate::render::point_cloud::RenderPointCloud;
 use aabb::compute_point_cloud_aabb;
 use attribute_pass::AttributePassPlugin;
 use bevy_app::prelude::*;
@@ -16,7 +17,6 @@ use bevy_asset::prelude::*;
 use bevy_asset::{load_internal_asset, weak_handle};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::{SystemParamItem, lifetimeless::*};
-use bevy_log::prelude::*;
 use bevy_pbr::RenderMeshInstances;
 use bevy_render::render_asset::RenderAssetPlugin;
 use bevy_render::{
@@ -29,7 +29,6 @@ use bevy_render::{
 };
 use depth_pass::DepthPassPlugin;
 use normalize_pass::NormalizePassPlugin;
-use point_cloud::RenderPointCloud;
 use point_cloud_uniform::{PointCloudUniformLayout, prepare_point_cloud_uniform};
 
 const POINTCLOUD_SHADER_HANDLE: Handle<Shader> =
@@ -42,24 +41,6 @@ pub struct RenderPipelinePlugin;
 
 impl Plugin for RenderPipelinePlugin {
     fn build(&self, app: &mut App) {
-        app.register_type::<PointCloud>()
-            .init_asset::<PointCloud>()
-            .register_asset_reflect::<PointCloud>()
-            .add_plugins(RenderAssetPlugin::<RenderPointCloud>::default())
-            .add_plugins(ExtractComponentPlugin::<PointCloud3d>::default())
-            // compute point cloud aabb **before** [`bevy_render::view::calculate_bounds`] to prevent using mesh's aabb.
-            .add_systems(
-                PostUpdate,
-                compute_point_cloud_aabb.before(bevy_render::view::calculate_bounds),
-            )
-            .sub_app_mut(RenderApp)
-            .add_systems(
-                Render,
-                prepare_point_cloud_uniform.in_set(RenderSet::PrepareResources),
-            );
-
-        app.add_plugins((DepthPassPlugin, AttributePassPlugin, NormalizePassPlugin));
-
         load_internal_asset!(
             app,
             POINTCLOUD_SHADER_HANDLE,
@@ -73,10 +54,27 @@ impl Plugin for RenderPipelinePlugin {
             "normalize.wgsl",
             Shader::from_wgsl
         );
+
+        app.add_plugins(RenderAssetPlugin::<RenderPointCloud>::default())
+            .add_plugins(RenderAssetPlugin::<RenderPointCloudMaterial>::default())
+            .add_plugins(ExtractComponentPlugin::<PointCloud3d>::default())
+            // compute point cloud aabb **before** [`bevy_render::view::calculate_bounds`] to prevent using mesh's aabb.
+            .add_systems(
+                PostUpdate,
+                compute_point_cloud_aabb.before(bevy_render::view::calculate_bounds),
+            )
+            .sub_app_mut(RenderApp)
+            .add_systems(
+                Render,
+                prepare_point_cloud_uniform.in_set(RenderSet::PrepareResources),
+            );
+
+        app.add_plugins((DepthPassPlugin, AttributePassPlugin, NormalizePassPlugin));
     }
 
     fn finish(&self, app: &mut App) {
         app.sub_app_mut(RenderApp)
+            .init_resource::<RenderPointCloudMaterialLayout>()
             .init_resource::<PointCloudUniformLayout>();
     }
 }

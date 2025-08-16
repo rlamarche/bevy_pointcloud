@@ -36,12 +36,22 @@ struct VertexOutput {
 @group(2) @binding(0)
 var<uniform> world_from_local: mat4x4<f32>;
 
+struct PointCloudMaterial {
+    point_size: f32,
+};
+
+@group(3) @binding(0)
+var<uniform> material: PointCloudMaterial;
+
 const PI: f32 = 3.14159265358979323846264338327950288;
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
     let center = vertex.i_pos_size.xyz;
-    let point_size = vertex.i_pos_size.w;
+    var point_size = vertex.i_pos_size.w;
+    if (point_size < 0.0) {
+        point_size = material.point_size;
+    }
 
     let viewport = view_bindings::view.viewport;
 
@@ -52,8 +62,10 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     let clip_position = position_world_to_clip(world_position.xyz);
     var view_position = position_world_to_view(world_position.xyz);
 
-    // TODO pass camera fov
-    let fov = PI / 4.0;
+    // Get the fov from projection matrix
+    let f = view_bindings::view.clip_from_view[1][1];
+    let fov = 2.0 * atan(1.0 / f);
+
     let slope = tan(fov / 2.0);
     let proj_factor = -0.5 * viewport[3] / (slope * view_position.z);
     var v_radius = point_size / proj_factor;

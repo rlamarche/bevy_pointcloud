@@ -18,8 +18,8 @@ use bevy_render::{
 pub struct DepthPassLabel;
 
 #[derive(Default)]
-pub struct CustomDrawNode;
-impl ViewNode for CustomDrawNode {
+pub struct DepthPassNode;
+impl ViewNode for DepthPassNode {
     type ViewQuery = (
         &'static ExtractedCamera,
         &'static ExtractedView,

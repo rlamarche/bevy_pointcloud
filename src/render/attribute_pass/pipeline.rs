@@ -1,4 +1,4 @@
-use crate::pointcloud::PointCloudData;
+use crate::point_cloud::PointCloudData;
 use crate::render::POINTCLOUD_SHADER_HANDLE;
 use crate::render::point_cloud_uniform::PointCloudUniform;
 use bevy_asset::prelude::*;
@@ -22,12 +22,14 @@ use bevy_render::{
     },
 };
 use bevy_utils::default;
+use crate::point_cloud_material::PointCloudMaterial;
 
 #[derive(Resource)]
 pub struct AttributePassPipeline {
     mesh_pipeline: MeshPipeline,
     shader_handle: Handle<Shader>,
     point_cloud_layout: BindGroupLayout,
+    point_cloud_material_layout: BindGroupLayout,
 }
 impl FromWorld for AttributePassPipeline {
     fn from_world(world: &mut World) -> Self {
@@ -38,6 +40,7 @@ impl FromWorld for AttributePassPipeline {
             mesh_pipeline: mesh_pipeline.clone(),
             shader_handle: POINTCLOUD_SHADER_HANDLE,
             point_cloud_layout: PointCloudUniform::bind_group_layout(render_device),
+            point_cloud_material_layout: PointCloudMaterial::bind_group_layout(render_device),
         }
     }
 }
@@ -89,6 +92,8 @@ impl SpecializedMeshPipeline for AttributePassPipeline {
                 self.mesh_pipeline.mesh_layouts.model_only.clone(),
                 // Bind group 2 is our point cloud uniform
                 self.point_cloud_layout.clone(),
+                // Bind group 3 is the point cloud material
+                self.point_cloud_material_layout.clone(),
             ],
             push_constant_ranges: vec![],
             vertex: VertexState {

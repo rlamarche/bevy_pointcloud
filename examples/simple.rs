@@ -9,8 +9,8 @@ use bevy::{prelude::*, render::view::NoIndirectDrawing};
 use bevy_color::palettes::basic::{RED, SILVER};
 use bevy_pointcloud::PointCloudPlugin;
 use bevy_pointcloud::loader::las::LasLoaderPlugin;
-use bevy_pointcloud::pointcloud::{PointCloud, PointCloudData};
-use bevy_pointcloud::render::PointCloud3d;
+use bevy_pointcloud::point_cloud::{PointCloud, PointCloud3d, PointCloudData};
+use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
 use camera_controller::{CameraController, CameraControllerPlugin};
 use rand::Rng;
 
@@ -43,6 +43,7 @@ fn main() {
             },
         })
         .add_systems(Startup, (setup_window, setup, load_pointcloud, load_meshes))
+        .add_systems(Update, update_material_on_keypress)
         .run();
 }
 
@@ -101,14 +102,24 @@ fn load_meshes(
     ));
 }
 
+#[derive(Component)]
+pub struct MyMaterial(Handle<PointCloudMaterial>);
+
 fn load_pointcloud(
     mut commands: Commands,
     mut point_clouds: ResMut<Assets<PointCloud>>,
+    mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
+    let my_material = point_cloud_materials.add(PointCloudMaterial { point_size: 10.0 });
+    commands.spawn(MyMaterial(my_material.clone()));
+
     let point_cloud = asset_server.load::<PointCloud>("pointclouds/lion_takanawa.copc.laz");
     info!("Point cloud handle got");
-    commands.spawn((PointCloud3d(point_cloud),));
+    commands.spawn((
+        PointCloud3d(point_cloud),
+        PointCloudMaterial3d(my_material.clone()),
+    ));
 
     // Generate a random point cloud
     let mut rng = rand::rng();
@@ -149,9 +160,29 @@ fn load_pointcloud(
                 // info!("Spawn a mesh with {} points", point_cloud.points.len());
                 commands.spawn((
                     PointCloud3d(point_clouds.add(point_cloud)),
+                    PointCloudMaterial3d(my_material.clone()),
                     Transform::from_xyz(i as f32 * 30.0, j as f32 * 30.0, k as f32 * 30.0),
                 ));
             }
         }
+    }
+}
+
+fn update_material_on_keypress(
+    time: Res<Time>,
+    key_input: Res<ButtonInput<KeyCode>>,
+    my_material: Query<&MyMaterial>,
+    mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
+) {
+    let dt = time.delta_secs();
+
+    let my_material = my_material.single().unwrap();
+    let point_cloud_material = point_cloud_materials.get_mut(&my_material.0).unwrap();
+
+    if key_input.pressed(KeyCode::NumpadAdd) {
+        point_cloud_material.point_size += 1.0;
+    }
+    if key_input.pressed(KeyCode::NumpadSubtract) {
+        point_cloud_material.point_size -= 1.0;
     }
 }

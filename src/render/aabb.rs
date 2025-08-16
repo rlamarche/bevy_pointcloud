@@ -1,4 +1,4 @@
-use crate::pointcloud::PointCloud;
+use crate::point_cloud::PointCloud;
 use crate::render::PointCloud3d;
 use bevy_asset::Assets;
 use bevy_ecs::prelude::*;

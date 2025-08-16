@@ -1,11 +1,11 @@
-use crate::pointcloud::{PointCloud, PointCloudData};
+use crate::point_cloud::{PointCloud, PointCloudData};
 use bevy_app::{App, Plugin};
 use bevy_asset::io::Reader;
 use bevy_asset::{AssetApp, AssetLoader, LoadContext};
 use bevy_log::info;
 use bevy_math::Vec3;
 use bevy_reflect::erased_serde::__private::serde::{Deserialize, Serialize};
-use std::io::{BufReader, Cursor, Error};
+use std::io::{Cursor, Error};
 use thiserror::Error;
 
 /// Naive implementation of a las loader because it loads the las file completely in memory
@@ -79,7 +79,8 @@ impl AssetLoader for LasLoader {
                         point.z as f32 + delta.z,
                         point.y as f32 + delta.y,
                     ),
-                    point_size: 50.0,
+                    // < 0.0 means every points have the same size (taken from the material)
+                    point_size: -1.0,
                     // color,
                     color: [
                         color.red as f32 / u16::MAX as f32,
