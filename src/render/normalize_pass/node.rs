@@ -9,6 +9,7 @@ use bevy_render::{
     renderer::RenderContext,
     view::ViewTarget,
 };
+use crate::render::normalize_pass::eye_dome_lighting::NormalizePassEdlBindgroup;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
 pub struct NormalizePassLabel;
@@ -22,6 +23,7 @@ impl ViewNode for NormalizePassNode {
         &'static ViewTarget,
         &'static ViewDepthTexture,
         &'static NormalizePassBindGroup,
+        Option<&'static NormalizePassEdlBindgroup>,
         &'static NormalizePassPipelineId,
     );
 
@@ -29,7 +31,7 @@ impl ViewNode for NormalizePassNode {
         &self,
         _graph: &mut RenderGraphContext,
         render_context: &mut RenderContext,
-        (view_target, depth, bind_group, pipeline_id): QueryItem<Self::ViewQuery>,
+        (view_target, depth, textures_bind_group, edl_bind_group, pipeline_id): QueryItem<Self::ViewQuery>,
         world: &World,
     ) -> Result<(), NodeRunError> {
         let pipeline_cache = world.resource::<PipelineCache>();
@@ -49,7 +51,11 @@ impl ViewNode for NormalizePassNode {
         });
 
         render_pass.set_render_pipeline(pipeline);
-        render_pass.set_bind_group(0, &bind_group.value, &[]);
+        render_pass.set_bind_group(0, &textures_bind_group.value, &[]);
+
+        if let Some(edl_bind_group) = edl_bind_group {
+            render_pass.set_bind_group(1, &edl_bind_group.value, &[]);
+        }
         render_pass.draw(0..3, 0..1);
 
         Ok(())

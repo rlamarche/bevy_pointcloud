@@ -5,10 +5,12 @@ pub mod texture;
 use std::ops::Range;
 
 use crate::render::DrawMeshInstanced;
-use crate::render::depth_pass::node::{DepthPassNode, DepthPassLabel};
-use crate::render::depth_pass::pipeline::DepthPipeline;
+use crate::render::depth_pass::node::{DepthPassLabel, DepthPassNode};
+use crate::render::depth_pass::pipeline::{DepthPipeline, DepthPipelineKey};
 use crate::render::depth_pass::texture::{DepthPassLayout, prepare_depth_pass_textures};
+use crate::render::material::SetPointCloudMaterialGroup;
 use crate::render::point_cloud_uniform::SetPointCloudUniformGroup;
+use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
 use bevy_app::prelude::*;
 use bevy_core_pipeline::core_3d::Camera3d;
 use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
@@ -34,7 +36,6 @@ use bevy_render::{
     sync_world::MainEntity,
     view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity},
 };
-use crate::render::material::SetPointCloudMaterialGroup;
 
 pub struct DepthPassPlugin;
 impl Plugin for DepthPassPlugin {
@@ -212,9 +213,14 @@ fn queue_depth_pass(
     render_meshes: Res<RenderAssets<RenderMesh>>,
     render_mesh_instances: Res<RenderMeshInstances>,
     mut custom_render_phases: ResMut<ViewSortedRenderPhases<DepthPass3d>>,
-    mut views: Query<(&ExtractedView, &RenderVisibleEntities, &Msaa)>,
+    mut views: Query<(
+        &ExtractedView,
+        &RenderVisibleEntities,
+        &Msaa,
+        Option<&PointCloudRenderMode>,
+    )>,
 ) {
-    for (view, visible_entities, msaa) in &mut views {
+    for (view, visible_entities, msaa, point_cloud_render_mode) in &mut views {
         let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
@@ -242,11 +248,16 @@ fn queue_depth_pass(
             // but you could have more complex keys and that's where you'd need to create those keys
             let mut mesh_key = view_key;
             mesh_key |= MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
+            
+            let depth_key = DepthPipelineKey {
+                mesh_key,
+                use_edl: point_cloud_render_mode.use_edl(),
+            };
 
             let pipeline_id = pipelines.specialize(
                 &pipeline_cache,
                 &custom_draw_pipeline,
-                mesh_key,
+                depth_key,
                 &mesh.layout,
             );
             let pipeline_id = match pipeline_id {

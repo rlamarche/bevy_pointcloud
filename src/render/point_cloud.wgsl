@@ -1,8 +1,3 @@
-//! A shader showing how to use the vertex position data to output the
-//! stencil in the right position
-
-// First we import everything we need from bevy_pbr
-// A 2d shader would be vevry similar but import from bevy_sprite instead
 #import bevy_pbr::mesh_view_bindings as view_bindings
 #import bevy_pbr::mesh_functions::mesh_position_local_to_world
 
@@ -30,7 +25,7 @@ struct VertexOutput {
     @location(1) uv: vec2<f32>,
     @location(2) color: vec4<f32>,
     @location(3) log_depth: f32,
-    @location(4) v_radius: f32,
+    @location(4) radius: f32,
 };
 
 @group(2) @binding(0)
@@ -48,45 +43,53 @@ const PI: f32 = 3.14159265358979323846264338327950288;
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
     let center = vertex.i_pos_size.xyz;
-    var point_size = vertex.i_pos_size.w;
+    var point_size = material.point_size;
     if (point_size < 0.0) {
-        point_size = material.point_size;
+        point_size = vertex.i_pos_size.w;
     }
 
     let viewport = view_bindings::view.viewport;
 
 
-    let size = vec2(2.0 * point_size / viewport[2], 2.0 * point_size / viewport[3]);
 
+    // Compute world & view position of the point instance (applying the world_from_local matrix)
     let world_position = mesh_position_local_to_world(world_from_local, vec4<f32>(vertex.i_pos_size.xyz, 1.0));
-    let clip_position = position_world_to_clip(world_position.xyz);
     var view_position = position_world_to_view(world_position.xyz);
 
     // Get the fov from projection matrix
-    let f = view_bindings::view.clip_from_view[1][1];
-    let fov = 2.0 * atan(1.0 / f);
+//    let f = view_bindings::view.clip_from_view[1][1];
+//    let fov = 2.0 * atan(1.0 / f);
+//    let slope = tan(fov / 2.0);
+//    var proj_factor = -0.5 * viewport[3] / (slope * view_position.z);
 
-    let slope = tan(fov / 2.0);
-    let proj_factor = -0.5 * viewport[3] / (slope * view_position.z);
-    var v_radius = point_size / proj_factor;
+    // Compute radius to size the point correctly with viewport size
+    let radius = point_size / min(viewport[2], viewport[3]);
+
+    // Compute the offset to apply for creating a quad
+    let offset = vertex.position.xy * radius;
+
+    // Apply the offset to the view position and compute clip position
+    let clip_position = position_view_to_clip(view_position + vec3<f32>(offset, 0.0));
 
     var out: VertexOutput;
 
-    let offset = vertex.position.xy * size;
-    out.clip_position = clip_position + vec4<f32>(offset, 0, 0);
+    out.clip_position = clip_position;
     out.view_position = view_position;
+
     out.color = vertex.i_color;
     out.uv = vertex.position.xy + vec2(0.5);
     out.log_depth = log2(-view_position.z);
-    out.v_radius = v_radius;
+    out.radius = radius;
 
 	#ifdef HQ_DEPTH_PASS
 		let original_depth = clip_position.w;
-		let adjusted_depth = original_depth + 2.0 * v_radius;
+		let adjusted_depth = original_depth + 2.0 * radius;
 		let adjust = adjusted_depth / original_depth;
-        view_position *= adjust;
 
-        out.clip_position = position_view_to_clip(view_position) + vec4<f32>(offset, 0, 0);
+        view_position *= adjust;
+        view_position += vec3<f32>(offset, 0.0);
+
+        out.clip_position = position_view_to_clip(view_position);
 	#endif
 
     return out;
@@ -94,7 +97,11 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 
 struct FragmentOutput {
 #ifdef DEPTH_PASS
-    @location(0) depth_texture: u32,
+    #ifdef USE_EDL
+    @location(0) depth_texture: vec2<f32>,
+    #else // USE EDL
+    @location(0) depth_texture: f32,
+    #endif // USE EDL
 #else
     @location(0) color: vec4<f32>,
 #endif
@@ -115,16 +122,21 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
     output.depth = in.clip_position.z;
 
 #ifdef DEPTH_PASS
-    output.depth_texture = 1;
-#else
+    #ifdef USE_EDL
+        output.depth_texture.r = in.clip_position.z;
+        output.depth_texture.g = in.log_depth;
+    #else // USE_EDL
+        output.depth_texture = in.clip_position.z;
+    #endif // USE_EDL
+#else // DEPTH_PASS
     output.color = vec4(in.color.xyz, 1.0);
 
     #ifdef PARABOLOID_POINT_SHAPE
-    let v_radius = in.v_radius;
+    let radius = in.radius;
     let wi = 0.0 - cc;
     var pos = in.view_position;
 
-    pos.z += wi * v_radius;
+    pos.z += wi * radius;
     let linear_depth = -pos.z;
     let clip_pos = position_view_to_ndc(pos);
     let exp_depth = clip_pos.z * 2.0 - 1.0;
@@ -140,7 +152,7 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
     output.color = vec4(in.color.xyz * weight, weight);
     #endif
 
-#endif
+#endif // DEPTH_PASS
 
     return output;
 }

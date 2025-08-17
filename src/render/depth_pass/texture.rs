@@ -1,3 +1,4 @@
+use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
 use bevy_color::LinearRgba;
 use bevy_core_pipeline::core_3d::{AlphaMask3d, Camera3d, Opaque3d, Transmissive3d, Transparent3d};
 use bevy_ecs::prelude::*;
@@ -5,7 +6,7 @@ use bevy_platform::collections::HashMap;
 use bevy_render::camera::ExtractedCamera;
 use bevy_render::prelude::*;
 use bevy_render::render_phase::{ViewBinnedRenderPhases, ViewSortedRenderPhases};
-use bevy_render::render_resource::TextureFormat::R8Uint;
+use bevy_render::render_resource::TextureFormat::{R32Float, Rg32Float};
 use bevy_render::render_resource::binding_types::texture_2d;
 use bevy_render::render_resource::{
     BindGroup, BindGroupLayout, Extent3d, ShaderStages, TextureDescriptor, TextureDimension,
@@ -38,10 +39,18 @@ pub fn prepare_depth_pass_textures(
     alpha_mask_3d_phases: Res<ViewBinnedRenderPhases<AlphaMask3d>>,
     transmissive_3d_phases: Res<ViewSortedRenderPhases<Transmissive3d>>,
     transparent_3d_phases: Res<ViewSortedRenderPhases<Transparent3d>>,
-    views_3d: Query<(Entity, &ExtractedCamera, &ExtractedView, &Camera3d, &Msaa)>,
+    views_3d: Query<(
+        Entity,
+        &ExtractedCamera,
+        &ExtractedView,
+        &Camera3d,
+        &Msaa,
+        Option<&PointCloudRenderMode>,
+    )>,
 ) {
+    // TODO remove this first for ?
     let mut render_target_usage = <HashMap<_, _>>::default();
-    for (_, camera, extracted_view, camera_3d, _msaa) in &views_3d {
+    for (_, camera, extracted_view, camera_3d, _msaa, _) in &views_3d {
         if !opaque_3d_phases.contains_key(&extracted_view.retained_view_entity)
             || !alpha_mask_3d_phases.contains_key(&extracted_view.retained_view_entity)
             || !transmissive_3d_phases.contains_key(&extracted_view.retained_view_entity)
@@ -60,7 +69,7 @@ pub fn prepare_depth_pass_textures(
     }
 
     let mut depth_textures = <HashMap<_, _>>::default();
-    for (entity, camera, _, _, msaa) in &views_3d {
+    for (entity, camera, _, _, msaa, point_cloud_render_mode) in &views_3d {
         let Some(physical_target_size) = camera.physical_target_size else {
             continue;
         };
@@ -80,7 +89,7 @@ pub fn prepare_depth_pass_textures(
                     mip_level_count: 1,
                     sample_count: msaa.samples(),
                     dimension: TextureDimension::D2,
-                    format: R8Uint,
+                    format: if point_cloud_render_mode.use_edl() { Rg32Float } else { R32Float },
                     usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
                     view_formats: &[],
                 };
@@ -92,7 +101,7 @@ pub fn prepare_depth_pass_textures(
             depth: Some(ColorAttachment::new(
                 cached_depth_texture,
                 None,
-                Some(LinearRgba::NONE),
+                Some(LinearRgba::WHITE),
             )),
             size,
         });

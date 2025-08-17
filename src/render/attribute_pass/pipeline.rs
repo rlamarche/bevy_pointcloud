@@ -111,12 +111,14 @@ impl SpecializedMeshPipeline for AttributePassPipeline {
                     // Additive blending to allow merging close points
                     blend: Some(BlendState {
                         color: BlendComponent {
-                            src_factor: BlendFactor::One,
+                            // To match Potree blending
+                            src_factor: BlendFactor::SrcAlpha,
                             dst_factor: BlendFactor::One,
                             operation: BlendOperation::Add,
                         },
                         alpha: BlendComponent {
-                            src_factor: BlendFactor::One,
+                            // To match Potree blending
+                            src_factor: BlendFactor::SrcAlpha,
                             dst_factor: BlendFactor::One,
                             operation: BlendOperation::Add,
                         },

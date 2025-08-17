@@ -2,12 +2,14 @@ mod aabb;
 pub mod attribute_pass;
 pub mod depth_pass;
 mod extract;
+mod eye_dome_lighting;
 pub mod material;
 pub mod normalize_pass;
 mod point_cloud;
 mod point_cloud_uniform;
 
 use crate::point_cloud::PointCloud3d;
+use crate::render::eye_dome_lighting::{extract_cameras_render_mode, EyeDomeLightingUniform};
 use crate::render::material::{RenderPointCloudMaterial, RenderPointCloudMaterialLayout};
 use crate::render::point_cloud::RenderPointCloud;
 use aabb::compute_point_cloud_aabb;
@@ -18,6 +20,8 @@ use bevy_asset::{load_internal_asset, weak_handle};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::{SystemParamItem, lifetimeless::*};
 use bevy_pbr::RenderMeshInstances;
+use bevy_render::camera::extract_cameras;
+use bevy_render::extract_component::UniformComponentPlugin;
 use bevy_render::render_asset::RenderAssetPlugin;
 use bevy_render::{
     Render, RenderApp, RenderSet,
@@ -55,9 +59,11 @@ impl Plugin for RenderPipelinePlugin {
             Shader::from_wgsl
         );
 
+        // Automatically create uniform from these settings
         app.add_plugins(RenderAssetPlugin::<RenderPointCloud>::default())
             .add_plugins(RenderAssetPlugin::<RenderPointCloudMaterial>::default())
             .add_plugins(ExtractComponentPlugin::<PointCloud3d>::default())
+            .add_plugins(UniformComponentPlugin::<EyeDomeLightingUniform>::default())
             // compute point cloud aabb **before** [`bevy_render::view::calculate_bounds`] to prevent using mesh's aabb.
             .add_systems(
                 PostUpdate,
@@ -70,6 +76,12 @@ impl Plugin for RenderPipelinePlugin {
             );
 
         app.add_plugins((DepthPassPlugin, AttributePassPlugin, NormalizePassPlugin));
+
+        let sub_app = app.sub_app_mut(RenderApp);
+        sub_app.add_systems(
+            ExtractSchedule,
+            extract_cameras_render_mode.after(extract_cameras),
+        );
     }
 
     fn finish(&self, app: &mut App) {
@@ -158,5 +170,44 @@ impl<P: PhaseItem> RenderCommand<P> for DrawMeshInstanced {
         }
 
         RenderCommandResult::Success
+    }
+}
+
+#[derive(Clone, Component)]
+pub struct PointCloudRenderMode {
+    pub use_edl: bool,
+    pub edl_neighbour_count: u32,
+    pub edl_strength: f32,
+    pub edl_radius: f32,
+}
+pub trait PointCloudRenderModeOpt {
+    fn use_edl(&self) -> bool;
+    fn edl_neighbour_count(&self) -> u32;
+}
+
+impl Default for PointCloudRenderMode {
+    fn default() -> Self {
+        Self {
+            use_edl: true,
+            edl_neighbour_count: 4,
+            edl_strength: 0.4,
+            edl_radius: 1.4,
+        }
+    }
+}
+
+impl PointCloudRenderModeOpt for Option<&PointCloudRenderMode> {
+    fn use_edl(&self) -> bool {
+        match self {
+            None => false,
+            Some(point_cloud_render_mode) => point_cloud_render_mode.use_edl,
+        }
+    }
+
+    fn edl_neighbour_count(&self) -> u32 {
+        match self {
+            None => 0,
+            Some(point_cloud_render_mode) => point_cloud_render_mode.edl_neighbour_count,
+        }
     }
 }

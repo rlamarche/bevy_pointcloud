@@ -6,10 +6,7 @@ use bevy_core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT;
 use bevy_ecs::prelude::*;
 use bevy_pbr::{MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey};
 use bevy_render::mesh::{VertexBufferLayout, VertexFormat};
-use bevy_render::render_resource::{
-    AsBindGroup, BindGroupLayout, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
-    DepthStencilState, StencilState, TextureFormat, VertexAttribute, VertexStepMode,
-};
+use bevy_render::render_resource::{AsBindGroup, BindGroupLayout, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, StencilState, TextureFormat, VertexAttribute, VertexStepMode};
 use bevy_render::renderer::RenderDevice;
 use bevy_render::{
     mesh::MeshVertexBufferLayoutRef,
@@ -44,8 +41,14 @@ impl FromWorld for DepthPipeline {
     }
 }
 
+#[derive(PartialEq, Eq, Hash, Clone)]
+pub struct DepthPipelineKey {
+    pub mesh_key: MeshPipelineKey,
+    pub use_edl: bool,
+}
+
 impl SpecializedMeshPipeline for DepthPipeline {
-    type Key = MeshPipelineKey;
+    type Key = DepthPipelineKey;
 
     fn specialize(
         &self,
@@ -78,14 +81,20 @@ impl SpecializedMeshPipeline for DepthPipeline {
             ],
         };
 
+        let mut shader_defs = vec!["DEPTH_PASS".into(), "HQ_DEPTH_PASS".into()];
+
+        if key.use_edl {
+            shader_defs.push("USE_EDL".into());
+        }
+
         Ok(RenderPipelineDescriptor {
-            label: Some("Specialized Mesh Pipeline".into()),
+            label: Some("pcl_depth_pass_pipeline".into()),
             // We want to reuse the data from bevy so we use the same bind groups as the default
             // mesh pipeline
             layout: vec![
                 // Bind group 0 is the view uniform
                 self.mesh_pipeline
-                    .get_view_layout(MeshPipelineViewLayoutKey::from(key))
+                    .get_view_layout(MeshPipelineViewLayoutKey::from(key.mesh_key))
                     .clone(),
                 // Bind group 1 is the mesh uniform
                 self.mesh_pipeline.mesh_layouts.model_only.clone(),
@@ -97,24 +106,24 @@ impl SpecializedMeshPipeline for DepthPipeline {
             push_constant_ranges: vec![],
             vertex: VertexState {
                 shader: self.shader_handle.clone(),
-                shader_defs: vec!["HQ_DEPTH_PASS".into()],
+                shader_defs: shader_defs.clone(),
                 entry_point: "vertex".into(),
                 buffers: vec![vertex_buffer_layout, instances_buffer_layout],
             },
             fragment: Some(FragmentState {
                 shader: self.shader_handle.clone(),
-                shader_defs: vec!["DEPTH_PASS".into()],
+                shader_defs,
                 entry_point: "fragment".into(),
                 // The target will store a mask to discard outside pixels in normalize pass
                 // Because we can't bind the depth buffer in WASM/WebGL
                 targets: vec![Some(ColorTargetState {
-                    format: TextureFormat::R8Uint,
+                    format: if key.use_edl { TextureFormat::Rg32Float } else { TextureFormat::R32Float },
                     blend: None,
                     write_mask: ColorWrites::ALL,
                 })],
             }),
             primitive: PrimitiveState {
-                topology: key.primitive_topology(),
+                topology: key.mesh_key.primitive_topology(),
                 front_face: FrontFace::Ccw,
                 cull_mode: Some(Face::Back),
                 polygon_mode: PolygonMode::Fill,
@@ -129,7 +138,7 @@ impl SpecializedMeshPipeline for DepthPipeline {
                 bias: DepthBiasState::default(),
             }),
             multisample: MultisampleState {
-                count: key.msaa_samples(),
+                count: key.mesh_key.msaa_samples(),
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },

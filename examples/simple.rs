@@ -11,6 +11,7 @@ use bevy_pointcloud::PointCloudPlugin;
 use bevy_pointcloud::loader::las::LasLoaderPlugin;
 use bevy_pointcloud::point_cloud::{PointCloud, PointCloud3d, PointCloudData};
 use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
+use bevy_pointcloud::render::PointCloudRenderMode;
 use camera_controller::{CameraController, CameraControllerPlugin};
 use rand::Rng;
 
@@ -70,6 +71,13 @@ fn setup(mut commands: Commands) {
         CameraController::default(),
         // disable msaa for WASM/WebGL (but works in native mode)
         Msaa::Off,
+        PointCloudRenderMode {
+            use_edl: true,
+            edl_radius: 2.8,
+            edl_strength: 1.0,
+            edl_neighbour_count: 8,
+            ..Default::default()
+        },
     ));
 }
 
@@ -111,11 +119,10 @@ fn load_pointcloud(
     mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
-    let my_material = point_cloud_materials.add(PointCloudMaterial { point_size: 10.0 });
+    let my_material = point_cloud_materials.add(PointCloudMaterial { point_size: 30.0 });
     commands.spawn(MyMaterial(my_material.clone()));
 
     let point_cloud = asset_server.load::<PointCloud>("pointclouds/lion_takanawa.copc.laz");
-    info!("Point cloud handle got");
     commands.spawn((
         PointCloud3d(point_cloud),
         PointCloudMaterial3d(my_material.clone()),
@@ -123,7 +130,9 @@ fn load_pointcloud(
 
     // Generate a random point cloud
     let mut rng = rand::rng();
-    let points = (0..1000000)
+    let nb_points = 1000000;
+
+    let points = (0..nb_points)
         .map(|_| {
             let position = Vec3::new(
                 rng.random_range(-10.0..10.0),
