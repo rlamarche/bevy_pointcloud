@@ -1,3 +1,8 @@
+// Portions of this shader are adapted from Potree (https://github.com/potree/potree)
+// Copyright (c) 2011-2020, Markus Schütz
+// Licensed under BSD 2-Clause (see THIRD_PARTY_LICENSES.md)
+
+
 // This shader computes the chromatic aberration effect
 
 // Since post processing is a fullscreen effect, we use the fullscreen vertex shader provided by bevy.

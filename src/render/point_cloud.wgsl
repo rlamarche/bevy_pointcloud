@@ -1,3 +1,7 @@
+// Portions of this shader are adapted from Potree (https://github.com/potree/potree)
+// Copyright (c) 2011-2020, Markus Schütz
+// Licensed under BSD 2-Clause (see THIRD_PARTY_LICENSES.md)
+
 #import bevy_pbr::mesh_view_bindings as view_bindings
 #import bevy_pbr::mesh_functions::mesh_position_local_to_world
 
