@@ -34,8 +34,7 @@ impl FromWorld for NormalizePassPipeline {
             &BindGroupLayoutEntries::sequential(
                 ShaderStages::FRAGMENT,
                 (
-                    // The texture containing the mask
-                    // We could transmit the complete depth as f32, but we don't need
+                    // The texture containing the depth
                     // Binding Depth buffer is not supported in WASM/WebGL
                     texture_2d(TextureSampleType::Float { filterable: false }),
                     // The texture containing the rendered point cloud (rgb = weighted sum, a = sum of weights)

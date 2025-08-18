@@ -6,7 +6,7 @@ use std::ops::Range;
 
 use crate::render::DrawMeshInstanced;
 use crate::render::attribute_pass::pipeline::AttributePassPipeline;
-use crate::render::attribute_pass::texture::AttributePassLayout;
+use crate::render::attribute_pass::texture::{prepare_attribute_pass_bind_groups, AttributePassLayout, SetAttributePassTextures};
 use crate::render::depth_pass::node::DepthPassLabel;
 use crate::render::point_cloud_uniform::SetPointCloudUniformGroup;
 use bevy_app::prelude::*;
@@ -62,6 +62,7 @@ impl Plugin for AttributePassPlugin {
                 Render,
                 (
                     prepare_attribute_pass_textures.in_set(RenderSet::PrepareResources),
+                    prepare_attribute_pass_bind_groups.in_set(RenderSet::PrepareResources),
                     queue_attribute_pass.in_set(RenderSet::QueueMeshes),
                     // No need to sort points clouds for the moment, and not working in WASM/WEBGL
                     // sort_phase_system::<AttributePass>.in_set(RenderSet::PhaseSort),
@@ -92,6 +93,7 @@ type DrawAttributePass = (
     SetMeshBindGroup<1>,
     SetPointCloudUniformGroup<2>,
     SetPointCloudMaterialGroup<3>,
+    SetAttributePassTextures<4>,
     DrawMeshInstanced,
 );
 

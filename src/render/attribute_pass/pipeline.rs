@@ -1,4 +1,5 @@
 use crate::point_cloud::PointCloudData;
+use crate::point_cloud_material::PointCloudMaterial;
 use crate::render::POINTCLOUD_SHADER_HANDLE;
 use crate::render::point_cloud_uniform::PointCloudUniform;
 use bevy_asset::prelude::*;
@@ -6,10 +7,11 @@ use bevy_core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT;
 use bevy_ecs::prelude::*;
 use bevy_pbr::{MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey};
 use bevy_render::mesh::{VertexBufferLayout, VertexFormat};
+use bevy_render::render_resource::binding_types::{texture_2d, texture_2d_multisampled};
 use bevy_render::render_resource::{
-    AsBindGroup, BindGroupLayout, BlendComponent, BlendFactor, BlendOperation, BlendState,
-    CompareFunction, DepthBiasState, DepthStencilState, StencilState, VertexAttribute,
-    VertexStepMode,
+    AsBindGroup, BindGroupLayout, BindGroupLayoutEntries, BlendComponent, BlendFactor,
+    BlendOperation, BlendState, CompareFunction, DepthBiasState, DepthStencilState, ShaderStages,
+    StencilState, TextureSampleType, VertexAttribute, VertexStepMode,
 };
 use bevy_render::renderer::RenderDevice;
 use bevy_render::{
@@ -22,12 +24,13 @@ use bevy_render::{
     },
 };
 use bevy_utils::default;
-use crate::point_cloud_material::PointCloudMaterial;
 
 #[derive(Resource)]
 pub struct AttributePassPipeline {
     mesh_pipeline: MeshPipeline,
     shader_handle: Handle<Shader>,
+    pub layout: BindGroupLayout,
+    pub layout_msaa: BindGroupLayout,
     point_cloud_layout: BindGroupLayout,
     point_cloud_material_layout: BindGroupLayout,
 }
@@ -39,6 +42,24 @@ impl FromWorld for AttributePassPipeline {
         Self {
             mesh_pipeline: mesh_pipeline.clone(),
             shader_handle: POINTCLOUD_SHADER_HANDLE,
+            layout: render_device.create_bind_group_layout(
+                "pcl_attribute_pass_bind_group_layout",
+                &BindGroupLayoutEntries::single(
+                    ShaderStages::VERTEX,
+                    // The texture containing the depth
+                    // Binding Depth buffer is not supported in WASM/WebGL
+                    texture_2d(TextureSampleType::Float { filterable: false }),
+                ),
+            ),
+            layout_msaa: render_device.create_bind_group_layout(
+                "pcl_attribute_pass_bind_group_layout_msaa",
+                &BindGroupLayoutEntries::single(
+                    ShaderStages::VERTEX,
+                    // The texture containing the depth
+                    // Binding Depth buffer is not supported in WASM/WebGL
+                    texture_2d_multisampled(TextureSampleType::Float { filterable: false }),
+                ),
+            ),
             point_cloud_layout: PointCloudUniform::bind_group_layout(render_device),
             point_cloud_material_layout: PointCloudMaterial::bind_group_layout(render_device),
         }
@@ -94,6 +115,8 @@ impl SpecializedMeshPipeline for AttributePassPipeline {
                 self.point_cloud_layout.clone(),
                 // Bind group 3 is the point cloud material
                 self.point_cloud_material_layout.clone(),
+                // Bind group 4 is the depth texture from depth pass
+                self.layout.clone(),
             ],
             push_constant_ranges: vec![],
             vertex: VertexState {
@@ -104,7 +127,7 @@ impl SpecializedMeshPipeline for AttributePassPipeline {
             },
             fragment: Some(FragmentState {
                 shader: self.shader_handle.clone(),
-                shader_defs: vec!["WEIGHTED_SPLATS".into()],
+                shader_defs: vec!["WEIGHTED_SPLATS".into(), "ATTRIBUTE_PASS".into()],
                 entry_point: "fragment".into(),
                 targets: vec![Some(ColorTargetState {
                     format: TextureFormat::Rgba32Float,

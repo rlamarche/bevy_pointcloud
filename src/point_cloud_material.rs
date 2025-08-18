@@ -6,10 +6,14 @@ use bevy_reflect::{std_traits::ReflectDefault, Reflect};
 use bevy_render::render_resource::AsBindGroup;
 
 // This is the component that will get passed to the shader
-#[derive(Asset, AsBindGroup, Reflect, Debug, Clone)]
+#[derive(Asset, AsBindGroup, Reflect, Debug, Clone, Default)]
 pub struct PointCloudMaterial {
     #[uniform(0)]
     pub point_size: f32,
+    // WebGL2 structs must be 16 byte aligned.
+    #[cfg(all(feature = "webgl", target_arch = "wasm32", not(feature = "webgpu")))]
+    #[uniform(0)]
+    pub _webgl2_padding: bevy_math::Vec3,
 }
 
 #[derive(Component, Clone, Debug, Default, Deref, DerefMut, Reflect, PartialEq, Eq)]

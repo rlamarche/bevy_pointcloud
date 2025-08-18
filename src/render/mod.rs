@@ -9,7 +9,7 @@ mod point_cloud;
 mod point_cloud_uniform;
 
 use crate::point_cloud::PointCloud3d;
-use crate::render::eye_dome_lighting::{extract_cameras_render_mode, EyeDomeLightingUniform};
+use crate::render::eye_dome_lighting::{extract_cameras_render_mode, EyeDomeLightingUniform, NeighboursCache};
 use crate::render::material::{RenderPointCloudMaterial, RenderPointCloudMaterialLayout};
 use crate::render::point_cloud::RenderPointCloud;
 use aabb::compute_point_cloud_aabb;
@@ -78,7 +78,9 @@ impl Plugin for RenderPipelinePlugin {
         app.add_plugins((DepthPassPlugin, AttributePassPlugin, NormalizePassPlugin));
 
         let sub_app = app.sub_app_mut(RenderApp);
-        sub_app.add_systems(
+        sub_app
+            .insert_resource(NeighboursCache::default())
+            .add_systems(
             ExtractSchedule,
             extract_cameras_render_mode.after(extract_cameras),
         );

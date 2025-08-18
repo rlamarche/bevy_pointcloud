@@ -1,14 +1,23 @@
+use crate::render::attribute_pass::pipeline::AttributePassPipeline;
+use crate::render::depth_pass::texture::ViewDepthPrepassTextures;
 use bevy_color::LinearRgba;
 use bevy_core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transmissive3d, Transparent3d};
 use bevy_ecs::prelude::*;
+use bevy_ecs::query::ROQueryItem;
+use bevy_ecs::system::SystemParamItem;
+use bevy_log::warn;
 use bevy_platform::collections::HashMap;
 use bevy_render::camera::ExtractedCamera;
 use bevy_render::prelude::*;
-use bevy_render::render_phase::{ViewBinnedRenderPhases, ViewSortedRenderPhases};
+use bevy_render::render_phase::{
+    PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass, ViewBinnedRenderPhases,
+    ViewSortedRenderPhases,
+};
 use bevy_render::render_resource::TextureFormat::Rgba32Float;
 use bevy_render::render_resource::binding_types::texture_2d;
 use bevy_render::render_resource::{
-    BindGroup, BindGroupLayout, Extent3d, ShaderStages, TextureDescriptor, TextureDimension,
+    BindGroup, BindGroupEntries, BindGroupLayout, Extent3d,
+    ShaderStages, TextureDescriptor, TextureDimension,
     TextureSampleType, TextureUsages, TextureView,
 };
 use bevy_render::renderer::RenderDevice;
@@ -121,41 +130,50 @@ impl FromWorld for AttributePassLayout {
     }
 }
 
-// pub fn prepare_attribute_pass_view_bind_groups(
-//     mut commands: Commands,
-//     pipeline: Res<AttributePassPipeline>,
-//     attribute_pass_layout: Res<AttributePassLayout>,
-//     render_device: Res<RenderDevice>,
-//     views: Query<(Entity, &ViewAttributePrepassTextures)>,
-// ) {
-//     for (entity, prepass_textures) in &views {
-//         let Some(depth_texture) = &prepass_textures.attribute else {
-//             warn!("No attribute texture for {}", entity);
-//             continue;
-//         };
-//
-//         let texture_view_desc = TextureViewDescriptor {
-//             label: Some("prepass_attribute"),
-//             aspect: TextureAspect::All,
-//             format: Some(TextureFormat::Rgba32Float),
-//             ..default()
-//         };
-//
-//         // let attribute_view = depth_texture.texture.default_view.clone();
-//         let attribute_view = depth_texture
-//             .texture
-//             .texture
-//             .create_view(&texture_view_desc);
-//
-//         commands.entity(entity).insert(AttributePassViewBindGroup {
-//             value: render_device.create_bind_group(
-//                 "pcl_attribute_view_bind_group",
-//                 &pipeline.textures_layout,
-//                 &vec![BindGroupEntry {
-//                     binding: 0,
-//                     resource: attribute_view.into_binding(),
-//                 }],
-//             ),
-//         });
-//     }
-// }
+pub fn prepare_attribute_pass_bind_groups(
+    mut commands: Commands,
+    pipeline: Res<AttributePassPipeline>,
+    render_device: Res<RenderDevice>,
+    views: Query<(Entity, &ViewDepthPrepassTextures, &Msaa)>,
+) {
+    for (entity, prepass_textures, msaa) in &views {
+        let Some(depth_texture) = &prepass_textures.depth else {
+            warn!("No depth pass texture for {}", entity);
+            continue;
+        };
+
+        let depth_view = depth_texture.texture.default_view.clone();
+
+        let layout = match msaa.samples() {
+            1 => vec![&pipeline.layout],
+            _ => vec![&pipeline.layout_msaa],
+        };
+
+        commands.entity(entity).insert(AttributePassViewBindGroup {
+            value: render_device.create_bind_group(
+                "pcl_normalize_pass_view_bind_group",
+                layout[0],
+                &BindGroupEntries::single(&depth_view),
+            ),
+        });
+    }
+}
+
+pub struct SetAttributePassTextures<const I: usize>;
+impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetAttributePassTextures<I> {
+    type Param = ();
+    type ViewQuery = &'static AttributePassViewBindGroup;
+    type ItemQuery = ();
+
+    fn render<'w>(
+        _item: &P,
+        attribute_pass_view_bind_group: ROQueryItem<'w, Self::ViewQuery>,
+        _entity: Option<ROQueryItem<'w, Self::ItemQuery>>,
+        _param: SystemParamItem<'w, '_, Self::Param>,
+        pass: &mut TrackedRenderPass<'w>,
+    ) -> RenderCommandResult {
+        pass.set_bind_group(I, &attribute_pass_view_bind_group.value, &[]);
+
+        RenderCommandResult::Success
+    }
+}

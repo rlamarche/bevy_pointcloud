@@ -37,12 +37,35 @@ var<uniform> world_from_local: mat4x4<f32>;
 
 struct PointCloudMaterial {
     point_size: f32,
+#ifdef SIXTEEN_BYTE_ALIGNMENT
+    // WebGL2 structs must be 16 byte aligned.
+    _webgl2_padding: vec3<f32>
+#endif
 };
 
 @group(3) @binding(0)
 var<uniform> material: PointCloudMaterial;
 
+
+#ifdef EARLY_REJECT_ATTRIBUTE_PASS
+#ifdef MULTISAMPLED
+
+@group(4) @binding(0) var depth_texture: texture_multisampled_2d<f32>;
+
+#else // MULTISAMPLED
+
+@group(4) @binding(0) var depth_texture: texture_2d<f32>;
+
+#endif // MULTISAMPLED
+#endif // EARLY_REJECT_ATTRIBUTE_PASS
+
 const PI: f32 = 3.14159265358979323846264338327950288;
+
+
+fn srgb_to_rgb_simple(color: vec3<f32>) -> vec3<f32> {
+    return pow(color, vec3<f32>(2.2));
+}
+
 
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
@@ -96,6 +119,24 @@ fn vertex(vertex: Vertex) -> VertexOutput {
         out.clip_position = position_view_to_clip(view_position);
 	#endif
 
+	#ifdef EARLY_REJECT_ATTRIBUTE_PASS
+        // Convert to screen coordinates
+        let ndc_pos = position_view_to_ndc(out.view_position);
+        let uv = (vec2(ndc_pos.x, -ndc_pos.y) * 0.5 + vec2(0.5, 0.5)) * viewport.zw;
+        // Clamp to screen coordinates for vertex outside of the texture
+        let texel_coords = clamp(vec2<i32>(uv), vec2<i32>(0), vec2<i32>(viewport.zw) - vec2<i32>(1));
+
+        // Load the depth computed at previous pass
+	    let prepass_depth = textureLoad(depth_texture, texel_coords, 0).r;
+	    let current_depth = ndc_pos.z;
+        // OR let current_depth = out.clip_position.z / out.clip_position.w;
+
+        // Reject the vertex if it is behind
+	    if (current_depth > prepass_depth) {
+	        out.clip_position = vec4<f32>(0.0);
+	    }
+	#endif
+
     return out;
 }
 
@@ -121,6 +162,9 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
         discard;
     }
 
+    // convert the color to linear RGB
+    let color = srgb_to_rgb_simple(in.color.xyz);
+
     var output: FragmentOutput;
 
     output.depth = in.clip_position.z;
@@ -132,8 +176,21 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
     #else // USE_EDL
         output.depth_texture = in.clip_position.z;
     #endif // USE_EDL
+
+    #ifdef PARABOLOID_POINT_SHAPE
+    let radius = in.radius;
+    let wi = 0.0 - cc;
+    var pos = in.view_position;
+
+    pos.z += wi * radius;
+    let linear_depth = -pos.z;
+    let clip_pos = position_view_to_ndc(pos);
+    let exp_depth = clip_pos.z * 2.0 - 1.0;
+
+    output.depth = clip_pos.z;
+    #endif
 #else // DEPTH_PASS
-    output.color = vec4(in.color.xyz, 1.0);
+    output.color = vec4(color, 1.0);
 
     #ifdef PARABOLOID_POINT_SHAPE
     let radius = in.radius;
@@ -153,7 +210,7 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
     var weight = max(0.0, 1.0 - distance);
     weight = pow(weight, 1.5);
 
-    output.color = vec4(in.color.xyz * weight, weight);
+    output.color = vec4(color * weight, weight);
     #endif
 
 #endif // DEPTH_PASS

@@ -1,7 +1,7 @@
 use super::AttributePass3d;
 use super::texture::ViewAttributePrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
-use bevy_log::error;
+use bevy_log::{error, warn};
 use bevy_render::render_phase::TrackedRenderPass;
 use bevy_render::render_resource::{CommandEncoderDescriptor, StoreOp};
 use bevy_render::view::ViewDepthTexture;
@@ -21,10 +21,10 @@ pub struct AttributePassLabel;
 pub struct AttributePassNode;
 impl ViewNode for AttributePassNode {
     type ViewQuery = (
-        &'static ExtractedCamera,
-        &'static ExtractedView,
-        &'static ViewDepthTexture,
-        &'static ViewAttributePrepassTextures,
+        Option<&'static ExtractedCamera>,
+        Option<&'static ExtractedView>,
+        Option<&'static ViewDepthTexture>,
+        Option<&'static ViewAttributePrepassTextures>,
     );
 
     fn run<'w>(
@@ -40,6 +40,11 @@ impl ViewNode for AttributePassNode {
             return Ok(());
         };
 
+        let Some(view_prepass_textures) = view_prepass_textures else {
+            warn!("ViewAttributePrepassTextures missing.");
+            return Ok(());
+        };
+
         let color_attachments = vec![
             view_prepass_textures
                 .attribute
@@ -49,7 +54,17 @@ impl ViewNode for AttributePassNode {
 
         let view_entity = graph.view_entity();
 
+        let Some(view) = view else {
+            warn!("ExtractedView missing.");
+            return Ok(());
+        };
+
         let Some(stencil_phase) = stencil_phases.get(&view.retained_view_entity) else {
+            return Ok(());
+        };
+
+        let Some(depth) = depth else {
+            warn!("ViewDepthTexture missing.");
             return Ok(());
         };
 
@@ -70,12 +85,18 @@ impl ViewNode for AttributePassNode {
             });
             let mut render_pass = TrackedRenderPass::new(&render_device, render_pass);
 
+            let Some(camera) = camera else {
+                warn!("ExtractedCamera missing.");
+                drop(render_pass);
+                return command_encoder.finish();
+            };
+
             if let Some(viewport) = camera.viewport.as_ref() {
                 render_pass.set_camera_viewport(viewport);
             }
 
             if let Err(err) = stencil_phase.render(&mut render_pass, world, view_entity) {
-                error!("Error encountered while rendering the stencil phase {err:?}");
+                error!("Error encountered while rendering the point cloud attribute phase {err:?}");
             }
 
             drop(render_pass);

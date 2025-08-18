@@ -39,6 +39,11 @@ bevy = { version = "0.16", features = ["bevy_dev_tools"] }
 rand = "0.9"
 
 
+[features]
+default = []
+webgl = []
+webgpu = []
+
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
 opt-level = 1

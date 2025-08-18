@@ -130,38 +130,3 @@ impl FromWorld for DepthPassLayout {
         }
     }
 }
-
-// pub fn prepare_depth_view_bind_groups(
-//     mut commands: Commands,
-//     depth_pass_layout: Res<DepthPassLayout>,
-//     render_device: Res<RenderDevice>,
-//     views: Query<(Entity, &ViewDepthPrepassTextures)>,
-// ) {
-//     for (entity, prepass_textures) in &views {
-//         let Some(depth_texture) = &prepass_textures.depth else {
-//             warn!("No depth texture for {}", entity);
-//             continue;
-//         };
-//
-//         let depth_desc = TextureViewDescriptor {
-//             label: Some("prepass_depth"),
-//             aspect: TextureAspect::All,
-//             ..default()
-//         };
-//
-//         let depth_view = depth_texture.texture.texture.create_view(&depth_desc);
-//
-//         commands.entity(entity).insert(DepthPassViewBindGroup {
-//             value: render_device.create_bind_group(
-//                 "pcl_depth_view_bind_group",
-//                 &depth_pass_layout.layout,
-//                 &vec![
-//                     BindGroupEntry {
-//                         binding: 0,
-//                         resource: depth_view.into_binding(),
-//                     },
-//                 ],
-//             ),
-//         });
-//     }
-// }

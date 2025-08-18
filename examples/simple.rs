@@ -4,14 +4,13 @@ mod camera_controller;
 use bevy::color::palettes::basic::GREEN;
 use bevy::dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin};
 use bevy::text::FontSmoothing;
-use bevy::window::PresentMode;
 use bevy::{prelude::*, render::view::NoIndirectDrawing};
 use bevy_color::palettes::basic::{RED, SILVER};
-use bevy_pointcloud::PointCloudPlugin;
 use bevy_pointcloud::loader::las::LasLoaderPlugin;
 use bevy_pointcloud::point_cloud::{PointCloud, PointCloud3d, PointCloudData};
 use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
 use bevy_pointcloud::render::PointCloudRenderMode;
+use bevy_pointcloud::PointCloudPlugin;
 use camera_controller::{CameraController, CameraControllerPlugin};
 use rand::Rng;
 
@@ -74,8 +73,8 @@ fn setup(mut commands: Commands) {
         PointCloudRenderMode {
             use_edl: true,
             edl_radius: 2.8,
-            edl_strength: 1.0,
-            edl_neighbour_count: 8,
+            edl_strength: 0.4,
+            edl_neighbour_count: 4,
             ..Default::default()
         },
     ));
@@ -115,11 +114,13 @@ pub struct MyMaterial(Handle<PointCloudMaterial>);
 
 fn load_pointcloud(
     mut commands: Commands,
-    mut point_clouds: ResMut<Assets<PointCloud>>,
     mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
-    let my_material = point_cloud_materials.add(PointCloudMaterial { point_size: 30.0 });
+    let my_material = point_cloud_materials.add(PointCloudMaterial {
+        point_size: 30.0,
+        ..default()
+    });
     commands.spawn(MyMaterial(my_material.clone()));
 
     let point_cloud = asset_server.load::<PointCloud>("pointclouds/lion_takanawa.copc.laz");
@@ -156,25 +157,25 @@ fn load_pointcloud(
     // Create chunks of point cloud
     // TODO chunk it using octrees or BVH
     let step = points.len() / 64;
-
-    for i in 0..4 {
-        for j in 0..4 {
-            for k in 0..4 {
-                let block_index = i + j * 4 + k * 16;
-                let start = block_index * step;
-                let end = ((block_index + 1) * step).min(points.len());
-                let point_cloud = PointCloud {
-                    points: (&points[start..end]).to_vec(),
-                };
-                // info!("Spawn a mesh with {} points", point_cloud.points.len());
-                commands.spawn((
-                    PointCloud3d(point_clouds.add(point_cloud)),
-                    PointCloudMaterial3d(my_material.clone()),
-                    Transform::from_xyz(i as f32 * 30.0, j as f32 * 30.0, k as f32 * 30.0),
-                ));
-            }
-        }
-    }
+    //
+    // for i in 0..4 {
+    //     for j in 0..4 {
+    //         for k in 0..4 {
+    //             let block_index = i + j * 4 + k * 16;
+    //             let start = block_index * step;
+    //             let end = ((block_index + 1) * step).min(points.len());
+    //             let point_cloud = PointCloud {
+    //                 points: (&points[start..end]).to_vec(),
+    //             };
+    //             // info!("Spawn a mesh with {} points", point_cloud.points.len());
+    //             commands.spawn((
+    //                 PointCloud3d(point_clouds.add(point_cloud)),
+    //                 PointCloudMaterial3d(my_material.clone()),
+    //                 Transform::from_xyz(i as f32 * 30.0, j as f32 * 30.0, k as f32 * 30.0),
+    //             ));
+    //         }
+    //     }
+    // }
 }
 
 fn update_material_on_keypress(

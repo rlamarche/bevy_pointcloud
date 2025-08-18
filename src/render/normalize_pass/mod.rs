@@ -5,7 +5,6 @@ mod texture;
 
 use crate::render::attribute_pass::node::AttributePassLabel;
 use crate::render::eye_dome_lighting::EyeDomeLightingUniformBindgroupLayout;
-use crate::render::normalize_pass::eye_dome_lighting::{prepare_normalize_pass_edl_bind_groups, NeighboursCache};
 use crate::render::normalize_pass::pipeline::{NormalizePassPipelineId, NormalizePassPipelineKey};
 use crate::render::normalize_pass::texture::prepare_normalize_pass_bind_groups;
 use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
@@ -22,6 +21,7 @@ use bevy_render::{
 };
 use node::{NormalizePassLabel, NormalizePassNode};
 use pipeline::NormalizePassPipeline;
+use crate::render::normalize_pass::eye_dome_lighting::prepare_normalize_pass_edl_bind_groups;
 
 pub struct NormalizePassPlugin;
 
@@ -33,7 +33,6 @@ impl Plugin for NormalizePassPlugin {
 
         render_app
             .init_resource::<SpecializedRenderPipelines<NormalizePassPipeline>>()
-            .insert_resource(NeighboursCache::default())
             .add_render_graph_node::<ViewNodeRunner<NormalizePassNode>>(
                 // Specify the label of the graph, in this case we want the graph for 3d
                 Core3d,

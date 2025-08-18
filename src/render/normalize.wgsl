@@ -49,32 +49,46 @@ struct EyeDomeLightingUniform {
     radius: f32,
     screen_width: f32,
     screen_height: f32,
+    neighbours: array<vec4<f32>, 4>,
 };
 
 @group(1) @binding(0)
 var<uniform> edl: EyeDomeLightingUniform;
-
-@group(1) @binding(1)
-var<storage, read> edl_neighbours: array<vec2<f32>, #{NEIGHBOUR_COUNT}u>;
 
 fn response(depth: f32, uv: vec2<f32>) -> f32{
 	let uv_radius = edl.radius / vec2<f32>(edl.screen_width, edl.screen_height);
 
 	var sum: f32 = 0.0;
 
-	for(var i: u32 = 0u; i < #{NEIGHBOUR_COUNT}u; i++){
-		var uv_neighbor = uv + uv_radius * edl_neighbours[i];
-		uv_neighbor.x *= edl.screen_width;
-		uv_neighbor.y *= edl.screen_height;
+	for(var i: u32 = 0u; i < 4; i++) {
+		var uv_neighbor_0 = uv + uv_radius * edl.neighbours[i].xy;
+		uv_neighbor_0.x *= edl.screen_width;
+		uv_neighbor_0.y *= edl.screen_height;
 
-		let neighbour_depth = textureLoad(depth_texture, vec2<i32>(uv_neighbor), 0).g;
+		let neighbour_depth_0 = textureLoad(depth_texture, vec2<i32>(uv_neighbor_0), 0).g;
 
-		if(neighbour_depth != 0.0){
+		if(neighbour_depth_0 != 0.0){
 			if(depth == 0.0){
 				sum += 100.0;
 			}else{
-				sum += max(0.0, depth - neighbour_depth);
+				sum += max(0.0, depth - neighbour_depth_0);
 			}
+		}
+
+		if (#{NEIGHBOUR_COUNT}u > 4) {
+            var uv_neighbor_1 = uv + uv_radius * edl.neighbours[i].zw;
+            uv_neighbor_1.x *= edl.screen_width;
+            uv_neighbor_1.y *= edl.screen_height;
+
+            let neighbour_depth_1 = textureLoad(depth_texture, vec2<i32>(uv_neighbor_1), 0).g;
+
+            if(neighbour_depth_1 != 0.0){
+                if(depth == 0.0){
+                    sum += 100.0;
+                }else{
+                    sum += max(0.0, depth - neighbour_depth_1);
+                }
+            }
 		}
 	}
 

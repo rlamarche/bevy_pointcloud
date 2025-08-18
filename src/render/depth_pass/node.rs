@@ -57,7 +57,7 @@ impl ViewNode for DepthPassNode {
         let view_entity = graph.view_entity();
 
         // Get the phase for the current view running our node
-        let Some(stencil_phase) = stencil_phases.get(&view.retained_view_entity) else {
+        let Some(attribute_phase) = stencil_phases.get(&view.retained_view_entity) else {
             return Ok(());
         };
 
@@ -85,8 +85,8 @@ impl ViewNode for DepthPassNode {
                 render_pass.set_camera_viewport(viewport);
             }
 
-            if let Err(err) = stencil_phase.render(&mut render_pass, world, view_entity) {
-                error!("Error encountered while rendering the stencil phase {err:?}");
+            if let Err(err) = attribute_phase.render(&mut render_pass, world, view_entity) {
+                error!("Error encountered while rendering the point cloud depth phase {err:?}");
             }
 
             drop(render_pass);
