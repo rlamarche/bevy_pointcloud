@@ -14,10 +14,17 @@ Roadmap :
 - [ ] ...
 
 Takanawa Lion with multi pass rendering pipeline inspired by Potree:
+
 ![Lion Takanawa](screenshots/lion_takanawa.copc.jpg)
+
+Takanawa Lion with multi pass rendering pipeline + Eye Dome Lighting inspired by Potree:
+
+![Lion Takanawa](screenshots/lion_takanawa.copc-edl.jpg)
+
 
 
 1 million random points:
+
 ![1 million random points](screenshots/random_points.jpg)
 
 St. Anna Mountain, 33 millions points:
