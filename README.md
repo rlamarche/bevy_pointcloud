@@ -64,3 +64,20 @@ and research communities. In particular, I would like to acknowledge:
 
 Thank you to all the researchers, developers, and contributors whose work laid the
 ground for this project.
+
+## Prepare WASM Example
+
+Run the following commands to prepare the WASM:
+
+```
+cargo build --features webgl --example simple --target wasm32-unknown-unknown  --release
+wasm-bindgen --no-typescript --target web  --out-dir path/to/site/ --out-name "bevy_pointcloud"  ./target/wasm32-unknown-unknown/release/examples/simple.wasm
+```
+
+Optimize the wasm:
+
+- Note: use the latest version of https://github.com/WebAssembly/binaryen because the one shipped with Ubuntu 24.04 make a broken WASM.
+
+```
+wasm-opt -O -ol 100 -s 100 -o bevy_pointcloud/bevy_pointcloud_bg.wasm bevy_pointcloud/bevy_pointcloud_bg.wasm
+```
