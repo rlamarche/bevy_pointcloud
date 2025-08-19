@@ -69,16 +69,9 @@ impl AssetLoader for LasLoader {
         for wrapped_point in las_reader.points() {
             let point = wrapped_point.unwrap();
 
-            let delta = -min;
-            // let delta = (max - min) / 2.0;
-
             if let Some(color) = point.color {
                 points.push(PointCloudData {
-                    position: Vec3::new(
-                        point.x as f32 + delta.x,
-                        point.z as f32 + delta.z,
-                        point.y as f32 + delta.y,
-                    ),
+                    position: Vec3::new(point.x as f32, point.z as f32, -point.y as f32),
                     // < 0.0 means every points have the same size (taken from the material)
                     point_size: -1.0,
                     // color,
