@@ -1,5 +1,7 @@
 # Bevy Point Cloud
 
+WASM Demo site : https://rlamarche.github.io/bevy_pointcloud/
+
 A Bevy plugin to render point clouds.
 
 Roadmap :
