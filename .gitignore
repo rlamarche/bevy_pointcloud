@@ -1,3 +1,7 @@
 /target
 /.idea
 /assets
+/node_modules
+/wasm
+/package.json
+/package-lock.json

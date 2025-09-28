@@ -16,6 +16,8 @@ use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMateri
 use bevy_pointcloud::render::PointCloudRenderMode;
 use rand::Rng;
 use std::ops::Neg;
+#[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
+use bevy::window::PresentMode;
 
 /// This example uses a shader source file from the assets subdirectory
 
@@ -53,7 +55,10 @@ fn main() {
 
 fn setup_window(mut windows: Query<&mut Window>) {
     let mut window = windows.single_mut().unwrap();
-    // window.present_mode = PresentMode::Immediate;
+    #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
+    {
+        window.present_mode = PresentMode::Immediate;
+    }
 }
 
 fn setup(mut commands: Commands) {
