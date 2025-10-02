@@ -1,24 +1,23 @@
 use crate::point_cloud::PointCloudData;
+use crate::point_cloud_material::PointCloudMaterial;
 use crate::render::POINTCLOUD_SHADER_HANDLE;
 use crate::render::point_cloud_uniform::PointCloudUniform;
 use bevy_asset::prelude::*;
 use bevy_core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT;
 use bevy_ecs::prelude::*;
+use bevy_mesh::{Mesh, MeshVertexBufferLayoutRef, VertexBufferLayout, VertexFormat};
 use bevy_pbr::{MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey};
-use bevy_render::mesh::{VertexBufferLayout, VertexFormat};
-use bevy_render::render_resource::{AsBindGroup, BindGroupLayout, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, StencilState, TextureFormat, VertexAttribute, VertexStepMode};
-use bevy_render::renderer::RenderDevice;
-use bevy_render::{
-    mesh::MeshVertexBufferLayoutRef,
-    prelude::*,
-    render_resource::{
-        Face, FragmentState, FrontFace, MultisampleState, PolygonMode, PrimitiveState,
-        RenderPipelineDescriptor, SpecializedMeshPipeline, SpecializedMeshPipelineError,
-        VertexState,
-    },
+use bevy_render::render_resource::{
+    AsBindGroup, BindGroupLayout, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
+    DepthStencilState, StencilState, TextureFormat, VertexAttribute, VertexStepMode,
 };
+use bevy_render::render_resource::{
+    Face, FragmentState, FrontFace, MultisampleState, PolygonMode, PrimitiveState,
+    RenderPipelineDescriptor, SpecializedMeshPipeline, SpecializedMeshPipelineError, VertexState,
+};
+use bevy_render::renderer::RenderDevice;
+use bevy_shader::Shader;
 use bevy_utils::default;
-use crate::point_cloud_material::PointCloudMaterial;
 
 #[derive(Resource)]
 pub struct DepthPipeline {
@@ -95,7 +94,8 @@ impl SpecializedMeshPipeline for DepthPipeline {
                 // Bind group 0 is the view uniform
                 self.mesh_pipeline
                     .get_view_layout(MeshPipelineViewLayoutKey::from(key.mesh_key))
-                    .clone(),
+                    .clone()
+                    .main_layout,
                 // Bind group 1 is the mesh uniform
                 self.mesh_pipeline.mesh_layouts.model_only.clone(),
                 // Bind group 2 is our point cloud uniform
@@ -107,17 +107,21 @@ impl SpecializedMeshPipeline for DepthPipeline {
             vertex: VertexState {
                 shader: self.shader_handle.clone(),
                 shader_defs: shader_defs.clone(),
-                entry_point: "vertex".into(),
+                entry_point: Some("vertex".into()),
                 buffers: vec![vertex_buffer_layout, instances_buffer_layout],
             },
             fragment: Some(FragmentState {
                 shader: self.shader_handle.clone(),
                 shader_defs,
-                entry_point: "fragment".into(),
+                entry_point: Some("fragment".into()),
                 // The target will store a mask to discard outside pixels in normalize pass
                 // Because we can't bind the depth buffer in WASM/WebGL
                 targets: vec![Some(ColorTargetState {
-                    format: if key.use_edl { TextureFormat::Rg32Float } else { TextureFormat::R32Float },
+                    format: if key.use_edl {
+                        TextureFormat::Rg32Float
+                    } else {
+                        TextureFormat::R32Float
+                    },
                     blend: None,
                     write_mask: ColorWrites::ALL,
                 })],

@@ -5,24 +5,21 @@ use crate::render::point_cloud_uniform::PointCloudUniform;
 use bevy_asset::prelude::*;
 use bevy_core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT;
 use bevy_ecs::prelude::*;
+use bevy_mesh::{Mesh, MeshVertexBufferLayoutRef, VertexBufferLayout, VertexFormat};
 use bevy_pbr::{MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey};
-use bevy_render::mesh::{VertexBufferLayout, VertexFormat};
 use bevy_render::render_resource::binding_types::{texture_2d, texture_2d_multisampled};
 use bevy_render::render_resource::{
     AsBindGroup, BindGroupLayout, BindGroupLayoutEntries, BlendComponent, BlendFactor,
     BlendOperation, BlendState, CompareFunction, DepthBiasState, DepthStencilState, ShaderStages,
     StencilState, TextureSampleType, VertexAttribute, VertexStepMode,
 };
-use bevy_render::renderer::RenderDevice;
-use bevy_render::{
-    mesh::MeshVertexBufferLayoutRef,
-    prelude::*,
-    render_resource::{
-        ColorTargetState, ColorWrites, Face, FragmentState, FrontFace, MultisampleState,
-        PolygonMode, PrimitiveState, RenderPipelineDescriptor, SpecializedMeshPipeline,
-        SpecializedMeshPipelineError, TextureFormat, VertexState,
-    },
+use bevy_render::render_resource::{
+    ColorTargetState, ColorWrites, Face, FragmentState, FrontFace, MultisampleState, PolygonMode,
+    PrimitiveState, RenderPipelineDescriptor, SpecializedMeshPipeline,
+    SpecializedMeshPipelineError, TextureFormat, VertexState,
 };
+use bevy_render::renderer::RenderDevice;
+use bevy_shader::Shader;
 use bevy_utils::default;
 
 #[derive(Resource)]
@@ -108,7 +105,8 @@ impl SpecializedMeshPipeline for AttributePassPipeline {
                 // Bind group 0 is the view uniform
                 self.mesh_pipeline
                     .get_view_layout(MeshPipelineViewLayoutKey::from(key))
-                    .clone(),
+                    .clone()
+                    .main_layout,
                 // Bind group 1 is the mesh uniform
                 self.mesh_pipeline.mesh_layouts.model_only.clone(),
                 // Bind group 2 is our point cloud uniform
@@ -122,13 +120,13 @@ impl SpecializedMeshPipeline for AttributePassPipeline {
             vertex: VertexState {
                 shader: self.shader_handle.clone(),
                 shader_defs: vec![],
-                entry_point: "vertex".into(),
+                entry_point: Some("vertex".into()),
                 buffers: vec![vertex_buffer_layout, instances_buffer_layout],
             },
             fragment: Some(FragmentState {
                 shader: self.shader_handle.clone(),
                 shader_defs: vec!["WEIGHTED_SPLATS".into(), "ATTRIBUTE_PASS".into()],
-                entry_point: "fragment".into(),
+                entry_point: Some("fragment".into()),
                 targets: vec![Some(ColorTargetState {
                     format: TextureFormat::Rgba32Float,
                     // Additive blending to allow merging close points

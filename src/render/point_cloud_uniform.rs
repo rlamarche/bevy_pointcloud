@@ -17,7 +17,7 @@ pub struct PointCloudUniform {
 
 #[derive(Component)]
 pub struct PreparedPointCloudUniform {
-    prepared: PreparedBindGroup<()>,
+    prepared: PreparedBindGroup,
 }
 #[derive(Resource)]
 pub struct PointCloudUniformLayout {
@@ -70,8 +70,8 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudUniformGrou
 
     fn render<'w>(
         _item: &P,
-        _view: ROQueryItem<'w, Self::ViewQuery>,
-        prepared_custom_uniform: Option<ROQueryItem<'w, Self::ItemQuery>>,
+        _view: ROQueryItem<'w, '_, Self::ViewQuery>,
+        prepared_custom_uniform: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         _param: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {

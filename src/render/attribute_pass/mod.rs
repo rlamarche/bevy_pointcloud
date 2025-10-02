@@ -6,25 +6,30 @@ use std::ops::Range;
 
 use crate::render::DrawMeshInstanced;
 use crate::render::attribute_pass::pipeline::AttributePassPipeline;
-use crate::render::attribute_pass::texture::{prepare_attribute_pass_bind_groups, AttributePassLayout, SetAttributePassTextures};
+use crate::render::attribute_pass::texture::{
+    AttributePassLayout, SetAttributePassTextures, prepare_attribute_pass_bind_groups,
+};
 use crate::render::depth_pass::node::DepthPassLabel;
+use crate::render::material::SetPointCloudMaterialGroup;
 use crate::render::point_cloud_uniform::SetPointCloudUniformGroup;
 use bevy_app::prelude::*;
-use bevy_core_pipeline::core_3d::Camera3d;
+use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::Core3d;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
 use bevy_math::FloatOrd;
+use bevy_mesh::Mesh3d;
 use bevy_pbr::{
     MeshPipeline, MeshPipelineKey, RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup,
 };
 use bevy_platform::collections::HashSet;
+use bevy_render::render_graph::RenderGraphExt;
 use bevy_render::{
-    Extract, ExtractSchedule, Render, RenderApp, RenderDebugFlags, RenderSet,
+    Extract, ExtractSchedule, Render, RenderApp, RenderDebugFlags, RenderSystems,
     mesh::RenderMesh,
     prelude::*,
     render_asset::RenderAssets,
-    render_graph::{RenderGraphApp, ViewNodeRunner},
+    render_graph::ViewNodeRunner,
     render_phase::{
         AddRenderCommand, CachedRenderPipelinePhaseItem, DrawFunctionId, DrawFunctions, PhaseItem,
         PhaseItemExtraIndex, SetItemPipeline, SortedPhaseItem, SortedRenderPhasePlugin,
@@ -36,7 +41,6 @@ use bevy_render::{
 };
 use node::{AttributePassLabel, AttributePassNode};
 use texture::prepare_attribute_pass_textures;
-use crate::render::material::SetPointCloudMaterialGroup;
 
 pub struct AttributePassPlugin;
 impl Plugin for AttributePassPlugin {
@@ -61,9 +65,9 @@ impl Plugin for AttributePassPlugin {
             .add_systems(
                 Render,
                 (
-                    prepare_attribute_pass_textures.in_set(RenderSet::PrepareResources),
-                    prepare_attribute_pass_bind_groups.in_set(RenderSet::PrepareResources),
-                    queue_attribute_pass.in_set(RenderSet::QueueMeshes),
+                    prepare_attribute_pass_textures.in_set(RenderSystems::PrepareResources),
+                    prepare_attribute_pass_bind_groups.in_set(RenderSystems::PrepareResources),
+                    queue_attribute_pass.in_set(RenderSystems::QueueMeshes),
                     // No need to sort points clouds for the moment, and not working in WASM/WEBGL
                     // sort_phase_system::<AttributePass>.in_set(RenderSet::PhaseSort),
                     // batch_and_prepare_sorted_render_phase::<AttributePass, AttributePassPipeline>

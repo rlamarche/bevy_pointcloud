@@ -4,7 +4,7 @@ use bevy_asset::io::Reader;
 use bevy_asset::{AssetApp, AssetLoader, LoadContext};
 use bevy_log::info;
 use bevy_math::Vec3;
-use bevy_reflect::erased_serde::__private::serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::io::{Cursor, Error};
 use thiserror::Error;
 
@@ -68,7 +68,6 @@ impl AssetLoader for LasLoader {
 
         for wrapped_point in las_reader.points() {
             let point = wrapped_point.unwrap();
-
             if let Some(color) = point.color {
                 points.push(PointCloudData {
                     position: Vec3::new(point.x as f32, point.z as f32, -point.y as f32),
@@ -88,5 +87,9 @@ impl AssetLoader for LasLoader {
         info!("Loaded point cloud with {} points", points.len());
 
         Ok(PointCloud { points })
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["las", "laz"]
     }
 }

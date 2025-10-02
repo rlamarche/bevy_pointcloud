@@ -13,21 +13,24 @@ crate-type = ["lib"]
 path = "src/lib.rs"
 
 [dependencies]
-bevy_app = { version = "0.16" }
-bevy_ecs = { version = "0.16" }
-bevy_pbr = { version = "0.16" }
-bevy_render = { version = "0.16" }
-bevy_core_pipeline = { version = "0.16" }
-bevy_asset = { version = "0.16" }
-bevy_log = { version = "0.16" }
-bevy_math = { version = "0.16" }
-bevy_derive = { version = "0.16" }
-bevy_reflect = { version = "0.16" }
-bevy_transform = { version = "0.16" }
-bevy_platform = { version = "0.16" }
-bevy_utils = { version = "0.16" }
-bevy_image = { version = "0.16" }
-bevy_color = { version = "0.16" }
+bevy_app = { version = "0.17" }
+bevy_camera = { version = "0.17" }
+bevy_ecs = { version = "0.17" }
+bevy_pbr = { version = "0.17" }
+bevy_render = { version = "0.17" }
+bevy_core_pipeline = { version = "0.17" }
+bevy_asset = { version = "0.17" }
+bevy_log = { version = "0.17" }
+bevy_math = { version = "0.17" }
+bevy_mesh = { version = "0.17" }
+bevy_shader = { version = "0.17" }
+bevy_derive = { version = "0.17" }
+bevy_reflect = { version = "0.17" }
+bevy_transform = { version = "0.17" }
+bevy_platform = { version = "0.17" }
+bevy_utils = { version = "0.17" }
+bevy_image = { version = "0.17" }
+bevy_color = { version = "0.17" }
 bytemuck = "1"
 nonmax = "0.5"
 thiserror = "2.0"
@@ -35,7 +38,7 @@ serde = { version = "1", features = ["derive"] }
 las = { version = "0.9", features = ["laz"] }
 
 [dev-dependencies]
-bevy = { version = "0.16", features = ["bevy_dev_tools"] }
+bevy = { version = "0.17", features = ["bevy_dev_tools"] }
 rand = "0.9"
 bevy_panorbit_camera = "0.28"
 

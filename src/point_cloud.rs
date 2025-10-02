@@ -1,11 +1,11 @@
 use bevy_asset::{AsAssetId, Asset, AssetId, Assets, Handle, RenderAssetUsages};
 use bevy_derive::{Deref, DerefMut};
-use bevy_ecs::component::{Component, HookContext};
 use bevy_ecs::reflect::ReflectComponent;
 use bevy_ecs::world::DeferredWorld;
+use bevy_ecs::{component::Component, lifecycle::HookContext};
 use bevy_math::Vec3;
-use bevy_reflect::{std_traits::ReflectDefault, Reflect};
-use bevy_render::mesh::{Indices, Mesh, Mesh3d, PrimitiveTopology};
+use bevy_mesh::{Indices, Mesh, Mesh3d, PrimitiveTopology};
+use bevy_reflect::{Reflect, std_traits::ReflectDefault};
 use bytemuck::{Pod, Zeroable};
 
 const QUAD_POSITIONS: &[[f32; 3]] = &[

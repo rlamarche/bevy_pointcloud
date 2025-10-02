@@ -16,9 +16,8 @@ use bevy_render::render_phase::{
 use bevy_render::render_resource::TextureFormat::Rgba32Float;
 use bevy_render::render_resource::binding_types::texture_2d;
 use bevy_render::render_resource::{
-    BindGroup, BindGroupEntries, BindGroupLayout, Extent3d,
-    ShaderStages, TextureDescriptor, TextureDimension,
-    TextureSampleType, TextureUsages, TextureView,
+    BindGroup, BindGroupEntries, BindGroupLayout, Extent3d, ShaderStages, TextureDescriptor,
+    TextureDimension, TextureSampleType, TextureUsages, TextureView,
 };
 use bevy_render::renderer::RenderDevice;
 use bevy_render::texture::{ColorAttachment, TextureCache};
@@ -167,8 +166,8 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetAttributePassTextures
 
     fn render<'w>(
         _item: &P,
-        attribute_pass_view_bind_group: ROQueryItem<'w, Self::ViewQuery>,
-        _entity: Option<ROQueryItem<'w, Self::ItemQuery>>,
+        attribute_pass_view_bind_group: ROQueryItem<'w, '_, Self::ViewQuery>,
+        _entity: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         _param: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {

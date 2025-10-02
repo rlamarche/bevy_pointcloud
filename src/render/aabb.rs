@@ -1,9 +1,9 @@
 use crate::point_cloud::PointCloud;
 use crate::render::PointCloud3d;
 use bevy_asset::Assets;
+use bevy_camera::primitives::Aabb;
+use bevy_camera::visibility::NoFrustumCulling;
 use bevy_ecs::prelude::*;
-use bevy_render::primitives::Aabb;
-use bevy_render::view::NoFrustumCulling;
 
 #[derive(Component)]
 pub struct AabbComputed;
@@ -26,7 +26,11 @@ pub struct AabbComputed;
 pub fn compute_point_cloud_aabb(
     point_clouds_without_aabb: Query<
         (Entity, &PointCloud3d),
-        (With<PointCloud3d>, Without<NoFrustumCulling>, Without<AabbComputed>),
+        (
+            With<PointCloud3d>,
+            Without<NoFrustumCulling>,
+            Without<AabbComputed>,
+        ),
     >,
     point_clouds: Res<Assets<PointCloud>>,
     mut commands: Commands,

@@ -1,6 +1,7 @@
 use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
+use bevy_camera::Camera3d;
 use bevy_color::LinearRgba;
-use bevy_core_pipeline::core_3d::{AlphaMask3d, Camera3d, Opaque3d, Transmissive3d, Transparent3d};
+use bevy_core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transmissive3d, Transparent3d};
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashMap;
 use bevy_render::camera::ExtractedCamera;
@@ -89,7 +90,11 @@ pub fn prepare_depth_pass_textures(
                     mip_level_count: 1,
                     sample_count: msaa.samples(),
                     dimension: TextureDimension::D2,
-                    format: if point_cloud_render_mode.use_edl() { Rg32Float } else { R32Float },
+                    format: if point_cloud_render_mode.use_edl() {
+                        Rg32Float
+                    } else {
+                        R32Float
+                    },
                     usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
                     view_formats: &[],
                 };
