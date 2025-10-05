@@ -43,12 +43,17 @@ impl AssetLoader for PotreeLoader {
             .to_str()
             .ok_or(PotreeLoaderError::InvalidPath)?;
 
+
         if path.ends_with("/metadata.json") {
             path = path.strip_suffix("/metadata.json").unwrap();
         }
 
-        // transform to relative asset path
-        let asset_path = format!("assets/{}", path);
+        let asset_path = if path.starts_with("/") {
+            format!("file://{}", path).to_string()
+        } else {
+            // transform to relative asset path
+            format!("assets/{}", path).to_string()
+        };
 
         info!("Loading Potree Point Cloud from path {}", asset_path);
 

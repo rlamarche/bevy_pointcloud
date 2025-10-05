@@ -2,29 +2,41 @@ use super::asset::PotreePointCloud;
 use super::point_cloud::{PotreeMainCamera, PotreePointCloud3d};
 use async_lock::RwLock;
 use bevy_asset::prelude::*;
-use bevy_camera::primitives::Frustum;
+use bevy_camera::prelude::{Camera, Projection};
+use bevy_camera::primitives::{Aabb, Frustum};
 use bevy_ecs::prelude::*;
 use bevy_gizmos::prelude::*;
 use bevy_log::prelude::*;
+use bevy_math::prelude::*;
+use bevy_math::{Vec3, Vec3A};
 use bevy_tasks::prelude::*;
 use bevy_transform::prelude::*;
 use crossbeam::queue::ArrayQueue;
-use futures::SinkExt;
-use std::sync::Arc;
+use potree::octree::FlatOctree;
+use potree::octree::node::OctreeNode;
 use potree::prelude::OctreeNodeSnapshot;
+use std::sync::Arc;
+
+#[derive(Clone, Debug)]
+pub struct CameraView {
+    pub global_transform: GlobalTransform,
+    pub frustum: Frustum,
+    pub projection: Projection,
+    pub physical_target_size: Option<UVec2>,
+}
 
 /// Component to communicate with the update hierarchy long running task
 #[derive(Component)]
 pub struct HierarchyTask {
     pub wakeup_tx: async_channel::Sender<()>,
-    pub hierarchy_snapshot_rx: async_channel::Receiver<OctreeNodeSnapshot>,
-    pub frustum_queue: Arc<ArrayQueue<Frustum>>,
+    pub hierarchy_snapshot_rx: async_channel::Receiver<Vec<OctreeNodeSnapshot>>,
+    pub camera_view_queue: Arc<ArrayQueue<CameraView>>,
     #[cfg(not(feature = "potree_wasm_worker"))]
     pub task: bevy_tasks::Task<()>,
 }
 
 #[derive(Component)]
-pub struct HierarchySnapshot(pub OctreeNodeSnapshot);
+pub struct HierarchySnapshot(pub Vec<OctreeNodeSnapshot>);
 
 pub fn init_hierarchy_task(
     mut commands: Commands,
@@ -40,7 +52,7 @@ pub fn init_hierarchy_task(
         let (wakeup_tx, wakeup_rx) = async_channel::bounded(1);
         let (hierarchy_snapshot_tx, hierarchy_snapshot_rx) = async_channel::bounded(1);
 
-        let frustum_queue = Arc::new(crossbeam::queue::ArrayQueue::<Frustum>::new(1));
+        let camera_view_queue = Arc::new(crossbeam::queue::ArrayQueue::new(1));
 
         let Some(potree_point_cloud) = potree_point_clouds.get(&potree_point_cloud_3d.handle)
         else {
@@ -49,8 +61,9 @@ pub fn init_hierarchy_task(
 
         let task = spawn_async_task(async_task_pool, {
             let update_hierarchy_task = UpdateHierarchyTask {
+                global_transform: global_transform.clone(),
                 wakeup_rx,
-                frustum_queue: frustum_queue.clone(),
+                camera_view_queue: camera_view_queue.clone(),
                 point_cloud: potree_point_cloud.wrapped.clone(),
                 hierarchy_snapshot_tx,
             };
@@ -71,7 +84,7 @@ pub fn init_hierarchy_task(
         commands.entity(entity).insert(HierarchyTask {
             wakeup_tx,
             hierarchy_snapshot_rx,
-            frustum_queue,
+            camera_view_queue,
             #[cfg(not(feature = "potree_wasm_worker"))]
             task,
         });
@@ -80,7 +93,7 @@ pub fn init_hierarchy_task(
 
 pub fn update_hierarchy(
     mut commands: Commands,
-    frustum: Query<&Frustum, With<PotreeMainCamera>>,
+    frustum: Query<(&Camera, &Frustum, &GlobalTransform, &Projection), With<PotreeMainCamera>>,
     _potree_point_clouds: Res<Assets<PotreePointCloud>>,
     potree_point_clouds_3d: Query<
         (
@@ -92,13 +105,22 @@ pub fn update_hierarchy(
         With<HierarchyTask>,
     >,
 ) {
-    let Ok(frustum) = frustum.single() else {
+    let Ok((camera, frustum, camera_global_transform, projection)) = frustum.single() else {
         return;
+    };
+
+    let camera_view = CameraView {
+        frustum: frustum.clone(),
+        global_transform: camera_global_transform.clone(),
+        projection: projection.clone(),
+        physical_target_size: camera.physical_target_size(),
     };
 
     for (entity, hierarchy_task, potree_point_cloud_3d, global_transform) in potree_point_clouds_3d
     {
-        hierarchy_task.frustum_queue.force_push(frustum.clone());
+        hierarchy_task
+            .camera_view_queue
+            .force_push(camera_view.clone());
         let _ = hierarchy_task.wakeup_tx.try_send(());
 
         if let Ok(hierarchy_snapshot) = hierarchy_task.hierarchy_snapshot_rx.try_recv() {
@@ -138,46 +160,188 @@ fn spawn_async_task(
 }
 
 pub struct UpdateHierarchyTask {
+    pub global_transform: GlobalTransform,
     pub wakeup_rx: async_channel::Receiver<()>,
-    pub frustum_queue: Arc<ArrayQueue<Frustum>>,
+    pub camera_view_queue: Arc<ArrayQueue<CameraView>>,
     pub point_cloud: Arc<RwLock<potree::point_cloud::PotreePointCloud>>,
-    pub hierarchy_snapshot_tx: async_channel::Sender<OctreeNodeSnapshot>,
+    pub hierarchy_snapshot_tx: async_channel::Sender<Vec<OctreeNodeSnapshot>>,
 }
 
 impl UpdateHierarchyTask {
     pub async fn run(mut self) {
-        let mut previous_frustum: Option<Frustum> = None;
+        // load initial hierarchy at start
+        self.point_cloud
+            .write()
+            .await
+            .load_entire_hierarchy()
+            .await
+            .expect("unable to load entire hierarchy");
+
+        let mut prev_camera_view: Option<CameraView> = None;
         // Watch if we need to wakeup
         while let Ok(_) = self.wakeup_rx.recv().await {
-            if let Some(frustum) = self.frustum_queue.pop() {
-                if let Some(previous_frustum) = &previous_frustum {
-                    if frustum_equals(previous_frustum, &frustum) {
+            if let Some(camera_view) = self.camera_view_queue.pop() {
+                if let Some(prev_camera_view) = &prev_camera_view {
+                    if frustum_equals(&prev_camera_view.frustum, &camera_view.frustum) {
                         // if the frustum has not changed, skip it
                         continue;
                     }
                 }
 
-                self.process_frustum(&frustum).await;
+                self.process_camera_view(&camera_view).await;
 
-                let _ = previous_frustum.insert(frustum);
+                let _ = prev_camera_view.insert(camera_view);
             }
         }
     }
 
-    async fn process_frustum(&self, frustum: &Frustum) {
+    async fn process_camera_view(&self, camera_view: &CameraView) {
         let mut point_cloud = self.point_cloud.write().await;
-        point_cloud
-            .load_entire_hierarchy()
-            .await
-            .expect("Unable to load entire hierarchy");
 
-        let hierarchy_snapshot = point_cloud.hierarchy_snapshot();
-        if let Err(error) = self.hierarchy_snapshot_tx.force_send(hierarchy_snapshot) {
+        let octree = point_cloud.octree();
+        let root = octree.root();
+
+        let visible_nodes =
+            self.compute_visible_nodes(octree, root, &self.global_transform, camera_view);
+
+        // let full_hierarchy_snapshot = point_cloud.hierarchy_snapshot();
+
+        if let Err(error) = self.hierarchy_snapshot_tx.force_send(visible_nodes) {
             warn!(
-                "Failed to send hierarchy snapshot to point cloud. {:#}",
+                "Failed to send hierarchy snapshot to point cloud: {:#}",
                 error
             );
         }
+    }
+
+    fn compute_screen_pixel_radius<'a>(
+        &self,
+        node: &'a OctreeNode,
+        transform: &GlobalTransform,
+        camera_view: &CameraView,
+    ) -> Option<f32> {
+        let min = node.bounding_box.min;
+        let max = node.bounding_box.max;
+
+        let model_aabb = Aabb::from_min_max(
+            Vec3::new(min.x as f32, min.y as f32, min.z as f32),
+            Vec3::new(max.x as f32, max.y as f32, max.z as f32),
+        );
+
+        let radius = (model_aabb.max() - model_aabb.min()).length() / 2.0;
+
+        match &camera_view.projection {
+            Projection::Perspective(perspective_projection) => {
+                let Some(physical_target_size) = &camera_view.physical_target_size else {
+                    return None;
+                };
+
+                let center = transform.affine().transform_point3a(model_aabb.center);
+                let camera_center = Into::<Vec3A>::into(camera_view.global_transform.translation());
+                let distance = (center - camera_center).length();
+
+                let slope = (perspective_projection.fov / 2.0).atan();
+                let proj_factor = (0.5 * physical_target_size.y as f32) / (slope * distance);
+
+                Some(radius * proj_factor)
+            }
+            Projection::Orthographic(orthographic_projection) => {
+                Some(radius * orthographic_projection.scale)
+            }
+            Projection::Custom(_) => None,
+        }
+    }
+
+    fn compute_visible_nodes<'a>(
+        &self,
+        octree: &'a FlatOctree<OctreeNode>,
+        node: &'a OctreeNode,
+        transform: &GlobalTransform,
+        camera_view: &CameraView,
+    ) -> Vec<OctreeNodeSnapshot> {
+        let mut stack = vec![(0_usize, node, false)];
+        let mut visible_nodes = Vec::<OctreeNodeSnapshot>::new();
+
+        let world_from_local = transform.affine();
+
+        while let Some((parent_index, node, mut completely_visible)) = stack.pop() {
+            // get the current node future index
+            let current_index = visible_nodes.len();
+
+            let screen_pixel_radius =
+                self.compute_screen_pixel_radius(node, transform, camera_view);
+            if let Some(screen_pixel_radius) = screen_pixel_radius {
+                if screen_pixel_radius < 30.0 {
+                    // this node is too small to display it
+                    continue;
+                }
+            }
+
+            if !completely_visible {
+                let min = node.bounding_box.min;
+                let max = node.bounding_box.max;
+
+                let model_aabb = Aabb::from_min_max(
+                    Vec3::new(min.x as f32, min.y as f32, min.z as f32),
+                    Vec3::new(max.x as f32, max.y as f32, max.z as f32),
+                );
+                let model_sphere = bevy_camera::primitives::Sphere {
+                    center: world_from_local.transform_point3a(model_aabb.center),
+                    radius: transform.radius_vec3a(model_aabb.half_extents),
+                };
+
+                // Do quick sphere-based frustum culling
+                if !camera_view.frustum.intersects_sphere(&model_sphere, false) {
+                    // this node is not visible, continue
+                    continue;
+                }
+
+                if (camera_view
+                    .frustum
+                    .contains_aabb(&model_aabb, &world_from_local))
+                {
+                    // mark as completely visiblie to prevent later checks
+                    completely_visible = true;
+
+                    // else, do oriented bounding box frustum culling
+                } else if !camera_view.frustum.intersects_obb(
+                    &model_aabb,
+                    &world_from_local,
+                    true,
+                    false,
+                ) {
+                    // the node is completely outside the frustum, ignore it
+                    continue;
+                }
+            }
+
+            // we have to process child nodes, sending flag `completely_visible` to prevent useless visibility checks
+            for child in &node.children {
+                let child = octree
+                    .node(*child)
+                    .expect("missing node in hierarchy, shouldn't happen");
+                stack.push((current_index, child, completely_visible));
+            }
+
+            // add the current node because it is visible or partially visible
+            let mut node_snapshot: OctreeNodeSnapshot = node.into();
+            // don't forget to set its index
+            node_snapshot.index = current_index;
+            visible_nodes.push(node_snapshot);
+
+            // if there is a parent, add it to the children array on an empty space
+            if parent_index < current_index {
+                let parent_node = &mut visible_nodes[parent_index];
+                *parent_node
+                    .children
+                    .iter_mut()
+                    .find(|child| **child == 0)
+                    .expect("no empty child space available, there might be a problem") =
+                    current_index;
+            }
+        }
+
+        visible_nodes
     }
 }
 

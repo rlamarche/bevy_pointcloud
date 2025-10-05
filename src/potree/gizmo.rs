@@ -10,6 +10,7 @@ use bevy_log::prelude::*;
 use bevy_math::prelude::*;
 use bevy_tasks::{block_on, futures_lite::future};
 use bevy_transform::prelude::*;
+use potree::prelude::OctreeNodeSnapshot;
 
 #[derive(Component)]
 pub struct DrawPotreeGizmo;
@@ -64,12 +65,17 @@ pub fn update_gizmos(
             continue;
         };
 
-        let Some(hierarchy_snapshot) = hierarchy_snapshot else {
+        let Some(HierarchySnapshot(visible_nodes)) = hierarchy_snapshot else {
             // warn!("No hierarchy snapshot available.");
             continue;
         };
 
-        let visible_nodes = compute_visible_nodes(&hierarchy_snapshot.0, &global_transform, frustum);
+        // let visible_nodes = compute_visible_nodes(
+        //     visible_nodes,
+        //     &hierarchy_snapshot.0[0],
+        //     global_transform,
+        //     frustum,
+        // );
 
         gizmo_asset.clear();
         for node in visible_nodes {
@@ -93,10 +99,11 @@ pub fn update_gizmos(
 }
 
 fn compute_visible_nodes<'a>(
-    node: &'a potree::octree::snapshot::OctreeNodeSnapshot,
+    nodes: &'a Vec<OctreeNodeSnapshot>,
+    node: &'a OctreeNodeSnapshot,
     transform: &GlobalTransform,
     frustum: &Frustum,
-) -> Vec<&'a potree::octree::snapshot::OctreeNodeSnapshot> {
+) -> Vec<&'a OctreeNodeSnapshot> {
     let min = node.bounding_box.min;
     let max = node.bounding_box.max;
 
@@ -132,7 +139,13 @@ fn compute_visible_nodes<'a>(
     if node.children.len() > 0 {
         node.children
             .iter()
-            .flat_map(|child| compute_visible_nodes(child, transform, frustum))
+            .flat_map(|child| {
+                if *child > 0 {
+                    compute_visible_nodes(nodes, &nodes[*child], transform, frustum)
+                } else {
+                    vec![]
+                }
+            })
             .collect::<Vec<_>>()
     } else {
         // if no children, return the node itself
