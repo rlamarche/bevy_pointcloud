@@ -2,26 +2,29 @@ use super::asset::PotreePointCloud;
 use super::point_cloud::{PotreeMainCamera, PotreePointCloud3d};
 use async_lock::RwLock;
 use bevy_asset::prelude::*;
+use bevy_camera::primitives::Frustum;
 use bevy_ecs::prelude::*;
 use bevy_gizmos::prelude::*;
 use bevy_log::prelude::*;
-use bevy_reflect::Reflect;
-use bevy_tasks::futures_lite::StreamExt;
 use bevy_tasks::prelude::*;
 use bevy_transform::prelude::*;
 use crossbeam::queue::ArrayQueue;
 use futures::SinkExt;
 use std::sync::Arc;
-use bevy_camera::primitives::Frustum;
+use potree::prelude::OctreeNodeSnapshot;
 
 /// Component to communicate with the update hierarchy long running task
 #[derive(Component)]
 pub struct HierarchyTask {
     pub wakeup_tx: async_channel::Sender<()>,
+    pub hierarchy_snapshot_rx: async_channel::Receiver<OctreeNodeSnapshot>,
     pub frustum_queue: Arc<ArrayQueue<Frustum>>,
     #[cfg(not(feature = "potree_wasm_worker"))]
     pub task: bevy_tasks::Task<()>,
 }
+
+#[derive(Component)]
+pub struct HierarchySnapshot(pub OctreeNodeSnapshot);
 
 pub fn init_hierarchy_task(
     mut commands: Commands,
@@ -35,6 +38,7 @@ pub fn init_hierarchy_task(
 
     for (entity, potree_point_cloud_3d, gizmo, global_transform) in potree_point_clouds_3d {
         let (wakeup_tx, wakeup_rx) = async_channel::bounded(1);
+        let (hierarchy_snapshot_tx, hierarchy_snapshot_rx) = async_channel::bounded(1);
 
         let frustum_queue = Arc::new(crossbeam::queue::ArrayQueue::<Frustum>::new(1));
 
@@ -48,6 +52,7 @@ pub fn init_hierarchy_task(
                 wakeup_rx,
                 frustum_queue: frustum_queue.clone(),
                 point_cloud: potree_point_cloud.wrapped.clone(),
+                hierarchy_snapshot_tx,
             };
             // let frustum_queue = frustum_queue.clone();
             update_hierarchy_task.run()
@@ -65,6 +70,7 @@ pub fn init_hierarchy_task(
 
         commands.entity(entity).insert(HierarchyTask {
             wakeup_tx,
+            hierarchy_snapshot_rx,
             frustum_queue,
             #[cfg(not(feature = "potree_wasm_worker"))]
             task,
@@ -94,6 +100,12 @@ pub fn update_hierarchy(
     {
         hierarchy_task.frustum_queue.force_push(frustum.clone());
         let _ = hierarchy_task.wakeup_tx.try_send(());
+
+        if let Ok(hierarchy_snapshot) = hierarchy_task.hierarchy_snapshot_rx.try_recv() {
+            commands
+                .entity(entity)
+                .insert(HierarchySnapshot(hierarchy_snapshot));
+        }
     }
 }
 
@@ -112,14 +124,15 @@ where
 fn spawn_async_task(
     async_task_pool: &AsyncComputeTaskPool,
     future: impl Future<Output = ()> + Send + 'static,
-) -> ()
-{
+) -> () {
     wasm_thread::spawn({
         || {
             info!("Hello from wasm thread!");
             wasm_bindgen_futures::spawn_local(future);
 
-            wasm_bindgen::throw_str("Cursed hack to keep workers alive. See https://github.com/rustwasm/wasm-bindgen/issues/2945");
+            wasm_bindgen::throw_str(
+                "Cursed hack to keep workers alive. See https://github.com/rustwasm/wasm-bindgen/issues/2945",
+            );
         }
     });
 }
@@ -128,6 +141,7 @@ pub struct UpdateHierarchyTask {
     pub wakeup_rx: async_channel::Receiver<()>,
     pub frustum_queue: Arc<ArrayQueue<Frustum>>,
     pub point_cloud: Arc<RwLock<potree::point_cloud::PotreePointCloud>>,
+    pub hierarchy_snapshot_tx: async_channel::Sender<OctreeNodeSnapshot>,
 }
 
 impl UpdateHierarchyTask {
@@ -157,7 +171,13 @@ impl UpdateHierarchyTask {
             .await
             .expect("Unable to load entire hierarchy");
 
-        // info!("Loaded entire hierarchy");
+        let hierarchy_snapshot = point_cloud.hierarchy_snapshot();
+        if let Err(error) = self.hierarchy_snapshot_tx.force_send(hierarchy_snapshot) {
+            warn!(
+                "Failed to send hierarchy snapshot to point cloud. {:#}",
+                error
+            );
+        }
     }
 }
 

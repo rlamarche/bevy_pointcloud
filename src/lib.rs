@@ -9,7 +9,7 @@ pub mod point_cloud;
 pub mod point_cloud_material;
 pub mod potree;
 pub mod render;
-mod prelude;
+pub mod prelude;
 
 pub struct PointCloudPlugin;
 

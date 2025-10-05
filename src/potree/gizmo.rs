@@ -1,5 +1,6 @@
 use super::asset::PotreePointCloud;
 use super::point_cloud::{PotreeMainCamera, PotreePointCloud3d};
+use crate::potree::hierarchy::HierarchySnapshot;
 use bevy_asset::prelude::*;
 use bevy_camera::primitives::{Aabb, Frustum};
 use bevy_color::palettes::basic::RED;
@@ -38,7 +39,13 @@ pub fn update_gizmos(
     potree_point_clouds: Res<Assets<PotreePointCloud>>,
     mut gizmo_assets: ResMut<Assets<GizmoAsset>>,
     potree_point_clouds_3d: Query<
-        (Entity, &PotreePointCloud3d, &Gizmo, &GlobalTransform),
+        (
+            Entity,
+            &PotreePointCloud3d,
+            &Gizmo,
+            &GlobalTransform,
+            Option<&HierarchySnapshot>,
+        ),
         With<DrawPotreeGizmo>,
     >,
 ) {
@@ -46,7 +53,9 @@ pub fn update_gizmos(
         return;
     };
 
-    for (entity, potree_point_cloud_3d, gizmo, global_transform) in potree_point_clouds_3d {
+    for (entity, potree_point_cloud_3d, gizmo, global_transform, hierarchy_snapshot) in
+        potree_point_clouds_3d
+    {
         let Some(potree_point_cloud) = potree_point_clouds.get(&potree_point_cloud_3d.handle)
         else {
             continue;
@@ -55,19 +64,12 @@ pub fn update_gizmos(
             continue;
         };
 
-        let Some(wrapped_potree_point_cloud) = potree_point_cloud.wrapped.try_read() else {
-            warn!("Potree point cloud not available, try later.");
+        let Some(hierarchy_snapshot) = hierarchy_snapshot else {
+            // warn!("No hierarchy snapshot available.");
             continue;
         };
 
-        // let Some(locked) = block_on(future::poll_once(potree_point_cloud.wrapped.read())) else {
-        //     warn!("Potree point cloud not available, try later.");
-        //     continue;
-        // };
-
-        let hierarchy_snapshot = wrapped_potree_point_cloud.hierarchy_snapshot();
-
-        let visible_nodes = compute_visible_nodes(&hierarchy_snapshot, &global_transform, frustum);
+        let visible_nodes = compute_visible_nodes(&hierarchy_snapshot.0, &global_transform, frustum);
 
         gizmo_asset.clear();
         for node in visible_nodes {
