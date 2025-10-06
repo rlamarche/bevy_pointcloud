@@ -40,7 +40,7 @@ las = { version = "0.9", features = ["laz"] }
 [dev-dependencies]
 bevy = { version = "0.17", features = ["bevy_dev_tools"] }
 rand = "0.9"
-bevy_panorbit_camera = {git = "https://github.com/kristoff3r/bevy_panorbit_camera"}
+bevy_panorbit_camera = "0.29"
 
 
 [features]
