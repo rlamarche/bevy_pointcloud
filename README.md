@@ -83,3 +83,7 @@ Optimize the wasm:
 ```
 wasm-opt -O -ol 100 -s 100 -o bevy_pointcloud/bevy_pointcloud_bg.wasm bevy_pointcloud/bevy_pointcloud_bg.wasm
 ```
+
+# Contributors
+
+- [François Mockers](https://github.com/mockersf)
