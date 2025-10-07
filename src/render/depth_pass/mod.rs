@@ -12,21 +12,23 @@ use crate::render::material::SetPointCloudMaterialGroup;
 use crate::render::point_cloud_uniform::SetPointCloudUniformGroup;
 use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
 use bevy_app::prelude::*;
-use bevy_core_pipeline::core_3d::Camera3d;
+use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy_ecs::prelude::*;
 use bevy_log::error;
 use bevy_math::FloatOrd;
+use bevy_mesh::Mesh3d;
 use bevy_pbr::{
     MeshPipeline, MeshPipelineKey, RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup,
 };
 use bevy_platform::collections::HashSet;
+use bevy_render::render_graph::RenderGraphExt;
 use bevy_render::{
-    Extract, ExtractSchedule, Render, RenderApp, RenderDebugFlags, RenderSet,
+    Extract, ExtractSchedule, Render, RenderApp, RenderDebugFlags, RenderSystems,
     mesh::RenderMesh,
     prelude::*,
     render_asset::RenderAssets,
-    render_graph::{RenderGraphApp, ViewNodeRunner},
+    render_graph::ViewNodeRunner,
     render_phase::{
         AddRenderCommand, CachedRenderPipelinePhaseItem, DrawFunctionId, DrawFunctions, PhaseItem,
         PhaseItemExtraIndex, SetItemPipeline, SortedPhaseItem, SortedRenderPhasePlugin,
@@ -58,12 +60,12 @@ impl Plugin for DepthPassPlugin {
             .add_systems(
                 Render,
                 (
-                    prepare_depth_pass_textures.in_set(RenderSet::PrepareResources),
-                    queue_depth_pass.in_set(RenderSet::QueueMeshes),
+                    prepare_depth_pass_textures.in_set(RenderSystems::PrepareResources),
+                    queue_depth_pass.in_set(RenderSystems::QueueMeshes),
                     // No need to sort points clouds for the moment, and not working in WASM/WEBGL
-                    // sort_phase_system::<Depth3d>.in_set(RenderSet::PhaseSort),
+                    // sort_phase_system::<Depth3d>.in_set(RenderSystems::PhaseSort),
                     // batch_and_prepare_sorted_render_phase::<Depth3d, DepthPipeline>
-                    //     .in_set(RenderSet::PrepareResources),
+                    //     .in_set(RenderSystems::PrepareResources),
                 ),
             );
 
@@ -248,7 +250,7 @@ fn queue_depth_pass(
             // but you could have more complex keys and that's where you'd need to create those keys
             let mut mesh_key = view_key;
             mesh_key |= MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
-            
+
             let depth_key = DepthPipelineKey {
                 mesh_key,
                 use_edl: point_cloud_render_mode.use_edl(),

@@ -1,6 +1,6 @@
 use crate::render::NORMALIZE_SHADER_HANDLE;
 use crate::render::normalize_pass::EyeDomeLightingUniformBindgroupLayout;
-use bevy_core_pipeline::fullscreen_vertex_shader::fullscreen_shader_vertex_state;
+use bevy_core_pipeline::FullscreenShader;
 use bevy_ecs::prelude::*;
 use bevy_image::BevyDefault;
 use bevy_render::render_resource::binding_types::texture_2d_multisampled;
@@ -8,6 +8,7 @@ use bevy_render::{
     render_resource::{binding_types::texture_2d, *},
     renderer::RenderDevice,
 };
+use bevy_shader::ShaderDefVal;
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct NormalizePassPipelineKey {
@@ -24,6 +25,7 @@ pub struct NormalizePassPipeline {
     pub layout: BindGroupLayout,
     pub layout_msaa: BindGroupLayout,
     pub edl_layout: BindGroupLayout,
+    fullscreen_shader: FullscreenShader,
 }
 
 impl FromWorld for NormalizePassPipeline {
@@ -65,6 +67,7 @@ impl FromWorld for NormalizePassPipeline {
             layout,
             layout_msaa,
             edl_layout,
+            fullscreen_shader: world.resource::<FullscreenShader>().clone(),
         }
     }
 }
@@ -95,11 +98,11 @@ impl SpecializedRenderPipeline for NormalizePassPipeline {
             label: Some("pcl_normalize_pass_pipeline".into()),
             layout,
             // This will setup a fullscreen triangle for the vertex state
-            vertex: fullscreen_shader_vertex_state(),
+            vertex: self.fullscreen_shader.to_vertex_state(),
             fragment: Some(FragmentState {
                 shader: NORMALIZE_SHADER_HANDLE,
                 shader_defs,
-                entry_point: "fragment".into(),
+                entry_point: Some("fragment".into()),
                 targets: vec![Some(ColorTargetState {
                     format: TextureFormat::bevy_default(),
                     blend: None,

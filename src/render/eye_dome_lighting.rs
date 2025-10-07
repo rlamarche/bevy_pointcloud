@@ -1,4 +1,5 @@
 use crate::render::PointCloudRenderMode;
+use bevy_camera::Camera;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use bevy_math::{URect, Vec4};
@@ -6,7 +7,6 @@ use bevy_platform::collections::HashMap;
 use bevy_platform::collections::hash_map::{Entry, VacantEntry};
 use bevy_platform::hash::FixedHasher;
 use bevy_render::Extract;
-use bevy_render::camera::Camera;
 use bevy_render::render_resource::binding_types::uniform_buffer;
 use bevy_render::render_resource::{
     BindGroupLayout, BindGroupLayoutEntries, ShaderStages, ShaderType,
@@ -118,7 +118,7 @@ pub fn extract_cameras_render_mode(
                     render_mode.clone(),
                 ));
             }
-            Err(error) => {
+            Err(_error) => {
                 warn!("Corresponding extracted view not found.");
             }
         }

@@ -5,23 +5,19 @@ mod texture;
 
 use crate::render::attribute_pass::node::AttributePassLabel;
 use crate::render::eye_dome_lighting::EyeDomeLightingUniformBindgroupLayout;
+use crate::render::normalize_pass::eye_dome_lighting::prepare_normalize_pass_edl_bind_groups;
 use crate::render::normalize_pass::pipeline::{NormalizePassPipelineId, NormalizePassPipelineKey};
 use crate::render::normalize_pass::texture::prepare_normalize_pass_bind_groups;
 use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
 use bevy_app::prelude::*;
 use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy_ecs::prelude::*;
-use bevy_render::render_resource::{
-    PipelineCache, SpecializedRenderPipelines,
-};
+use bevy_render::render_graph::RenderGraphExt;
+use bevy_render::render_resource::{PipelineCache, SpecializedRenderPipelines};
 use bevy_render::view::Msaa;
-use bevy_render::{
-    render_graph::{RenderGraphApp, ViewNodeRunner}, Render, RenderApp,
-    RenderSet,
-};
+use bevy_render::{Render, RenderApp, RenderSystems, render_graph::ViewNodeRunner};
 use node::{NormalizePassLabel, NormalizePassNode};
 use pipeline::NormalizePassPipeline;
-use crate::render::normalize_pass::eye_dome_lighting::prepare_normalize_pass_edl_bind_groups;
 
 pub struct NormalizePassPlugin;
 
@@ -42,9 +38,9 @@ impl Plugin for NormalizePassPlugin {
             .add_systems(
                 Render,
                 (
-                    prepare_normalize_pass_pipelines.in_set(RenderSet::Prepare),
-                    prepare_normalize_pass_bind_groups.in_set(RenderSet::PrepareBindGroups),
-                    prepare_normalize_pass_edl_bind_groups.in_set(RenderSet::PrepareBindGroups),
+                    prepare_normalize_pass_pipelines.in_set(RenderSystems::Prepare),
+                    prepare_normalize_pass_bind_groups.in_set(RenderSystems::PrepareBindGroups),
+                    prepare_normalize_pass_edl_bind_groups.in_set(RenderSystems::PrepareBindGroups),
                 ),
             )
             .add_render_graph_edges(

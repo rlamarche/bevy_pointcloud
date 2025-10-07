@@ -24,6 +24,7 @@ impl RenderAsset for RenderPointCloud {
         source_asset: Self::SourceAsset,
         _asset_id: AssetId<Self::SourceAsset>,
         render_device: &mut SystemParamItem<Self::Param>,
+        _previous_asset: Option<&Self>,
     ) -> Result<Self, PrepareAssetError<Self::SourceAsset>> {
         let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
             label: Some("PointCloud data buffer"),

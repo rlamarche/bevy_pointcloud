@@ -31,7 +31,7 @@ impl ViewNode for AttributePassNode {
         &self,
         graph: &mut RenderGraphContext,
         render_context: &mut RenderContext<'w>,
-        (camera, view, depth, view_prepass_textures): QueryItem<'w, Self::ViewQuery>,
+        (camera, view, depth, view_prepass_textures): QueryItem<'w, '_, Self::ViewQuery>,
         world: &'w World,
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource

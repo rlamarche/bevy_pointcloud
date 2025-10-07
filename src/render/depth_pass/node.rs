@@ -31,7 +31,11 @@ impl ViewNode for DepthPassNode {
         &self,
         graph: &mut RenderGraphContext,
         render_context: &mut RenderContext<'w>,
-        (camera, view, view_depth_texture, view_prepass_textures): QueryItem<'w, Self::ViewQuery>,
+        (camera, view, view_depth_texture, view_prepass_textures): QueryItem<
+            'w,
+            '_,
+            Self::ViewQuery,
+        >,
         world: &'w World,
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource

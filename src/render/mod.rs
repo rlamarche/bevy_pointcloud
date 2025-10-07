@@ -9,37 +9,42 @@ mod point_cloud;
 mod point_cloud_uniform;
 
 use crate::point_cloud::PointCloud3d;
-use crate::render::eye_dome_lighting::{extract_cameras_render_mode, EyeDomeLightingUniform, NeighboursCache};
+use crate::render::eye_dome_lighting::{
+    EyeDomeLightingUniform, NeighboursCache, extract_cameras_render_mode,
+};
 use crate::render::material::{RenderPointCloudMaterial, RenderPointCloudMaterialLayout};
 use crate::render::point_cloud::RenderPointCloud;
 use aabb::compute_point_cloud_aabb;
 use attribute_pass::AttributePassPlugin;
 use bevy_app::prelude::*;
-use bevy_asset::prelude::*;
-use bevy_asset::{load_internal_asset, weak_handle};
+use bevy_asset::load_internal_asset;
+use bevy_asset::{prelude::*, uuid_handle};
+use bevy_camera::visibility::calculate_bounds;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::{SystemParamItem, lifetimeless::*};
 use bevy_pbr::RenderMeshInstances;
+use bevy_render::RenderSystems;
 use bevy_render::camera::extract_cameras;
 use bevy_render::extract_component::UniformComponentPlugin;
 use bevy_render::render_asset::RenderAssetPlugin;
 use bevy_render::{
-    Render, RenderApp, RenderSet,
+    Render, RenderApp,
     extract_component::ExtractComponentPlugin,
     mesh::{RenderMesh, RenderMeshBufferInfo, allocator::MeshAllocator},
     prelude::*,
     render_asset::RenderAssets,
     render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
 };
+use bevy_shader::Shader;
 use depth_pass::DepthPassPlugin;
 use normalize_pass::NormalizePassPlugin;
 use point_cloud_uniform::{PointCloudUniformLayout, prepare_point_cloud_uniform};
 
 const POINTCLOUD_SHADER_HANDLE: Handle<Shader> =
-    weak_handle!("9c7d8df3-86dd-4412-a9cc-dad5c7916a8c");
+    uuid_handle!("9c7d8df3-86dd-4412-a9cc-dad5c7916a8c");
 
 const NORMALIZE_SHADER_HANDLE: Handle<Shader> =
-    weak_handle!("0e5fffec-7e0b-4b44-8c32-b92d9b99fd58");
+    uuid_handle!("0e5fffec-7e0b-4b44-8c32-b92d9b99fd58");
 
 pub struct RenderPipelinePlugin;
 
@@ -67,12 +72,12 @@ impl Plugin for RenderPipelinePlugin {
             // compute point cloud aabb **before** [`bevy_render::view::calculate_bounds`] to prevent using mesh's aabb.
             .add_systems(
                 PostUpdate,
-                compute_point_cloud_aabb.before(bevy_render::view::calculate_bounds),
+                compute_point_cloud_aabb.before(calculate_bounds),
             )
             .sub_app_mut(RenderApp)
             .add_systems(
                 Render,
-                prepare_point_cloud_uniform.in_set(RenderSet::PrepareResources),
+                prepare_point_cloud_uniform.in_set(RenderSystems::PrepareResources),
             );
 
         app.add_plugins((DepthPassPlugin, AttributePassPlugin, NormalizePassPlugin));
@@ -81,9 +86,9 @@ impl Plugin for RenderPipelinePlugin {
         sub_app
             .insert_resource(NeighboursCache::default())
             .add_systems(
-            ExtractSchedule,
-            extract_cameras_render_mode.after(extract_cameras),
-        );
+                ExtractSchedule,
+                extract_cameras_render_mode.after(extract_cameras),
+            );
     }
 
     fn finish(&self, app: &mut App) {

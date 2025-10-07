@@ -15,10 +15,14 @@ impl ExtractComponent for PointCloud3d {
     type Out = (PointCloud3d, PointCloudUniform, PointCloudMaterial3d);
 
     fn extract_component(
-        (point_cloud_3d, global_transform, point_cloud_material_3d): QueryItem<'_, Self::QueryData>,
+        (point_cloud_3d, global_transform, point_cloud_material_3d): QueryItem<
+            '_,
+            '_,
+            Self::QueryData,
+        >,
     ) -> Option<Self::Out> {
         let custom_uniform = PointCloudUniform {
-            world_from_local: global_transform.compute_matrix(),
+            world_from_local: global_transform.to_matrix(),
         };
         Some((
             point_cloud_3d.clone(),
