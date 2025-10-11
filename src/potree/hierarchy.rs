@@ -1,5 +1,6 @@
 use super::asset::PotreePointCloud;
 use super::point_cloud::{PotreeMainCamera, PotreePointCloud3d};
+use super::spawn_async_task::spawn_async_task;
 use async_lock::RwLock;
 use bevy_asset::prelude::*;
 use bevy_camera::prelude::{Camera, Projection};
@@ -46,8 +47,6 @@ pub fn init_hierarchy_task(
         Without<HierarchyTask>,
     >,
 ) {
-    let async_task_pool = AsyncComputeTaskPool::get();
-
     for (entity, potree_point_cloud_3d, gizmo, global_transform) in potree_point_clouds_3d {
         let (wakeup_tx, wakeup_rx) = async_channel::bounded(1);
         let (hierarchy_snapshot_tx, hierarchy_snapshot_rx) = async_channel::bounded(1);
@@ -59,7 +58,8 @@ pub fn init_hierarchy_task(
             continue;
         };
 
-        let task = spawn_async_task(async_task_pool, {
+        #[allow(unused)]
+        let task = spawn_async_task({
             let update_hierarchy_task = UpdateHierarchyTask {
                 global_transform: global_transform.clone(),
                 wakeup_rx,
@@ -129,34 +129,6 @@ pub fn update_hierarchy(
                 .insert(HierarchySnapshot(hierarchy_snapshot));
         }
     }
-}
-
-#[cfg(not(feature = "potree_wasm_worker"))]
-fn spawn_async_task<T>(
-    async_task_pool: &AsyncComputeTaskPool,
-    future: impl Future<Output = T> + Send + 'static,
-) -> bevy_tasks::Task<T>
-where
-    T: Send + 'static,
-{
-    async_task_pool.spawn(future)
-}
-
-#[cfg(feature = "potree_wasm_worker")]
-fn spawn_async_task(
-    async_task_pool: &AsyncComputeTaskPool,
-    future: impl Future<Output = ()> + Send + 'static,
-) -> () {
-    wasm_thread::spawn({
-        || {
-            info!("Hello from wasm thread!");
-            wasm_bindgen_futures::spawn_local(future);
-
-            wasm_bindgen::throw_str(
-                "Cursed hack to keep workers alive. See https://github.com/rustwasm/wasm-bindgen/issues/2945",
-            );
-        }
-    });
 }
 
 pub struct UpdateHierarchyTask {
@@ -279,7 +251,7 @@ impl UpdateHierarchyTask {
             let screen_pixel_radius =
                 self.compute_screen_pixel_radius(node, transform, camera_view);
             if let Some(screen_pixel_radius) = screen_pixel_radius {
-                if screen_pixel_radius < 30.0 {
+                if screen_pixel_radius < 300.0 {
                     // this node is too small to display it
                     continue;
                 }
