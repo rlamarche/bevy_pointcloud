@@ -12,8 +12,8 @@ use bevy_math::{Vec3, Vec3A};
 use bevy_tasks::prelude::*;
 use bevy_transform::prelude::*;
 use crossbeam::queue::ArrayQueue;
-use potree::octree::FlatOctree;
 use potree::octree::node::OctreeNode;
+use potree::octree::{FlatOctree, NodeId};
 use potree::prelude::OctreeNodeSnapshot;
 use std::sync::Arc;
 
@@ -170,12 +170,12 @@ pub struct UpdateHierarchyTask {
 impl UpdateHierarchyTask {
     pub async fn run(mut self) {
         // load initial hierarchy at start
-        self.point_cloud
-            .write()
-            .await
-            .load_entire_hierarchy()
-            .await
-            .expect("unable to load entire hierarchy");
+        // self.point_cloud
+        //     .write()
+        //     .await
+        //     .load_entire_hierarchy()
+        //     .await
+        //     .expect("unable to load entire hierarchy");
 
         let mut prev_camera_view: Option<CameraView> = None;
         // Watch if we need to wakeup
@@ -201,16 +201,23 @@ impl UpdateHierarchyTask {
         let octree = point_cloud.octree();
         let root = octree.root();
 
-        let visible_nodes =
+        let (visible_nodes, nodes_to_load) =
             self.compute_visible_nodes(octree, root, &self.global_transform, camera_view);
 
-        // let full_hierarchy_snapshot = point_cloud.hierarchy_snapshot();
-
+        // send visible node to main
         if let Err(error) = self.hierarchy_snapshot_tx.force_send(visible_nodes) {
             warn!(
                 "Failed to send hierarchy snapshot to point cloud: {:#}",
                 error
             );
+        }
+
+        // load node proxies
+        for node_id in nodes_to_load {
+            // info!("Loading sub node hierarchy for node {}", node_id);
+            if let Err(error) = point_cloud.load_hierarchy(node_id).await {
+                warn!("Unable to load sub node hierarchy: {:#}", error);
+            }
         }
     }
 
@@ -258,9 +265,10 @@ impl UpdateHierarchyTask {
         node: &'a OctreeNode,
         transform: &GlobalTransform,
         camera_view: &CameraView,
-    ) -> Vec<OctreeNodeSnapshot> {
+    ) -> (Vec<OctreeNodeSnapshot>, Vec<NodeId>) {
         let mut stack = vec![(0_usize, node, false)];
         let mut visible_nodes = Vec::<OctreeNodeSnapshot>::new();
+        let mut nodes_to_load = Vec::new();
 
         let world_from_local = transform.affine();
 
@@ -296,11 +304,11 @@ impl UpdateHierarchyTask {
                     continue;
                 }
 
-                if (camera_view
+                if camera_view
                     .frustum
-                    .contains_aabb(&model_aabb, &world_from_local))
+                    .contains_aabb(&model_aabb, &world_from_local)
                 {
-                    // mark as completely visiblie to prevent later checks
+                    // mark as completely visible to prevent later checks
                     completely_visible = true;
 
                     // else, do oriented bounding box frustum culling
@@ -313,6 +321,11 @@ impl UpdateHierarchyTask {
                     // the node is completely outside the frustum, ignore it
                     continue;
                 }
+            }
+
+            if node.node_type == 2 {
+                // the node has a child hierarchy, plan to load it
+                nodes_to_load.push(node.id.expect("node should have a node id"));
             }
 
             // we have to process child nodes, sending flag `completely_visible` to prevent useless visibility checks
@@ -341,7 +354,7 @@ impl UpdateHierarchyTask {
             }
         }
 
-        visible_nodes
+        (visible_nodes, nodes_to_load)
     }
 }
 
