@@ -59,14 +59,19 @@ wasm-bindgen-futures = { version = "=0.4.50", optional = true }
 wasm_thread = { version = "0.3.3", optional = true }
 
 [dev-dependencies]
-bevy = { version = "0.17", features = ["bevy_dev_tools"] }
+bevy = { version = "0.17", features = ["bevy_dev_tools", "webgl2"] }
 rand = "0.9"
 bevy_panorbit_camera = "0.29"
 
 
 [features]
 default = ["ply", "las"]
-webgl = []
+webgl = [
+    "bevy_core_pipeline/webgl",
+    "bevy_pbr/webgl",
+    "bevy_render/webgl",
+    "bevy_gizmos/webgl",
+]
 webgpu = []
 ply = ["dep:ply-rs"]
 las = ["dep:las"]

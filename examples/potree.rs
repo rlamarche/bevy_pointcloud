@@ -2,7 +2,7 @@
 mod camera_controller;
 
 use crate::camera_controller::{CameraController, CameraControllerPlugin};
-use bevy::dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin};
+use bevy::dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig};
 use bevy::tasks::Task;
 use bevy::text::FontSmoothing;
 #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
@@ -18,36 +18,51 @@ use bevy_pointcloud::potree::prelude::*;
 use bevy_pointcloud::render::PointCloudRenderMode;
 
 fn main() {
-    App::new()
-        .add_plugins((
-            DefaultPlugins.set(AssetPlugin {
-                unapproved_path_mode: UnapprovedPathMode::Allow,
-                ..Default::default()
-            }),
-            PanOrbitCameraPlugin,
-            PointCloudPlugin,
-            CameraControllerPlugin,
-        ))
-        .add_plugins(FpsOverlayPlugin {
-            config: FpsOverlayConfig {
-                text_config: TextFont {
-                    // Here we define size of our overlay
-                    font_size: 42.0,
-                    // If we want, we can use a custom font
-                    font: default(),
-                    // We could also disable font smoothing,
-                    font_smoothing: FontSmoothing::default(),
-                    ..default()
-                },
-                // We can also change color of the overlay
-                text_color: Color::Srgba(GREEN),
-                // We can also set the refresh interval for the FPS counter
-                refresh_interval: core::time::Duration::from_millis(100),
-                enabled: true,
-                ..Default::default()
+    let mut app = App::new();
+    app.add_plugins((
+        DefaultPlugins.set(AssetPlugin {
+            unapproved_path_mode: UnapprovedPathMode::Allow,
+            ..Default::default()
+        }),
+        PanOrbitCameraPlugin,
+        PointCloudPlugin,
+        CameraControllerPlugin,
+    ));
+
+    #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
+    app.add_plugins(FpsOverlayPlugin {
+        config: FpsOverlayConfig {
+            text_config: TextFont {
+                // Here we define size of our overlay
+                font_size: 42.0,
+                // If we want, we can use a custom font
+                font: default(),
+                // We could also disable font smoothing,
+                font_smoothing: FontSmoothing::default(),
+                ..default()
             },
-        })
-        .add_systems(Startup, (setup_window, setup, load_pointcloud, load_meshes))
+            // We can also change color of the overlay
+            text_color: Color::Srgba(GREEN),
+            // We can also set the refresh interval for the FPS counter
+            refresh_interval: core::time::Duration::from_millis(100),
+            enabled: true,
+            frame_time_graph_config: {
+                #[cfg(any(feature = "webgl", feature = "webgpu"))]
+                {
+                    FrameTimeGraphConfig {
+                        enabled: false,
+                        ..Default::default()
+                    }
+                }
+                #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
+                {
+                    FrameTimeGraphConfig::default()
+                }
+            },
+            ..Default::default()
+        },
+    });
+    app.add_systems(Startup, (setup_window, setup, load_pointcloud, load_meshes))
         .run();
 }
 

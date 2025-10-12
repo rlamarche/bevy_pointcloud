@@ -13,7 +13,7 @@ set -ex
 #   shared memory, passive segments, etc.
 
 RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals --cfg getrandom_backend="wasm_js"' \
-  cargo +nightly build --features "webgl potree_wasm_worker" --example potree --target wasm32-unknown-unknown -Z build-std=std,panic_abort
+  cargo +nightly build --features "webgl potree_wasm_worker" --example potree --target wasm32-unknown-unknown -Z build-std=std,panic_abort --profile wasm-release
 
 
-wasm-bindgen --target web  --out-dir ./wasm --out-name "bevy_pointcloud"  ./target/wasm32-unknown-unknown/debug/examples/potree.wasm
+wasm-bindgen --target web  --out-dir ./wasm --out-name "bevy_pointcloud"  ./target/wasm32-unknown-unknown/wasm-release/examples/potree.wasm
