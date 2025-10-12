@@ -1150,6 +1150,7 @@ dependencies = [
  "potree",
  "rand",
  "serde",
+ "slab",
  "thiserror 2.0.17",
  "wasm-bindgen",
  "wasm-bindgen-futures",

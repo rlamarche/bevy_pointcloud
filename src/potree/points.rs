@@ -1,5 +1,5 @@
 use super::asset::PotreePointCloud;
-use super::point_cloud::{PotreeMainCamera, PotreePointCloud3d};
+use super::point_cloud::PotreePointCloud3d;
 use super::spawn_async_task::spawn_async_task;
 use crate::point_cloud::{PointCloud, PointCloud3d, PointCloudData};
 use crate::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
@@ -10,7 +10,6 @@ use bevy_ecs::prelude::*;
 use bevy_gizmos::prelude::*;
 use bevy_log::prelude::*;
 use bevy_math::Vec3;
-use bevy_math::prelude::*;
 use bevy_platform::collections::HashSet;
 use bevy_transform::prelude::*;
 use potree::prelude::OctreeNodeSnapshot;
@@ -73,7 +72,7 @@ pub fn init_load_points_task(
     }
 }
 
-pub fn load_points(
+pub fn load_points_tx(
     mut commands: Commands,
     mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
     mut point_clouds: ResMut<Assets<PointCloud>>,
@@ -125,6 +124,51 @@ pub fn load_points(
         }
     }
 }
+
+// pub fn load_points_rx(
+//     mut commands: Commands,
+//     mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
+//     potrees: Res<Assets<PotreePointCloud>>,
+//     mut octrees: ResMut<Assets<Octree>>,
+//     potree_point_clouds_3d: Query<
+//         (
+//             Entity,
+//             &mut LoadPointsTaskHolder,
+//             &HierarchySnapshot,
+//             &PotreePointCloud3d,
+//             &PointCloudOctree3d,
+//         ),
+//         With<LoadPointsTaskHolder>,
+//     >,
+// ) {
+//     for (entity, mut load_points_task_holder, hierarchy_snapshot, potree, octree) in
+//         potree_point_clouds_3d
+//     {
+//         let Some(potree) = potrees.get(potree) else {
+//             warn!("Missing potree");
+//             continue;
+//         };
+//
+//         let Some(octree) = octrees.get_mut(octree) else {
+//             warn!("Missing octree");
+//             continue;
+//         };
+//
+//
+//         while let Ok(loaded_points) = load_points_task_holder.loaded_points_rx.try_recv() {
+//             let point_cloud_material_handle = point_cloud_materials.add(PointCloudMaterial {
+//                 point_size: 30.0,
+//                 ..Default::default()
+//             });
+//
+//             commands.spawn((
+//                 PointCloud3d(point_cloud_handle),
+//                 PointCloudMaterial3d(point_cloud_material_handle),
+//                 transform.clone(),
+//             ));
+//         }
+//     }
+// }
 
 pub struct LoadPointsTask {
     pub load_points_queue_rx: async_channel::Receiver<LoadPointsMessage>,

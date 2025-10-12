@@ -1,15 +1,13 @@
-use crate::loader::las::LasLoaderError;
-use crate::point_cloud::{PointCloud, PointCloudData};
+use crate::pointcloud_octree::asset::PointCloudOctree;
 use crate::potree::asset::PotreePointCloud;
-use bevy_app::{App, Plugin};
+use async_lock::RwLock;
 use bevy_asset::io::Reader;
-use bevy_asset::{AssetApp, AssetLoader, LoadContext};
+use bevy_asset::{AssetLoader, LoadContext};
+use bevy_camera::primitives::Aabb;
 use bevy_log::prelude::*;
 use potree::resource::ResourceLoader;
 use serde::{Deserialize, Serialize};
-use std::io::{Cursor, Error};
 use std::sync::Arc;
-use async_lock::RwLock;
 use thiserror::Error;
 
 #[derive(Default, Serialize, Deserialize)]
@@ -20,6 +18,9 @@ pub enum PotreeLoaderError {
     /// Failed to load a file.
     #[error("failed to load potree point cloud: {0}")]
     Potree(#[from] potree::prelude::LoadPotreePointCloudError),
+
+    #[error("failed to load potree points: {0}")]
+    LoadPoints(#[from] potree::prelude::LoadPointsError),
 
     #[error("invalid path")]
     InvalidPath,
@@ -43,7 +44,6 @@ impl AssetLoader for PotreeLoader {
             .to_str()
             .ok_or(PotreeLoaderError::InvalidPath)?;
 
-
         if path.ends_with("/metadata.json") {
             path = path.strip_suffix("/metadata.json").unwrap();
         }
@@ -57,14 +57,32 @@ impl AssetLoader for PotreeLoader {
 
         info!("Loading Potree Point Cloud from path {}", asset_path);
 
-
         let point_cloud =
-            potree::point_cloud::PotreePointCloud::from_url(&asset_path, ResourceLoader::new()).await?;
+            potree::point_cloud::PotreePointCloud::from_url(&asset_path, ResourceLoader::new())
+                .await?;
 
         info!("Potree Point Cloud loaded");
 
+        // Get root node
+        let root = point_cloud.octree().root();
+        // Load its points
+        let points = point_cloud.load_points_for_node(root).await?;
+        // Convert its bounding box
+        let bounding_box = Aabb::from_min_max(
+            root.bounding_box.min.as_vec3(),
+            root.bounding_box.max.as_vec3(),
+        );
+
+        let octree = PointCloudOctree::new(bounding_box, (root, points).into());
+
+        let octree = load_context.add_labeled_asset(
+            "octree".to_string(),
+            octree,
+        );
+
         Ok(PotreePointCloud {
             wrapped: Arc::new(RwLock::new(point_cloud)),
+            octree,
         })
     }
 }
