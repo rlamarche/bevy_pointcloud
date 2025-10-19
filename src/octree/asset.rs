@@ -1,6 +1,7 @@
 use crate::octree::storage::GenerationalSlab;
 use bevy_asset::Asset;
 use bevy_camera::primitives::Aabb;
+use bevy_platform::collections::HashSet;
 use bevy_reflect::TypePath;
 use std::fmt::Debug;
 use thiserror::Error;
@@ -18,16 +19,19 @@ pub enum InsertNodeError {
 #[derive(Debug, Clone, Asset, TypePath)]
 pub struct Octree<T>
 where
-    T: Clone + Default + Debug + Send + Sync + TypePath,
+    T: Clone + Debug + Send + Sync + TypePath,
 {
-    pub nodes: GenerationalSlab<OctreeNode<T>>,
-    pub root_id: NodeId,
+    pub(crate) nodes: GenerationalSlab<OctreeNode<T>>,
+    pub(crate) root_id: NodeId,
+    pub(crate) added: HashSet<NodeId>,
+    pub(crate) modified: HashSet<NodeId>,
+    pub(crate) removed: HashSet<NodeId>,
 }
 
 #[derive(Debug, Clone, TypePath)]
 pub struct OctreeNode<T>
 where
-    T: Clone + Default + Debug + Send + Sync + TypePath,
+    T: Clone + Debug + Send + Sync + TypePath,
 {
     pub id: NodeId,
     pub parent_id: Option<NodeId>,
@@ -68,7 +72,17 @@ where
         // store its id
         nodes.get_mut(root_id).unwrap().id = root_id;
 
-        Self { nodes, root_id }
+        let mut added = HashSet::new();
+        // tracing root insertion
+        added.insert(root_id);
+
+        Self {
+            nodes,
+            root_id,
+            added,
+            modified: HashSet::new(),
+            removed: HashSet::new(),
+        }
     }
 
     pub fn insert(
@@ -111,6 +125,10 @@ where
         // add to children array and update mask
         parent.children[child_index] = parent_id;
         parent.children_mask &= !(1 << child_index);
+
+
+        // tracing insertion
+        self.added.insert(id);
 
         Ok(id)
     }
