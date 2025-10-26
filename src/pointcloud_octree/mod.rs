@@ -3,6 +3,7 @@ use crate::octree::extract::RenderOctreePlugin;
 use crate::pointcloud_octree::asset::PointCloudNodeData;
 use bevy_app::{App, Plugin};
 use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
+use crate::pointcloud_octree::render::RenderPointcloudOctreePlugin;
 
 pub mod asset;
 pub mod component;
@@ -10,6 +11,7 @@ pub mod component;
 pub mod extract;
 #[cfg(feature = "potree")]
 pub mod potree;
+pub mod render;
 
 pub type PointCloudOctreeAssetPlugin = OctreeAssetPlugin<PointCloudNodeData>;
 pub type PointCloudOctreeRenderAssetPlugin = RenderOctreePlugin<RenderPointCloudNodeData>;
@@ -21,6 +23,7 @@ impl Plugin for PointCloudOctreePlugin {
         app.add_plugins((
             PointCloudOctreeAssetPlugin::default(),
             PointCloudOctreeRenderAssetPlugin::default(),
+            RenderPointcloudOctreePlugin,
         ));
     }
 }

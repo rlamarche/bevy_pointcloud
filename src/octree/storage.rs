@@ -3,7 +3,7 @@
 use slab::Slab;
 
 /// A stable handle used to reference an entry inside a `GenerationalSlab`.
-#[derive(Copy, Clone, Default, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Default, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct NodeId {
     pub index: usize,
     pub generation: usize,
