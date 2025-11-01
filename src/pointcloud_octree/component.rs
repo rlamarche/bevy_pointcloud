@@ -5,8 +5,8 @@ use bevy_reflect::{Reflect, std_traits::ReflectDefault};
 use crate::pointcloud_octree::asset::PointCloudOctree;
 
 #[derive(Component, Clone, Debug, Default, Deref, DerefMut, Reflect, PartialEq, Eq)]
-#[reflect(Component, Default, Clone, PartialEq)]
-pub struct PointCloudOctree3d(Handle<PointCloudOctree>);
+#[reflect(Component, Default, Clone, PartialEq, Debug)]
+pub struct PointCloudOctree3d(pub Handle<PointCloudOctree>);
 
 impl AsAssetId for PointCloudOctree3d {
     type Asset = PointCloudOctree;

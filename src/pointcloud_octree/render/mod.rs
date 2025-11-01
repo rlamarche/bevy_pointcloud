@@ -2,6 +2,7 @@ mod draw;
 mod node;
 mod phase;
 mod pipeline;
+mod visibility;
 
 use crate::pointcloud_octree::render::draw::DrawPointcloud3d;
 use crate::pointcloud_octree::render::node::{Pointcloud3dDrawLabel, Pointcloud3dDrawNode};
@@ -96,72 +97,72 @@ fn extract_camera_phases(
     pointcloud3d_phases.retain(|camera_entity, _| live_entities.contains(camera_entity));
 }
 
-fn queue_attribute_pass(
-    draw_pointcloud_functions: Res<DrawFunctions<Pointcloud3d>>,
-    mut pipelines: ResMut<SpecializedRenderPipelines<PointcloudOctreePipeline>>,
-    pipeline_cache: Res<PipelineCache>,
-    pointcloud_octree_pipeline: Res<PointcloudOctreePipeline>,
-    render_meshes: Res<RenderOctrees<RenderPointCloudNodeData>>,
-    // render_mesh_instances: Res<RenderMeshInstances>,
-    mut custom_render_phases: ResMut<ViewBinnedRenderPhases<Pointcloud3d>>,
-    mut views: Query<(&ExtractedView, &RenderVisibleEntities, &Msaa)>,
-) {
-    for (view, visible_entities, msaa) in &mut views {
-        let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
-            continue;
-        };
-        let draw_custom = draw_pointcloud_functions.read().id::<DrawPointcloud3d>();
-
-        // Create the key based on the view.
-        // In this case we only care about MSAA and HDR
-        let view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
-            | MeshPipelineKey::from_hdr(view.hdr);
-
-        let rangefinder = view.rangefinder3d();
-        // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
-        for (render_entity, visible_entity) in visible_entities.iter::<Mesh3d>() {
-            // We only want meshes with the marker component to be queued to our phase.
-            let Some(mesh_instance) = render_mesh_instances.render_mesh_queue_data(*visible_entity)
-            else {
-                continue;
-            };
-            let Some(mesh) = render_meshes.get(mesh_instance.mesh_asset_id) else {
-                continue;
-            };
-
-            // Specialize the key for the current mesh entity
-            // For this example we only specialize based on the mesh topology
-            // but you could have more complex keys and that's where you'd need to create those keys
-            let mut mesh_key = view_key;
-            mesh_key |= MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
-
-            let pipeline_id = pipelines.specialize(
-                &pipeline_cache,
-                &pointcloud_octree_pipeline,
-                mesh_key,
-                &mesh.layout,
-            );
-            let pipeline_id = match pipeline_id {
-                Ok(id) => id,
-                Err(err) => {
-                    error!("{}", err);
-                    continue;
-                }
-            };
-            let distance = rangefinder.distance_translation(&mesh_instance.translation);
-            // At this point we have all the data we need to create a phase item and add it to our
-            // phase
-            custom_phase.add(AttributePass3d {
-                // Sort the data based on the distance to the view
-                sort_key: FloatOrd(distance),
-                entity: (*render_entity, *visible_entity),
-                pipeline: pipeline_id,
-                draw_function: draw_custom,
-                // Sorted phase items aren't batched
-                batch_range: 0..1,
-                extra_index: PhaseItemExtraIndex::None,
-                indexed: mesh.indexed(),
-            });
-        }
-    }
-}
+// fn queue_attribute_pass(
+//     draw_pointcloud_functions: Res<DrawFunctions<Pointcloud3d>>,
+//     mut pipelines: ResMut<SpecializedRenderPipelines<PointcloudOctreePipeline>>,
+//     pipeline_cache: Res<PipelineCache>,
+//     pointcloud_octree_pipeline: Res<PointcloudOctreePipeline>,
+//     render_pointcloud_octrees: Res<RenderOctrees<RenderPointCloudNodeData>>,
+//     // render_mesh_instances: Res<RenderMeshInstances>,
+//     mut custom_render_phases: ResMut<ViewBinnedRenderPhases<Pointcloud3d>>,
+//     mut views: Query<(&ExtractedView, &RenderVisibleEntities, &Msaa)>,
+// ) {
+//     for (view, visible_entities, msaa) in &mut views {
+//         let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
+//             continue;
+//         };
+//         let draw_custom = draw_pointcloud_functions.read().id::<DrawPointcloud3d>();
+//
+//         // Create the key based on the view.
+//         // In this case we only care about MSAA and HDR
+//         let view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
+//             | MeshPipelineKey::from_hdr(view.hdr);
+//
+//         let rangefinder = view.rangefinder3d();
+//         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
+//         for (render_entity, visible_entity) in visible_entities.iter::<Mesh3d>() {
+//             // We only want meshes with the marker component to be queued to our phase.
+//             let Some(mesh_instance) = render_mesh_instances.render_mesh_queue_data(*visible_entity)
+//             else {
+//                 continue;
+//             };
+//             let Some(mesh) = render_pointcloud_octrees.get(mesh_instance.mesh_asset_id) else {
+//                 continue;
+//             };
+//
+//             // Specialize the key for the current mesh entity
+//             // For this example we only specialize based on the mesh topology
+//             // but you could have more complex keys and that's where you'd need to create those keys
+//             let mut mesh_key = view_key;
+//             mesh_key |= MeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
+//
+//             let pipeline_id = pipelines.specialize(
+//                 &pipeline_cache,
+//                 &pointcloud_octree_pipeline,
+//                 mesh_key,
+//                 &mesh.layout,
+//             );
+//             let pipeline_id = match pipeline_id {
+//                 Ok(id) => id,
+//                 Err(err) => {
+//                     error!("{}", err);
+//                     continue;
+//                 }
+//             };
+//             let distance = rangefinder.distance_translation(&mesh_instance.translation);
+//             // At this point we have all the data we need to create a phase item and add it to our
+//             // phase
+//             custom_phase.add(AttributePass3d {
+//                 // Sort the data based on the distance to the view
+//                 sort_key: FloatOrd(distance),
+//                 entity: (*render_entity, *visible_entity),
+//                 pipeline: pipeline_id,
+//                 draw_function: draw_custom,
+//                 // Sorted phase items aren't batched
+//                 batch_range: 0..1,
+//                 extra_index: PhaseItemExtraIndex::None,
+//                 indexed: mesh.indexed(),
+//             });
+//         }
+//     }
+// }

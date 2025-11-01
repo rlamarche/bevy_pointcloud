@@ -58,31 +58,13 @@ impl AssetLoader for PotreeLoader {
         info!("Loading Potree Point Cloud from path {}", asset_path);
 
         let point_cloud =
-            potree::point_cloud::PotreePointCloud::from_url(&asset_path, ResourceLoader::new())
+            potree::hierarchy::Hierarchy::from_url(&asset_path, ResourceLoader::new())
                 .await?;
 
         info!("Potree Point Cloud loaded");
 
-        // Get root node
-        let root = point_cloud.octree().root();
-        // Load its points
-        let points = point_cloud.load_points_for_node(root).await?;
-        // Convert its bounding box
-        let bounding_box = Aabb::from_min_max(
-            root.bounding_box.min.as_vec3(),
-            root.bounding_box.max.as_vec3(),
-        );
-
-        let octree = PointCloudOctree::new(bounding_box, (root, points).into());
-
-        let octree = load_context.add_labeled_asset(
-            "octree".to_string(),
-            octree,
-        );
-
         Ok(PotreePointCloud {
-            wrapped: Arc::new(RwLock::new(point_cloud)),
-            octree,
+            hierarchy: Arc::new(RwLock::new(point_cloud)),
         })
     }
 }

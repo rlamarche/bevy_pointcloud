@@ -133,18 +133,6 @@ fn load_meshes(
 #[derive(Component)]
 pub struct MyMaterial(Handle<PointCloudMaterial>);
 
-#[derive(Component)]
-struct MyPotreePointCloud(Handle<PotreePointCloud>);
-
-#[derive(Component)]
-struct ComputeTransform(Task<CommandQueue>);
-
-#[derive(Component)]
-struct MyGizmo;
-
-#[derive(Component, Deref)]
-struct MyPointCloud(pub potree::point_cloud::PotreePointCloud);
-
 fn load_pointcloud(
     mut commands: Commands,
     // mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,

@@ -64,22 +64,11 @@ pub fn init_hierarchy_task(
                 global_transform: global_transform.clone(),
                 wakeup_rx,
                 camera_view_queue: camera_view_queue.clone(),
-                point_cloud: potree_point_cloud.wrapped.clone(),
+                hierarchy: potree_point_cloud.hierarchy.clone(),
                 hierarchy_snapshot_tx,
             };
-            // let frustum_queue = frustum_queue.clone();
             update_hierarchy_task.run()
         });
-
-        // let task = async_task_pool.spawn({
-        //     let update_hierarchy_task = UpdateHierarchyTask {
-        //         wakeup_rx,
-        //         frustum_queue: frustum_queue.clone(),
-        //         point_cloud: potree_point_cloud.wrapped.clone(),
-        //     };
-        //     // let frustum_queue = frustum_queue.clone();
-        //     update_hierarchy_task.run()
-        // });
 
         commands.entity(entity).insert(HierarchyTask {
             wakeup_tx,
@@ -135,7 +124,7 @@ pub struct UpdateHierarchyTask {
     pub global_transform: GlobalTransform,
     pub wakeup_rx: async_channel::Receiver<()>,
     pub camera_view_queue: Arc<ArrayQueue<CameraView>>,
-    pub point_cloud: Arc<RwLock<potree::point_cloud::PotreePointCloud>>,
+    pub hierarchy: Arc<RwLock<potree::hierarchy::Hierarchy>>,
     pub hierarchy_snapshot_tx: async_channel::Sender<Vec<OctreeNodeSnapshot>>,
 }
 
@@ -168,7 +157,7 @@ impl UpdateHierarchyTask {
     }
 
     async fn process_camera_view(&self, camera_view: &CameraView) {
-        let mut point_cloud = self.point_cloud.write().await;
+        let mut point_cloud = self.hierarchy.write().await;
 
         let octree = point_cloud.octree();
         let root = octree.root();

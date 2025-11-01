@@ -12,6 +12,8 @@ pub use super::storage::NodeId;
 pub enum InsertNodeError {
     #[error("parent does not exists")]
     ParentNotExists,
+    #[error("root already exists")]
+    RootAlreadyExists,
     #[error("parent has already 8 children")]
     ParentChildrenFull,
 }
@@ -22,7 +24,7 @@ where
     T: Clone + Debug + Send + Sync + TypePath,
 {
     pub(crate) nodes: GenerationalSlab<OctreeNode<T>>,
-    pub(crate) root_id: NodeId,
+    pub(crate) root_id: Option<NodeId>,
     pub(crate) added: HashSet<NodeId>,
     pub(crate) modified: HashSet<NodeId>,
     pub(crate) removed: HashSet<NodeId>,
@@ -46,7 +48,7 @@ where
     T: Clone + Default + Debug + Send + Sync + TypePath,
 {
     fn default() -> Self {
-        Self::new(Aabb::default(), T::default())
+        Self::new()
     }
 }
 
@@ -54,7 +56,17 @@ impl<T> Octree<T>
 where
     T: Clone + Default + Debug + Send + Sync + TypePath,
 {
-    pub fn new(bounding_box: Aabb, data: T) -> Self {
+    pub fn new() -> Self {
+        Self {
+            nodes: GenerationalSlab::new(),
+            root_id: None,
+            added: HashSet::new(),
+            modified: HashSet::new(),
+            removed: HashSet::new(),
+        }
+    }
+
+    pub fn from_root(bounding_box: Aabb, data: T) -> Self {
         let mut nodes = GenerationalSlab::new();
 
         let root = OctreeNode {
@@ -78,7 +90,7 @@ where
 
         Self {
             nodes,
-            root_id,
+            root_id: Some(root_id),
             added,
             modified: HashSet::new(),
             removed: HashSet::new(),
@@ -87,26 +99,32 @@ where
 
     pub fn insert(
         &mut self,
-        parent_id: NodeId,
+        parent_id: Option<NodeId>,
         bounding_box: Aabb,
         data: T,
     ) -> Result<NodeId, InsertNodeError> {
-        // check the parent
-        match self.nodes.get(parent_id) {
-            None => {
-                return Err(InsertNodeError::ParentNotExists);
-            }
-            Some(parent) => {
-                if parent.children_mask == 0xFF {
-                    return Err(InsertNodeError::ParentChildrenFull);
+        if let Some(parent_id) = &parent_id {
+            // check the parent
+            match self.nodes.get(*parent_id) {
+                None => {
+                    return Err(InsertNodeError::ParentNotExists);
                 }
+                Some(parent) => {
+                    if parent.children_mask == 0xFF {
+                        return Err(InsertNodeError::ParentChildrenFull);
+                    }
+                }
+            };
+        } else {
+            if self.root_id.is_some() {
+                return Err(InsertNodeError::RootAlreadyExists);
             }
-        };
+        }
 
         // insert the new node
         let id = self.nodes.insert(OctreeNode {
             id: Default::default(),
-            parent_id: Some(parent_id),
+            parent_id,
             children: [NodeId::default(); 8],
             children_mask: 0x00,
             bounding_box,
@@ -116,20 +134,31 @@ where
         // update self id
         self.nodes.get_mut(id).unwrap().id = id;
 
-        // infallible because we checked upper
-        let parent = self.nodes.get_mut(parent_id).unwrap();
+        if let Some(parent_id) = &parent_id {
+            // infallible because we checked upper
+            let parent = self.nodes.get_mut(*parent_id).unwrap();
 
-        // get the next free child index
-        let child_index = parent.children_mask.trailing_ones() as usize;
+            // get the next free child index
+            let child_index = parent.children_mask.trailing_ones() as usize;
 
-        // add to children array and update mask
-        parent.children[child_index] = parent_id;
-        parent.children_mask &= !(1 << child_index);
-
+            // add to children array and update mask
+            parent.children[child_index] = *parent_id;
+            parent.children_mask &= !(1 << child_index);
+        } else {
+            self.root_id = Some(id);
+        }
 
         // tracing insertion
         self.added.insert(id);
 
         Ok(id)
+    }
+
+    pub fn get(&self, node_id: NodeId) -> Option<&OctreeNode<T>> {
+        self.nodes.get(node_id)
+    }
+
+    pub fn root(&self) -> Option<&OctreeNode<T>> {
+        self.get(self.root_id?)
     }
 }

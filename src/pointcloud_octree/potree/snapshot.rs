@@ -25,6 +25,18 @@ impl From<&OctreeNode> for PointCloudNodeData {
     }
 }
 
+impl From<(&OctreeNodeSnapshot, Vec<PotreePointData>)> for PointCloudNodeData {
+    fn from((node, points): (&OctreeNodeSnapshot, Vec<PotreePointData>)) -> Self {
+        PointCloudNodeData {
+            spacing: node.spacing as f32,
+            level: node.level,
+            num_points: node.num_points as usize,
+            points: points.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+
 impl From<(&OctreeNode, Vec<PotreePointData>)> for PointCloudNodeData {
     fn from((node, points): (&OctreeNode, Vec<PotreePointData>)) -> Self {
         PointCloudNodeData {
@@ -35,6 +47,7 @@ impl From<(&OctreeNode, Vec<PotreePointData>)> for PointCloudNodeData {
         }
     }
 }
+
 
 impl From<PotreePointData> for PointData {
     fn from(value: PotreePointData) -> Self {
@@ -63,3 +76,4 @@ impl From<&PotreePointData> for PointData {
         }
     }
 }
+
