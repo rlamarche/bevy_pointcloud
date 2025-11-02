@@ -1,19 +1,16 @@
 use crate::point_cloud::PointCloudData;
 use crate::point_cloud_material::PointCloudMaterial;
-use crate::render::POINTCLOUD_SHADER_HANDLE;
 use crate::render::point_cloud_uniform::PointCloudUniform;
+use crate::render::POINTCLOUD_SHADER_HANDLE;
 use bevy_asset::prelude::*;
 use bevy_core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT;
 use bevy_ecs::prelude::*;
-use bevy_mesh::{Mesh, MeshVertexBufferLayoutRef, VertexBufferLayout, VertexFormat};
+use bevy_mesh::{PrimitiveTopology, VertexBufferLayout, VertexFormat};
 use bevy_pbr::{MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey};
-use bevy_render::render_resource::{
-    AsBindGroup, BindGroupLayout, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
-    DepthStencilState, StencilState, TextureFormat, VertexAttribute, VertexStepMode,
-};
+use bevy_render::render_resource::{AsBindGroup, BindGroupLayout, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, SpecializedRenderPipeline, StencilState, TextureFormat, VertexAttribute, VertexStepMode};
 use bevy_render::render_resource::{
     Face, FragmentState, FrontFace, MultisampleState, PolygonMode, PrimitiveState,
-    RenderPipelineDescriptor, SpecializedMeshPipeline, SpecializedMeshPipelineError, VertexState,
+    RenderPipelineDescriptor, SpecializedMeshPipeline, VertexState,
 };
 use bevy_render::renderer::RenderDevice;
 use bevy_shader::Shader;
@@ -46,47 +43,48 @@ pub struct DepthPipelineKey {
     pub use_edl: bool,
 }
 
-impl SpecializedMeshPipeline for DepthPipeline {
+impl SpecializedRenderPipeline for DepthPipeline {
     type Key = DepthPipelineKey;
 
     fn specialize(
         &self,
         key: Self::Key,
-        layout: &MeshVertexBufferLayoutRef,
-    ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
-        // We will only use the position of the mesh in our shader so we only need to specify that
-        let mut vertex_attributes = Vec::new();
-        if layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
-            // Make sure this matches the shader location
-            vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
-        }
-        // This will automatically generate the correct `VertexBufferLayout` based on the vertex attributes
-        let vertex_buffer_layout = layout.0.get_layout(&vertex_attributes)?;
+    ) -> RenderPipelineDescriptor {
+        let vertex_buffer_layout = VertexBufferLayout {
+            array_stride: VertexFormat::Float32x4.size(),
+            step_mode: VertexStepMode::Vertex,
+            attributes: vec![VertexAttribute {
+                format: VertexFormat::Float32x3,
+                offset: 0,
+                shader_location: 0,
+            }],
+        };
 
-        let instances_buffer_layout = VertexBufferLayout {
+        let instance_buffer_layout = VertexBufferLayout {
             array_stride: size_of::<PointCloudData>() as u64,
             step_mode: VertexStepMode::Instance,
             attributes: vec![
+                // Point position
                 VertexAttribute {
                     format: VertexFormat::Float32x4,
                     offset: 0,
-                    shader_location: 3, // shader locations 0-2 are taken up by Position, Normal and UV attributes
+                    shader_location: 1,
                 },
+                // Point color
                 VertexAttribute {
                     format: VertexFormat::Float32x4,
                     offset: VertexFormat::Float32x4.size(),
-                    shader_location: 4,
+                    shader_location: 2,
                 },
             ],
         };
-
         let mut shader_defs = vec!["DEPTH_PASS".into(), "HQ_DEPTH_PASS".into()];
 
         if key.use_edl {
             shader_defs.push("USE_EDL".into());
         }
 
-        Ok(RenderPipelineDescriptor {
+        RenderPipelineDescriptor {
             label: Some("pcl_depth_pass_pipeline".into()),
             // We want to reuse the data from bevy so we use the same bind groups as the default
             // mesh pipeline
@@ -96,11 +94,9 @@ impl SpecializedMeshPipeline for DepthPipeline {
                     .get_view_layout(MeshPipelineViewLayoutKey::from(key.mesh_key))
                     .clone()
                     .main_layout,
-                // Bind group 1 is the mesh uniform
-                self.mesh_pipeline.mesh_layouts.model_only.clone(),
-                // Bind group 2 is our point cloud uniform
+                // Bind group 1 is our point cloud uniform
                 self.point_cloud_layout.clone(),
-                // Bind group 3 is the point cloud material
+                // Bind group 2 is the point cloud material
                 self.point_cloud_material_layout.clone(),
             ],
             push_constant_ranges: vec![],
@@ -108,7 +104,7 @@ impl SpecializedMeshPipeline for DepthPipeline {
                 shader: self.shader_handle.clone(),
                 shader_defs: shader_defs.clone(),
                 entry_point: Some("vertex".into()),
-                buffers: vec![vertex_buffer_layout, instances_buffer_layout],
+                buffers: vec![vertex_buffer_layout, instance_buffer_layout],
             },
             fragment: Some(FragmentState {
                 shader: self.shader_handle.clone(),
@@ -127,7 +123,7 @@ impl SpecializedMeshPipeline for DepthPipeline {
                 })],
             }),
             primitive: PrimitiveState {
-                topology: key.mesh_key.primitive_topology(),
+                topology: PrimitiveTopology::TriangleList,
                 front_face: FrontFace::Ccw,
                 cull_mode: Some(Face::Back),
                 polygon_mode: PolygonMode::Fill,
@@ -147,7 +143,7 @@ impl SpecializedMeshPipeline for DepthPipeline {
                 alpha_to_coverage_enabled: false,
             },
             zero_initialize_workgroup_memory: false,
-        })
+        }
     }
 }
 

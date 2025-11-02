@@ -1,11 +1,13 @@
+use crate::pointcloud_octree::asset::PointCloudOctree;
 use bevy_asset::{AsAssetId, AssetId, Handle};
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
-use bevy_reflect::{Reflect, std_traits::ReflectDefault};
-use crate::pointcloud_octree::asset::PointCloudOctree;
+use bevy_reflect::{std_traits::ReflectDefault, Reflect};
+use bevy_transform::prelude::*;
 
 #[derive(Component, Clone, Debug, Default, Deref, DerefMut, Reflect, PartialEq, Eq)]
 #[reflect(Component, Default, Clone, PartialEq, Debug)]
+#[require(Transform)]
 pub struct PointCloudOctree3d(pub Handle<PointCloudOctree>);
 
 impl AsAssetId for PointCloudOctree3d {

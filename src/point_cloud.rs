@@ -1,20 +1,19 @@
 use bevy_asset::{AsAssetId, Asset, AssetId, Assets, Handle, RenderAssetUsages};
 use bevy_derive::{Deref, DerefMut};
+use bevy_ecs::component::Component;
 use bevy_ecs::reflect::ReflectComponent;
-use bevy_ecs::world::DeferredWorld;
-use bevy_ecs::{component::Component, lifecycle::HookContext};
 use bevy_math::Vec3;
-use bevy_mesh::{Indices, Mesh, Mesh3d, PrimitiveTopology};
 use bevy_reflect::{Reflect, std_traits::ReflectDefault};
+use bevy_transform::prelude::*;
 use bytemuck::{Pod, Zeroable};
 
-const QUAD_POSITIONS: &[[f32; 3]] = &[
+pub const QUAD_POSITIONS: &[[f32; 3]] = &[
     [-0.5, -0.5, 0.0],
     [0.5, -0.5, 0.0],
     [0.5, 0.5, 0.0],
     [-0.5, 0.5, 0.0],
 ];
-const QUAD_INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
+pub const QUAD_INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
 
 #[derive(Debug, Clone, Asset, Reflect)]
 pub struct PointCloud {
@@ -31,7 +30,7 @@ pub struct PointCloudData {
 
 #[derive(Component, Clone, Debug, Default, Deref, DerefMut, Reflect, PartialEq, Eq)]
 #[reflect(Component, Default, Clone, PartialEq)]
-#[component(on_add = add_pointcloud_mesh::<PointCloud3d>)]
+#[require(Transform)]
 pub struct PointCloud3d(pub Handle<PointCloud>);
 
 impl From<PointCloud3d> for AssetId<PointCloud> {
@@ -51,37 +50,5 @@ impl AsAssetId for PointCloud3d {
 
     fn as_asset_id(&self) -> AssetId<Self::Asset> {
         self.id()
-    }
-}
-
-/// A generic component add hook that automatically adds the appropriate
-/// [`Mesh`] to an entity for point cloud rendering.
-///
-/// To use this
-/// hook, add it to your renderable component like this:
-///
-/// ```ignore
-/// #[derive(Component)]
-/// #[component(on_add = add_pointcloud_mesh::<MyComponent>)]
-/// struct MyComponent {
-///     ...
-/// }
-/// ```
-pub fn add_pointcloud_mesh<C>(mut world: DeferredWorld<'_>, HookContext { entity, .. }: HookContext)
-where
-    C: 'static,
-{
-    if let Some(mut meshes) = world.get_resource_mut::<Assets<Mesh>>() {
-        let mesh = Mesh::new(
-            PrimitiveTopology::TriangleList,
-            RenderAssetUsages::default(),
-        )
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, QUAD_POSITIONS.to_vec())
-        .with_inserted_indices(Indices::U32(QUAD_INDICES.to_vec()));
-
-        // instantiate a new mesh for each point cloud to prevent bevy not rendering it thinking it's the same
-        let mesh_handle = meshes.add(mesh);
-
-        world.commands().entity(entity).insert(Mesh3d(mesh_handle));
     }
 }

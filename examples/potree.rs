@@ -11,9 +11,11 @@ use bevy::{prelude::*, render::view::NoIndirectDrawing};
 use bevy_asset::UnapprovedPathMode;
 use bevy_color::palettes::basic::GREEN;
 use bevy_ecs::world::CommandQueue;
+use bevy_inspector_egui::bevy_egui::EguiPlugin;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy_panorbit_camera::PanOrbitCameraPlugin;
 use bevy_pointcloud::PointCloudPlugin;
-use bevy_pointcloud::point_cloud_material::PointCloudMaterial;
+use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
 use bevy_pointcloud::potree::prelude::*;
 use bevy_pointcloud::render::PointCloudRenderMode;
 
@@ -24,6 +26,8 @@ fn main() {
             unapproved_path_mode: UnapprovedPathMode::Allow,
             ..Default::default()
         }),
+        EguiPlugin::default(),
+        WorldInspectorPlugin::new(),
         PanOrbitCameraPlugin,
         PointCloudPlugin,
         CameraControllerPlugin,
@@ -135,11 +139,17 @@ pub struct MyMaterial(Handle<PointCloudMaterial>);
 
 fn load_pointcloud(
     mut commands: Commands,
-    // mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
+    mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
     // mut point_clouds: ResMut<Assets<PointCloud>>,
     asset_server: Res<AssetServer>,
     // mut gizmo_assets: ResMut<Assets<GizmoAsset>>,
 ) {
+    let my_material = point_cloud_materials.add(PointCloudMaterial {
+        point_size: 30.0,
+        ..default()
+    });
+    commands.spawn(MyMaterial(my_material.clone()));
+
     let potree_point_cloud_handle: Handle<PotreePointCloud> =
         asset_server.load("potree/heidentor/metadata.json");
     commands.spawn((
@@ -148,6 +158,7 @@ fn load_pointcloud(
         },
         DrawPotreeGizmo,
         Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2)),
+        PointCloudMaterial3d(my_material.clone()),
     ));
 
     return;

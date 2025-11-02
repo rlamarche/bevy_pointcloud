@@ -24,12 +24,12 @@ use bevy_platform::collections::HashMap;
 
 #[derive(Clone, Component, Default, Debug, Reflect)]
 #[reflect(Component, Default, Debug, Clone)]
-pub struct VisibleOctreeNodes {
+pub struct VisiblePointCloudOctree3dNodes {
     #[reflect(ignore, clone)]
     pub nodes: HashMap<Entity, Vec<NodeId>>,
 }
 
-impl VisibleOctreeNodes {
+impl VisiblePointCloudOctree3dNodes {
     pub fn get(&self, entity: Entity) -> &[NodeId] {
         match self.nodes.get(&entity) {
             Some(entities) => &entities[..],
@@ -85,7 +85,7 @@ pub fn check_octree_node_visibility(
         &Camera,
         &GlobalTransform,
         &Projection,
-        &mut VisibleOctreeNodes,
+        &mut VisiblePointCloudOctree3dNodes,
         Has<NoCpuCulling>,
     )>,
     pointcloud_octrees_3d: Query<(&PointCloudOctree3d, &GlobalTransform)>,
@@ -131,7 +131,7 @@ pub fn check_octree_node_visibility(
                 continue;
             };
 
-            info!("Computing visible nodes");
+            // info!("Computing visible nodes");
             // compute visible nodes and store them
             compute_visible_nodes(
                 pointcloud_octree,
@@ -142,7 +142,7 @@ pub fn check_octree_node_visibility(
                 &physical_target_size,
                 visible_octree_nodes.get_mut(*entity),
             );
-            info!("{} visible nodes", visible_octree_nodes.get(*entity).len());
+            // info!("{} visible nodes", visible_octree_nodes.get(*entity).len());
         }
     }
 }
@@ -207,9 +207,6 @@ fn compute_visible_nodes(
     let world_from_local = octree_transform.affine();
 
     while let Some((node, mut completely_visible)) = stack.pop() {
-        // get the current node future index
-        let current_index = visible_nodes.len();
-
         let screen_pixel_radius = compute_screen_pixel_radius(
             node,
             octree_transform,
@@ -253,7 +250,8 @@ fn compute_visible_nodes(
         // }
 
         // we have to process child nodes, sending flag `completely_visible` to prevent useless visibility checks
-        for child in &node.children {
+        for i in iter_zero_bits(node.children_mask) {
+            let child = &node.children[i];
             let Some(child) = octree.get(*child) else {
                 warn!("missing node in hierarchy, shouldn't happen");
                 continue;
@@ -263,5 +261,23 @@ fn compute_visible_nodes(
 
         // add the current node because it is visible or partially visible
         visible_nodes.push(node.id);
+    }
+}
+
+fn iter_zero_bits(mask: u8) -> impl Iterator<Item = usize> {
+    (0..8).filter(move |&i| (mask & (1 << i)) == 0)
+}
+
+
+#[cfg(test)]
+mod tests {
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    #[test]
+    fn test_iter_zero_bits() {
+        let mask: u8 = 0b01010101;
+        let indexes = iter_zero_bits(mask).collect::<Vec<_>>();
+        assert_eq!(indexes, vec![1, 3, 5, 7]);
     }
 }

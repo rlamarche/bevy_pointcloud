@@ -18,8 +18,8 @@ struct Vertex {
     // position is at location 0
     @location(0) position: vec3<f32>,
 
-    @location(3) i_pos_size: vec4<f32>,
-    @location(4) i_color: vec4<f32>,
+    @location(1) i_pos_size: vec4<f32>,
+    @location(2) i_color: vec4<f32>,
 };
 
 // This is the output of the vertex shader and we also use it as the input for the fragment shader
@@ -32,7 +32,7 @@ struct VertexOutput {
     @location(4) radius: f32,
 };
 
-@group(2) @binding(0)
+@group(1) @binding(0)
 var<uniform> world_from_local: mat4x4<f32>;
 
 struct PointCloudMaterial {
@@ -43,18 +43,18 @@ struct PointCloudMaterial {
 #endif
 };
 
-@group(3) @binding(0)
+@group(2) @binding(0)
 var<uniform> material: PointCloudMaterial;
 
 
 #ifdef EARLY_REJECT_ATTRIBUTE_PASS
 #ifdef MULTISAMPLED
 
-@group(4) @binding(0) var depth_texture: texture_multisampled_2d<f32>;
+@group(3) @binding(0) var depth_texture: texture_multisampled_2d<f32>;
 
 #else // MULTISAMPLED
 
-@group(4) @binding(0) var depth_texture: texture_2d<f32>;
+@group(3) @binding(0) var depth_texture: texture_2d<f32>;
 
 #endif // MULTISAMPLED
 #endif // EARLY_REJECT_ATTRIBUTE_PASS

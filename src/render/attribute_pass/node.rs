@@ -1,8 +1,8 @@
-use super::AttributePass3d;
 use super::texture::ViewAttributePrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
+use bevy_log::prelude::*;
 use bevy_log::{error, warn};
-use bevy_render::render_phase::TrackedRenderPass;
+use bevy_render::render_phase::{TrackedRenderPass, ViewBinnedRenderPhases};
 use bevy_render::render_resource::{CommandEncoderDescriptor, StoreOp};
 use bevy_render::view::ViewDepthTexture;
 use bevy_render::{
@@ -13,6 +13,7 @@ use bevy_render::{
     renderer::RenderContext,
     view::ExtractedView,
 };
+use crate::render::attribute_pass::phase::PointCloud3dAttributePhase;
 
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct AttributePassLabel;
@@ -21,10 +22,10 @@ pub struct AttributePassLabel;
 pub struct AttributePassNode;
 impl ViewNode for AttributePassNode {
     type ViewQuery = (
-        Option<&'static ExtractedCamera>,
-        Option<&'static ExtractedView>,
-        Option<&'static ViewDepthTexture>,
-        Option<&'static ViewAttributePrepassTextures>,
+        &'static ExtractedCamera,
+        &'static ExtractedView,
+        &'static ViewDepthTexture,
+        &'static ViewAttributePrepassTextures,
     );
 
     fn run<'w>(
@@ -35,13 +36,19 @@ impl ViewNode for AttributePassNode {
         world: &'w World,
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource
-        let Some(stencil_phases) = world.get_resource::<ViewSortedRenderPhases<AttributePass3d>>()
+        let Some(point_cloud_3d_phases) =
+            world.get_resource::<ViewBinnedRenderPhases<PointCloud3dAttributePhase>>()
         else {
+            info!("no pointcloud phases");
             return Ok(());
         };
 
-        let Some(view_prepass_textures) = view_prepass_textures else {
-            warn!("ViewAttributePrepassTextures missing.");
+        let view_entity = graph.view_entity();
+
+        // Get the phase for the current view running our node
+        let Some(point_cloud_3d_phase) = point_cloud_3d_phases.get(&view.retained_view_entity)
+        else {
+            info!("no pointcloud phase");
             return Ok(());
         };
 
@@ -51,22 +58,6 @@ impl ViewNode for AttributePassNode {
                 .as_ref()
                 .map(|attribute_texture| attribute_texture.get_attachment()),
         ];
-
-        let view_entity = graph.view_entity();
-
-        let Some(view) = view else {
-            warn!("ExtractedView missing.");
-            return Ok(());
-        };
-
-        let Some(stencil_phase) = stencil_phases.get(&view.retained_view_entity) else {
-            return Ok(());
-        };
-
-        let Some(depth) = depth else {
-            warn!("ViewDepthTexture missing.");
-            return Ok(());
-        };
 
         let depth_stencil_attachment = Some(depth.get_attachment(StoreOp::Store));
 
@@ -85,22 +76,16 @@ impl ViewNode for AttributePassNode {
             });
             let mut render_pass = TrackedRenderPass::new(&render_device, render_pass);
 
-            let Some(camera) = camera else {
-                warn!("ExtractedCamera missing.");
-                drop(render_pass);
-                return command_encoder.finish();
-            };
-
             if let Some(viewport) = camera.viewport.as_ref() {
                 render_pass.set_camera_viewport(viewport);
             }
 
-            if let Err(err) = stencil_phase.render(&mut render_pass, world, view_entity) {
+            if let Err(err) = point_cloud_3d_phase.render(&mut render_pass, world, view_entity) {
                 error!("Error encountered while rendering the point cloud attribute phase {err:?}");
             }
 
             drop(render_pass);
-
+            
             command_encoder.finish()
         });
 

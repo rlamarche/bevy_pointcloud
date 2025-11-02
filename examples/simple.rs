@@ -18,6 +18,8 @@ use rand::Rng;
 use std::ops::Neg;
 #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
 use bevy::window::PresentMode;
+use bevy_inspector_egui::bevy_egui::EguiPlugin;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 
 /// This example uses a shader source file from the assets subdirectory
 
@@ -25,6 +27,8 @@ fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins,
+            EguiPlugin::default(),
+            WorldInspectorPlugin::new(),
             PanOrbitCameraPlugin,
             PointCloudPlugin,
             LasLoaderPlugin,
@@ -57,7 +61,7 @@ fn setup_window(mut windows: Query<&mut Window>) {
     let mut window = windows.single_mut().unwrap();
     #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
     {
-        window.present_mode = PresentMode::Immediate;
+        window.present_mode = PresentMode::Fifo;
     }
 }
 

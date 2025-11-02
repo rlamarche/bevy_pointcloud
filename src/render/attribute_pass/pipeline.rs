@@ -1,22 +1,19 @@
 use crate::point_cloud::PointCloudData;
 use crate::point_cloud_material::PointCloudMaterial;
-use crate::render::POINTCLOUD_SHADER_HANDLE;
 use crate::render::point_cloud_uniform::PointCloudUniform;
+use crate::render::POINTCLOUD_SHADER_HANDLE;
 use bevy_asset::prelude::*;
 use bevy_core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT;
 use bevy_ecs::prelude::*;
-use bevy_mesh::{Mesh, MeshVertexBufferLayoutRef, VertexBufferLayout, VertexFormat};
+use bevy_log::info;
+use bevy_mesh::{PrimitiveTopology, VertexBufferLayout, VertexFormat};
 use bevy_pbr::{MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey};
 use bevy_render::render_resource::binding_types::{texture_2d, texture_2d_multisampled};
-use bevy_render::render_resource::{
-    AsBindGroup, BindGroupLayout, BindGroupLayoutEntries, BlendComponent, BlendFactor,
-    BlendOperation, BlendState, CompareFunction, DepthBiasState, DepthStencilState, ShaderStages,
-    StencilState, TextureSampleType, VertexAttribute, VertexStepMode,
-};
+use bevy_render::render_resource::{AsBindGroup, BindGroupLayout, BindGroupLayoutEntries, BlendComponent, BlendFactor, BlendOperation, BlendState, CompareFunction, DepthBiasState, DepthStencilState, ShaderStages, SpecializedRenderPipeline, StencilState, TextureSampleType, VertexAttribute, VertexStepMode};
 use bevy_render::render_resource::{
     ColorTargetState, ColorWrites, Face, FragmentState, FrontFace, MultisampleState, PolygonMode,
-    PrimitiveState, RenderPipelineDescriptor, SpecializedMeshPipeline,
-    SpecializedMeshPipelineError, TextureFormat, VertexState,
+    PrimitiveState, RenderPipelineDescriptor, SpecializedMeshPipeline
+    , TextureFormat, VertexState,
 };
 use bevy_render::renderer::RenderDevice;
 use bevy_shader::Shader;
@@ -63,41 +60,47 @@ impl FromWorld for AttributePassPipeline {
     }
 }
 
-impl SpecializedMeshPipeline for AttributePassPipeline {
+impl SpecializedRenderPipeline for AttributePassPipeline {
     type Key = MeshPipelineKey;
 
     fn specialize(
         &self,
         key: Self::Key,
-        layout: &MeshVertexBufferLayoutRef,
-    ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
-        // We will only use the position of the mesh in our shader so we only need to specify that
-        let mut vertex_attributes = Vec::new();
-        if layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
-            // Make sure this matches the shader location
-            vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
-        }
-        // This will automatically generate the correct `VertexBufferLayout` based on the vertex attributes
-        let vertex_buffer_layout = layout.0.get_layout(&vertex_attributes)?;
+    ) -> RenderPipelineDescriptor {
+        info!("Array stride vertex: {}", VertexFormat::Float32x4.size());
 
-        let instances_buffer_layout = VertexBufferLayout {
+        let vertex_buffer_layout = VertexBufferLayout {
+            array_stride: VertexFormat::Float32x4.size(),
+            step_mode: VertexStepMode::Vertex,
+            attributes: vec![VertexAttribute {
+                format: VertexFormat::Float32x3,
+                offset: 0,
+                shader_location: 0,
+            }],
+        };
+
+        info!("Array stride instance: {}", size_of::<PointCloudData>() as u64);
+
+        let instance_buffer_layout = VertexBufferLayout {
             array_stride: size_of::<PointCloudData>() as u64,
             step_mode: VertexStepMode::Instance,
             attributes: vec![
+                // Point position
                 VertexAttribute {
                     format: VertexFormat::Float32x4,
                     offset: 0,
-                    shader_location: 3, // shader locations 0-2 are taken up by Position, Normal and UV attributes
+                    shader_location: 1,
                 },
+                // Point color
                 VertexAttribute {
                     format: VertexFormat::Float32x4,
                     offset: VertexFormat::Float32x4.size(),
-                    shader_location: 4,
+                    shader_location: 2,
                 },
             ],
         };
 
-        Ok(RenderPipelineDescriptor {
+        RenderPipelineDescriptor {
             label: Some("pcl_attribute_pass_pipeline".into()),
             // We want to reuse the data from bevy so we use the same bind groups as the default
             // mesh pipeline
@@ -107,13 +110,11 @@ impl SpecializedMeshPipeline for AttributePassPipeline {
                     .get_view_layout(MeshPipelineViewLayoutKey::from(key))
                     .clone()
                     .main_layout,
-                // Bind group 1 is the mesh uniform
-                self.mesh_pipeline.mesh_layouts.model_only.clone(),
-                // Bind group 2 is our point cloud uniform
+                // Bind group 1 is our point cloud uniform
                 self.point_cloud_layout.clone(),
-                // Bind group 3 is the point cloud material
+                // Bind group 2 is the point cloud material
                 self.point_cloud_material_layout.clone(),
-                // Bind group 4 is the depth texture from depth pass
+                // Bind group 3 is the depth texture from depth pass
                 self.layout.clone(),
             ],
             push_constant_ranges: vec![],
@@ -121,7 +122,7 @@ impl SpecializedMeshPipeline for AttributePassPipeline {
                 shader: self.shader_handle.clone(),
                 shader_defs: vec![],
                 entry_point: Some("vertex".into()),
-                buffers: vec![vertex_buffer_layout, instances_buffer_layout],
+                buffers: vec![vertex_buffer_layout, instance_buffer_layout],
             },
             fragment: Some(FragmentState {
                 shader: self.shader_handle.clone(),
@@ -148,7 +149,7 @@ impl SpecializedMeshPipeline for AttributePassPipeline {
                 })],
             }),
             primitive: PrimitiveState {
-                topology: key.primitive_topology(),
+                topology: PrimitiveTopology::TriangleList,
                 front_face: FrontFace::Ccw,
                 cull_mode: Some(Face::Back),
                 polygon_mode: PolygonMode::Fill,
@@ -167,7 +168,7 @@ impl SpecializedMeshPipeline for AttributePassPipeline {
                 alpha_to_coverage_enabled: false,
             },
             zero_initialize_workgroup_memory: false,
-        })
+        }
     }
 }
 

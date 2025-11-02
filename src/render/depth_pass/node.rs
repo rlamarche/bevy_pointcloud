@@ -1,8 +1,8 @@
-use crate::render::depth_pass::DepthPass3d;
+use crate::render::depth_pass::phase::PointCloud3dDepthPhase;
 use crate::render::depth_pass::texture::ViewDepthPrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
-use bevy_log::error;
-use bevy_render::render_phase::TrackedRenderPass;
+use bevy_log::prelude::*;
+use bevy_render::render_phase::{TrackedRenderPass, ViewBinnedRenderPhases};
 use bevy_render::render_resource::{CommandEncoderDescriptor, StoreOp};
 use bevy_render::view::ViewDepthTexture;
 use bevy_render::{
@@ -23,7 +23,7 @@ impl ViewNode for DepthPassNode {
     type ViewQuery = (
         &'static ExtractedCamera,
         &'static ExtractedView,
-        Option<&'static ViewDepthTexture>,
+        &'static ViewDepthTexture,
         &'static ViewDepthPrepassTextures,
     );
 
@@ -39,12 +39,19 @@ impl ViewNode for DepthPassNode {
         world: &'w World,
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource
-        let Some(stencil_phases) = world.get_resource::<ViewSortedRenderPhases<DepthPass3d>>()
+        let Some(point_cloud_3d_phases) =
+            world.get_resource::<ViewBinnedRenderPhases<PointCloud3dDepthPhase>>()
         else {
+            info!("no pointcloud phases");
             return Ok(());
         };
 
-        let Some(view_depth_texture) = view_depth_texture else {
+        let view_entity = graph.view_entity();
+
+        // Get the phase for the current view running our node
+        let Some(point_cloud_3d_phase) = point_cloud_3d_phases.get(&view.retained_view_entity)
+        else {
+            info!("no pointcloud phase");
             return Ok(());
         };
 
@@ -56,14 +63,6 @@ impl ViewNode for DepthPassNode {
         ];
 
         let depth_stencil_attachment = Some(view_depth_texture.get_attachment(StoreOp::Store));
-
-        // Get the view entity from the graph
-        let view_entity = graph.view_entity();
-
-        // Get the phase for the current view running our node
-        let Some(attribute_phase) = stencil_phases.get(&view.retained_view_entity) else {
-            return Ok(());
-        };
 
         render_context.add_command_buffer_generation_task(move |render_device| {
             // Command encoder setup
@@ -89,7 +88,7 @@ impl ViewNode for DepthPassNode {
                 render_pass.set_camera_viewport(viewport);
             }
 
-            if let Err(err) = attribute_phase.render(&mut render_pass, world, view_entity) {
+            if let Err(err) = point_cloud_3d_phase.render(&mut render_pass, world, view_entity) {
                 error!("Error encountered while rendering the point cloud depth phase {err:?}");
             }
 

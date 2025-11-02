@@ -1,44 +1,43 @@
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::ROQueryItem;
-use bevy_ecs::system::SystemParamItem;
 use bevy_ecs::system::lifetimeless::Read;
-use bevy_math::Mat4;
+use bevy_ecs::system::SystemParamItem;
+use bevy_math::prelude::*;
 use bevy_reflect::TypePath;
 use bevy_render::render_asset::RenderAssets;
 use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
 use bevy_render::render_resource::{AsBindGroup, BindGroupLayout, PreparedBindGroup};
 use bevy_render::renderer::RenderDevice;
-use bevy_log::prelude::*;
 
 #[derive(Component, TypePath, AsBindGroup, Clone, Debug)]
-pub struct PointCloudUniform {
+pub struct PointCloudOctree3dUniform {
     #[uniform(0)]
     pub world_from_local: Mat4,
 }
 
 #[derive(Component)]
-pub struct PreparedPointCloudUniform {
+pub struct PreparedPointCloudOctree3dUniform {
     prepared: PreparedBindGroup,
 }
 #[derive(Resource)]
-pub struct PointCloudUniformLayout {
+pub struct PointCloudOctree3dUniformLayout {
     pub layout: BindGroupLayout,
 }
 
-impl FromWorld for PointCloudUniformLayout {
+impl FromWorld for PointCloudOctree3dUniformLayout {
     fn from_world(world: &mut World) -> Self {
         let render_device = world.resource::<RenderDevice>();
 
         Self {
-            layout: PointCloudUniform::bind_group_layout(render_device),
+            layout: PointCloudOctree3dUniform::bind_group_layout(render_device),
         }
     }
 }
 
-pub fn prepare_point_cloud_uniform<'w>(
+pub fn prepare_point_cloud_octree_3d_uniform<'w>(
     mut commands: Commands,
-    point_cloud_uniform_layout: Res<PointCloudUniformLayout>,
-    query: Query<(Entity, &PointCloudUniform)>,
+    point_cloud_octree_3d_uniform_layout: Res<PointCloudOctree3dUniformLayout>,
+    query: Query<(Entity, &PointCloudOctree3dUniform)>,
     render_device: Res<RenderDevice>,
     mut material: (
         Res<'w, RenderAssets<bevy_render::texture::GpuImage>>,
@@ -51,7 +50,7 @@ pub fn prepare_point_cloud_uniform<'w>(
     for (entity, custom_uniform) in &query {
         let prepared = custom_uniform
             .as_bind_group(
-                &point_cloud_uniform_layout.layout,
+                &point_cloud_octree_3d_uniform_layout.layout,
                 render_device,
                 &mut material,
             )
@@ -59,24 +58,24 @@ pub fn prepare_point_cloud_uniform<'w>(
 
         commands
             .entity(entity)
-            .insert(PreparedPointCloudUniform { prepared });
+            .insert(PreparedPointCloudOctree3dUniform { prepared });
     }
 }
 
-pub struct SetPointCloudUniformGroup<const I: usize>;
-impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudUniformGroup<I> {
+pub struct SetPointCloudOctree3dUniformGroup<const I: usize>;
+impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudOctree3dUniformGroup<I> {
     type Param = ();
     type ViewQuery = ();
-    type ItemQuery = Read<PreparedPointCloudUniform>;
+    type ItemQuery = Read<PreparedPointCloudOctree3dUniform>;
 
     fn render<'w>(
         _item: &P,
         _view: ROQueryItem<'w, '_, Self::ViewQuery>,
-        prepared_custom_uniform: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
+        prepared_point_cloud_octree_3d_uniform: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         _param: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let Some(prepared_point_cloud_uniform) = prepared_custom_uniform else {
+        let Some(prepared_point_cloud_uniform) = prepared_point_cloud_octree_3d_uniform else {
             return RenderCommandResult::Skip;
         };
 

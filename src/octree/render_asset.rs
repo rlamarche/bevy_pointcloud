@@ -4,7 +4,7 @@ use crate::octree::storage::GenerationalSlab;
 use bevy_asset::Asset;
 use bevy_camera::primitives::Aabb;
 use bevy_platform::collections::{HashMap, HashSet};
-use bevy_reflect::TypePath;
+use bevy_reflect::{Reflect, TypePath};
 use std::fmt::Debug;
 use thiserror::Error;
 
@@ -25,10 +25,7 @@ where
     pub(crate) root_id: Option<NodeId>,
 }
 
-impl<T> Default for RenderOctree<T>
-where
-    T: Clone + Debug + Send + Sync + TypePath,
-{
+impl<T: Clone + Debug + Send + Sync + TypePath> Default for RenderOctree<T> {
     fn default() -> Self {
         Self {
             nodes: Default::default(),

@@ -1,9 +1,10 @@
+use bevy_reflect::Reflect;
 /// Generated using claude.ai
 
 use slab::Slab;
 
 /// A stable handle used to reference an entry inside a `GenerationalSlab`.
-#[derive(Copy, Clone, Default, Debug, Eq, PartialEq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Default, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Reflect)]
 pub struct NodeId {
     pub index: usize,
     pub generation: usize,
@@ -11,10 +12,16 @@ pub struct NodeId {
 
 /// A wrapper around `slab::Slab` that adds generation tracking.
 /// This ensures that old `NodeId`s become invalid once a slot is reused.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Reflect)]
 pub struct GenerationalSlab<T> {
     slab: Slab<(usize, T)>,     // (generation, value)
     generations: Vec<usize>,    // current generation per index
+}
+
+impl<T> Default for GenerationalSlab<T> {
+    fn default() -> Self {
+        GenerationalSlab::new()
+    }
 }
 
 impl<T> GenerationalSlab<T> {

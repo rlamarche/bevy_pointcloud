@@ -65,7 +65,7 @@ wasm_thread = { version = "0.3.3", optional = true }
 bevy = { version = "0.17", features = ["bevy_dev_tools"] }
 rand = "0.9"
 bevy_panorbit_camera = "0.29"
-
+bevy-inspector-egui = "0.35.0"
 
 [features]
 default = ["ply", "las"]

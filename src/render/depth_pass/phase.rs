@@ -1,20 +1,21 @@
-use bevy_asset::{AssetId, UntypedAssetId};
+use crate::render::phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey};
 use bevy_ecs::prelude::*;
-use bevy_render::render_phase::{BinnedPhaseItem, CachedRenderPipelinePhaseItem, DrawFunctionId, PhaseItem, PhaseItemBatchSetKey, PhaseItemExtraIndex};
+use bevy_render::render_phase::{
+    BinnedPhaseItem, CachedRenderPipelinePhaseItem, DrawFunctionId, PhaseItem
+    , PhaseItemExtraIndex,
+};
 use bevy_render::render_resource::CachedRenderPipelineId;
 use bevy_render::sync_world::MainEntity;
 use std::ops::Range;
-use crate::octree::render_asset::NodeId;
-use crate::pointcloud_octree::asset::PointCloudOctree;
 
-pub struct PointCloudOctree3dPhase {
+pub struct PointCloud3dDepthPhase {
     /// Determines which objects can be placed into a *batch set*.
     ///
     /// Objects in a single batch set can potentially be multi-drawn together,
     /// if it's enabled and the current platform supports it.
-    pub batch_set_key: PointCloudOctree3dBatchSetKey,
+    pub batch_set_key: PointCloud3dBatchSetKey,
     /// The key, which determines which can be batched.
-    pub bin_key: PointCloudOctree3dBinKey,
+    pub bin_key: PointCloud3dBinKey,
     /// An entity from which data will be fetched, including the mesh if
     /// applicable.
     pub representative_entity: (Entity, MainEntity),
@@ -25,38 +26,7 @@ pub struct PointCloudOctree3dPhase {
     pub extra_index: PhaseItemExtraIndex,
 }
 
-/// Information that must be identical in order to place opaque meshes in the
-/// same *batch set*.
-///
-/// A batch set is a set of batches that can be multi-drawn together, if
-/// multi-draw is in use.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct PointCloudOctree3dBatchSetKey {
-    pub pipeline: CachedRenderPipelineId,
-    pub draw_function: DrawFunctionId,
-}
-
-impl PhaseItemBatchSetKey for PointCloudOctree3dBatchSetKey {
-    fn indexed(&self) -> bool {
-        false
-    }
-}
-
-/// Data that must be identical in order to *batch* phase items together.
-///
-/// Note that a *batch set* (if multi-draw is in use) contains multiple batches.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct PointCloudOctree3dBinKey {
-    /// The asset that this phase item is associated with.
-    ///
-    /// Normally, this is the ID of the mesh, but for non-mesh items it might be
-    /// the ID of another type of asset.
-    pub asset_id: AssetId<PointCloudOctree>,
-    pub node_id: NodeId,
-
-}
-
-impl PhaseItem for PointCloudOctree3dPhase {
+impl PhaseItem for PointCloud3dDepthPhase {
     #[inline]
     fn entity(&self) -> Entity {
         self.representative_entity.0
@@ -91,9 +61,9 @@ impl PhaseItem for PointCloudOctree3dPhase {
     }
 }
 
-impl BinnedPhaseItem for PointCloudOctree3dPhase {
-    type BinKey = PointCloudOctree3dBinKey;
-    type BatchSetKey = PointCloudOctree3dBatchSetKey;
+impl BinnedPhaseItem for PointCloud3dDepthPhase {
+    type BinKey = PointCloud3dBinKey;
+    type BatchSetKey = PointCloud3dBatchSetKey;
 
     #[inline]
     fn new(
@@ -103,7 +73,7 @@ impl BinnedPhaseItem for PointCloudOctree3dPhase {
         batch_range: Range<u32>,
         extra_index: PhaseItemExtraIndex,
     ) -> Self {
-        PointCloudOctree3dPhase {
+        PointCloud3dDepthPhase {
             batch_set_key,
             bin_key,
             representative_entity,
@@ -113,7 +83,7 @@ impl BinnedPhaseItem for PointCloudOctree3dPhase {
     }
 }
 
-impl CachedRenderPipelinePhaseItem for PointCloudOctree3dPhase {
+impl CachedRenderPipelinePhaseItem for PointCloud3dDepthPhase {
     #[inline]
     fn cached_pipeline(&self) -> CachedRenderPipelineId {
         self.batch_set_key.pipeline

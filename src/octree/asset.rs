@@ -2,7 +2,7 @@ use crate::octree::storage::GenerationalSlab;
 use bevy_asset::Asset;
 use bevy_camera::primitives::Aabb;
 use bevy_platform::collections::HashSet;
-use bevy_reflect::TypePath;
+use bevy_reflect::{Reflect, TypePath};
 use std::fmt::Debug;
 use thiserror::Error;
 
@@ -18,16 +18,17 @@ pub enum InsertNodeError {
     ParentChildrenFull,
 }
 
-#[derive(Debug, Clone, Asset, TypePath)]
+#[derive(Debug, Clone, Asset, Reflect)]
 pub struct Octree<T>
 where
     T: Clone + Debug + Send + Sync + TypePath,
 {
+    #[reflect(ignore)]
     pub(crate) nodes: GenerationalSlab<OctreeNode<T>>,
     pub(crate) root_id: Option<NodeId>,
-    pub(crate) added: HashSet<NodeId>,
-    pub(crate) modified: HashSet<NodeId>,
-    pub(crate) removed: HashSet<NodeId>,
+    pub(crate) added: Vec<NodeId>,
+    pub(crate) modified: Vec<NodeId>,
+    pub(crate) removed: Vec<NodeId>,
 }
 
 #[derive(Debug, Clone, TypePath)]
@@ -60,9 +61,9 @@ where
         Self {
             nodes: GenerationalSlab::new(),
             root_id: None,
-            added: HashSet::new(),
-            modified: HashSet::new(),
-            removed: HashSet::new(),
+            added: Vec::new(),
+            modified: Vec::new(),
+            removed: Vec::new(),
         }
     }
 
@@ -73,7 +74,7 @@ where
             id: NodeId::default(),
             parent_id: None,
             children: [NodeId::default(); 8],
-            children_mask: 0x00,
+            children_mask: u8::MAX,
             bounding_box,
             data,
         };
@@ -84,16 +85,16 @@ where
         // store its id
         nodes.get_mut(root_id).unwrap().id = root_id;
 
-        let mut added = HashSet::new();
+        let mut added = Vec::new();
         // tracing root insertion
-        added.insert(root_id);
+        added.push(root_id);
 
         Self {
             nodes,
             root_id: Some(root_id),
             added,
-            modified: HashSet::new(),
-            removed: HashSet::new(),
+            modified: Vec::new(),
+            removed: Vec::new(),
         }
     }
 
@@ -110,7 +111,7 @@ where
                     return Err(InsertNodeError::ParentNotExists);
                 }
                 Some(parent) => {
-                    if parent.children_mask == 0xFF {
+                    if parent.children_mask == 0b00000000 {
                         return Err(InsertNodeError::ParentChildrenFull);
                     }
                 }
@@ -123,10 +124,11 @@ where
 
         // insert the new node
         let id = self.nodes.insert(OctreeNode {
+            // will set just after
             id: Default::default(),
             parent_id,
             children: [NodeId::default(); 8],
-            children_mask: 0x00,
+            children_mask: u8::MAX,
             bounding_box,
             data,
         });
@@ -139,17 +141,18 @@ where
             let parent = self.nodes.get_mut(*parent_id).unwrap();
 
             // get the next free child index
-            let child_index = parent.children_mask.trailing_ones() as usize;
+            let child_index = first_one(parent.children_mask).expect("children mask should have at least one 1");
+            // let child_index = parent.children_mask.trailing_zeros() as usize;
 
             // add to children array and update mask
-            parent.children[child_index] = *parent_id;
-            parent.children_mask &= !(1 << child_index);
+            parent.children[child_index] = id;
+            parent.children_mask &= !(1u8 << child_index);
         } else {
             self.root_id = Some(id);
         }
 
         // tracing insertion
-        self.added.insert(id);
+        self.added.push(id);
 
         Ok(id)
     }
@@ -161,4 +164,9 @@ where
     pub fn root(&self) -> Option<&OctreeNode<T>> {
         self.get(self.root_id?)
     }
+}
+
+fn first_one(mask: u8) -> Option<usize> {
+    let inverted_mask = !mask;
+    (0..8).find(move |&i| (inverted_mask & (1 << i)) == 0)
 }

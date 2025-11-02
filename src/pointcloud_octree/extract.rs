@@ -6,10 +6,17 @@ use bevy_ecs::{
     prelude::*,
     system::{lifetimeless::SRes, SystemParamItem},
 };
+use bevy_ecs::query::QueryItem;
 use bevy_log::info;
 use bevy_reflect::TypePath;
+use bevy_render::extract_component::ExtractComponent;
 use bevy_render::render_resource::{Buffer, BufferInitDescriptor, BufferUsages};
 use bevy_render::renderer::RenderDevice;
+use bevy_transform::prelude::GlobalTransform;
+use crate::point_cloud_material::PointCloudMaterial3d;
+use crate::pointcloud_octree::component::PointCloudOctree3d;
+use crate::pointcloud_octree::render::data::PointCloudOctree3dUniform;
+use crate::pointcloud_octree::visibility::VisiblePointCloudOctree3dNodes;
 
 #[derive(Clone, Debug, TypePath)]
 pub struct RenderPointCloudNodeData {
@@ -55,3 +62,31 @@ impl RenderOctreeNode for RenderPointCloudNodeData {
 //     pub num_points: usize,
 //     pub points: Buffer,
 // }
+
+
+impl ExtractComponent for PointCloudOctree3d {
+    type QueryData = (
+        &'static PointCloudOctree3d,
+        &'static GlobalTransform,
+        &'static PointCloudMaterial3d,
+    );
+    type QueryFilter = ();
+    type Out = (PointCloudOctree3d, PointCloudOctree3dUniform, PointCloudMaterial3d);
+
+    fn extract_component(
+        (point_cloud_3d, global_transform, point_cloud_material_3d): QueryItem<
+            '_,
+            '_,
+            Self::QueryData,
+        >,
+    ) -> Option<Self::Out> {
+        let point_cloud_octree_3d_uniform = PointCloudOctree3dUniform {
+            world_from_local: global_transform.to_matrix(),
+        };
+        Some((
+            point_cloud_3d.clone(),
+            point_cloud_octree_3d_uniform,
+            point_cloud_material_3d.clone(),
+        ))
+    }
+}

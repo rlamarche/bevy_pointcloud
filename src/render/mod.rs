@@ -4,15 +4,19 @@ pub mod depth_pass;
 mod extract;
 mod eye_dome_lighting;
 pub mod material;
+pub mod mesh;
 pub mod normalize_pass;
-mod point_cloud;
-mod point_cloud_uniform;
+pub mod phase;
+pub mod point_cloud;
+pub mod point_cloud_uniform;
+mod draw;
 
 use crate::point_cloud::PointCloud3d;
 use crate::render::eye_dome_lighting::{
     EyeDomeLightingUniform, NeighboursCache, extract_cameras_render_mode,
 };
 use crate::render::material::{RenderPointCloudMaterial, RenderPointCloudMaterialLayout};
+use crate::render::mesh::PointCloudMesh;
 use crate::render::point_cloud::RenderPointCloud;
 use aabb::compute_point_cloud_aabb;
 use attribute_pass::AttributePassPlugin;
@@ -20,13 +24,18 @@ use bevy_app::prelude::*;
 use bevy_asset::load_internal_asset;
 use bevy_asset::{prelude::*, uuid_handle};
 use bevy_camera::visibility::calculate_bounds;
+use bevy_camera::{Camera, Camera3d};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::{SystemParamItem, lifetimeless::*};
 use bevy_pbr::RenderMeshInstances;
-use bevy_render::RenderSystems;
+use bevy_platform::collections::HashSet;
+use bevy_render::batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport};
 use bevy_render::camera::extract_cameras;
 use bevy_render::extract_component::UniformComponentPlugin;
 use bevy_render::render_asset::RenderAssetPlugin;
+use bevy_render::render_phase::{DrawFunctions, ViewBinnedRenderPhases};
+use bevy_render::view::{NoIndirectDrawing, RetainedViewEntity};
+use bevy_render::{Extract, RenderSystems};
 use bevy_render::{
     Render, RenderApp,
     extract_component::ExtractComponentPlugin,
@@ -80,21 +89,24 @@ impl Plugin for RenderPipelinePlugin {
                 prepare_point_cloud_uniform.in_set(RenderSystems::PrepareResources),
             );
 
-        app.add_plugins((DepthPassPlugin, AttributePassPlugin, NormalizePassPlugin));
-
-        let sub_app = app.sub_app_mut(RenderApp);
-        sub_app
+        let render_app = app.sub_app_mut(RenderApp);
+        render_app
+            // .init_resource::<DrawFunctions<PointCloud3dPhase>>()
+            // .init_resource::<ViewBinnedRenderPhases<PointCloud3dPhase>>()
             .insert_resource(NeighboursCache::default())
             .add_systems(
                 ExtractSchedule,
                 extract_cameras_render_mode.after(extract_cameras),
             );
+
+        app.add_plugins((DepthPassPlugin, AttributePassPlugin, NormalizePassPlugin));
     }
 
     fn finish(&self, app: &mut App) {
         app.sub_app_mut(RenderApp)
             .init_resource::<RenderPointCloudMaterialLayout>()
-            .init_resource::<PointCloudUniformLayout>();
+            .init_resource::<PointCloudUniformLayout>()
+            .init_resource::<PointCloudMesh>();
     }
 }
 

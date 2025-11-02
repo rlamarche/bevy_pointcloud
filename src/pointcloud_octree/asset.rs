@@ -1,6 +1,6 @@
 use crate::octree::asset::Octree;
 use bevy_math::prelude::*;
-use bevy_reflect::TypePath;
+use bevy_reflect::{Reflect, TypePath};
 use bytemuck::{Pod, Zeroable};
 
 pub type PointCloudOctree = Octree<PointCloudNodeData>;
@@ -13,7 +13,7 @@ pub struct PointCloudNodeData {
     pub points: Vec<PointData>,
 }
 
-#[derive(Default, Debug, Clone, Copy, TypePath, Pod, Zeroable)]
+#[derive(Default, Debug, Clone, Copy, Pod, Zeroable, TypePath)]
 #[repr(C)]
 pub struct PointData {
     // position + padding

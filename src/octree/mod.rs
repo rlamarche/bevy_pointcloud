@@ -1,7 +1,7 @@
 use crate::octree::asset::Octree;
 use bevy_app::{App, Plugin};
 use bevy_asset::AssetApp;
-use bevy_reflect::TypePath;
+use bevy_reflect::{FromReflect, Reflect, TypePath};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
@@ -25,6 +25,8 @@ where
     T: Clone + Default + Debug + Send + Sync + TypePath,
 {
     fn build(&self, app: &mut App) {
-        app.init_asset::<Octree<T>>();
+        app
+            .init_asset::<Octree<T>>()
+            .register_asset_reflect::<Octree<T>>();
     }
 }

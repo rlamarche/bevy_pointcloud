@@ -10,7 +10,7 @@ use bevy_ecs::system::{
 };
 use bevy_log::prelude::*;
 use bevy_platform::collections::{HashMap, HashSet};
-use bevy_reflect::TypePath;
+use bevy_reflect::{Reflect, TypePath};
 use bevy_render::render_resource::AsBindGroupError;
 use bevy_render::{Extract, ExtractSchedule, MainWorld, Render, RenderApp, RenderSystems};
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -37,9 +37,9 @@ pub struct OctreeExtractionSystems;
 ///
 /// After that in the [`RenderSystems::PrepareAssets`] step the extracted octree nodes
 /// are transformed into their GPU-representation of type [`RenderOctreeNode`].
-pub trait RenderOctreeNode: Send + Sync + Sized + 'static + Clone + TypePath + Debug {
+pub trait RenderOctreeNode: Send + Sync + Sized + 'static + Clone + Debug + TypePath {
     /// The representation of the octree node in the "main world".
-    type SourceOctreeNode: Send + Sync + Clone + TypePath + Debug;
+    type SourceOctreeNode: Send + Sync + Clone + Debug + Default + TypePath;
 
     /// Specifies all ECS data required by [`RenderAsset::prepare_asset`].
     ///
@@ -157,15 +157,15 @@ pub struct ExtractedOctrees<A: RenderOctreeNode> {
     ///
     /// These assets will not be present in [`ExtractedAssets::extracted`].
     pub removed_assets: HashSet<AssetId<Octree<A::SourceOctreeNode>>>,
-    pub removed_nodes: HashMap<AssetId<Octree<A::SourceOctreeNode>>, HashSet<NodeId>>,
+    pub removed_nodes: HashMap<AssetId<Octree<A::SourceOctreeNode>>, Vec<NodeId>>,
 
     /// IDs of the assets that were modified this frame.
     pub modified_assets: HashSet<AssetId<Octree<A::SourceOctreeNode>>>,
-    pub modified_nodes: HashMap<AssetId<Octree<A::SourceOctreeNode>>, HashSet<NodeId>>,
+    pub modified_nodes: HashMap<AssetId<Octree<A::SourceOctreeNode>>, Vec<NodeId>>,
 
     /// IDs of the assets that were added this frame.
     pub added_assets: HashSet<AssetId<Octree<A::SourceOctreeNode>>>,
-    pub added_nodes: HashMap<AssetId<Octree<A::SourceOctreeNode>>, HashSet<NodeId>>,
+    pub added_nodes: HashMap<AssetId<Octree<A::SourceOctreeNode>>, Vec<NodeId>>,
 }
 
 impl<A: RenderOctreeNode> Default for ExtractedOctrees<A> {
@@ -184,7 +184,7 @@ impl<A: RenderOctreeNode> Default for ExtractedOctrees<A> {
 
 /// Stores all GPU representations ([`RenderAsset`])
 /// of [`RenderAsset::SourceAsset`] as long as they exist.
-#[derive(Resource)]
+#[derive(Resource, Reflect)]
 pub struct RenderOctrees<A: RenderOctreeNode>(
     HashMap<AssetId<Octree<A::SourceOctreeNode>>, RenderOctree<A>>,
 );
@@ -269,10 +269,6 @@ pub(crate) fn extract_render_octree_node<A: RenderOctreeNode>(
             let mut modified_assets = <HashSet<_>>::default();
 
             for event in events.read() {
-                #[expect(
-                    clippy::match_same_arms,
-                    reason = "LoadedWithDependencies is marked as a TODO, so it's likely this will no longer lint soon."
-                )]
                 match event {
                     AssetEvent::Added { id } => {
                         info!("Octree asset {} added", id);
@@ -292,7 +288,7 @@ pub(crate) fn extract_render_octree_node<A: RenderOctreeNode>(
                         removed_assets.insert(*id);
                     }
                     AssetEvent::LoadedWithDependencies { .. } => {
-                        // TODO: handle this
+                        // nothing to do
                     }
                 }
             }
