@@ -1,4 +1,3 @@
-use super::texture::ViewAttributePrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::prelude::*;
 use bevy_log::{error, warn};
@@ -13,14 +12,16 @@ use bevy_render::{
     renderer::RenderContext,
     view::ExtractedView,
 };
+use crate::pointcloud_octree::render::attribute_pass::phase::PointCloudOctree3dAttributePhase;
 use crate::render::attribute_pass::phase::PointCloud3dAttributePhase;
+use crate::render::attribute_pass::texture::ViewAttributePrepassTextures;
 
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
-pub struct AttributePassLabel;
+pub struct AttributePassOctreeLabel;
 
 #[derive(Default)]
-pub struct AttributePassNode;
-impl ViewNode for AttributePassNode {
+pub struct AttributePassOctreeNode;
+impl ViewNode for AttributePassOctreeNode {
     type ViewQuery = (
         &'static ExtractedCamera,
         &'static ExtractedView,
@@ -37,9 +38,9 @@ impl ViewNode for AttributePassNode {
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource
         let Some(point_cloud_3d_phases) =
-            world.get_resource::<ViewBinnedRenderPhases<PointCloud3dAttributePhase>>()
+            world.get_resource::<ViewBinnedRenderPhases<PointCloudOctree3dAttributePhase>>()
         else {
-            info!("no pointcloud phases");
+            info!("no pointcloud octree phases");
             return Ok(());
         };
 
@@ -64,11 +65,11 @@ impl ViewNode for AttributePassNode {
         render_context.add_command_buffer_generation_task(move |render_device| {
             let mut command_encoder =
                 render_device.create_command_encoder(&CommandEncoderDescriptor {
-                    label: Some("pcl_attribute_pass_command_encoder"),
+                    label: Some("pcl_octree_attribute_pass_command_encoder"),
                 });
 
             let render_pass = command_encoder.begin_render_pass(&RenderPassDescriptor {
-                label: Some("pcl_attribute_pass"),
+                label: Some("pcl_octree_attribute_pass"),
                 color_attachments: &color_attachments,
                 depth_stencil_attachment,
                 timestamp_writes: None,

@@ -1,21 +1,22 @@
-use crate::render::phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey};
+use crate::octree::asset::NodeId;
+use crate::pointcloud_octree::render::phase::{PointCloudOctree3dBinKey, PointCloudOctree3dPhase};
+use crate::render::phase::PointCloud3dBatchSetKey;
 use bevy_ecs::prelude::*;
 use bevy_render::render_phase::{
-    BinnedPhaseItem, CachedRenderPipelinePhaseItem, DrawFunctionId, PhaseItem
-    , PhaseItemExtraIndex,
+    BinnedPhaseItem, CachedRenderPipelinePhaseItem, DrawFunctionId, PhaseItem, PhaseItemExtraIndex,
 };
 use bevy_render::render_resource::CachedRenderPipelineId;
 use bevy_render::sync_world::MainEntity;
 use std::ops::Range;
 
-pub struct PointCloud3dAttributePhase {
+pub struct PointCloudOctree3dDepthPhase {
     /// Determines which objects can be placed into a *batch set*.
     ///
     /// Objects in a single batch set can potentially be multi-drawn together,
     /// if it's enabled and the current platform supports it.
     pub batch_set_key: PointCloud3dBatchSetKey,
     /// The key, which determines which can be batched.
-    pub bin_key: PointCloud3dBinKey,
+    pub bin_key: PointCloudOctree3dBinKey,
     /// An entity from which data will be fetched, including the mesh if
     /// applicable.
     pub representative_entity: (Entity, MainEntity),
@@ -26,7 +27,13 @@ pub struct PointCloud3dAttributePhase {
     pub extra_index: PhaseItemExtraIndex,
 }
 
-impl PhaseItem for PointCloud3dAttributePhase {
+impl PointCloudOctree3dPhase for PointCloudOctree3dDepthPhase {
+    fn node_id(&self) -> NodeId {
+        self.bin_key.node_id
+    }
+}
+
+impl PhaseItem for PointCloudOctree3dDepthPhase {
     #[inline]
     fn entity(&self) -> Entity {
         self.representative_entity.0
@@ -61,8 +68,8 @@ impl PhaseItem for PointCloud3dAttributePhase {
     }
 }
 
-impl BinnedPhaseItem for PointCloud3dAttributePhase {
-    type BinKey = PointCloud3dBinKey;
+impl BinnedPhaseItem for PointCloudOctree3dDepthPhase {
+    type BinKey = PointCloudOctree3dBinKey;
     type BatchSetKey = PointCloud3dBatchSetKey;
 
     #[inline]
@@ -73,7 +80,7 @@ impl BinnedPhaseItem for PointCloud3dAttributePhase {
         batch_range: Range<u32>,
         extra_index: PhaseItemExtraIndex,
     ) -> Self {
-        PointCloud3dAttributePhase {
+        PointCloudOctree3dDepthPhase {
             batch_set_key,
             bin_key,
             representative_entity,
@@ -83,7 +90,7 @@ impl BinnedPhaseItem for PointCloud3dAttributePhase {
     }
 }
 
-impl CachedRenderPipelinePhaseItem for PointCloud3dAttributePhase {
+impl CachedRenderPipelinePhaseItem for PointCloudOctree3dDepthPhase {
     #[inline]
     fn cached_pipeline(&self) -> CachedRenderPipelineId {
         self.batch_set_key.pipeline

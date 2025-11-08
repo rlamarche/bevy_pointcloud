@@ -5,6 +5,7 @@ use crate::render::POINTCLOUD_SHADER_HANDLE;
 use bevy_asset::prelude::*;
 use bevy_core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT;
 use bevy_ecs::prelude::*;
+use bevy_log::prelude::*;
 use bevy_mesh::{PrimitiveTopology, VertexBufferLayout, VertexFormat};
 use bevy_pbr::{MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey};
 use bevy_render::render_resource::{AsBindGroup, BindGroupLayout, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, SpecializedRenderPipeline, StencilState, TextureFormat, VertexAttribute, VertexStepMode};
@@ -50,6 +51,7 @@ impl SpecializedRenderPipeline for DepthPipeline {
         &self,
         key: Self::Key,
     ) -> RenderPipelineDescriptor {
+        info!("Specializing depth pipeline with edl {:#?}", key.use_edl);
         let vertex_buffer_layout = VertexBufferLayout {
             array_stride: VertexFormat::Float32x4.size(),
             step_mode: VertexStepMode::Vertex,

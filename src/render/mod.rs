@@ -10,6 +10,7 @@ pub mod phase;
 pub mod point_cloud;
 pub mod point_cloud_uniform;
 mod draw;
+mod node;
 
 use crate::point_cloud::PointCloud3d;
 use crate::render::eye_dome_lighting::{
@@ -25,6 +26,7 @@ use bevy_asset::load_internal_asset;
 use bevy_asset::{prelude::*, uuid_handle};
 use bevy_camera::visibility::calculate_bounds;
 use bevy_camera::{Camera, Camera3d};
+use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::{SystemParamItem, lifetimeless::*};
 use bevy_pbr::RenderMeshInstances;
@@ -44,10 +46,12 @@ use bevy_render::{
     render_asset::RenderAssets,
     render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
 };
+use bevy_render::render_graph::{RenderGraphExt, ViewNodeRunner};
 use bevy_shader::Shader;
 use depth_pass::DepthPassPlugin;
 use normalize_pass::NormalizePassPlugin;
 use point_cloud_uniform::{PointCloudUniformLayout, prepare_point_cloud_uniform};
+use crate::render::node::{OpaquePointCloud3d, OpaquePointCloud3dLabel};
 
 const POINTCLOUD_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("9c7d8df3-86dd-4412-a9cc-dad5c7916a8c");
@@ -91,13 +95,20 @@ impl Plugin for RenderPipelinePlugin {
 
         let render_app = app.sub_app_mut(RenderApp);
         render_app
-            // .init_resource::<DrawFunctions<PointCloud3dPhase>>()
-            // .init_resource::<ViewBinnedRenderPhases<PointCloud3dPhase>>()
             .insert_resource(NeighboursCache::default())
             .add_systems(
                 ExtractSchedule,
                 extract_cameras_render_mode.after(extract_cameras),
             );
+
+
+
+        // let render_app = app.sub_app_mut(RenderApp);
+
+        // render_app
+        //     .add_render_graph_node::<ViewNodeRunner<OpaquePointCloud3d>>(Core3d, OpaquePointCloud3dLabel)
+        //     // Tell the node to run before the main transparent pass
+        //     .add_render_graph_edges(Core3d, (OpaquePointCloud3dLabel, Node3d::MainTransparentPass));
 
         app.add_plugins((DepthPassPlugin, AttributePassPlugin, NormalizePassPlugin));
     }

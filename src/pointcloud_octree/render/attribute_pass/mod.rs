@@ -1,18 +1,22 @@
 pub mod node;
 pub mod phase;
-pub mod pipeline;
-pub mod texture;
 
-use crate::point_cloud::PointCloud3d;
+use crate::octree::extract::RenderOctrees;
+use crate::pointcloud_octree::component::PointCloudOctree3d;
+use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
+use crate::pointcloud_octree::render::attribute_pass::node::AttributePassOctreeLabel;
+use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
+use crate::pointcloud_octree::render::depth_pass::node::DepthPassOctreeLabel;
+use crate::pointcloud_octree::render::draw::DrawPointCloudOctreeNode;
+use crate::pointcloud_octree::render::phase::PointCloudOctree3dBinKey;
+use crate::pointcloud_octree::render::visibility::RenderVisiblePointCloudOctree3dNodes;
 use crate::render::attribute_pass::pipeline::AttributePassPipeline;
 use crate::render::attribute_pass::texture::{
-    AttributePassLayout, SetAttributePassTextures, prepare_attribute_pass_bind_groups,
+    prepare_attribute_pass_bind_groups, SetAttributePassTextures,
 };
-use crate::render::depth_pass::node::DepthPassLabel;
-use crate::render::draw::DrawPointCloud;
 use crate::render::material::SetPointCloudMaterialGroup;
-use crate::render::phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey};
-use crate::render::point_cloud_uniform::SetPointCloudUniformGroup;
+use crate::render::normalize_pass::node::NormalizePassLabel;
+use crate::render::phase::PointCloud3dBatchSetKey;
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::Core3d;
@@ -22,61 +26,46 @@ use bevy_log::prelude::*;
 use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
 use bevy_platform::collections::HashSet;
 use bevy_render::batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport};
-use bevy_render::render_graph::RenderGraphExt;
+use bevy_render::render_graph::{RenderGraphExt, ViewNodeRunner};
 use bevy_render::render_phase::{BinnedRenderPhaseType, InputUniformIndex, ViewBinnedRenderPhases};
-use bevy_render::render_resource::SpecializedRenderPipelines;
-use bevy_render::view::NoIndirectDrawing;
+use bevy_render::render_resource::{PipelineCache, SpecializedRenderPipelines};
+use bevy_render::sync_world::MainEntity;
+use bevy_render::view::{ExtractedView, NoIndirectDrawing};
 use bevy_render::{
-    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
-    prelude::*,
-    render_graph::ViewNodeRunner,
-    render_phase::{
-        AddRenderCommand, DrawFunctions, PhaseItem, PhaseItemExtraIndex, SetItemPipeline,
-        SortedPhaseItem, SortedRenderPhasePlugin, ViewSortedRenderPhases,
-    },
-    render_resource::{CachedRenderPipelineId, PipelineCache, SpecializedMeshPipelines},
-    sync_world::MainEntity,
-    view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity},
+    prelude::*, render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline}, view::RetainedViewEntity, Extract, ExtractSchedule,
+    Render,
+    RenderApp,
+    RenderSystems,
 };
-use node::{AttributePassLabel, AttributePassNode};
-use phase::PointCloud3dAttributePhase;
-use texture::prepare_attribute_pass_textures;
+use phase::PointCloudOctree3dAttributePhase;
 
 pub struct AttributePassPlugin;
 impl Plugin for AttributePassPlugin {
     fn build(&self, app: &mut App) {
+        // We need to get the render app from the main app
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
         render_app
-            .init_resource::<DrawFunctions<PointCloud3dAttributePhase>>()
-            .init_resource::<ViewBinnedRenderPhases<PointCloud3dAttributePhase>>()
-            .add_render_command::<PointCloud3dAttributePhase, DrawAttributePass>()
-            .init_resource::<SpecializedRenderPipelines<AttributePassPipeline>>()
+            .init_resource::<DrawFunctions<PointCloudOctree3dAttributePhase>>()
+            .init_resource::<ViewBinnedRenderPhases<PointCloudOctree3dAttributePhase>>()
+            .add_render_command::<PointCloudOctree3dAttributePhase, DrawAttributePass>()
             .add_systems(ExtractSchedule, extract_camera_phases)
             .add_systems(
                 Render,
                 (
-                    prepare_attribute_pass_textures.in_set(RenderSystems::PrepareResources),
                     prepare_attribute_pass_bind_groups.in_set(RenderSystems::PrepareResources),
                     queue_attribute_pass.in_set(RenderSystems::QueueMeshes),
                 ),
             );
 
         render_app
-            .add_render_graph_node::<ViewNodeRunner<AttributePassNode>>(Core3d, AttributePassLabel)
-            .add_render_graph_edges(Core3d, (DepthPassLabel, AttributePassLabel));
-    }
-
-    fn finish(&self, app: &mut App) {
-        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
-            return;
-        };
-        // The pipeline needs the RenderDevice to be created and it's only available once plugins
-        // are initialized
-        render_app
-            .init_resource::<AttributePassLayout>()
-            .init_resource::<AttributePassPipeline>();
+            .add_render_graph_node::<ViewNodeRunner<node::AttributePassOctreeNode>>(
+                Core3d,
+                AttributePassOctreeLabel,
+            )
+            .add_render_graph_edges(Core3d, (DepthPassOctreeLabel, AttributePassOctreeLabel))
+            .add_render_graph_edges(Core3d, (AttributePassOctreeLabel, NormalizePassLabel));
     }
 }
 
@@ -84,14 +73,14 @@ impl Plugin for AttributePassPlugin {
 type DrawAttributePass = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
-    SetPointCloudUniformGroup<1>,
+    SetPointCloudOctree3dUniformGroup<1>,
     SetPointCloudMaterialGroup<2>,
     SetAttributePassTextures<3>,
-    DrawPointCloud,
+    DrawPointCloudOctreeNode,
 );
 
 fn extract_camera_phases(
-    mut pointcloud3d_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dAttributePhase>>,
+    mut pointcloud3d_phases: ResMut<ViewBinnedRenderPhases<PointCloudOctree3dAttributePhase>>,
     cameras: Extract<Query<(Entity, &Camera, Has<NoIndirectDrawing>), With<Camera3d>>>,
     mut live_entities: Local<HashSet<RetainedViewEntity>>,
     gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
@@ -129,13 +118,14 @@ fn extract_camera_phases(
 }
 
 fn queue_attribute_pass(
-    custom_draw_functions: Res<DrawFunctions<PointCloud3dAttributePhase>>,
+    custom_draw_functions: Res<DrawFunctions<PointCloudOctree3dAttributePhase>>,
     mut pipelines: ResMut<SpecializedRenderPipelines<AttributePassPipeline>>,
     pipeline_cache: Res<PipelineCache>,
     custom_draw_pipeline: Res<AttributePassPipeline>,
-    point_clouds_3d: Query<&PointCloud3d>,
-    mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dAttributePhase>>,
-    mut views: Query<(&ExtractedView, &RenderVisibleEntities, &Msaa)>,
+    render_pointcloud_octrees: Res<RenderOctrees<RenderPointCloudNodeData>>,
+    point_cloud_octrees_3d: Query<&PointCloudOctree3d>,
+    mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloudOctree3dAttributePhase>>,
+    mut views: Query<(&ExtractedView, &RenderVisiblePointCloudOctree3dNodes, &Msaa)>,
     main_entities: Query<&MainEntity>,
     mut next_tick: Local<Tick>,
 ) {
@@ -150,14 +140,22 @@ fn queue_attribute_pass(
         let view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
             | MeshPipelineKey::from_hdr(view.hdr);
 
+        let pipeline_id = pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, view_key);
+
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
-        for (render_entity, visible_entity) in visible_entities.iter::<PointCloud3d>() {
+        for (render_entity, node_ids) in &visible_entities.octrees {
             let Ok(main_entity) = main_entities.get(*render_entity) else {
                 warn!("Render entity not found, skipping.");
                 continue;
             };
-            let Ok(point_cloud_3d) = point_clouds_3d.get(*render_entity) else {
-                warn!("point_cloud_3d missing");
+            let Ok(point_cloud_octree_3d) = point_cloud_octrees_3d.get(*render_entity) else {
+                warn!("point_cloud_octree_3d missing");
+                continue;
+            };
+            let Some(render_pointcloud_octree) =
+                render_pointcloud_octrees.get(point_cloud_octree_3d)
+            else {
+                warn!("render_pointcloud_octree missing");
                 continue;
             };
 
@@ -165,25 +163,30 @@ fn queue_attribute_pass(
             let this_tick = next_tick.get() + 1;
             next_tick.set(this_tick);
 
-            let pipeline_id =
-                pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, view_key);
+            for node_id in node_ids {
+                let Some(render_node) = render_pointcloud_octree.nodes.get(node_id) else {
+                    warn!("missing render node");
+                    continue;
+                };
 
-            // At this point we have all the data we need to create a phase item and add it to our
-            // phase
-            custom_phase.add(
-                PointCloud3dBatchSetKey {
-                    pipeline: pipeline_id,
-                    draw_function: draw_custom,
-                },
-                PointCloud3dBinKey {
-                    asset_id: point_cloud_3d.0.id(),
-                },
-                // (*entity, Entity::PLACEHOLDER.into()),
-                (*render_entity, *main_entity),
-                InputUniformIndex::default(),
-                BinnedRenderPhaseType::NonMesh,
-                *next_tick,
-            );
+                // At this point we have all the data we need to create a phase item and add it to our
+                // phase
+                custom_phase.add(
+                    PointCloud3dBatchSetKey {
+                        pipeline: pipeline_id,
+                        draw_function: draw_custom,
+                    },
+                    PointCloudOctree3dBinKey {
+                        asset_id: point_cloud_octree_3d.0.id(),
+                        node_id: *node_id,
+                    },
+                    // (*entity, Entity::PLACEHOLDER.into()),
+                    (*render_entity, *main_entity),
+                    InputUniformIndex::default(),
+                    BinnedRenderPhaseType::NonMesh,
+                    *next_tick,
+                );
+            }
         }
     }
 }

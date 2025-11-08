@@ -1,7 +1,7 @@
-use super::texture::ViewAttributePrepassTextures;
+use crate::render::depth_pass::phase::PointCloud3dDepthPhase;
+use crate::render::depth_pass::texture::ViewDepthPrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::prelude::*;
-use bevy_log::{error, warn};
 use bevy_render::render_phase::{TrackedRenderPass, ViewBinnedRenderPhases};
 use bevy_render::render_resource::{CommandEncoderDescriptor, StoreOp};
 use bevy_render::view::ViewDepthTexture;
@@ -13,31 +13,35 @@ use bevy_render::{
     renderer::RenderContext,
     view::ExtractedView,
 };
-use crate::render::attribute_pass::phase::PointCloud3dAttributePhase;
+use crate::pointcloud_octree::render::depth_pass::phase::PointCloudOctree3dDepthPhase;
 
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
-pub struct AttributePassLabel;
+pub struct DepthPassOctreeLabel;
 
 #[derive(Default)]
-pub struct AttributePassNode;
-impl ViewNode for AttributePassNode {
+pub struct DepthPassOctreeNode;
+impl ViewNode for DepthPassOctreeNode {
     type ViewQuery = (
         &'static ExtractedCamera,
         &'static ExtractedView,
         &'static ViewDepthTexture,
-        &'static ViewAttributePrepassTextures,
+        &'static ViewDepthPrepassTextures,
     );
 
     fn run<'w>(
         &self,
         graph: &mut RenderGraphContext,
         render_context: &mut RenderContext<'w>,
-        (camera, view, depth, view_prepass_textures): QueryItem<'w, '_, Self::ViewQuery>,
+        (camera, view, view_depth_texture, view_prepass_textures): QueryItem<
+            'w,
+            '_,
+            Self::ViewQuery,
+        >,
         world: &'w World,
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource
         let Some(point_cloud_3d_phases) =
-            world.get_resource::<ViewBinnedRenderPhases<PointCloud3dAttributePhase>>()
+            world.get_resource::<ViewBinnedRenderPhases<PointCloudOctree3dDepthPhase>>()
         else {
             info!("no pointcloud phases");
             return Ok(());
@@ -48,28 +52,33 @@ impl ViewNode for AttributePassNode {
         // Get the phase for the current view running our node
         let Some(point_cloud_3d_phase) = point_cloud_3d_phases.get(&view.retained_view_entity)
         else {
-            info!("no pointcloud phase");
+            info!("no pointcloud octree phase");
             return Ok(());
         };
 
         let color_attachments = vec![
             view_prepass_textures
-                .attribute
+                .depth
                 .as_ref()
                 .map(|attribute_texture| attribute_texture.get_attachment()),
         ];
 
-        let depth_stencil_attachment = Some(depth.get_attachment(StoreOp::Store));
+        let depth_stencil_attachment = Some(view_depth_texture.get_attachment(StoreOp::Store));
 
         render_context.add_command_buffer_generation_task(move |render_device| {
+            // Command encoder setup
             let mut command_encoder =
                 render_device.create_command_encoder(&CommandEncoderDescriptor {
-                    label: Some("pcl_attribute_pass_command_encoder"),
+                    label: Some("pcl_octree_depth_pass_command_encoder"),
                 });
 
+            // Render pass setup
             let render_pass = command_encoder.begin_render_pass(&RenderPassDescriptor {
-                label: Some("pcl_attribute_pass"),
+                label: Some("pcl_octree_depth_pass"),
+                // In the depth phase, we write a depth mask to reuse it in normalize pass
+                // We could use the depth buffer, but with WebGL we can't bind it in a shader
                 color_attachments: &color_attachments,
+                // We store the depth for usage in attribute pass
                 depth_stencil_attachment,
                 timestamp_writes: None,
                 occlusion_query_set: None,
@@ -81,11 +90,11 @@ impl ViewNode for AttributePassNode {
             }
 
             if let Err(err) = point_cloud_3d_phase.render(&mut render_pass, world, view_entity) {
-                error!("Error encountered while rendering the point cloud attribute phase {err:?}");
+                error!("Error encountered while rendering the point cloud depth phase {err:?}");
             }
 
             drop(render_pass);
-
+            
             command_encoder.finish()
         });
 

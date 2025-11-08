@@ -1,32 +1,27 @@
 pub mod node;
 pub mod phase;
-pub mod pipeline;
-pub mod texture;
 
-use std::ops::Range;
-
-use crate::point_cloud::PointCloud3d;
-use crate::render::DrawMeshInstanced;
-use crate::render::depth_pass::node::{DepthPassLabel, DepthPassNode};
+use crate::octree::extract::RenderOctrees;
+use crate::pointcloud_octree::component::PointCloudOctree3d;
+use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
+use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
+use crate::pointcloud_octree::render::depth_pass::node::DepthPassOctreeLabel;
+use crate::pointcloud_octree::render::draw::DrawPointCloudOctreeNode;
+use crate::pointcloud_octree::render::phase::PointCloudOctree3dBinKey;
+use crate::pointcloud_octree::render::visibility::RenderVisiblePointCloudOctree3dNodes;
+use crate::render::attribute_pass::node::AttributePassLabel;
 use crate::render::depth_pass::pipeline::{DepthPipeline, DepthPipelineKey};
-use crate::render::depth_pass::texture::{DepthPassLayout, prepare_depth_pass_textures};
-use crate::render::draw::DrawPointCloud;
+use crate::render::depth_pass::texture::prepare_depth_pass_textures;
 use crate::render::material::SetPointCloudMaterialGroup;
-use crate::render::phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey};
-use crate::render::point_cloud_uniform::SetPointCloudUniformGroup;
+use crate::render::phase::PointCloud3dBatchSetKey;
 use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy_ecs::component::Tick;
 use bevy_ecs::prelude::*;
-use bevy_log::error;
 use bevy_log::prelude::*;
-use bevy_math::FloatOrd;
-use bevy_mesh::Mesh3d;
-use bevy_pbr::{
-    MeshPipeline, MeshPipelineKey, RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup,
-};
+use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
 use bevy_platform::collections::HashSet;
 use bevy_render::batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport};
 use bevy_render::render_graph::RenderGraphExt;
@@ -34,37 +29,30 @@ use bevy_render::render_phase::{BinnedRenderPhaseType, InputUniformIndex, ViewBi
 use bevy_render::render_resource::SpecializedRenderPipelines;
 use bevy_render::view::NoIndirectDrawing;
 use bevy_render::{
-    Extract, ExtractSchedule, Render, RenderApp, RenderDebugFlags, RenderSystems,
-    mesh::RenderMesh,
-    prelude::*,
-    render_asset::RenderAssets,
-    render_graph::ViewNodeRunner,
-    render_phase::{
-        AddRenderCommand, CachedRenderPipelinePhaseItem, DrawFunctionId, DrawFunctions, PhaseItem,
-        PhaseItemExtraIndex, SetItemPipeline, SortedPhaseItem, SortedRenderPhasePlugin,
-        ViewSortedRenderPhases,
-    },
-    render_resource::{CachedRenderPipelineId, PipelineCache, SpecializedMeshPipelines},
-    sync_world::MainEntity,
+    prelude::*, render_graph::ViewNodeRunner, render_phase::{
+        AddRenderCommand, DrawFunctions, PhaseItemExtraIndex, SetItemPipeline,
+        SortedRenderPhasePlugin, ViewSortedRenderPhases,
+    }, render_resource::{CachedRenderPipelineId, PipelineCache, SpecializedMeshPipelines}, sync_world::MainEntity,
     view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity},
+    Extract,
+    ExtractSchedule,
+    Render,
+    RenderApp,
+    RenderSystems,
 };
-use phase::PointCloud3dDepthPhase;
+use phase::PointCloudOctree3dDepthPhase;
 
 pub struct DepthPassPlugin;
 impl Plugin for DepthPassPlugin {
     fn build(&self, app: &mut App) {
-        // app.add_plugins(SortedRenderPhasePlugin::<DepthPass3d, MeshPipeline>::new(
-        //     RenderDebugFlags::default(),
-        // ));
-
         // We need to get the render app from the main app
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
         render_app
-            .init_resource::<DrawFunctions<PointCloud3dDepthPhase>>()
-            .init_resource::<ViewBinnedRenderPhases<PointCloud3dDepthPhase>>()
-            .add_render_command::<PointCloud3dDepthPhase, DrawDepthPass>()
+            .init_resource::<DrawFunctions<PointCloudOctree3dDepthPhase>>()
+            .init_resource::<ViewBinnedRenderPhases<PointCloudOctree3dDepthPhase>>()
+            .add_render_command::<PointCloudOctree3dDepthPhase, DrawDepthPass>()
             .init_resource::<SpecializedRenderPipelines<DepthPipeline>>()
             .add_systems(ExtractSchedule, extract_camera_phases)
             .add_systems(
@@ -76,20 +64,12 @@ impl Plugin for DepthPassPlugin {
             );
 
         render_app
-            .add_render_graph_node::<ViewNodeRunner<DepthPassNode>>(Core3d, DepthPassLabel)
+            .add_render_graph_node::<ViewNodeRunner<node::DepthPassOctreeNode>>(
+                Core3d,
+                DepthPassOctreeLabel,
+            )
             // Tell the node to run before the main transparent pass
-            .add_render_graph_edges(Core3d, (DepthPassLabel, Node3d::MainTransparentPass));
-    }
-
-    fn finish(&self, app: &mut App) {
-        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
-            return;
-        };
-        // The pipeline needs the RenderDevice to be created and it's only available once plugins
-        // are initialized
-        render_app
-            .init_resource::<DepthPassLayout>()
-            .init_resource::<DepthPipeline>();
+            .add_render_graph_edges(Core3d, (DepthPassOctreeLabel, AttributePassLabel));
     }
 }
 
@@ -97,13 +77,13 @@ impl Plugin for DepthPassPlugin {
 type DrawDepthPass = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
-    SetPointCloudUniformGroup<1>,
+    SetPointCloudOctree3dUniformGroup<1>,
     SetPointCloudMaterialGroup<2>,
-    DrawPointCloud,
+    DrawPointCloudOctreeNode,
 );
 
 fn extract_camera_phases(
-    mut pointcloud3d_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dDepthPhase>>,
+    mut pointcloud3d_phases: ResMut<ViewBinnedRenderPhases<PointCloudOctree3dDepthPhase>>,
     cameras: Extract<Query<(Entity, &Camera, Has<NoIndirectDrawing>), With<Camera3d>>>,
     mut live_entities: Local<HashSet<RetainedViewEntity>>,
     gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
@@ -128,7 +108,11 @@ fn extract_camera_phases(
         pointcloud3d_phases.prepare_for_new_frame(retained_view_entity, gpu_preprocessing_mode);
 
         // clear phases between each iteration
-        pointcloud3d_phases.get_mut(&retained_view_entity).unwrap().non_mesh_items.clear();
+        pointcloud3d_phases
+            .get_mut(&retained_view_entity)
+            .unwrap()
+            .non_mesh_items
+            .clear();
 
         live_entities.insert(retained_view_entity);
     }
@@ -138,18 +122,20 @@ fn extract_camera_phases(
 }
 
 fn queue_depth_pass(
-    custom_draw_functions: Res<DrawFunctions<PointCloud3dDepthPhase>>,
+    custom_draw_functions: Res<DrawFunctions<PointCloudOctree3dDepthPhase>>,
     mut pipelines: ResMut<SpecializedRenderPipelines<DepthPipeline>>,
     pipeline_cache: Res<PipelineCache>,
     custom_draw_pipeline: Res<DepthPipeline>,
-    point_clouds_3d: Query<&PointCloud3d>,
-    mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dDepthPhase>>,
+    render_pointcloud_octrees: Res<RenderOctrees<RenderPointCloudNodeData>>,
+    point_cloud_octrees_3d: Query<&PointCloudOctree3d>,
+    mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloudOctree3dDepthPhase>>,
     mut views: Query<(
         &ExtractedView,
-        &RenderVisibleEntities,
+        &RenderVisiblePointCloudOctree3dNodes,
         &Msaa,
         Option<&PointCloudRenderMode>,
     )>,
+    main_entities: Query<&MainEntity>,
     mut next_tick: Local<Tick>,
 ) {
     for (view, visible_entities, msaa, point_cloud_render_mode) in &mut views {
@@ -163,40 +149,57 @@ fn queue_depth_pass(
         let view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
             | MeshPipelineKey::from_hdr(view.hdr);
 
+        let depth_key = DepthPipelineKey {
+            mesh_key: view_key,
+            use_edl: point_cloud_render_mode.use_edl(),
+        };
+
+        let pipeline_id = pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, depth_key);
+
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
-        for (render_entity, main_entity) in visible_entities.iter::<PointCloud3d>() {
-            let Ok(point_cloud__3d) = point_clouds_3d.get(*render_entity) else {
-                warn!("point_cloud_3d missing");
+        for (render_entity, node_ids) in &visible_entities.octrees {
+            let Ok(main_entity) = main_entities.get(*render_entity) else {
+                warn!("Render entity not found, skipping.");
                 continue;
             };
-
+            let Ok(point_cloud_octree_3d) = point_cloud_octrees_3d.get(*render_entity) else {
+                warn!("point_cloud_octree_3d missing");
+                continue;
+            };
+            let Some(render_pointcloud_octree) =
+                render_pointcloud_octrees.get(point_cloud_octree_3d)
+            else {
+                warn!("render_pointcloud_octree missing");
+                continue;
+            };
+            
             // Bump the change tick in order to force Bevy to rebuild the bin.
             let this_tick = next_tick.get() + 1;
             next_tick.set(this_tick);
 
-            let depth_key = DepthPipelineKey {
-                mesh_key: view_key,
-                use_edl: point_cloud_render_mode.use_edl(),
-            };
+            for node_id in node_ids {
+                let Some(render_node) = render_pointcloud_octree.nodes.get(node_id) else {
+                    warn!("missing render node");
+                    continue;
+                };
 
-            let pipeline_id =
-                pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, depth_key);
-
-            // At this point we have all the data we need to create a phase item and add it to our
-            // phase
-            custom_phase.add(
-                PointCloud3dBatchSetKey {
-                    pipeline: pipeline_id,
-                    draw_function: draw_custom,
-                },
-                PointCloud3dBinKey {
-                    asset_id: point_cloud__3d.0.id(),
-                },
-                (*render_entity, *main_entity),
-                InputUniformIndex::default(),
-                BinnedRenderPhaseType::NonMesh,
-                *next_tick,
-            );
+                // At this point we have all the data we need to create a phase item and add it to our
+                // phase
+                custom_phase.add(
+                    PointCloud3dBatchSetKey {
+                        pipeline: pipeline_id,
+                        draw_function: draw_custom,
+                    },
+                    PointCloudOctree3dBinKey {
+                        asset_id: point_cloud_octree_3d.0.id(),
+                        node_id: *node_id,
+                    },
+                    (*render_entity, *main_entity),
+                    InputUniformIndex::default(),
+                    BinnedRenderPhaseType::NonMesh,
+                    *next_tick,
+                );
+            }
         }
     }
 }

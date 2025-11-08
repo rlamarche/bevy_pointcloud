@@ -28,8 +28,7 @@ pub struct PointCloudPlugin;
 impl Plugin for PointCloudPlugin {
     fn build(&self, app: &mut App) {
         app.register_required_components::<PointCloud3d, Visibility>()
-            .register_required_components::<PointCloud3d, VisibilityClass>()
-            .add_plugins(PointCloudOctreePlugin);
+            .register_required_components::<PointCloud3d, VisibilityClass>();
 
         app.register_type::<PointCloud>()
             .init_asset::<PointCloud>()
@@ -37,6 +36,8 @@ impl Plugin for PointCloudPlugin {
             .register_asset_reflect::<PointCloud>()
             .register_asset_reflect::<PointCloudMaterial>();
         app.add_plugins(render::RenderPipelinePlugin);
+
+        app.add_plugins(PointCloudOctreePlugin);
 
         #[cfg(feature = "potree")]
         app.add_plugins(PotreePlugin);

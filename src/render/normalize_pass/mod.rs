@@ -1,5 +1,5 @@
 mod eye_dome_lighting;
-mod node;
+pub mod node;
 mod pipeline;
 mod texture;
 
