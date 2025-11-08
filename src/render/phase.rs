@@ -11,7 +11,7 @@ use bevy_render::render_resource::CachedRenderPipelineId;
 ///
 /// A batch set is a set of batches that can be multi-drawn together, if
 /// multi-draw is in use.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PointCloud3dBatchSetKey {
     pub pipeline: CachedRenderPipelineId,
     pub draw_function: DrawFunctionId,
@@ -26,7 +26,7 @@ impl PhaseItemBatchSetKey for PointCloud3dBatchSetKey {
 /// Data that must be identical in order to *batch* phase items together.
 ///
 /// Note that a *batch set* (if multi-draw is in use) contains multiple batches.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PointCloud3dBinKey {
     /// The asset that this phase item is associated with.
     ///

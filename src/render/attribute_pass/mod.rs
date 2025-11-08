@@ -122,6 +122,9 @@ fn extract_camera_phases(
         let retained_view_entity = RetainedViewEntity::new(main_entity.into(), None, 0);
 
         pointcloud3d_phases.prepare_for_new_frame(retained_view_entity, gpu_preprocessing_mode);
+        // clear phases between each iteration
+        pointcloud3d_phases.get_mut(&retained_view_entity).unwrap().non_mesh_items.clear();
+
         live_entities.insert(retained_view_entity);
     }
 

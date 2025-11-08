@@ -192,7 +192,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawMeshInstanced {
     }
 }
 
-#[derive(Clone, Component)]
+#[derive(Clone, Debug, Component)]
 pub struct PointCloudRenderMode {
     pub use_edl: bool,
     pub edl_neighbour_count: u32,
