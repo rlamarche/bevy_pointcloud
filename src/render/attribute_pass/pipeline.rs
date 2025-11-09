@@ -67,8 +67,6 @@ impl SpecializedRenderPipeline for AttributePassPipeline {
         &self,
         key: Self::Key,
     ) -> RenderPipelineDescriptor {
-        info!("Array stride vertex: {}", VertexFormat::Float32x4.size());
-
         let vertex_buffer_layout = VertexBufferLayout {
             array_stride: VertexFormat::Float32x4.size(),
             step_mode: VertexStepMode::Vertex,
@@ -78,8 +76,6 @@ impl SpecializedRenderPipeline for AttributePassPipeline {
                 shader_location: 0,
             }],
         };
-
-        info!("Array stride instance: {}", size_of::<PointCloudData>() as u64);
 
         let instance_buffer_layout = VertexBufferLayout {
             array_stride: size_of::<PointCloudData>() as u64,

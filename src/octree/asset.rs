@@ -21,7 +21,7 @@ pub enum InsertNodeError {
 #[derive(Debug, Clone, Asset, Reflect)]
 pub struct Octree<T>
 where
-    T: Clone + Debug + Send + Sync + TypePath,
+    T: Send + Sync + TypePath,
 {
     #[reflect(ignore)]
     pub(crate) nodes: GenerationalSlab<OctreeNode<T>>,
@@ -34,7 +34,7 @@ where
 #[derive(Debug, Clone, TypePath)]
 pub struct OctreeNode<T>
 where
-    T: Clone + Debug + Send + Sync + TypePath,
+    T: Send + Sync + TypePath,
 {
     pub id: NodeId,
     pub parent_id: Option<NodeId>,
@@ -55,7 +55,7 @@ where
 
 impl<T> Octree<T>
 where
-    T: Clone + Default + Debug + Send + Sync + TypePath,
+    T: Send + Sync + TypePath,
 {
     pub fn new() -> Self {
         Self {

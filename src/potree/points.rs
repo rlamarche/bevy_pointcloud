@@ -155,15 +155,12 @@ pub fn load_points_rx(
 
             if parent_id.is_none() {
                 // now that the root node is known, we can add the AABB of the point cloud
-                info!("Adding AABB to the component");
                 commands.entity(entity).insert(aabb.clone());
             }
 
-            info!("Inserting new node in octree");
             let node_id = point_cloud_octree
                 .insert(parent_id, aabb, data)
                 .expect("Unable to insert loaded points in octree");
-            info!("octree has {} nodes", point_cloud_octree.nodes.len());
 
             mapping.insert(potree_node_id, node_id);
 

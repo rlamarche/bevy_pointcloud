@@ -51,7 +51,6 @@ impl SpecializedRenderPipeline for DepthPipeline {
         &self,
         key: Self::Key,
     ) -> RenderPipelineDescriptor {
-        info!("Specializing depth pipeline with edl {:#?}", key.use_edl);
         let vertex_buffer_layout = VertexBufferLayout {
             array_stride: VertexFormat::Float32x4.size(),
             step_mode: VertexStepMode::Vertex,

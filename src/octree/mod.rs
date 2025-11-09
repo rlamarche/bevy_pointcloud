@@ -10,6 +10,8 @@ pub mod render_asset;
 mod storage;
 pub mod extract;
 
+pub mod visibility;
+
 pub struct OctreeAssetPlugin<T>(PhantomData<T>)
 where
     T: Clone + Debug + Send + Sync + TypePath;

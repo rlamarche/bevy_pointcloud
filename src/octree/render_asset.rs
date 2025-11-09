@@ -16,16 +16,16 @@ pub enum InsertNodeError {
     ParentChildrenFull,
 }
 
-#[derive(Debug, Clone, Asset, TypePath)]
+#[derive(TypePath)]
 pub struct RenderOctree<T>
 where
-    T: Clone + Debug + Send + Sync + TypePath,
+    T: Send + Sync + TypePath,
 {
     pub(crate) nodes: HashMap<NodeId, OctreeNode<T>>,
     pub(crate) root_id: Option<NodeId>,
 }
 
-impl<T: Clone + Debug + Send + Sync + TypePath> Default for RenderOctree<T> {
+impl<T: Send + Sync + TypePath> Default for RenderOctree<T> {
     fn default() -> Self {
         Self {
             nodes: Default::default(),
@@ -36,7 +36,7 @@ impl<T: Clone + Debug + Send + Sync + TypePath> Default for RenderOctree<T> {
 
 impl<T> RenderOctree<T>
 where
-    T: Clone + Debug + Send + Sync + TypePath,
+    T: Send + Sync + TypePath,
 {
     pub fn insert(&mut self, node_id: NodeId, node: OctreeNode<T>) {
         self.nodes.insert(node_id, node);

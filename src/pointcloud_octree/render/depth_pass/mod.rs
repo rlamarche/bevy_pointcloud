@@ -1,14 +1,12 @@
 pub mod node;
 pub mod phase;
 
-use crate::octree::extract::RenderOctrees;
+use crate::octree::visibility::RenderVisibleOctreeNodes;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
-use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
 use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
 use crate::pointcloud_octree::render::depth_pass::node::DepthPassOctreeLabel;
 use crate::pointcloud_octree::render::draw::DrawPointCloudOctreeNode;
 use crate::pointcloud_octree::render::phase::PointCloudOctree3dBinKey;
-use crate::pointcloud_octree::render::visibility::RenderVisiblePointCloudOctree3dNodes;
 use crate::render::attribute_pass::node::AttributePassLabel;
 use crate::render::depth_pass::pipeline::{DepthPipeline, DepthPipelineKey};
 use crate::render::depth_pass::texture::prepare_depth_pass_textures;
@@ -126,12 +124,11 @@ fn queue_depth_pass(
     mut pipelines: ResMut<SpecializedRenderPipelines<DepthPipeline>>,
     pipeline_cache: Res<PipelineCache>,
     custom_draw_pipeline: Res<DepthPipeline>,
-    render_pointcloud_octrees: Res<RenderOctrees<RenderPointCloudNodeData>>,
     point_cloud_octrees_3d: Query<&PointCloudOctree3d>,
     mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloudOctree3dDepthPhase>>,
     mut views: Query<(
         &ExtractedView,
-        &RenderVisiblePointCloudOctree3dNodes,
+        &RenderVisibleOctreeNodes,
         &Msaa,
         Option<&PointCloudRenderMode>,
     )>,
@@ -166,23 +163,12 @@ fn queue_depth_pass(
                 warn!("point_cloud_octree_3d missing");
                 continue;
             };
-            let Some(render_pointcloud_octree) =
-                render_pointcloud_octrees.get(point_cloud_octree_3d)
-            else {
-                warn!("render_pointcloud_octree missing");
-                continue;
-            };
             
             // Bump the change tick in order to force Bevy to rebuild the bin.
             let this_tick = next_tick.get() + 1;
             next_tick.set(this_tick);
 
             for node_id in node_ids {
-                let Some(render_node) = render_pointcloud_octree.nodes.get(node_id) else {
-                    warn!("missing render node");
-                    continue;
-                };
-
                 // At this point we have all the data we need to create a phase item and add it to our
                 // phase
                 custom_phase.add(

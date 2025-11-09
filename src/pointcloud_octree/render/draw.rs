@@ -1,4 +1,4 @@
-use crate::octree::extract::RenderOctrees;
+use crate::octree::visibility::prepare::RenderOctrees;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
 use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
