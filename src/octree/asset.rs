@@ -14,8 +14,10 @@ pub enum InsertNodeError {
     ParentNotExists,
     #[error("root already exists")]
     RootAlreadyExists,
-    #[error("parent has already 8 children")]
-    ParentChildrenFull,
+    #[error("child index already occupied")]
+    ChildIndexOccupied,
+    #[error("child index is out of bounds")]
+    ChildIndexOutOfBounds,
 }
 
 #[derive(Debug, Clone, Asset, Reflect)]
@@ -37,6 +39,7 @@ where
     T: Send + Sync + TypePath,
 {
     pub id: NodeId,
+    pub child_index: usize,
     pub parent_id: Option<NodeId>,
     pub children: [NodeId; 8],
     pub children_mask: u8,
@@ -72,9 +75,10 @@ where
 
         let root = OctreeNode {
             id: NodeId::default(),
+            child_index: 0,
             parent_id: None,
             children: [NodeId::default(); 8],
-            children_mask: u8::MAX,
+            children_mask: 0b00000000,
             bounding_box,
             data,
         };
@@ -98,21 +102,25 @@ where
         }
     }
 
+    /// Inserts a new child node to an existing node
     pub fn insert(
         &mut self,
-        parent_id: Option<NodeId>,
+        parent_id_and_child_index: Option<(NodeId, usize)>,
         bounding_box: Aabb,
         data: T,
     ) -> Result<NodeId, InsertNodeError> {
-        if let Some(parent_id) = &parent_id {
+        if let Some((parent_id, child_index)) = &parent_id_and_child_index {
+            if *child_index >= 8 {
+                return Err(InsertNodeError::ChildIndexOutOfBounds);
+            }
             // check the parent
             match self.nodes.get(*parent_id) {
                 None => {
                     return Err(InsertNodeError::ParentNotExists);
                 }
                 Some(parent) => {
-                    if parent.children_mask == 0b00000000 {
-                        return Err(InsertNodeError::ParentChildrenFull);
+                    if (parent.children_mask & (1_u8 << child_index)) > 0 {
+                        return Err(InsertNodeError::ChildIndexOccupied);
                     }
                 }
             };
@@ -126,9 +134,12 @@ where
         let id = self.nodes.insert(OctreeNode {
             // will set just after
             id: Default::default(),
-            parent_id,
+            parent_id: parent_id_and_child_index.map(|(parent_id, _)| parent_id),
+            child_index: parent_id_and_child_index
+                .map(|(_, child_index)| child_index)
+                .unwrap_or(0),
             children: [NodeId::default(); 8],
-            children_mask: u8::MAX,
+            children_mask: 0b00000000,
             bounding_box,
             data,
         });
@@ -136,17 +147,13 @@ where
         // update self id
         self.nodes.get_mut(id).unwrap().id = id;
 
-        if let Some(parent_id) = &parent_id {
+        if let Some((parent_id, child_index)) = &parent_id_and_child_index {
             // infallible because we checked upper
             let parent = self.nodes.get_mut(*parent_id).unwrap();
 
-            // get the next free child index
-            let child_index = first_one(parent.children_mask).expect("children mask should have at least one 1");
-            // let child_index = parent.children_mask.trailing_zeros() as usize;
-
             // add to children array and update mask
-            parent.children[child_index] = id;
-            parent.children_mask &= !(1u8 << child_index);
+            parent.children[*child_index] = id;
+            parent.children_mask |= 1u8 << child_index;
         } else {
             self.root_id = Some(id);
         }

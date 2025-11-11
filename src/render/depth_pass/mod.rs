@@ -3,10 +3,7 @@ pub mod phase;
 pub mod pipeline;
 pub mod texture;
 
-use std::ops::Range;
-
 use crate::point_cloud::PointCloud3d;
-use crate::render::DrawMeshInstanced;
 use crate::render::depth_pass::node::{DepthPassLabel, DepthPassNode};
 use crate::render::depth_pass::pipeline::{DepthPipeline, DepthPipelineKey};
 use crate::render::depth_pass::texture::{DepthPassLayout, prepare_depth_pass_textures};
@@ -163,6 +160,15 @@ fn queue_depth_pass(
         let view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
             | MeshPipelineKey::from_hdr(view.hdr);
 
+        let depth_key = DepthPipelineKey {
+            mesh_key: view_key,
+            use_edl: point_cloud_render_mode.use_edl(),
+            is_octree: false,
+        };
+
+        let pipeline_id =
+            pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, depth_key);
+
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
         for (render_entity, main_entity) in visible_entities.iter::<PointCloud3d>() {
             let Ok(point_cloud__3d) = point_clouds_3d.get(*render_entity) else {
@@ -173,14 +179,6 @@ fn queue_depth_pass(
             // Bump the change tick in order to force Bevy to rebuild the bin.
             let this_tick = next_tick.get() + 1;
             next_tick.set(this_tick);
-
-            let depth_key = DepthPipelineKey {
-                mesh_key: view_key,
-                use_edl: point_cloud_render_mode.use_edl(),
-            };
-
-            let pipeline_id =
-                pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, depth_key);
 
             // At this point we have all the data we need to create a phase item and add it to our
             // phase

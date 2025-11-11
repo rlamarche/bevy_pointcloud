@@ -147,19 +147,22 @@ pub fn load_points_rx(
                 continue;
             };
 
-            let parent_id = node.parent_id.map(|parent_id| {
-                mapping
-                    .get_octree_node_id(parent_id)
-                    .expect("missing node in potree:octree mapping")
+            let parent_id_and_child_index = node.parent_id.map(|potree_parent_id| {
+                (
+                    mapping
+                        .get_octree_node_id(potree_parent_id)
+                        .expect("missing node in potree:octree mapping"),
+                    node.child_index,
+                )
             });
 
-            if parent_id.is_none() {
+            if parent_id_and_child_index.is_none() {
                 // now that the root node is known, we can add the AABB of the point cloud
                 commands.entity(entity).insert(aabb.clone());
             }
 
             let node_id = point_cloud_octree
-                .insert(parent_id, aabb, data)
+                .insert(parent_id_and_child_index, aabb, data)
                 .expect("Unable to insert loaded points in octree");
 
             mapping.insert(potree_node_id, node_id);

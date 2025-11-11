@@ -4,9 +4,9 @@ pub mod pipeline;
 pub mod texture;
 
 use crate::point_cloud::PointCloud3d;
-use crate::render::attribute_pass::pipeline::AttributePassPipeline;
+use crate::render::attribute_pass::pipeline::{AttributePassPipeline, AttributePipelineKey};
 use crate::render::attribute_pass::texture::{
-    AttributePassLayout, SetAttributePassTextures, prepare_attribute_pass_bind_groups,
+    prepare_attribute_pass_bind_groups, AttributePassLayout,
 };
 use crate::render::depth_pass::node::DepthPassLabel;
 use crate::render::draw::DrawPointCloud;
@@ -27,16 +27,16 @@ use bevy_render::render_phase::{BinnedRenderPhaseType, InputUniformIndex, ViewBi
 use bevy_render::render_resource::SpecializedRenderPipelines;
 use bevy_render::view::NoIndirectDrawing;
 use bevy_render::{
-    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
-    prelude::*,
-    render_graph::ViewNodeRunner,
-    render_phase::{
+    prelude::*, render_graph::ViewNodeRunner, render_phase::{
         AddRenderCommand, DrawFunctions, PhaseItem, PhaseItemExtraIndex, SetItemPipeline,
         SortedPhaseItem, SortedRenderPhasePlugin, ViewSortedRenderPhases,
-    },
-    render_resource::{CachedRenderPipelineId, PipelineCache, SpecializedMeshPipelines},
-    sync_world::MainEntity,
+    }, render_resource::{CachedRenderPipelineId, PipelineCache, SpecializedMeshPipelines}, sync_world::MainEntity,
     view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity},
+    Extract,
+    ExtractSchedule,
+    Render,
+    RenderApp,
+    RenderSystems,
 };
 use node::{AttributePassLabel, AttributePassNode};
 use phase::PointCloud3dAttributePhase;
@@ -86,7 +86,6 @@ type DrawAttributePass = (
     SetMeshViewBindGroup<0>,
     SetPointCloudUniformGroup<1>,
     SetPointCloudMaterialGroup<2>,
-    SetAttributePassTextures<3>,
     DrawPointCloud,
 );
 
@@ -150,6 +149,14 @@ fn queue_attribute_pass(
         let view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
             | MeshPipelineKey::from_hdr(view.hdr);
 
+        let attribute_key = AttributePipelineKey {
+            mesh_key: view_key,
+            is_octree: false,
+        };
+
+        let pipeline_id =
+            pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, attribute_key);
+
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
         for (render_entity, visible_entity) in visible_entities.iter::<PointCloud3d>() {
             let Ok(main_entity) = main_entities.get(*render_entity) else {
@@ -164,9 +171,6 @@ fn queue_attribute_pass(
             // Bump the change tick in order to force Bevy to rebuild the bin.
             let this_tick = next_tick.get() + 1;
             next_tick.set(this_tick);
-
-            let pipeline_id =
-                pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, view_key);
 
             // At this point we have all the data we need to create a phase item and add it to our
             // phase

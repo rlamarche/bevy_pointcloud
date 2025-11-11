@@ -1,19 +1,25 @@
 use crate::point_cloud::PointCloudData;
 use crate::point_cloud_material::PointCloudMaterial;
+use crate::pointcloud_octree::extract::PointCloudNodeDataUniform;
+use crate::pointcloud_octree::visible_nodes_texture::PointCloudVisibleNodeUniform;
 use crate::render::point_cloud_uniform::PointCloudUniform;
 use crate::render::POINTCLOUD_SHADER_HANDLE;
 use bevy_asset::prelude::*;
 use bevy_core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT;
 use bevy_ecs::prelude::*;
-use bevy_log::info;
 use bevy_mesh::{PrimitiveTopology, VertexBufferLayout, VertexFormat};
 use bevy_pbr::{MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey};
-use bevy_render::render_resource::binding_types::{texture_2d, texture_2d_multisampled};
-use bevy_render::render_resource::{AsBindGroup, BindGroupLayout, BindGroupLayoutEntries, BlendComponent, BlendFactor, BlendOperation, BlendState, CompareFunction, DepthBiasState, DepthStencilState, ShaderStages, SpecializedRenderPipeline, StencilState, TextureSampleType, VertexAttribute, VertexStepMode};
+use bevy_render::render_resource::binding_types::{
+    texture_2d, texture_2d_multisampled, uniform_buffer,
+};
+use bevy_render::render_resource::{
+    AsBindGroup, BindGroupLayout, BindGroupLayoutEntries, BlendComponent, BlendFactor,
+    BlendOperation, BlendState, CompareFunction, DepthBiasState, DepthStencilState, ShaderStages,
+    SpecializedRenderPipeline, StencilState, TextureSampleType, VertexAttribute, VertexStepMode,
+};
 use bevy_render::render_resource::{
     ColorTargetState, ColorWrites, Face, FragmentState, FrontFace, MultisampleState, PolygonMode,
-    PrimitiveState, RenderPipelineDescriptor, SpecializedMeshPipeline
-    , TextureFormat, VertexState,
+    PrimitiveState, RenderPipelineDescriptor, TextureFormat, VertexState,
 };
 use bevy_render::renderer::RenderDevice;
 use bevy_shader::Shader;
@@ -27,6 +33,9 @@ pub struct AttributePassPipeline {
     pub layout_msaa: BindGroupLayout,
     point_cloud_layout: BindGroupLayout,
     point_cloud_material_layout: BindGroupLayout,
+    point_cloud_octree_node_data_layout: BindGroupLayout,
+    point_cloud_octree_visible_nodes_layout: BindGroupLayout,
+    point_cloud_octree_visible_node_layout: BindGroupLayout,
 }
 impl FromWorld for AttributePassPipeline {
     fn from_world(world: &mut World) -> Self {
@@ -56,17 +65,41 @@ impl FromWorld for AttributePassPipeline {
             ),
             point_cloud_layout: PointCloudUniform::bind_group_layout(render_device),
             point_cloud_material_layout: PointCloudMaterial::bind_group_layout(render_device),
+            point_cloud_octree_node_data_layout: render_device.create_bind_group_layout(
+                "pcl_octree_node_data",
+                &BindGroupLayoutEntries::single(
+                    ShaderStages::VERTEX,
+                    uniform_buffer::<PointCloudNodeDataUniform>(false),
+                ),
+            ),
+            point_cloud_octree_visible_nodes_layout: render_device.create_bind_group_layout(
+                "pcl_octree_visible_nodes_layout",
+                &BindGroupLayoutEntries::single(
+                    ShaderStages::VERTEX,
+                    texture_2d(TextureSampleType::Uint),
+                ),
+            ),
+            point_cloud_octree_visible_node_layout: render_device.create_bind_group_layout(
+                "pcl_octree_node_data",
+                &BindGroupLayoutEntries::single(
+                    ShaderStages::VERTEX,
+                    uniform_buffer::<PointCloudVisibleNodeUniform>(false),
+                ),
+            ),
         }
     }
 }
 
-impl SpecializedRenderPipeline for AttributePassPipeline {
-    type Key = MeshPipelineKey;
+#[derive(PartialEq, Eq, Hash, Clone)]
+pub struct AttributePipelineKey {
+    pub mesh_key: MeshPipelineKey,
+    pub is_octree: bool,
+}
 
-    fn specialize(
-        &self,
-        key: Self::Key,
-    ) -> RenderPipelineDescriptor {
+impl SpecializedRenderPipeline for AttributePassPipeline {
+    type Key = AttributePipelineKey;
+
+    fn specialize(&self, key: Self::Key) -> RenderPipelineDescriptor {
         let vertex_buffer_layout = VertexBufferLayout {
             array_stride: VertexFormat::Float32x4.size(),
             step_mode: VertexStepMode::Vertex,
@@ -96,33 +129,45 @@ impl SpecializedRenderPipeline for AttributePassPipeline {
             ],
         };
 
+        let mut shader_defs = vec!["ATTRIBUTE_PASS".into(), "WEIGHTED_SPLATS".into()];
+
+        if key.is_octree {
+            shader_defs.push("IS_OCTREE".into());
+        }
+
+        let mut layout = vec![
+            // Bind group 0 is the view uniform
+            self.mesh_pipeline
+                .get_view_layout(MeshPipelineViewLayoutKey::from(key.mesh_key))
+                .clone()
+                .main_layout,
+            // Bind group 1 is our point cloud uniform
+            self.point_cloud_layout.clone(),
+            // Bind group 2 is the point cloud material
+            self.point_cloud_material_layout.clone(),
+        ];
+
+        if key.is_octree {
+            layout.push(self.point_cloud_octree_node_data_layout.clone());
+            layout.push(self.point_cloud_octree_visible_nodes_layout.clone());
+            layout.push(self.point_cloud_octree_visible_node_layout.clone());
+        }
+
         RenderPipelineDescriptor {
             label: Some("pcl_attribute_pass_pipeline".into()),
             // We want to reuse the data from bevy so we use the same bind groups as the default
             // mesh pipeline
-            layout: vec![
-                // Bind group 0 is the view uniform
-                self.mesh_pipeline
-                    .get_view_layout(MeshPipelineViewLayoutKey::from(key))
-                    .clone()
-                    .main_layout,
-                // Bind group 1 is our point cloud uniform
-                self.point_cloud_layout.clone(),
-                // Bind group 2 is the point cloud material
-                self.point_cloud_material_layout.clone(),
-                // Bind group 3 is the depth texture from depth pass
-                self.layout.clone(),
-            ],
+            layout,
             push_constant_ranges: vec![],
             vertex: VertexState {
                 shader: self.shader_handle.clone(),
-                shader_defs: vec![],
+                shader_defs: shader_defs.clone(),
                 entry_point: Some("vertex".into()),
                 buffers: vec![vertex_buffer_layout, instance_buffer_layout],
             },
             fragment: Some(FragmentState {
                 shader: self.shader_handle.clone(),
-                shader_defs: vec!["WEIGHTED_SPLATS".into(), "ATTRIBUTE_PASS".into()],
+                shader_defs,
                 entry_point: Some("fragment".into()),
                 targets: vec![Some(ColorTargetState {
                     format: TextureFormat::Rgba32Float,
@@ -159,7 +204,7 @@ impl SpecializedRenderPipeline for AttributePassPipeline {
                 bias: DepthBiasState::default(),
             }),
             multisample: MultisampleState {
-                count: key.msaa_samples(),
+                count: key.mesh_key.msaa_samples(),
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },

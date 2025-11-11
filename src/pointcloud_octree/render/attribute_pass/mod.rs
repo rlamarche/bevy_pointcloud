@@ -1,16 +1,16 @@
 pub mod node;
 pub mod phase;
 
-use crate::octree::visibility::RenderVisibleOctreeNodes;
+use crate::octree::visibility::{RenderVisibleOctreeNodes, VisibleOctreeNode};
 use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::render::attribute_pass::node::AttributePassOctreeLabel;
 use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
 use crate::pointcloud_octree::render::depth_pass::node::DepthPassOctreeLabel;
-use crate::pointcloud_octree::render::draw::DrawPointCloudOctreeNode;
+use crate::pointcloud_octree::render::draw::{DrawPointCloudOctreeNode, SetPointCloudOctreeNodeUniformGroup};
 use crate::pointcloud_octree::render::phase::PointCloudOctree3dBinKey;
-use crate::render::attribute_pass::pipeline::AttributePassPipeline;
+use crate::render::attribute_pass::pipeline::{AttributePassPipeline, AttributePipelineKey};
 use crate::render::attribute_pass::texture::{
-    prepare_attribute_pass_bind_groups, SetAttributePassTextures,
+    SetAttributePassTextures, prepare_attribute_pass_bind_groups,
 };
 use crate::render::material::SetPointCloudMaterialGroup;
 use crate::render::normalize_pass::node::NormalizePassLabel;
@@ -30,12 +30,14 @@ use bevy_render::render_resource::{PipelineCache, SpecializedRenderPipelines};
 use bevy_render::sync_world::MainEntity;
 use bevy_render::view::{ExtractedView, NoIndirectDrawing};
 use bevy_render::{
-    prelude::*, render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline}, view::RetainedViewEntity, Extract, ExtractSchedule,
-    Render,
-    RenderApp,
-    RenderSystems,
+    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
+    prelude::*,
+    render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline},
+    view::RetainedViewEntity,
 };
 use phase::PointCloudOctree3dAttributePhase;
+use crate::pointcloud_octree::asset::PointCloudNodeData;
+use crate::pointcloud_octree::visible_nodes_texture::{SetPointCloudVisibleUniformGroup, SetVisibleNodesTexture};
 
 pub struct AttributePassPlugin;
 impl Plugin for AttributePassPlugin {
@@ -73,7 +75,9 @@ type DrawAttributePass = (
     SetMeshViewBindGroup<0>,
     SetPointCloudOctree3dUniformGroup<1>,
     SetPointCloudMaterialGroup<2>,
-    SetAttributePassTextures<3>,
+    SetPointCloudOctreeNodeUniformGroup<3>,
+    SetVisibleNodesTexture<4>,
+    SetPointCloudVisibleUniformGroup<5>,
     DrawPointCloudOctreeNode,
 );
 
@@ -122,7 +126,7 @@ fn queue_attribute_pass(
     custom_draw_pipeline: Res<AttributePassPipeline>,
     point_cloud_octrees_3d: Query<&PointCloudOctree3d>,
     mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloudOctree3dAttributePhase>>,
-    mut views: Query<(&ExtractedView, &RenderVisibleOctreeNodes, &Msaa)>,
+    mut views: Query<(&ExtractedView, &RenderVisibleOctreeNodes<PointCloudNodeData>, &Msaa)>,
     main_entities: Query<&MainEntity>,
     mut next_tick: Local<Tick>,
 ) {
@@ -137,10 +141,16 @@ fn queue_attribute_pass(
         let view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
             | MeshPipelineKey::from_hdr(view.hdr);
 
-        let pipeline_id = pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, view_key);
+        let attribute_key = AttributePipelineKey {
+            mesh_key: view_key,
+            is_octree: true,
+        };
+
+        let pipeline_id =
+            pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, attribute_key);
 
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
-        for (render_entity, node_ids) in &visible_entities.octrees {
+        for (render_entity, visible_octree_nodes) in &visible_entities.octrees {
             let Ok(main_entity) = main_entities.get(*render_entity) else {
                 warn!("Render entity not found, skipping.");
                 continue;
@@ -154,7 +164,7 @@ fn queue_attribute_pass(
             let this_tick = next_tick.get() + 1;
             next_tick.set(this_tick);
 
-            for node_id in node_ids {
+            for VisibleOctreeNode { id: node_id, .. } in visible_octree_nodes {
                 // At this point we have all the data we need to create a phase item and add it to our
                 // phase
                 custom_phase.add(

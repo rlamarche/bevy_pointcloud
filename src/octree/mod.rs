@@ -8,7 +8,6 @@ use std::marker::PhantomData;
 pub mod asset;
 pub mod render_asset;
 mod storage;
-pub mod extract;
 
 pub mod visibility;
 

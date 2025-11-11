@@ -28,6 +28,7 @@ use bevy_render::sync_world::RenderEntity;
 use bevy_render::{Extract, ExtractSchedule, Render, RenderApp, RenderSystems};
 use bevy_transform::components::GlobalTransform;
 use core::any::TypeId;
+use std::collections::VecDeque;
 use prepare::{PrepareNextFrameOctreeNodes, RenderOctreeNode, RenderOctrees, prepare_assets};
 use prepare::{
     RenderAssetBytesPerFrame, RenderAssetBytesPerFrameLimiter,
@@ -127,12 +128,35 @@ impl RenderOctreeDependency for () {
     }
 }
 
+/// Contains useful informations about a visible node
+#[derive(Clone, Debug)]
+pub struct VisibleOctreeNode {
+    pub id: NodeId,
+    pub children: [NodeId; 8],
+    pub children_mask: u8,
+    pub first_child_index: usize,
+}
+
+impl<T> From<&OctreeNode<T>> for VisibleOctreeNode
+where
+    T: Send + Sync + TypePath,
+{
+    fn from(value: &OctreeNode<T>) -> Self {
+        VisibleOctreeNode {
+            id: value.id,
+            children: value.children.clone(),
+            children_mask: 0b00000000,
+            first_child_index: 0,
+        }
+    }
+}
+
 #[derive(Clone, Component, Debug)]
 pub struct VisibleOctreeNodes<T>
 where
     T: Send + Sync + TypePath,
 {
-    pub nodes: HashMap<Entity, Vec<NodeId>>,
+    pub nodes: HashMap<Entity, Vec<VisibleOctreeNode>>,
     phantom_data: PhantomData<T>,
 }
 
@@ -152,31 +176,8 @@ impl<T> VisibleOctreeNodes<T>
 where
     T: Send + Sync + TypePath,
 {
-    pub fn get(&self, entity: Entity) -> &[NodeId] {
-        match self.nodes.get(&entity) {
-            Some(entities) => &entities[..],
-            None => &[],
-        }
-    }
-
-    pub fn get_mut(&mut self, entity: Entity) -> &mut Vec<NodeId> {
+    pub fn get_mut(&mut self, entity: Entity) -> &mut Vec<VisibleOctreeNode> {
         self.nodes.entry(entity).or_default()
-    }
-
-    pub fn iter(&self, entity: Entity) -> impl DoubleEndedIterator<Item = &NodeId> {
-        self.get(entity).iter()
-    }
-
-    pub fn len(&self, entity: Entity) -> usize {
-        self.get(entity).len()
-    }
-
-    pub fn is_empty(&self, entity: Entity) -> bool {
-        self.get(entity).is_empty()
-    }
-
-    pub fn clear(&mut self, entity: Entity) {
-        self.get_mut(entity).clear();
     }
 
     pub fn clear_all(&mut self) {
@@ -184,10 +185,6 @@ where
         for nodes in self.nodes.values_mut() {
             nodes.clear();
         }
-    }
-
-    pub fn push(&mut self, node_id: NodeId, entity: Entity) {
-        self.get_mut(entity).push(node_id);
     }
 }
 
@@ -318,7 +315,7 @@ fn compute_visible_nodes<T>(
     frustum: &Frustum,
     projection: &Projection,
     physical_target_size: &Option<UVec2>,
-    visible_nodes: &mut Vec<NodeId>,
+    visible_nodes: &mut Vec<VisibleOctreeNode>,
 ) -> ()
 where
     T: Send + Sync + TypePath,
@@ -327,12 +324,30 @@ where
         return;
     };
 
-    let mut stack = vec![(root, false)];
+    struct StackItem<'a, T>
+    where
+        T: Send + Sync + TypePath,
+    {
+        node: &'a OctreeNode<T>,
+        completely_visible: bool,
+        parent_index: Option<usize>,
+    }
+
+    let mut stack = VecDeque::from([StackItem {
+        node: root,
+        completely_visible: false,
+        parent_index: None,
+    }]);
     // let mut nodes_to_load = Vec::new();
 
     let world_from_local = octree_transform.affine();
 
-    while let Some((node, mut completely_visible)) = stack.pop() {
+    while let Some(StackItem {
+        node,
+        mut completely_visible,
+        parent_index,
+    }) = stack.pop_front()
+    {
         let screen_pixel_radius = compute_screen_pixel_radius(
             node,
             octree_transform,
@@ -376,17 +391,38 @@ where
         // }
 
         // we have to process child nodes, sending flag `completely_visible` to prevent useless visibility checks
-        for i in iter_zero_bits(node.children_mask) {
+
+        let current_index = visible_nodes.len();
+
+        let mut first = true;
+        for i in iter_one_bits(node.children_mask) {
             let child = &node.children[i];
             let Some(child) = octree.get(*child) else {
                 warn!("missing node in hierarchy, shouldn't happen");
                 continue;
             };
-            stack.push((child, completely_visible));
+            stack.push_back(StackItem {
+                node: child,
+                completely_visible,
+                parent_index: Some(current_index),
+            });
+            first = false;
         }
 
         // add the current node because it is visible or partially visible
-        visible_nodes.push(node.id);
+        visible_nodes.push(node.into());
+        // if it is the first child, fill its index on the parent
+
+        // if there is a parent
+        if let Some(parent_index) = parent_index {
+            let parent = &mut visible_nodes[parent_index];
+            // if there is no first child, set it
+            if parent.first_child_index == 0 {
+                parent.first_child_index = current_index;
+            }
+            // update the children mask
+            parent.children_mask |= 1 << node.child_index;
+        }
     }
 }
 
@@ -398,7 +434,7 @@ fn extract_visible_octree_nodes<T>(
     T: Send + Sync + TypePath,
 {
     for (_entity, render_entity, camera, visible_point_cloud_octree_3d_nodes) in query.iter() {
-        let render_visible_point_cloud_octree_3d_nodes = RenderVisibleOctreeNodes {
+        let render_visible_point_cloud_octree_3d_nodes = RenderVisibleOctreeNodes::<T> {
             octrees: visible_point_cloud_octree_3d_nodes
                 .nodes
                 .clone()
@@ -410,6 +446,7 @@ fn extract_visible_octree_nodes<T>(
                     (render_entity.id(), nodes)
                 })
                 .collect(),
+            phantom_data: PhantomData,
         };
         commands
             .entity(render_entity)
@@ -417,8 +454,8 @@ fn extract_visible_octree_nodes<T>(
     }
 }
 
-fn iter_zero_bits(mask: u8) -> impl Iterator<Item = usize> {
-    (0..8).filter(move |&i| (mask & (1 << i)) == 0)
+fn iter_one_bits(mask: u8) -> impl Iterator<Item = usize> {
+    (0..8).filter(move |&i| (mask & (1 << i)) != 0)
 }
 
 #[cfg(test)]
@@ -427,18 +464,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_iter_zero_bits() {
+    fn test_iter_one_bits() {
         let mask: u8 = 0b01010101;
-        let indexes = iter_zero_bits(mask).collect::<Vec<_>>();
-        assert_eq!(indexes, vec![1, 3, 5, 7]);
+        let indexes = iter_one_bits(mask).collect::<Vec<_>>();
+        assert_eq!(indexes, vec![0, 2, 4, 6]);
     }
 }
 
-#[derive(Clone, Component, Default, Debug, Reflect)]
-#[reflect(Component, Default, Debug, Clone)]
-pub struct RenderVisibleOctreeNodes {
-    #[reflect(ignore, clone)]
-    pub octrees: HashMap<Entity, Vec<NodeId>>,
+#[derive(Clone, Component, Default, Debug)]
+pub struct RenderVisibleOctreeNodes<T>
+where
+    T: Send + Sync + TypePath,
+{
+    pub octrees: HashMap<Entity, Vec<VisibleOctreeNode>>,
+    phantom_data: PhantomData<T>,
 }
 
 impl<T> ExtractComponent for VisibleOctreeNodes<T>
@@ -447,13 +486,14 @@ where
 {
     type QueryData = &'static Self;
     type QueryFilter = With<Camera>;
-    type Out = RenderVisibleOctreeNodes;
+    type Out = RenderVisibleOctreeNodes<T>;
 
     fn extract_component(
         (visible_octree_nodes): QueryItem<'_, '_, Self::QueryData>,
     ) -> Option<Self::Out> {
-        Some(RenderVisibleOctreeNodes {
+        Some(RenderVisibleOctreeNodes::<T> {
             octrees: visible_octree_nodes.nodes.clone(),
+            phantom_data: PhantomData,
         })
     }
 }

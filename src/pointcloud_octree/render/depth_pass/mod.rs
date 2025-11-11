@@ -1,11 +1,11 @@
 pub mod node;
 pub mod phase;
 
-use crate::octree::visibility::RenderVisibleOctreeNodes;
+use crate::octree::visibility::{RenderVisibleOctreeNodes, VisibleOctreeNode};
 use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
 use crate::pointcloud_octree::render::depth_pass::node::DepthPassOctreeLabel;
-use crate::pointcloud_octree::render::draw::DrawPointCloudOctreeNode;
+use crate::pointcloud_octree::render::draw::{DrawPointCloudOctreeNode, SetPointCloudOctreeNodeUniformGroup};
 use crate::pointcloud_octree::render::phase::PointCloudOctree3dBinKey;
 use crate::render::attribute_pass::node::AttributePassLabel;
 use crate::render::depth_pass::pipeline::{DepthPipeline, DepthPipelineKey};
@@ -39,6 +39,8 @@ use bevy_render::{
     RenderSystems,
 };
 use phase::PointCloudOctree3dDepthPhase;
+use crate::pointcloud_octree::asset::PointCloudNodeData;
+use crate::pointcloud_octree::visible_nodes_texture::{SetPointCloudVisibleUniformGroup, SetVisibleNodesTexture};
 
 pub struct DepthPassPlugin;
 impl Plugin for DepthPassPlugin {
@@ -77,6 +79,9 @@ type DrawDepthPass = (
     SetMeshViewBindGroup<0>,
     SetPointCloudOctree3dUniformGroup<1>,
     SetPointCloudMaterialGroup<2>,
+    SetPointCloudOctreeNodeUniformGroup<3>,
+    SetVisibleNodesTexture<4>,
+    SetPointCloudVisibleUniformGroup<5>,
     DrawPointCloudOctreeNode,
 );
 
@@ -128,7 +133,7 @@ fn queue_depth_pass(
     mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloudOctree3dDepthPhase>>,
     mut views: Query<(
         &ExtractedView,
-        &RenderVisibleOctreeNodes,
+        &RenderVisibleOctreeNodes<PointCloudNodeData>,
         &Msaa,
         Option<&PointCloudRenderMode>,
     )>,
@@ -149,12 +154,13 @@ fn queue_depth_pass(
         let depth_key = DepthPipelineKey {
             mesh_key: view_key,
             use_edl: point_cloud_render_mode.use_edl(),
+            is_octree: true,
         };
 
         let pipeline_id = pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, depth_key);
 
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
-        for (render_entity, node_ids) in &visible_entities.octrees {
+        for (render_entity, visible_octree_nodes) in &visible_entities.octrees {
             let Ok(main_entity) = main_entities.get(*render_entity) else {
                 warn!("Render entity not found, skipping.");
                 continue;
@@ -168,7 +174,7 @@ fn queue_depth_pass(
             let this_tick = next_tick.get() + 1;
             next_tick.set(this_tick);
 
-            for node_id in node_ids {
+            for VisibleOctreeNode { id: node_id, .. } in visible_octree_nodes {
                 // At this point we have all the data we need to create a phase item and add it to our
                 // phase
                 custom_phase.add(

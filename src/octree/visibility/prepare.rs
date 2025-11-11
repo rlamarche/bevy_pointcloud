@@ -1,25 +1,23 @@
 use crate::octree::asset::{NodeId, Octree, OctreeNode};
+use crate::octree::render_asset::RenderOctree;
+use crate::octree::visibility::extract::{ExtractOctreeNode, RenderOctreeNodes};
 use crate::octree::visibility::VisibleOctreeNodes;
 use bevy_app::{App, Plugin};
 use bevy_asset::{AssetId, Assets};
-use bevy_camera::Camera;
 use bevy_camera::visibility::ViewVisibility;
+use bevy_camera::Camera;
 use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::{QueryFilter, QueryItem, ReadOnlyQueryData};
+use bevy_ecs::system::{StaticSystemParam, SystemParam, SystemParamItem};
 use bevy_log::prelude::*;
 use bevy_platform::collections::hash_map::Entry;
 use bevy_platform::collections::{HashMap, HashSet};
 use bevy_reflect::TypePath;
-use bevy_render::sync_world::RenderEntity;
-use bevy_render::{Extract, ExtractSchedule, MainWorld, RenderApp};
-use std::marker::PhantomData;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use bevy_ecs::system::{StaticSystemParam, SystemParam, SystemParamItem};
 use bevy_render::render_resource::AsBindGroupError;
+use bevy_render::{Extract, MainWorld, RenderApp};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use thiserror::Error;
-use crate::octree::render_asset::RenderOctree;
-use crate::octree::visibility::extract::{ExtractOctreeNode, RenderOctreeNodes};
 
 #[derive(Debug, Error)]
 pub enum PrepareOctreeNodeError<E: TypePath + Send + Sync + 'static> {
@@ -102,10 +100,6 @@ impl<A: RenderOctreeNode> Default for PrepareNextFrameOctreeNodes<A> {
     }
 }
 
-
-
-
-
 /// Stores all GPU representations ([`RenderAsset`])
 /// of [`RenderAsset::SourceAsset`] as long as they exist.
 #[derive(Resource)]
@@ -162,7 +156,6 @@ impl<A: RenderOctreeNode> RenderOctrees<A> {
     }
 }
 
-
 /// This system prepares all assets of the corresponding [`RenderAsset::SourceAsset`] type
 /// which where extracted this frame for the GPU.
 pub fn prepare_assets<A: RenderOctreeNode>(
@@ -184,10 +177,10 @@ pub fn prepare_assets<A: RenderOctreeNode>(
             .map(|nodes| nodes.contains(&extracted_octree_node.id))
             .unwrap_or(false)
             || extracted_assets
-            .added_nodes
-            .get(&id)
-            .map(|nodes| nodes.contains(&extracted_octree_node.id))
-            .unwrap_or(false)
+                .added_nodes
+                .get(&id)
+                .map(|nodes| nodes.contains(&extracted_octree_node.id))
+                .unwrap_or(false)
         {
             // skip previous frame's assets that have been removed or updated
             continue;
@@ -226,6 +219,7 @@ pub fn prepare_assets<A: RenderOctreeNode>(
                 let render_octree_node = OctreeNode::<A> {
                     id: extracted_octree_node.id,
                     parent_id: extracted_octree_node.parent_id.clone(),
+                    child_index: extracted_octree_node.child_index,
                     children: extracted_octree_node.children.clone(),
                     children_mask: extracted_octree_node.children_mask.clone(),
                     bounding_box: extracted_octree_node.bounding_box.clone(),
@@ -237,10 +231,7 @@ pub fn prepare_assets<A: RenderOctreeNode>(
                 wrote_asset_count += 1;
             }
             Err(PrepareOctreeNodeError::RetryNextUpdate(extracted_data)) => {
-                prepare_next_frame.assets.push((
-                    id,
-                    extracted_data,
-                ));
+                prepare_next_frame.assets.push((id, extracted_data));
             }
             Err(PrepareOctreeNodeError::AsBindGroupError(e)) => {
                 error!(
@@ -291,6 +282,7 @@ pub fn prepare_assets<A: RenderOctreeNode>(
                     let render_octree_node = OctreeNode::<A> {
                         id: extracted_octree_node.id,
                         parent_id: extracted_octree_node.parent_id.clone(),
+                        child_index: extracted_octree_node.child_index,
                         children: extracted_octree_node.children.clone(),
                         children_mask: extracted_octree_node.children_mask.clone(),
                         bounding_box: extracted_octree_node.bounding_box.clone(),
@@ -304,10 +296,7 @@ pub fn prepare_assets<A: RenderOctreeNode>(
                     prepared_nodes.push(node_id);
                 }
                 Err(PrepareOctreeNodeError::RetryNextUpdate(extracted_data)) => {
-                    prepare_next_frame.assets.push((
-                        id,
-                        extracted_data,
-                    ));
+                    prepare_next_frame.assets.push((id, extracted_data));
                 }
                 Err(PrepareOctreeNodeError::AsBindGroupError(e)) => {
                     error!(
@@ -316,7 +305,6 @@ pub fn prepare_assets<A: RenderOctreeNode>(
                     );
                 }
             }
-
         }
         prepared_octree_nodes.insert(id, prepared_nodes);
     }
@@ -326,7 +314,6 @@ pub fn prepare_assets<A: RenderOctreeNode>(
         let prepared_octrees = extracted_assets.prepared_octrees.entry(id).or_default();
         prepared_octrees.extend(nodes);
     }
-
 
     if bpf.exhausted() && !prepare_next_frame.assets.is_empty() {
         debug!(

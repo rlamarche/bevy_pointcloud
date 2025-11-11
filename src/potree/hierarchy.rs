@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use super::asset::PotreePointCloud;
 use super::point_cloud::{PotreeMainCamera, PotreePointCloud3d};
 use super::spawn_async_task::spawn_async_task;
@@ -10,10 +11,9 @@ use bevy_gizmos::prelude::*;
 use bevy_log::prelude::*;
 use bevy_math::prelude::*;
 use bevy_math::{Vec3, Vec3A};
-use bevy_tasks::prelude::*;
 use bevy_transform::prelude::*;
 use crossbeam::queue::ArrayQueue;
-use potree::octree::node::OctreeNode;
+use potree::octree::node::{OctreeNode, iter_one_bits};
 use potree::octree::{FlatOctree, NodeId};
 use potree::prelude::OctreeNodeSnapshot;
 use std::sync::Arc;
@@ -227,13 +227,13 @@ impl UpdateHierarchyTask {
         transform: &GlobalTransform,
         camera_view: &CameraView,
     ) -> (Vec<OctreeNodeSnapshot>, Vec<NodeId>) {
-        let mut stack = vec![(0_usize, node, false)];
+        let mut stack = VecDeque::from([(0_usize, node, false)]);
         let mut visible_nodes = Vec::<OctreeNodeSnapshot>::new();
         let mut nodes_to_load = Vec::new();
 
         let world_from_local = transform.affine();
 
-        while let Some((parent_index, node, mut completely_visible)) = stack.pop() {
+        while let Some((parent_index, node, mut completely_visible)) = stack.pop_front() {
             // get the current node future index
             let current_index = visible_nodes.len();
 
@@ -290,11 +290,12 @@ impl UpdateHierarchyTask {
             }
 
             // we have to process child nodes, sending flag `completely_visible` to prevent useless visibility checks
-            for child in &node.children {
+            for i in iter_one_bits(node.children_mask) {
+                let child = &node.children[i];
                 let child = octree
                     .node(*child)
                     .expect("missing node in hierarchy, shouldn't happen");
-                stack.push((current_index, child, completely_visible));
+                stack.push_back((current_index, child, completely_visible));
             }
 
             // add the current node because it is visible or partially visible

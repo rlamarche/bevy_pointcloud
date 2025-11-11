@@ -1,10 +1,9 @@
 use crate::octree::asset::{NodeId, Octree, OctreeNode};
-use crate::octree::visibility::VisibleOctreeNodes;
+use crate::octree::visibility::{VisibleOctreeNode, VisibleOctreeNodes};
 use bevy_app::{App, Plugin};
 use bevy_asset::{AssetId, Assets};
-use bevy_camera::Camera;
 use bevy_camera::visibility::ViewVisibility;
-use bevy_ecs::bundle::{Bundle, NoBundleEffect};
+use bevy_camera::Camera;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::{QueryFilter, QueryItem, ReadOnlyQueryData};
 use bevy_log::prelude::*;
@@ -12,7 +11,7 @@ use bevy_platform::collections::hash_map::Entry;
 use bevy_platform::collections::{HashMap, HashSet};
 use bevy_reflect::TypePath;
 use bevy_render::sync_world::RenderEntity;
-use bevy_render::{Extract, ExtractSchedule, MainWorld, RenderApp};
+use bevy_render::{Extract, MainWorld, RenderApp};
 use std::marker::PhantomData;
 
 /// Describes how a component gets extracted for rendering.
@@ -65,7 +64,7 @@ pub fn extract_render_octree_nodes<T, C>(
     // iter views to get visible nodes
     for (view_entity, render_entity, camera, visible_octree_nodes) in views.iter() {
         // for each visible octree
-        for (main_entity, node_ids) in &visible_octree_nodes.nodes {
+        for (main_entity, visible_octree_nodes) in &visible_octree_nodes.nodes {
             let Ok((render_entity, visibility, component, item)) = query.get(*main_entity) else {
                 warn!(
                     "Query item not found when extracting octree nodes: {}",
@@ -102,7 +101,7 @@ pub fn extract_render_octree_nodes<T, C>(
             let mut added_nodes = Vec::new();
 
             // for each visible node
-            for node_id in node_ids {
+            for VisibleOctreeNode { id: node_id, ..} in visible_octree_nodes {
                 // check if the node is already prepared
                 if prepared_nodes.contains(node_id)
                 {
@@ -136,6 +135,7 @@ pub fn extract_render_octree_nodes<T, C>(
                             entry.insert(OctreeNode {
                                 id: octree_node.id,
                                 parent_id: octree_node.parent_id,
+                                child_index: octree_node.child_index,
                                 children: octree_node.children.clone(),
                                 children_mask: octree_node.children_mask.clone(),
                                 bounding_box: octree_node.bounding_box.clone(),

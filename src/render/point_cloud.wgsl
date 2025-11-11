@@ -46,18 +46,29 @@ struct PointCloudMaterial {
 @group(2) @binding(0)
 var<uniform> material: PointCloudMaterial;
 
+#ifdef IS_OCTREE
 
-#ifdef EARLY_REJECT_ATTRIBUTE_PASS
-#ifdef MULTISAMPLED
+struct OctreeNode {
+    spacing: f32,
+    level: u32,
+    center: vec3<f32>,
+    half_extents: vec3<f32>,
+};
 
-@group(3) @binding(0) var depth_texture: texture_multisampled_2d<f32>;
+struct VisibleNode {
+    index: u32,
+};
 
-#else // MULTISAMPLED
+@group(3) @binding(0)
+var<uniform> octree_node: OctreeNode;
 
-@group(3) @binding(0) var depth_texture: texture_2d<f32>;
+@group(4) @binding(0)
+var visible_nodes: texture_2d<u32>;
 
-#endif // MULTISAMPLED
-#endif // EARLY_REJECT_ATTRIBUTE_PASS
+@group(5) @binding(0)
+var<uniform> visible_node: VisibleNode;
+
+#endif
 
 const PI: f32 = 3.14159265358979323846264338327950288;
 
@@ -67,10 +78,76 @@ fn srgb_to_rgb_simple(color: vec3<f32>) -> vec3<f32> {
 }
 
 
+#ifdef IS_OCTREE
+
+
+fn is_bit_set(number: u32, index: u32) -> bool {
+    return (number & (1u << index)) != 0u;
+}
+
+// Fonction auxiliaire : compter combien de bits sont à 1 avant l'index donné
+fn count_bits_before(mask: u32, index: u32) -> u32 {
+    // Créer un masque pour les bits avant index
+    let before_mask = (1u << index) - 1u;
+    return countOneBits(mask & before_mask);
+}
+
+fn get_max_relative_depth(position: vec3<f32>) -> u32 {
+
+    var current_index = visible_node.index;
+    var relative_depth: u32 = 0;
+
+    var center = octree_node.center;
+    var half_extents = octree_node.half_extents;
+
+    for (var i = 0; i <= 30; i ++) {
+
+        let current_node = textureLoad(visible_nodes, vec2<u32>(current_index, 0), 0);
+
+        // Décomposer les données
+        let children_mask = current_node.r;  // u8 dans le canal R
+        // current_node.g est le padding (inutilisé)
+        let first_child_index = current_node.b | (current_node.a << 8u);  // u16 reconstruit à partir de B et A
+
+        // Déterminer dans quel octant se trouve la position
+        let relative_position = position - center;
+
+        // index3d contient 0 ou 1 pour chaque axe
+        let index3d = step(vec3(0.0), relative_position);
+
+        // compute the child_index
+        let child_index = u32(round(4.0 * index3d.x + 2.0 * index3d.y + index3d.z));
+
+        // check if a children exists at this index
+        if is_bit_set(children_mask, child_index) {
+            // compute child offset
+            let child_offset = count_bits_before(children_mask, child_index);
+            let actual_child_index = first_child_index + child_offset;
+
+            relative_depth ++;
+
+            current_index = actual_child_index;
+            half_extents = half_extents  * 0.5;
+
+            let offset = (index3d * 2.0 - 1.0) * half_extents;
+            center = center + offset;
+        } else {
+            return relative_depth;
+        }
+
+    }
+
+    return relative_depth;
+}
+
+#endif
+
+
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
     let center = vertex.i_pos_size.xyz;
     var point_size = material.point_size;
+
     if (point_size < 0.0) {
         point_size = vertex.i_pos_size.w;
     }
@@ -89,8 +166,17 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 //    let slope = tan(fov / 2.0);
 //    var proj_factor = -0.5 * viewport[3] / (slope * view_position.z);
 
+#ifdef IS_OCTREE
+
+
+    let max_relative_depth = get_max_relative_depth(vertex.i_pos_size.xyz);
+    let attenuation = pow(2.0, f32(max_relative_depth));
+
+    let radius = octree_node.spacing * 1.7 / attenuation;
+#else
     // Compute radius to size the point correctly with viewport size
     let radius = point_size / min(viewport[2], viewport[3]);
+#endif
 
     // Compute the offset to apply for creating a quad
     let offset = vertex.position.xy * radius;
@@ -104,6 +190,27 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     out.view_position = view_position;
 
     out.color = vertex.i_color;
+
+#ifdef IS_OCTREE
+#ifdef DEBUG_COLOR
+    var debug_color = vec3<f32>(1.0, 1.0, 1.0);
+
+    let absolute_depth = max_relative_depth + octree_node.level;
+
+    if absolute_depth == 0u {
+        debug_color = vec3<f32>(1.0, 0.0, 0.0); // Rouge = problème !
+    } else if absolute_depth == 1u {
+        debug_color = vec3<f32>(1.0, 1.0, 0.0); // Jaune
+    } else if absolute_depth == 2u {
+        debug_color = vec3<f32>(0.0, 1.0, 0.0); // Vert
+    } else {
+        debug_color = vec3<f32>(0.0, 0.0, f32(absolute_depth) / 10.0); // Bleu = profond
+    }
+
+    out.color = vec4<f32>(debug_color, 1.0);
+#endif // DEBUG_COLOR
+#endif // IS_OCTREE
+
     out.uv = vertex.position.xy + vec2(0.5);
     out.log_depth = log2(-view_position.z);
     out.radius = radius;
@@ -117,24 +224,6 @@ fn vertex(vertex: Vertex) -> VertexOutput {
         view_position += vec3<f32>(offset, 0.0);
 
         out.clip_position = position_view_to_clip(view_position);
-	#endif
-
-	#ifdef EARLY_REJECT_ATTRIBUTE_PASS
-        // Convert to screen coordinates
-        let ndc_pos = position_view_to_ndc(out.view_position);
-        let uv = (vec2(ndc_pos.x, -ndc_pos.y) * 0.5 + vec2(0.5, 0.5)) * viewport.zw;
-        // Clamp to screen coordinates for vertex outside of the texture
-        let texel_coords = clamp(vec2<i32>(uv), vec2<i32>(0), vec2<i32>(viewport.zw) - vec2<i32>(1));
-
-        // Load the depth computed at previous pass
-	    let prepass_depth = textureLoad(depth_texture, texel_coords, 0).r;
-	    let current_depth = ndc_pos.z;
-        // OR let current_depth = out.clip_position.z / out.clip_position.w;
-
-        // Reject the vertex if it is behind
-	    if (current_depth > prepass_depth) {
-	        out.clip_position = vec4<f32>(0.0);
-	    }
 	#endif
 
     return out;

@@ -1,15 +1,15 @@
 use crate::octree::OctreeAssetPlugin;
-use crate::octree::extract::RenderOctreePlugin;
 use crate::octree::visibility::ExtractVisibleOctreeNodesPlugin;
 use crate::pointcloud_octree::asset::PointCloudNodeData;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::extract::{
-    PointCloudNodeUniformLayout, RenderPointCloudNodeData, RenderPointCloudNodeUniform,
+    PointCloudOctreeNodeUniformLayout, RenderPointCloudNodeData, RenderPointCloudNodeUniform,
 };
 use crate::pointcloud_octree::render::RenderPointCloudOctreePlugin;
+use crate::pointcloud_octree::visible_nodes_texture::{prepare_visible_nodes_texture, prepare_visible_nodes_texture_bind_group, VisibleNodesTextureLayout};
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;
-use bevy_render::RenderApp;
+use bevy_render::{Render, RenderApp, RenderSystems};
 
 pub mod asset;
 pub mod component;
@@ -19,12 +19,17 @@ pub mod extract;
 pub mod potree;
 pub mod render;
 
+pub mod visible_nodes_texture;
+
 pub type PointCloudOctreeAssetPlugin = OctreeAssetPlugin<PointCloudNodeData>;
 // pub type PointCloudOctreeRenderNodeDataPlugin = RenderOctreePlugin<RenderPointCloudNodeData>;
 // pub type PointCloudOctreeRenderNodeUniformPlugin = RenderOctreePlugin<RenderPointCloudNodeUniform>;
 
-pub type ExtractVisiblePointCloudOctreeNodesPlugin =
-    ExtractVisibleOctreeNodesPlugin<PointCloudNodeData, PointCloudOctree3d, RenderPointCloudNodeData>;
+pub type ExtractVisiblePointCloudOctreeNodesPlugin = ExtractVisibleOctreeNodesPlugin<
+    PointCloudNodeData,
+    PointCloudOctree3d,
+    RenderPointCloudNodeData,
+>;
 
 pub struct PointCloudOctreePlugin;
 
@@ -36,6 +41,16 @@ impl Plugin for PointCloudOctreePlugin {
             .add_plugins(RenderPointCloudOctreePlugin)
             .add_plugins(ExtractVisiblePointCloudOctreeNodesPlugin::default());
 
+        if let Some(mut render_app) = app.get_sub_app_mut(RenderApp) {
+            render_app.add_systems(
+                Render,
+                (
+                    prepare_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
+                    prepare_visible_nodes_texture_bind_group.in_set(RenderSystems::PrepareBindGroups),
+                ),
+            );
+        }
+
         #[cfg(feature = "potree")]
         {
             app.add_plugins(potree::PotreeOctreePlugin);
@@ -46,6 +61,7 @@ impl Plugin for PointCloudOctreePlugin {
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
-        render_app.init_resource::<PointCloudNodeUniformLayout>();
+        render_app.init_resource::<PointCloudOctreeNodeUniformLayout>();
+        render_app.init_resource::<VisibleNodesTextureLayout>();
     }
 }
