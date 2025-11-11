@@ -57,6 +57,11 @@ struct OctreeNode {
 
 struct VisibleNode {
     index: u32,
+#ifdef SIXTEEN_BYTE_ALIGNMENT
+    // WebGL2 structs must be 16 byte aligned.
+    _webgl2_padding_1: vec3<u32>,
+    _webgl2_padding_2: vec4<u32>,
+#endif
 };
 
 @group(3) @binding(0)
@@ -85,11 +90,21 @@ fn is_bit_set(number: u32, index: u32) -> bool {
     return (number & (1u << index)) != 0u;
 }
 
+fn count_one_bits_compat(x: u32) -> u32 {
+    var v = x;
+    v = v - ((v >> 1u) & 0x55555555u);
+    v = (v & 0x33333333u) + ((v >> 2u) & 0x33333333u);
+    return (((v + (v >> 4u)) & 0x0F0F0F0Fu) * 0x01010101u) >> 24u;
+}
+
 // Fonction auxiliaire : compter combien de bits sont à 1 avant l'index donné
 fn count_bits_before(mask: u32, index: u32) -> u32 {
     // Créer un masque pour les bits avant index
     let before_mask = (1u << index) - 1u;
-    return countOneBits(mask & before_mask);
+
+    // TODO add ifdef to use native version if available
+    return count_one_bits_compat(mask & before_mask);
+    //return countOneBits(mask & before_mask);
 }
 
 fn get_max_relative_depth(position: vec3<f32>) -> u32 {

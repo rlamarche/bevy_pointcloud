@@ -34,6 +34,10 @@ use bytemuck::{Pod, Zeroable};
 #[derive(ShaderType)]
 pub struct PointCloudVisibleNodeUniform {
     pub index: u32,
+    #[cfg(all(feature = "webgl", target_arch = "wasm32", not(feature = "webgpu")))]
+    pub _padding_1: bevy_math::Vec3,
+    #[cfg(all(feature = "webgl", target_arch = "wasm32", not(feature = "webgpu")))]
+    pub _padding_2: bevy_math::Vec4,
 }
 
 #[derive(Component)]
@@ -253,6 +257,18 @@ pub fn prepare_visible_nodes_texture_bind_group(
 
                 let mut buffer = UniformBuffer::from(PointCloudVisibleNodeUniform {
                     index: *index as u32,
+                    #[cfg(all(
+                        feature = "webgl",
+                        target_arch = "wasm32",
+                        not(feature = "webgpu")
+                    ))]
+                    _padding_1: Default::default(),
+                    #[cfg(all(
+                        feature = "webgl",
+                        target_arch = "wasm32",
+                        not(feature = "webgpu")
+                    ))]
+                    _padding_2: Default::default(),
                 });
                 buffer.write_buffer(&render_device, &render_queue);
 
