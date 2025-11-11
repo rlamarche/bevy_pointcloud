@@ -131,7 +131,7 @@ impl SpecializedRenderPipeline for DepthPipeline {
         if key.is_octree {
             layout.push(self.point_cloud_octree_node_data_layout.clone());
             layout.push(self.point_cloud_octree_visible_nodes_layout.clone());
-            layout.push(self.point_cloud_octree_visible_node_layout.clone());
+            // layout.push(self.point_cloud_octree_visible_node_layout.clone());
         }
 
         RenderPipelineDescriptor {

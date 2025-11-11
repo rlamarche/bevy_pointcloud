@@ -2,11 +2,15 @@ pub mod node;
 pub mod phase;
 
 use crate::octree::visibility::{RenderVisibleOctreeNodes, VisibleOctreeNode};
+use crate::pointcloud_octree::asset::PointCloudNodeData;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
 use crate::pointcloud_octree::render::depth_pass::node::DepthPassOctreeLabel;
-use crate::pointcloud_octree::render::draw::{DrawPointCloudOctreeNode, SetPointCloudOctreeNodeUniformGroup};
+use crate::pointcloud_octree::render::draw::{
+    DrawPointCloudOctreeNode, SetPointCloudOctreeNodeUniformGroup,
+};
 use crate::pointcloud_octree::render::phase::PointCloudOctree3dBinKey;
+use crate::pointcloud_octree::visible_nodes_texture::SetVisibleNodesTexture;
 use crate::render::attribute_pass::node::AttributePassLabel;
 use crate::render::depth_pass::pipeline::{DepthPipeline, DepthPipelineKey};
 use crate::render::depth_pass::texture::prepare_depth_pass_textures;
@@ -27,9 +31,7 @@ use bevy_render::render_phase::{BinnedRenderPhaseType, InputUniformIndex, ViewBi
 use bevy_render::render_resource::SpecializedRenderPipelines;
 use bevy_render::view::NoIndirectDrawing;
 use bevy_render::{
-    prelude::*, render_graph::ViewNodeRunner, render_phase::{
-        AddRenderCommand, DrawFunctions, SetItemPipeline,
-    }, render_resource::PipelineCache, sync_world::MainEntity,
+    prelude::*, render_graph::ViewNodeRunner, render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline}, render_resource::PipelineCache, sync_world::MainEntity,
     view::{ExtractedView, RetainedViewEntity},
     Extract,
     ExtractSchedule,
@@ -38,8 +40,6 @@ use bevy_render::{
     RenderSystems,
 };
 use phase::PointCloudOctree3dDepthPhase;
-use crate::pointcloud_octree::asset::PointCloudNodeData;
-use crate::pointcloud_octree::visible_nodes_texture::{SetPointCloudVisibleUniformGroup, SetVisibleNodesTexture};
 
 pub struct DepthPassPlugin;
 impl Plugin for DepthPassPlugin {
@@ -80,7 +80,7 @@ type DrawDepthPass = (
     SetPointCloudMaterialGroup<2>,
     SetPointCloudOctreeNodeUniformGroup<3>,
     SetVisibleNodesTexture<4>,
-    SetPointCloudVisibleUniformGroup<5>,
+    // SetPointCloudVisibleUniformGroup<5>,
     DrawPointCloudOctreeNode,
 );
 
@@ -168,7 +168,7 @@ fn queue_depth_pass(
                 warn!("point_cloud_octree_3d missing");
                 continue;
             };
-            
+
             // Bump the change tick in order to force Bevy to rebuild the bin.
             let this_tick = next_tick.get() + 1;
             next_tick.set(this_tick);

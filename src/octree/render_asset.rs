@@ -1,7 +1,6 @@
 use super::asset::OctreeNode;
 pub use super::storage::NodeId;
 use bevy_platform::collections::HashMap;
-use bevy_reflect::TypePath;
 use std::fmt::Debug;
 use thiserror::Error;
 

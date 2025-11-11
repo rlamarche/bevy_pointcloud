@@ -8,6 +8,8 @@ use bevy_ecs::system::{lifetimeless::*, SystemParamItem};
 use bevy_log::prelude::*;
 use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
 use bevy_render::render_resource::IndexFormat;
+use bevy_render::renderer::RenderQueue;
+use crate::pointcloud_octree::visible_nodes_texture::VisibleNodesTexture;
 
 pub struct DrawPointCloudOctreeNode;
 
@@ -71,17 +73,19 @@ pub struct SetPointCloudOctreeNodeUniformGroup<const I: usize>;
 impl<P: PhaseItem + PointCloudOctree3dPhase, const I: usize> RenderCommand<P>
     for SetPointCloudOctreeNodeUniformGroup<I>
 {
-    type Param = SRes<RenderOctrees<RenderPointCloudNodeData>>;
-    type ViewQuery = ();
+    type Param = (SRes<RenderOctrees<RenderPointCloudNodeData>>, SRes<RenderQueue>);
+    type ViewQuery = Read<VisibleNodesTexture>;
     type ItemQuery = Read<PointCloudOctree3d>;
 
     fn render<'w>(
         item: &P,
-        _view: ROQueryItem<'w, '_, Self::ViewQuery>,
+        visible_nodes_texture: ROQueryItem<'w, '_, Self::ViewQuery>,
         point_cloud_octree_3d: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
-        render_octrees: SystemParamItem<'w, '_, Self::Param>,
+        (render_octrees, render_queue): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
+        let render_queue = render_queue.into_inner();
+
         let render_octrees = render_octrees.into_inner();
 
         let Some(point_cloud_octree_3d) = point_cloud_octree_3d else {
@@ -100,6 +104,22 @@ impl<P: PhaseItem + PointCloudOctree3dPhase, const I: usize> RenderCommand<P>
             warn!("Missing node when render");
             return RenderCommandResult::Skip;
         };
+
+        let Some((entity_index, node_index)) = visible_nodes_texture.octree_index.get(&item.entity()) else {
+            warn!("Missing octree / node mapping information");
+            return RenderCommandResult::Skip;
+        };
+        let Some(node_index) = node_index.get(&node_id) else {
+            warn!("Missing node mapping information");
+            return RenderCommandResult::Skip;
+        };
+
+        let buffer = &node.data.uniform_buffer.buffer().unwrap();
+        render_queue.write_buffer(
+            buffer,
+            44, // offset taking into account: align center on 16, and each vec3 has padding
+            bytemuck::cast_slice(&[*entity_index, *node_index])
+        );
 
         pass.set_bind_group(I, &node.data.uniform, &[]);
 

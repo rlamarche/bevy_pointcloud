@@ -1,5 +1,5 @@
 use super::asset::{PointCloudNodeData, PointData};
-use crate::octree::asset::{NodeId, Octree, OctreeNode};
+use crate::octree::asset::{Octree, OctreeNode};
 use crate::octree::visibility::extract::ExtractOctreeNode;
 use crate::octree::visibility::prepare::{PrepareOctreeNodeError, RenderOctreeNode};
 use crate::point_cloud_material::PointCloudMaterial3d;
@@ -15,26 +15,27 @@ use bevy_math::Vec3;
 use bevy_reflect::TypePath;
 use bevy_render::extract_component::ExtractComponent;
 use bevy_render::render_resource::binding_types::uniform_buffer;
-use bevy_render::render_resource::{
-    BindGroup, BindGroupEntries,
-    BindGroupLayout, BindGroupLayoutEntries, Buffer, BufferInitDescriptor, BufferUsages,
-    PreparedBindGroup, ShaderStages, ShaderType, UniformBuffer,
-};
+use bevy_render::render_resource::{BindGroup, BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, Buffer, BufferInitDescriptor, BufferUsages, PreparedBindGroup, ShaderStages, ShaderType, UniformBuffer};
 use bevy_render::renderer::{RenderDevice, RenderQueue};
 use bevy_transform::prelude::GlobalTransform;
+use bytemuck::{Pod, Zeroable};
 
-#[derive(ShaderType)]
+#[derive(ShaderType, Pod, Zeroable, Clone, Copy)]
+#[repr(C)]
 pub struct PointCloudNodeDataUniform {
     pub spacing: f32,
     pub level: u32,
     pub center: Vec3,
     pub half_extents: Vec3,
+    pub octree_index: u32,
+    pub node_index: u32,
 }
 
 #[derive(TypePath)]
 pub struct RenderPointCloudNodeData {
     pub points: Buffer,
     pub uniform: BindGroup,
+    pub uniform_buffer: UniformBuffer<PointCloudNodeDataUniform>,
     pub num_points: usize,
 }
 
@@ -69,6 +70,8 @@ impl RenderOctreeNode for RenderPointCloudNodeData {
             level: source_node.data.level,
             center: source_node.bounding_box.center.into(),
             half_extents: source_node.bounding_box.half_extents.into(),
+            octree_index: 0,
+            node_index: 0,
         });
 
         uniform_buffer.write_buffer(render_device, render_queue);
@@ -82,6 +85,7 @@ impl RenderOctreeNode for RenderPointCloudNodeData {
         Ok(RenderPointCloudNodeData {
             points: buffer,
             uniform,
+            uniform_buffer,
             num_points: source_node.data.num_points,
         })
     }

@@ -1,4 +1,4 @@
-use crate::octree::asset::{NodeId, Octree, OctreeNode};
+use crate::octree::asset::{Octree, OctreeNode};
 use crate::octree::render_asset::RenderOctree;
 use crate::octree::visibility::extract::{ExtractOctreeNode, ExtractedOctreeNodes};
 use crate::octree::visibility::limiter::RenderOctreeNodesBytesPerFrameLimiter;
@@ -107,13 +107,6 @@ impl<A: RenderOctreeNode> RenderOctrees<A> {
         self.0.get(&id.into())
     }
 
-    pub fn get_mut(
-        &mut self,
-        id: impl Into<AssetId<Octree<A::SourceOctreeNode>>>,
-    ) -> Option<&mut RenderOctree<A>> {
-        self.0.get_mut(&id.into())
-    }
-
     pub fn get_or_insert_mut(
         &mut self,
         id: impl Into<AssetId<Octree<A::SourceOctreeNode>>>,
@@ -121,31 +114,11 @@ impl<A: RenderOctreeNode> RenderOctrees<A> {
         self.0.entry(id.into()).or_default()
     }
 
-    pub fn insert(
-        &mut self,
-        id: impl Into<AssetId<Octree<A::SourceOctreeNode>>>,
-        value: RenderOctree<A>,
-    ) -> Option<RenderOctree<A>> {
-        self.0.insert(id.into(), value)
-    }
-
     pub fn remove(
         &mut self,
         id: impl Into<AssetId<Octree<A::SourceOctreeNode>>>,
     ) -> Option<RenderOctree<A>> {
         self.0.remove(&id.into())
-    }
-
-    pub fn iter(
-        &self,
-    ) -> impl Iterator<Item = (AssetId<Octree<A::SourceOctreeNode>>, &RenderOctree<A>)> {
-        self.0.iter().map(|(k, v)| (*k, v))
-    }
-
-    pub fn iter_mut(
-        &mut self,
-    ) -> impl Iterator<Item = (AssetId<Octree<A::SourceOctreeNode>>, &mut RenderOctree<A>)> {
-        self.0.iter_mut().map(|(k, v)| (*k, v))
     }
 }
 
@@ -242,22 +215,15 @@ pub fn prepare_assets<A: RenderOctreeNode>(
 
     let mut prepared_octree_nodes = HashMap::new();
 
-    for (id, extracted_octree_nodes) in extracted_assets.octrees.drain() {
+    for (asset_id, extracted_octree_nodes) in extracted_assets.octrees.drain() {
         let mut prepared_nodes = Vec::new();
 
-        let render_asset = match render_assets.get_mut(id) {
-            None => {
-                let render_octree = RenderOctree::<A>::default();
-                render_assets.insert(id, render_octree);
-                render_assets.get_mut(id).unwrap()
-            }
-            Some(asset) => asset,
-        };
+        let render_asset = render_assets.get_or_insert_mut(asset_id);
 
         for (node_id, extracted_octree_node) in extracted_octree_nodes {
             let write_bytes = if let Some(size) = A::byte_len(&extracted_octree_node) {
                 if bpf.exhausted() {
-                    prepare_next_frame.assets.push((id, extracted_octree_node));
+                    prepare_next_frame.assets.push((asset_id, extracted_octree_node));
                     continue;
                 }
                 size
@@ -276,7 +242,7 @@ pub fn prepare_assets<A: RenderOctreeNode>(
                 data: (),
             };
 
-            match A::prepare_octree_node(extracted_octree_node, id, &mut param) {
+            match A::prepare_octree_node(extracted_octree_node, asset_id, &mut param) {
                 Ok(prepared_octree_node) => {
                     let render_octree_node = OctreeNode::<A> {
                         id: cloned_node.id,
@@ -295,7 +261,7 @@ pub fn prepare_assets<A: RenderOctreeNode>(
                     prepared_nodes.push(node_id);
                 }
                 Err(PrepareOctreeNodeError::RetryNextUpdate(extracted_data)) => {
-                    prepare_next_frame.assets.push((id, extracted_data));
+                    prepare_next_frame.assets.push((asset_id, extracted_data));
                 }
                 Err(PrepareOctreeNodeError::AsBindGroupError(e)) => {
                     error!(
@@ -305,7 +271,7 @@ pub fn prepare_assets<A: RenderOctreeNode>(
                 }
             }
         }
-        prepared_octree_nodes.insert(id, prepared_nodes);
+        prepared_octree_nodes.insert(asset_id, prepared_nodes);
     }
 
     if bpf.exhausted() && !prepare_next_frame.assets.is_empty() {

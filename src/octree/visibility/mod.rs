@@ -5,7 +5,7 @@ use crate::octree::visibility::extract::{
 use bevy_app::{App, Plugin, PostUpdate, SubApp};
 use bevy_asset::{AssetId, Assets};
 use bevy_camera::visibility::{
-    add_visibility_class, check_visibility, NoCpuCulling, Visibility, VisibilityClass,
+    add_visibility_class, check_visibility, Visibility, VisibilityClass,
     VisibleEntities,
 };
 use bevy_camera::{

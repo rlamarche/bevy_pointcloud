@@ -53,6 +53,8 @@ struct OctreeNode {
     level: u32,
     center: vec3<f32>,
     half_extents: vec3<f32>,
+    octree_index: u32,
+    node_index: u32,
 };
 
 struct VisibleNode {
@@ -70,8 +72,8 @@ var<uniform> octree_node: OctreeNode;
 @group(4) @binding(0)
 var visible_nodes: texture_2d<u32>;
 
-@group(5) @binding(0)
-var<uniform> visible_node: VisibleNode;
+//@group(5) @binding(0)
+//var<uniform> visible_node: VisibleNode;
 
 #endif
 
@@ -109,7 +111,8 @@ fn count_bits_before(mask: u32, index: u32) -> u32 {
 
 fn get_max_relative_depth(position: vec3<f32>) -> u32 {
 
-    var current_index = visible_node.index;
+//    var current_index = visible_node.index;
+    var current_index = octree_node.node_index;
     var relative_depth: u32 = 0;
 
     var center = octree_node.center;
@@ -117,7 +120,9 @@ fn get_max_relative_depth(position: vec3<f32>) -> u32 {
 
     for (var i = 0; i <= 30; i ++) {
 
-        let current_node = textureLoad(visible_nodes, vec2<u32>(current_index, 0), 0);
+//        let current_node = textureLoad(visible_nodes, vec2<u32>(current_index, 0), 0);
+        let current_node = textureLoad(visible_nodes, vec2<u32>(current_index, octree_node.octree_index), 0);
+
 
         // Décomposer les données
         let children_mask = current_node.r;  // u8 dans le canal R
