@@ -1,19 +1,17 @@
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::prelude::*;
-use bevy_log::{error, warn};
+use bevy_log::error;
 use bevy_render::render_phase::{TrackedRenderPass, ViewBinnedRenderPhases};
 use bevy_render::render_resource::{CommandEncoderDescriptor, StoreOp};
 use bevy_render::view::ViewDepthTexture;
 use bevy_render::{
     camera::ExtractedCamera,
     render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode},
-    render_phase::ViewSortedRenderPhases,
     render_resource::RenderPassDescriptor,
     renderer::RenderContext,
     view::ExtractedView,
 };
 use crate::pointcloud_octree::render::attribute_pass::phase::PointCloudOctree3dAttributePhase;
-use crate::render::attribute_pass::phase::PointCloud3dAttributePhase;
 use crate::render::attribute_pass::texture::ViewAttributePrepassTextures;
 
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]

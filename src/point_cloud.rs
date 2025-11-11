@@ -1,4 +1,4 @@
-use bevy_asset::{AsAssetId, Asset, AssetId, Assets, Handle, RenderAssetUsages};
+use bevy_asset::{AsAssetId, Asset, AssetId, Handle};
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::component::Component;
 use bevy_ecs::reflect::ReflectComponent;

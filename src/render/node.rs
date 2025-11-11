@@ -8,7 +8,6 @@ use bevy_render::view::ViewDepthTexture;
 use bevy_render::{
     camera::ExtractedCamera,
     render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode},
-    render_phase::ViewSortedRenderPhases,
     render_resource::RenderPassDescriptor,
     renderer::RenderContext,
     view::ExtractedView,

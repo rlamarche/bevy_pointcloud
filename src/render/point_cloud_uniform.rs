@@ -8,7 +8,6 @@ use bevy_render::render_asset::RenderAssets;
 use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
 use bevy_render::render_resource::{AsBindGroup, BindGroupLayout, PreparedBindGroup};
 use bevy_render::renderer::RenderDevice;
-use bevy_log::prelude::*;
 
 #[derive(Component, TypePath, AsBindGroup, Clone, Debug)]
 pub struct PointCloudUniform {

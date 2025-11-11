@@ -17,12 +17,9 @@ use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy_ecs::component::Tick;
 use bevy_ecs::prelude::*;
-use bevy_log::error;
 use bevy_log::prelude::*;
-use bevy_math::FloatOrd;
-use bevy_mesh::Mesh3d;
 use bevy_pbr::{
-    MeshPipeline, MeshPipelineKey, RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup,
+    MeshPipelineKey, SetMeshViewBindGroup,
 };
 use bevy_platform::collections::HashSet;
 use bevy_render::batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport};
@@ -31,18 +28,13 @@ use bevy_render::render_phase::{BinnedRenderPhaseType, InputUniformIndex, ViewBi
 use bevy_render::render_resource::SpecializedRenderPipelines;
 use bevy_render::view::NoIndirectDrawing;
 use bevy_render::{
-    Extract, ExtractSchedule, Render, RenderApp, RenderDebugFlags, RenderSystems,
-    mesh::RenderMesh,
+    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
     prelude::*,
-    render_asset::RenderAssets,
     render_graph::ViewNodeRunner,
     render_phase::{
-        AddRenderCommand, CachedRenderPipelinePhaseItem, DrawFunctionId, DrawFunctions, PhaseItem,
-        PhaseItemExtraIndex, SetItemPipeline, SortedPhaseItem, SortedRenderPhasePlugin,
-        ViewSortedRenderPhases,
+        AddRenderCommand, DrawFunctions, SetItemPipeline,
     },
-    render_resource::{CachedRenderPipelineId, PipelineCache, SpecializedMeshPipelines},
-    sync_world::MainEntity,
+    render_resource::PipelineCache,
     view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity},
 };
 use phase::PointCloud3dDepthPhase;

@@ -1,7 +1,6 @@
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
-use bevy_mesh::VertexBufferLayout;
-use bevy_render::render_resource::{Buffer, BufferInitDescriptor, BufferUsages, RawBufferVec, VertexAttribute, VertexFormat, VertexStepMode};
+use bevy_render::render_resource::{Buffer, BufferInitDescriptor, BufferUsages, RawBufferVec};
 use bevy_render::renderer::{RenderDevice, RenderQueue};
 use bytemuck::{Pod, Zeroable};
 

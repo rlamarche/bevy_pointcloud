@@ -9,9 +9,7 @@ use crate::pointcloud_octree::render::depth_pass::node::DepthPassOctreeLabel;
 use crate::pointcloud_octree::render::draw::{DrawPointCloudOctreeNode, SetPointCloudOctreeNodeUniformGroup};
 use crate::pointcloud_octree::render::phase::PointCloudOctree3dBinKey;
 use crate::render::attribute_pass::pipeline::{AttributePassPipeline, AttributePipelineKey};
-use crate::render::attribute_pass::texture::{
-    SetAttributePassTextures, prepare_attribute_pass_bind_groups,
-};
+use crate::render::attribute_pass::texture::prepare_attribute_pass_bind_groups;
 use crate::render::material::SetPointCloudMaterialGroup;
 use crate::render::normalize_pass::node::NormalizePassLabel;
 use crate::render::phase::PointCloud3dBatchSetKey;

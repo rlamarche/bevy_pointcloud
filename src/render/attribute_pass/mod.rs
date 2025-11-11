@@ -28,9 +28,8 @@ use bevy_render::render_resource::SpecializedRenderPipelines;
 use bevy_render::view::NoIndirectDrawing;
 use bevy_render::{
     prelude::*, render_graph::ViewNodeRunner, render_phase::{
-        AddRenderCommand, DrawFunctions, PhaseItem, PhaseItemExtraIndex, SetItemPipeline,
-        SortedPhaseItem, SortedRenderPhasePlugin, ViewSortedRenderPhases,
-    }, render_resource::{CachedRenderPipelineId, PipelineCache, SpecializedMeshPipelines}, sync_world::MainEntity,
+        AddRenderCommand, DrawFunctions, SetItemPipeline,
+    }, render_resource::PipelineCache, sync_world::MainEntity,
     view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity},
     Extract,
     ExtractSchedule,

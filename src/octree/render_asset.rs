@@ -1,10 +1,7 @@
 use super::asset::OctreeNode;
 pub use super::storage::NodeId;
-use crate::octree::storage::GenerationalSlab;
-use bevy_asset::Asset;
-use bevy_camera::primitives::Aabb;
-use bevy_platform::collections::{HashMap, HashSet};
-use bevy_reflect::{Reflect, TypePath};
+use bevy_platform::collections::HashMap;
+use bevy_reflect::TypePath;
 use std::fmt::Debug;
 use thiserror::Error;
 
@@ -16,16 +13,15 @@ pub enum InsertNodeError {
     ParentChildrenFull,
 }
 
-#[derive(TypePath)]
-pub struct RenderOctree<T>
+pub struct RenderOctree<A>
 where
-    T: Send + Sync + TypePath,
+    A: Send + Sync,
 {
-    pub(crate) nodes: HashMap<NodeId, OctreeNode<T>>,
+    pub(crate) nodes: HashMap<NodeId, OctreeNode<A>>,
     pub(crate) root_id: Option<NodeId>,
 }
 
-impl<T: Send + Sync + TypePath> Default for RenderOctree<T> {
+impl<A: Send + Sync> Default for RenderOctree<A> {
     fn default() -> Self {
         Self {
             nodes: Default::default(),
@@ -34,15 +30,15 @@ impl<T: Send + Sync + TypePath> Default for RenderOctree<T> {
     }
 }
 
-impl<T> RenderOctree<T>
+impl<A> RenderOctree<A>
 where
-    T: Send + Sync + TypePath,
+    A: Send + Sync,
 {
-    pub fn insert(&mut self, node_id: NodeId, node: OctreeNode<T>) {
+    pub fn insert(&mut self, node_id: NodeId, node: OctreeNode<A>) {
         self.nodes.insert(node_id, node);
     }
 
-    pub fn remove(&mut self, node_id: NodeId, node: OctreeNode<T>) -> Option<OctreeNode<T>> {
+    pub fn remove(&mut self, node_id: NodeId, node: OctreeNode<A>) -> Option<OctreeNode<A>> {
         self.nodes.remove(&node_id)
     }
 }

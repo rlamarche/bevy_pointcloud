@@ -1,14 +1,13 @@
 use super::texture::ViewAttributePrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::prelude::*;
-use bevy_log::{error, warn};
+use bevy_log::error;
 use bevy_render::render_phase::{TrackedRenderPass, ViewBinnedRenderPhases};
 use bevy_render::render_resource::{CommandEncoderDescriptor, StoreOp};
 use bevy_render::view::ViewDepthTexture;
 use bevy_render::{
     camera::ExtractedCamera,
     render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode},
-    render_phase::ViewSortedRenderPhases,
     render_resource::RenderPassDescriptor,
     renderer::RenderContext,
     view::ExtractedView,

@@ -3,7 +3,7 @@ use crate::octree::visibility::ExtractVisibleOctreeNodesPlugin;
 use crate::pointcloud_octree::asset::PointCloudNodeData;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::extract::{
-    PointCloudOctreeNodeUniformLayout, RenderPointCloudNodeData, RenderPointCloudNodeUniform,
+    PointCloudOctreeNodeUniformLayout, RenderPointCloudNodeData,
 };
 use crate::pointcloud_octree::render::RenderPointCloudOctreePlugin;
 use crate::pointcloud_octree::visible_nodes_texture::{prepare_visible_nodes_texture, prepare_visible_nodes_texture_bind_group, VisibleNodesTextureLayout};
@@ -22,8 +22,6 @@ pub mod render;
 pub mod visible_nodes_texture;
 
 pub type PointCloudOctreeAssetPlugin = OctreeAssetPlugin<PointCloudNodeData>;
-// pub type PointCloudOctreeRenderNodeDataPlugin = RenderOctreePlugin<RenderPointCloudNodeData>;
-// pub type PointCloudOctreeRenderNodeUniformPlugin = RenderOctreePlugin<RenderPointCloudNodeUniform>;
 
 pub type ExtractVisiblePointCloudOctreeNodesPlugin = ExtractVisibleOctreeNodesPlugin<
     PointCloudNodeData,
@@ -41,7 +39,7 @@ impl Plugin for PointCloudOctreePlugin {
             .add_plugins(RenderPointCloudOctreePlugin)
             .add_plugins(ExtractVisiblePointCloudOctreeNodesPlugin::default());
 
-        if let Some(mut render_app) = app.get_sub_app_mut(RenderApp) {
+        if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app.add_systems(
                 Render,
                 (

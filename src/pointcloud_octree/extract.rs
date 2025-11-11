@@ -1,4 +1,4 @@
-use super::asset::{PointCloudNodeData, PointCloudOctree, PointData};
+use super::asset::{PointCloudNodeData, PointData};
 use crate::octree::asset::{NodeId, Octree, OctreeNode};
 use crate::octree::visibility::extract::ExtractOctreeNode;
 use crate::octree::visibility::prepare::{PrepareOctreeNodeError, RenderOctreeNode};
@@ -11,19 +11,16 @@ use bevy_ecs::{
     prelude::*,
     system::{lifetimeless::SRes, SystemParamItem},
 };
-use bevy_log::info;
 use bevy_math::Vec3;
 use bevy_reflect::TypePath;
 use bevy_render::extract_component::ExtractComponent;
-use bevy_render::render_asset::RenderAssets;
 use bevy_render::render_resource::binding_types::uniform_buffer;
 use bevy_render::render_resource::{
-    AsBindGroup, AsBindGroupShaderType, BindGroup, BindGroupEntries, BindGroupEntry,
+    BindGroup, BindGroupEntries,
     BindGroupLayout, BindGroupLayoutEntries, Buffer, BufferInitDescriptor, BufferUsages,
     PreparedBindGroup, ShaderStages, ShaderType, UniformBuffer,
 };
 use bevy_render::renderer::{RenderDevice, RenderQueue};
-use bevy_render::texture::GpuImage;
 use bevy_transform::prelude::GlobalTransform;
 
 #[derive(ShaderType)]
@@ -55,9 +52,8 @@ impl RenderOctreeNode for RenderPointCloudNodeData {
     }
 
     fn prepare_octree_node(
-        source_node: &OctreeNode<Self::ExtractedOctreeNode>,
-        asset_id: AssetId<Octree<Self::SourceOctreeNode>>,
-        node_id: NodeId,
+        source_node: OctreeNode<Self::ExtractedOctreeNode>,
+        _asset_id: AssetId<Octree<Self::SourceOctreeNode>>,
         (render_device, render_queue, point_cloud_octree_node_uniform_layout): &mut SystemParamItem<
             Self::Param,
         >,

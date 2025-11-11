@@ -1,6 +1,6 @@
 use crate::octree::asset::NodeId;
 use crate::octree::visibility::prepare::RenderOctrees;
-use crate::octree::visibility::{RenderVisibleOctreeNodes, VisibleOctreeNodes};
+use crate::octree::visibility::RenderVisibleOctreeNodes;
 use crate::pointcloud_octree::asset::PointCloudNodeData;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
@@ -145,7 +145,7 @@ pub fn prepare_visible_nodes_texture(
         'main_loop: for (entity, octree_nodes) in &visible_nodes.octrees {
             let root_index = visible_nodes_buffer.len();
 
-            let mut node_mapping = octree_mapping.entry(*entity).or_default();
+            let node_mapping = octree_mapping.entry(*entity).or_default();
 
             for visible_node in octree_nodes {
                 let current_index = visible_nodes_buffer.len();

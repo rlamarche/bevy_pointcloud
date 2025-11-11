@@ -1,7 +1,6 @@
 use crate::octree::storage::GenerationalSlab;
 use bevy_asset::Asset;
 use bevy_camera::primitives::Aabb;
-use bevy_platform::collections::HashSet;
 use bevy_reflect::{Reflect, TypePath};
 use std::fmt::Debug;
 use thiserror::Error;
@@ -33,10 +32,10 @@ where
     pub(crate) removed: Vec<NodeId>,
 }
 
-#[derive(Debug, Clone, TypePath)]
+#[derive(Debug, Clone)]
 pub struct OctreeNode<T>
 where
-    T: Send + Sync + TypePath,
+    T: Send + Sync,
 {
     pub id: NodeId,
     pub child_index: usize,
@@ -45,15 +44,6 @@ where
     pub children_mask: u8,
     pub bounding_box: Aabb,
     pub data: T,
-}
-
-impl<T> Default for Octree<T>
-where
-    T: Clone + Default + Debug + Send + Sync + TypePath,
-{
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl<T> Octree<T>

@@ -1,4 +1,3 @@
-use crate::render::depth_pass::phase::PointCloud3dDepthPhase;
 use crate::render::depth_pass::texture::ViewDepthPrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::prelude::*;
@@ -8,7 +7,6 @@ use bevy_render::view::ViewDepthTexture;
 use bevy_render::{
     camera::ExtractedCamera,
     render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode},
-    render_phase::ViewSortedRenderPhases,
     render_resource::RenderPassDescriptor,
     renderer::RenderContext,
     view::ExtractedView,

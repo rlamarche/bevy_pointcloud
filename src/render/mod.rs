@@ -25,19 +25,13 @@ use bevy_app::prelude::*;
 use bevy_asset::load_internal_asset;
 use bevy_asset::{prelude::*, uuid_handle};
 use bevy_camera::visibility::calculate_bounds;
-use bevy_camera::{Camera, Camera3d};
-use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::{SystemParamItem, lifetimeless::*};
 use bevy_pbr::RenderMeshInstances;
-use bevy_platform::collections::HashSet;
-use bevy_render::batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport};
 use bevy_render::camera::extract_cameras;
 use bevy_render::extract_component::UniformComponentPlugin;
 use bevy_render::render_asset::RenderAssetPlugin;
-use bevy_render::render_phase::{DrawFunctions, ViewBinnedRenderPhases};
-use bevy_render::view::{NoIndirectDrawing, RetainedViewEntity};
-use bevy_render::{Extract, RenderSystems};
+use bevy_render::RenderSystems;
 use bevy_render::{
     Render, RenderApp,
     extract_component::ExtractComponentPlugin,
@@ -46,12 +40,10 @@ use bevy_render::{
     render_asset::RenderAssets,
     render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
 };
-use bevy_render::render_graph::{RenderGraphExt, ViewNodeRunner};
 use bevy_shader::Shader;
 use depth_pass::DepthPassPlugin;
 use normalize_pass::NormalizePassPlugin;
 use point_cloud_uniform::{PointCloudUniformLayout, prepare_point_cloud_uniform};
-use crate::render::node::{OpaquePointCloud3d, OpaquePointCloud3dLabel};
 
 const POINTCLOUD_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("9c7d8df3-86dd-4412-a9cc-dad5c7916a8c");

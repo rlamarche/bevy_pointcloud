@@ -1,6 +1,6 @@
 use crate::octree::asset::Octree;
 use bevy_math::prelude::*;
-use bevy_reflect::{Reflect, TypePath};
+use bevy_reflect::TypePath;
 use bevy_render::render_resource::AsBindGroup;
 use bytemuck::{Pod, Zeroable};
 

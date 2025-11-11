@@ -15,7 +15,7 @@ use crate::render::phase::PointCloud3dBatchSetKey;
 use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
-use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
+use bevy_core_pipeline::core_3d::graph::Core3d;
 use bevy_ecs::component::Tick;
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
@@ -28,10 +28,9 @@ use bevy_render::render_resource::SpecializedRenderPipelines;
 use bevy_render::view::NoIndirectDrawing;
 use bevy_render::{
     prelude::*, render_graph::ViewNodeRunner, render_phase::{
-        AddRenderCommand, DrawFunctions, PhaseItemExtraIndex, SetItemPipeline,
-        SortedRenderPhasePlugin, ViewSortedRenderPhases,
-    }, render_resource::{CachedRenderPipelineId, PipelineCache, SpecializedMeshPipelines}, sync_world::MainEntity,
-    view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity},
+        AddRenderCommand, DrawFunctions, SetItemPipeline,
+    }, render_resource::PipelineCache, sync_world::MainEntity,
+    view::{ExtractedView, RetainedViewEntity},
     Extract,
     ExtractSchedule,
     Render,
