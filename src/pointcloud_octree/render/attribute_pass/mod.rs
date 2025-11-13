@@ -35,7 +35,7 @@ use bevy_render::{
 };
 use phase::PointCloudOctree3dAttributePhase;
 use crate::pointcloud_octree::asset::PointCloudNodeData;
-use crate::pointcloud_octree::visible_nodes_texture::{SetVisibleNodesTexture};
+use crate::pointcloud_octree::visible_nodes_texture::{SetVisibleNodesTexture, SetVisibleOctreeUniformGroup};
 
 pub struct AttributePassPlugin;
 impl Plugin for AttributePassPlugin {
@@ -75,6 +75,7 @@ type DrawAttributePass = (
     SetPointCloudMaterialGroup<2>,
     SetPointCloudOctreeNodeUniformGroup<3>,
     SetVisibleNodesTexture<4>,
+    SetVisibleOctreeUniformGroup<5>,
     // SetPointCloudVisibleUniformGroup<5>,
     DrawPointCloudOctreeNode,
 );
@@ -124,7 +125,7 @@ fn queue_attribute_pass(
     custom_draw_pipeline: Res<AttributePassPipeline>,
     point_cloud_octrees_3d: Query<&PointCloudOctree3d>,
     mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloudOctree3dAttributePhase>>,
-    mut views: Query<(&ExtractedView, &RenderVisibleOctreeNodes<PointCloudNodeData>, &Msaa)>,
+    mut views: Query<(&ExtractedView, &RenderVisibleOctreeNodes<PointCloudOctree3d>, &Msaa)>,
     main_entities: Query<&MainEntity>,
     mut next_tick: Local<Tick>,
 ) {

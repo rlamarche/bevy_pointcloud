@@ -10,7 +10,7 @@ use crate::pointcloud_octree::render::draw::{
     DrawPointCloudOctreeNode, SetPointCloudOctreeNodeUniformGroup,
 };
 use crate::pointcloud_octree::render::phase::PointCloudOctree3dBinKey;
-use crate::pointcloud_octree::visible_nodes_texture::SetVisibleNodesTexture;
+use crate::pointcloud_octree::visible_nodes_texture::{SetVisibleNodesTexture, SetVisibleOctreeUniformGroup};
 use crate::render::attribute_pass::node::AttributePassLabel;
 use crate::render::depth_pass::pipeline::{DepthPipeline, DepthPipelineKey};
 use crate::render::depth_pass::texture::prepare_depth_pass_textures;
@@ -80,6 +80,7 @@ type DrawDepthPass = (
     SetPointCloudMaterialGroup<2>,
     SetPointCloudOctreeNodeUniformGroup<3>,
     SetVisibleNodesTexture<4>,
+    SetVisibleOctreeUniformGroup<5>,
     // SetPointCloudVisibleUniformGroup<5>,
     DrawPointCloudOctreeNode,
 );
@@ -132,7 +133,7 @@ fn queue_depth_pass(
     mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloudOctree3dDepthPhase>>,
     mut views: Query<(
         &ExtractedView,
-        &RenderVisibleOctreeNodes<PointCloudNodeData>,
+        &RenderVisibleOctreeNodes<PointCloudOctree3d>,
         &Msaa,
         Option<&PointCloudRenderMode>,
     )>,

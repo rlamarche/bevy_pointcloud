@@ -6,7 +6,7 @@ use crate::pointcloud_octree::extract::{
     PointCloudOctreeNodeUniformLayout, RenderPointCloudNodeData,
 };
 use crate::pointcloud_octree::render::RenderPointCloudOctreePlugin;
-use crate::pointcloud_octree::visible_nodes_texture::{prepare_visible_nodes_texture, prepare_visible_nodes_texture_bind_group, VisibleNodesTextureLayout};
+use crate::pointcloud_octree::visible_nodes_texture::{OctreeNodesMappingBindGroups, VisibleNodesTextureLayout, prepare_visible_nodes_texture, prepare_visible_nodes_texture_bind_group, prepare_octree_nodes_mapping_buffers};
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;
 use bevy_render::{Render, RenderApp, RenderSystems};
@@ -44,7 +44,9 @@ impl Plugin for PointCloudOctreePlugin {
                 Render,
                 (
                     prepare_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
-                    prepare_visible_nodes_texture_bind_group.in_set(RenderSystems::PrepareBindGroups),
+                    prepare_octree_nodes_mapping_buffers.in_set(RenderSystems::PrepareBindGroups),
+                    prepare_visible_nodes_texture_bind_group
+                        .in_set(RenderSystems::PrepareBindGroups),
                 ),
             );
         }
@@ -61,5 +63,6 @@ impl Plugin for PointCloudOctreePlugin {
         };
         render_app.init_resource::<PointCloudOctreeNodeUniformLayout>();
         render_app.init_resource::<VisibleNodesTextureLayout>();
+        render_app.init_resource::<OctreeNodesMappingBindGroups>();
     }
 }

@@ -7,7 +7,6 @@ use bevy_asset::prelude::*;
 use bevy_camera::prelude::{Camera, Projection};
 use bevy_camera::primitives::{Aabb, Frustum};
 use bevy_ecs::prelude::*;
-use bevy_gizmos::prelude::*;
 use bevy_log::prelude::*;
 use bevy_math::prelude::*;
 use bevy_math::{Vec3, Vec3A};
@@ -43,11 +42,11 @@ pub fn init_hierarchy_task(
     mut commands: Commands,
     potree_point_clouds: Res<Assets<PotreePointCloud>>,
     potree_point_clouds_3d: Query<
-        (Entity, &PotreePointCloud3d, &Gizmo, &GlobalTransform),
+        (Entity, &PotreePointCloud3d, &GlobalTransform),
         Without<HierarchyTask>,
     >,
 ) {
-    for (entity, potree_point_cloud_3d, gizmo, global_transform) in potree_point_clouds_3d {
+    for (entity, potree_point_cloud_3d, global_transform) in potree_point_clouds_3d {
         let (wakeup_tx, wakeup_rx) = async_channel::bounded(1);
         let (hierarchy_snapshot_tx, hierarchy_snapshot_rx) = async_channel::bounded(1);
 

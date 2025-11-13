@@ -44,7 +44,7 @@ pub trait ExtractOctreeNode: Send + Sync + Sized + TypePath {
 /// This system extract visible octree nodes using the provided trait implementation for `T`: [`ExtractOctreeNode`].
 /// It extracts only visible octree nodes previously computed.
 pub fn extract_render_octree_nodes<T, C, A>(
-    views: Extract<Query<(Entity, &VisibleOctreeNodes<T>), With<Camera>>>,
+    views: Extract<Query<(Entity, &VisibleOctreeNodes<C>), With<Camera>>>,
     query: Extract<Query<(&ViewVisibility, &C, T::QueryData), T::QueryFilter>>,
     octrees: Extract<Res<Assets<Octree<T>>>>,
     mut render_octrees: ResMut<RenderOctrees<A>>,
@@ -85,14 +85,7 @@ pub fn extract_render_octree_nodes<T, C, A>(
             };
 
             // get the corresponding render octree (or create it) - might have been created for a previous view
-
-            // TODO find a way to prevent duplicating (using another resource ?)
             let prepared_octree = render_octrees.get_or_insert_mut(octree_component);
-            // let prepared_nodes = render_octree_nodes
-            //     .prepared_octrees
-            //     .get(&octree_component.into())
-            //     .map(Clone::clone)
-            //     .unwrap_or_else(|| HashSet::new());
 
             let render_octree = render_octree_nodes.get_or_create_mut(octree_component);
 

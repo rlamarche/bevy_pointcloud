@@ -9,6 +9,7 @@ use bevy_log::prelude::*;
 use bevy_platform::collections::HashMap;
 use bevy_render::render_resource::AsBindGroupError;
 use thiserror::Error;
+use crate::octree::visibility::RenderOctreeIndex;
 
 #[derive(Debug, Error)]
 pub enum PrepareOctreeNodeError<T: Send + Sync + 'static> {
@@ -124,7 +125,7 @@ impl<A: RenderOctreeNode> RenderOctrees<A> {
 
 /// This system prepares all assets of the corresponding [`RenderAsset::SourceAsset`] type
 /// which where extracted this frame for the GPU.
-pub fn prepare_assets<A: RenderOctreeNode>(
+pub fn prepare_assets<A: RenderOctreeNode, C: Component>(
     mut extracted_assets: ResMut<ExtractedOctreeNodes<A::SourceOctreeNode>>,
     mut render_assets: ResMut<RenderOctrees<A>>,
     mut prepare_next_frame: ResMut<PrepareNextFrameOctreeNodes<A>>,

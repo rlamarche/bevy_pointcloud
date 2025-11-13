@@ -1,24 +1,23 @@
 use crate::octree::asset::{NodeId, Octree, OctreeNode};
 use crate::octree::visibility::extract::{
-    extract_render_octree_nodes, ExtractOctreeNode, ExtractedOctreeNodes,
+    ExtractOctreeNode, ExtractedOctreeNodes, extract_render_octree_nodes,
 };
 use bevy_app::{App, Plugin, PostUpdate, SubApp};
 use bevy_asset::{AssetId, Assets};
 use bevy_camera::visibility::{
-    add_visibility_class, check_visibility, Visibility, VisibilityClass,
-    VisibleEntities,
+    Visibility, VisibilityClass, VisibleEntities, add_visibility_class, check_visibility,
 };
 use bevy_camera::{
-    primitives::{Frustum, Sphere}, Camera,
-    Projection,
+    Camera, Projection,
+    primitives::{Frustum, Sphere},
 };
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::QueryItem;
 use bevy_ecs::schedule::ScheduleConfigs;
 use bevy_ecs::system::ScheduleSystem;
 use bevy_log::prelude::*;
-use bevy_math::prelude::*;
 use bevy_math::UVec2;
+use bevy_math::prelude::*;
 use bevy_platform::collections::HashMap;
 use bevy_reflect::TypePath;
 use bevy_render::camera::extract_cameras;
@@ -28,25 +27,26 @@ use bevy_render::{Extract, ExtractSchedule, Render, RenderApp, RenderSystems};
 use bevy_transform::components::GlobalTransform;
 use core::any::TypeId;
 use limiter::{
-    extract_render_asset_bytes_per_frame, reset_render_asset_bytes_per_frame,
     RenderOctreeNodesBytesPerFrame, RenderOctreeNodesBytesPerFrameLimiter,
+    extract_render_asset_bytes_per_frame, reset_render_asset_bytes_per_frame,
 };
-use prepare::{prepare_assets, PrepareNextFrameOctreeNodes, RenderOctreeNode, RenderOctrees};
+use prepare::{PrepareNextFrameOctreeNodes, RenderOctreeNode, RenderOctrees, prepare_assets};
+use slab::Slab;
 use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 
 pub mod extract;
-pub mod prepare;
 mod limiter;
+pub mod prepare;
 
 /// This plugin extracts visible octree nodes from the "app world" into the "render world"
 /// and prepares them for the GPU. They can be accessed from the [`RenderVisibleOctreeNodes`] resource.
 ///
 /// The `T` generic parameter refers to the type of octree node we are talking about.
 /// Because an asset is an octree, we need a component to reference it.
-/// This is the role of `C` generic parameter, which is the component used to find the refering octree asset.
-/// So, the `C` generic parameter has to implement `Into<AssetId<Octree<T>>` as a reference.
+/// This is the role of `C` generic parameter, which is the component used to find the referring octree asset.
+/// So, the `C` generic parameter has to implement `Into<AssetId<Octree<T>>`.
 ///
 /// The `A` generic parameter represents the octree node viewed by the gpu.
 /// It has to implement the [`RenderOctreeNode`] trait to determine how octree nodes are converted in gpu format.
@@ -58,8 +58,7 @@ pub struct ExtractVisibleOctreeNodesPlugin<T, C, A, AFTER = ()>(
     PhantomData<fn() -> (T, C, A, AFTER)>,
 );
 
-impl<T, C, A, AFTER> Default for ExtractVisibleOctreeNodesPlugin<T, C, A, AFTER>
-{
+impl<T, C, A, AFTER> Default for ExtractVisibleOctreeNodesPlugin<T, C, A, AFTER> {
     fn default() -> Self {
         ExtractVisibleOctreeNodesPlugin(PhantomData)
     }
@@ -71,7 +70,7 @@ where
     C: Component,
     for<'a> &'a C: Into<AssetId<Octree<T>>>,
     A: RenderOctreeNode<ExtractedOctreeNode = T::Out, SourceOctreeNode = T>,
-    AFTER: RenderOctreeDependency + 'static
+    AFTER: RenderOctreeDependency + 'static,
 {
     fn build(&self, app: &mut App) {
         app.init_resource::<RenderOctreeNodesBytesPerFrame>();
@@ -79,7 +78,7 @@ where
         // makes [`Octree<T>`] an entity checked for visibility by [`bevy_camera`].
         app.register_required_components::<C, Visibility>()
             .register_required_components::<C, VisibilityClass>()
-            .register_required_components::<Camera, VisibleOctreeNodes<T>>()
+            .register_required_components::<Camera, VisibleOctreeNodes<C>>()
             .add_systems(
                 PostUpdate,
                 check_octree_node_visibility::<C, T>.after(check_visibility),
@@ -105,17 +104,19 @@ where
             .init_resource::<ExtractedOctreeNodes<T>>()
             .init_resource::<RenderOctrees<A>>()
             .init_resource::<PrepareNextFrameOctreeNodes<A>>()
+            .init_resource::<RenderOctreeIndex<C>>()
             .add_systems(
                 ExtractSchedule,
                 (
-                    extract_visible_octree_nodes::<T>.after(extract_cameras),
-                    extract_render_octree_nodes::<T, C, A>.after(extract_visible_octree_nodes::<T>),
+                    extract_visible_octree_nodes::<C>.after(extract_cameras),
+                    extract_render_octree_nodes::<T, C, A>
+                        .after(extract_visible_octree_nodes::<C>),
                 ),
             );
 
         AFTER::register_system(
             render_app,
-            prepare_assets::<A>.in_set(RenderSystems::PrepareAssets),
+            prepare_assets::<A, C>.in_set(RenderSystems::PrepareAssets),
         );
     }
 }
@@ -154,19 +155,65 @@ where
     }
 }
 
-/// This component stores the visible nodes for each octree at view level (camera) in "main world".
-#[derive(Clone, Debug, Component)]
-pub struct VisibleOctreeNodes<T>
+/// This resource stores the octree mapping to index in render world.
+#[derive(Debug, Resource)]
+pub struct RenderOctreeIndex<C>
 where
-    T: Send + Sync,
+    C: Component,
 {
-    pub octrees: HashMap<Entity, Vec<VisibleOctreeNode>>,
-    _phantom_data: PhantomData<T>,
+    pub octrees_slab: Slab<Entity>,
+    pub octrees_index: HashMap<Entity, usize>,
+    _phantom_data: PhantomData<C>,
 }
 
-impl<T> Default for VisibleOctreeNodes<T>
+impl<C: Component> FromWorld for RenderOctreeIndex<C> {
+    fn from_world(_: &mut World) -> Self {
+        RenderOctreeIndex {
+            octrees_slab: Slab::new(),
+            octrees_index: HashMap::new(),
+            _phantom_data: PhantomData,
+        }
+    }
+}
+
+impl<C: Component> RenderOctreeIndex<C> {
+    /// Add octree entity to index, if it already exists, does nothing.
+    pub fn add_octree(&mut self, entity: Entity) -> usize {
+        // TODO cleanup old octrees from the slab (if removed ?)
+        *self
+            .octrees_index
+            .entry(entity)
+            .or_insert_with(|| self.octrees_slab.insert(entity))
+    }
+
+    /// Removes an entity from the index.
+    pub fn remove_octree(&mut self, entity: Entity) -> Option<usize> {
+        if let Some(index) = self.octrees_index.remove(&entity) {
+            self.octrees_slab.remove(index);
+            Some(index)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_octree_index(&self, entity: Entity) -> Option<usize> {
+        self.octrees_index.get(&entity).copied()
+    }
+}
+
+/// This component stores the visible nodes for each octree at view level (camera) in "main world".
+#[derive(Debug, Component)]
+pub struct VisibleOctreeNodes<C>
 where
-    T: Send + Sync,
+    C: Component,
+{
+    pub octrees: HashMap<Entity, Vec<VisibleOctreeNode>>,
+    _phantom_data: PhantomData<C>,
+}
+
+impl<C> Default for VisibleOctreeNodes<C>
+where
+    C: Component,
 {
     fn default() -> Self {
         Self {
@@ -176,9 +223,9 @@ where
     }
 }
 
-impl<T> VisibleOctreeNodes<T>
+impl<C> VisibleOctreeNodes<C>
 where
-    T: Send + Sync,
+    C: Component,
 {
     pub fn get_mut(&mut self, entity: Entity) -> &mut Vec<VisibleOctreeNode> {
         self.octrees.entry(entity).or_default()
@@ -202,7 +249,7 @@ pub fn check_octree_node_visibility<C, T>(
         &Camera,
         &GlobalTransform,
         &Projection,
-        &mut VisibleOctreeNodes<T>,
+        &mut VisibleOctreeNodes<C>,
     )>,
     octree_entities: Query<(&C, &GlobalTransform)>,
     pointcloud_octrees: Res<Assets<Octree<T>>>,
@@ -238,7 +285,10 @@ pub fn check_octree_node_visibility<C, T>(
             let (octree_component, octree_transform) = match octree_entities.get(*entity) {
                 Ok(item) => item,
                 Err(error) => {
-                    warn!("Unable to read octree entity for computing nodes visibility: {:#}", error);
+                    warn!(
+                        "Unable to read octree entity for computing nodes visibility: {:#}",
+                        error
+                    );
                     continue;
                 }
             };
@@ -262,7 +312,6 @@ pub fn check_octree_node_visibility<C, T>(
         }
     }
 }
-
 
 /// Computes screen pixel radius based on camera projection
 fn compute_screen_pixel_radius<T>(
@@ -414,15 +463,16 @@ where
 }
 
 /// This system extracts computed visible octree nodes and add them in the render world, for each view (camera)
-pub fn extract_visible_octree_nodes<T>(
+pub fn extract_visible_octree_nodes<C>(
     mut commands: Commands,
-    query: Extract<Query<(RenderEntity, &VisibleOctreeNodes<T>)>>,
+    query: Extract<Query<(RenderEntity, &VisibleOctreeNodes<C>), With<Camera>>>,
     mapper: Extract<Query<&RenderEntity>>,
+    mut render_octree_index: ResMut<RenderOctreeIndex<C>>,
 ) where
-    T: Send + Sync + TypePath,
+    C: Component,
 {
     for (entity, visible_point_cloud_octree_3d_nodes) in query.iter() {
-        let render_visible_point_cloud_octree_3d_nodes = RenderVisibleOctreeNodes::<T> {
+        let render_visible_point_cloud_octree_3d_nodes = RenderVisibleOctreeNodes::<C> {
             octrees: visible_point_cloud_octree_3d_nodes
                 .octrees
                 .clone()
@@ -432,6 +482,10 @@ pub fn extract_visible_octree_nodes<T>(
                     let render_entity = mapper
                         .get(entity)
                         .expect("Render entity for PointCloudOctree3d not found");
+
+                    // makes sure an index exists for this entity
+                    render_octree_index.add_octree(render_entity.id());
+
                     (render_entity.id(), nodes)
                 })
                 .collect(),
@@ -443,30 +497,29 @@ pub fn extract_visible_octree_nodes<T>(
     }
 }
 
-
 /// This component stores the visible nodes for each octree at view level (camera) in "render world".
 #[derive(Clone, Component, Default, Debug)]
-pub struct RenderVisibleOctreeNodes<T>
+pub struct RenderVisibleOctreeNodes<C>
 where
-    T: Send + Sync + TypePath,
+    C: Component,
 {
     /// The `Entity` used here refers to the "render world"
     pub octrees: HashMap<Entity, Vec<VisibleOctreeNode>>,
-    _phantom_data: PhantomData<T>,
+    _phantom_data: PhantomData<C>,
 }
 
-impl<T> ExtractComponent for VisibleOctreeNodes<T>
+impl<C> ExtractComponent for VisibleOctreeNodes<C>
 where
-    T: Send + Sync + TypePath,
+    C: Component,
 {
     type QueryData = &'static Self;
     type QueryFilter = With<Camera>;
-    type Out = RenderVisibleOctreeNodes<T>;
+    type Out = RenderVisibleOctreeNodes<C>;
 
     fn extract_component(
         visible_octree_nodes: QueryItem<'_, '_, Self::QueryData>,
     ) -> Option<Self::Out> {
-        Some(RenderVisibleOctreeNodes::<T> {
+        Some(RenderVisibleOctreeNodes::<C> {
             octrees: visible_octree_nodes.octrees.clone(),
             _phantom_data: PhantomData,
         })

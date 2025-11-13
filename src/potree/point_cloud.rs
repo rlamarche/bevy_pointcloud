@@ -6,9 +6,7 @@ use bevy_asset::prelude::*;
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
-use bevy_ecs::system::SystemState;
 use bevy_ecs::world::DeferredWorld;
-use bevy_log::prelude::*;
 use bevy_reflect::prelude::*;
 use bevy_transform::prelude::*;
 

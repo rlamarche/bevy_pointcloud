@@ -11,7 +11,6 @@ use async_lock::RwLock;
 use bevy_asset::prelude::*;
 use bevy_camera::primitives::Aabb;
 use bevy_ecs::prelude::*;
-use bevy_gizmos::prelude::*;
 use bevy_log::prelude::*;
 use bevy_math::Vec3;
 use bevy_platform::collections::HashSet;
@@ -46,11 +45,11 @@ pub fn init_load_points_task(
     mut commands: Commands,
     potree_point_clouds: Res<Assets<PotreePointCloud>>,
     potree_point_clouds_3d: Query<
-        (Entity, &PotreePointCloud3d, &Gizmo, &GlobalTransform),
+        (Entity, &PotreePointCloud3d, &GlobalTransform),
         Without<LoadPointsTaskHolder>,
     >,
 ) {
-    for (entity, potree_point_cloud_3d, gizmo, global_transform) in potree_point_clouds_3d {
+    for (entity, potree_point_cloud_3d, global_transform) in potree_point_clouds_3d {
         let (loaded_points_tx, loaded_points_rx) = async_channel::unbounded();
         let (load_points_queue_tx, load_points_queue_rx) = async_channel::unbounded();
 

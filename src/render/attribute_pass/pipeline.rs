@@ -12,11 +12,7 @@ use bevy_pbr::{MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey};
 use bevy_render::render_resource::binding_types::{
     texture_2d, texture_2d_multisampled, uniform_buffer,
 };
-use bevy_render::render_resource::{
-    AsBindGroup, BindGroupLayout, BindGroupLayoutEntries, BlendComponent, BlendFactor,
-    BlendOperation, BlendState, CompareFunction, DepthBiasState, DepthStencilState, ShaderStages,
-    SpecializedRenderPipeline, StencilState, TextureSampleType, VertexAttribute, VertexStepMode,
-};
+use bevy_render::render_resource::{AsBindGroup, BindGroupLayout, BindGroupLayoutEntries, BindGroupLayoutEntry, BindingType, BlendComponent, BlendFactor, BlendOperation, BlendState, BufferBindingType, BufferSize, CompareFunction, DepthBiasState, DepthStencilState, ShaderStages, SpecializedRenderPipeline, StencilState, TextureSampleType, VertexAttribute, VertexStepMode};
 use bevy_render::render_resource::{
     ColorTargetState, ColorWrites, Face, FragmentState, FrontFace, MultisampleState, PolygonMode,
     PrimitiveState, RenderPipelineDescriptor, TextureFormat, VertexState,
@@ -80,11 +76,17 @@ impl FromWorld for AttributePassPipeline {
                 ),
             ),
             point_cloud_octree_visible_node_layout: render_device.create_bind_group_layout(
-                "pcl_octree_node_data",
-                &BindGroupLayoutEntries::single(
-                    ShaderStages::VERTEX,
-                    uniform_buffer::<PointCloudVisibleNodeUniform>(false),
-                ),
+                Some("layout_node_mapping"),
+                &[BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: true,
+                        min_binding_size: BufferSize::new(64),
+                    },
+                    count: None,
+                }],
             ),
         }
     }
@@ -150,7 +152,7 @@ impl SpecializedRenderPipeline for AttributePassPipeline {
         if key.is_octree {
             layout.push(self.point_cloud_octree_node_data_layout.clone());
             layout.push(self.point_cloud_octree_visible_nodes_layout.clone());
-            // layout.push(self.point_cloud_octree_visible_node_layout.clone());
+            layout.push(self.point_cloud_octree_visible_node_layout.clone());
         }
 
         RenderPipelineDescriptor {
