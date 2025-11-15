@@ -87,7 +87,10 @@ pub fn load_points_tx(
         for octree_node in &hierarchy_snapshot.0 {
             let node_id = octree_node.id.expect("missing node id");
 
-            if !load_points_task_holder.loaded_points.contains(&node_id) {
+            // do not try to load points of a proxy
+            if octree_node.node_type != 2
+                && !load_points_task_holder.loaded_points.contains(&node_id)
+            {
                 if let Ok(_) =
                     load_points_task_holder
                         .load_points_queue_tx
@@ -165,26 +168,7 @@ pub fn load_points_rx(
                 .expect("Unable to insert loaded points in octree");
 
             mapping.insert(potree_node_id, node_id);
-
-            // commands.spawn((
-            //     PointCloud3d(point_cloud_handle),
-            //     PointCloudMaterial3d(point_cloud_material_handle),
-            //     transform.clone(),
-            // ));
         }
-
-        // while let Ok(loaded_points) = load_points_task_holder.loaded_points_rx.try_recv() {
-        //     let point_cloud_material_handle = point_cloud_materials.add(PointCloudMaterial {
-        //         point_size: 30.0,
-        //         ..Default::default()
-        //     });
-        //
-        //     commands.spawn((
-        //         PointCloud3d(point_cloud_handle),
-        //         PointCloudMaterial3d(point_cloud_material_handle),
-        //         transform.clone(),
-        //     ));
-        // }
     }
 }
 
@@ -214,26 +198,6 @@ impl LoadPointsTask {
             .map_err(|e| e.to_string())?;
 
         drop(point_cloud);
-
-        // let points = points
-        //     .into_iter()
-        //     .map(|point_data| PointCloudData {
-        //         position: Vec3::new(
-        //             point_data.position.x as f32,
-        //             point_data.position.y as f32,
-        //             point_data.position.z as f32,
-        //         ),
-        //         point_size: -1.0,
-        //         color: [
-        //             point_data.color[0] as f32 / 256.0,
-        //             point_data.color[1] as f32 / 256.0,
-        //             point_data.color[2] as f32 / 256.0,
-        //             1.0,
-        //         ],
-        //     })
-        //     .collect::<Vec<_>>();
-
-        // let point_cloud = PointCloud { points };
 
         let data = (&message.node, points).into();
 

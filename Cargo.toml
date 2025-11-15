@@ -61,6 +61,9 @@ wasm-bindgen = { version = "=0.2.100", optional = true }
 wasm-bindgen-futures = { version = "=0.4.50", optional = true }
 wasm_thread = { version = "0.3.3", optional = true }
 
+bevy_rich_text3d = "0.5.1"
+
+
 [dev-dependencies]
 bevy = { version = "0.17", features = ["bevy_dev_tools"] }
 rand = "0.9"

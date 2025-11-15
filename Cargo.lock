@@ -207,7 +207,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
  "x11rb",
 ]
 
@@ -1253,6 +1253,7 @@ dependencies = [
  "bevy_platform",
  "bevy_reflect",
  "bevy_render",
+ "bevy_rich_text3d",
  "bevy_shader",
  "bevy_tasks",
  "bevy_transform",
@@ -1410,6 +1411,20 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "bevy_rich_text3d"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4d2a20437b6f1c9ef6371b0ff07731d42b565ce4713c4244c84d36c3e65f497"
+dependencies = [
+ "bevy",
+ "cosmic-text",
+ "rustc-hash 2.1.1",
+ "sys-locale",
+ "thiserror 2.0.17",
+ "zeno",
 ]
 
 [[package]]

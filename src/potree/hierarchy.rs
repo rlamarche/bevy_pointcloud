@@ -164,20 +164,20 @@ impl UpdateHierarchyTask {
         let (visible_nodes, nodes_to_load) =
             self.compute_visible_nodes(octree, root, &self.global_transform, camera_view);
 
-        // send visible node to main
-        if let Err(error) = self.hierarchy_snapshot_tx.force_send(visible_nodes) {
-            warn!(
-                "Failed to send hierarchy snapshot to point cloud: {:#}",
-                error
-            );
-        }
-
         // load node proxies
         for node_id in nodes_to_load {
             // info!("Loading sub node hierarchy for node {}", node_id);
             if let Err(error) = point_cloud.load_hierarchy(node_id).await {
                 warn!("Unable to load sub node hierarchy: {:#}", error);
             }
+        }
+
+        // send visible nodes to main
+        if let Err(error) = self.hierarchy_snapshot_tx.force_send(visible_nodes) {
+            warn!(
+                "Failed to send hierarchy snapshot to point cloud: {:#}",
+                error
+            );
         }
     }
 
@@ -286,29 +286,29 @@ impl UpdateHierarchyTask {
             if node.node_type == 2 {
                 // the node has a child hierarchy, plan to load it
                 nodes_to_load.push(node.id.expect("node should have a node id"));
-            }
+            } else {
+                // we have to process child nodes, sending flag `completely_visible` to prevent useless visibility checks
+                for i in iter_one_bits(node.children_mask) {
+                    let child = &node.children[i];
+                    let child = octree
+                        .node(*child)
+                        .expect("missing node in hierarchy, shouldn't happen");
+                    stack.push_back((current_index, child, completely_visible));
+                }
 
-            // we have to process child nodes, sending flag `completely_visible` to prevent useless visibility checks
-            for i in iter_one_bits(node.children_mask) {
-                let child = &node.children[i];
-                let child = octree
-                    .node(*child)
-                    .expect("missing node in hierarchy, shouldn't happen");
-                stack.push_back((current_index, child, completely_visible));
-            }
+                // add the current node because it is visible or partially visible
+                let mut node_snapshot: OctreeNodeSnapshot = node.into();
+                // don't forget to set its index
+                node_snapshot.index = current_index;
+                let child_index = node_snapshot.child_index;
+                visible_nodes.push(node_snapshot);
 
-            // add the current node because it is visible or partially visible
-            let mut node_snapshot: OctreeNodeSnapshot = node.into();
-            // don't forget to set its index
-            node_snapshot.index = current_index;
-            let child_index = node_snapshot.child_index;
-            visible_nodes.push(node_snapshot);
-
-            // if there is a parent, add it to the children array on an empty space
-            if parent_index < current_index {
-                let parent = &mut visible_nodes[parent_index];
-                parent.children[child_index] = current_index;
-                parent.children_mask |= 1 << node.child_index;
+                // if there is a parent, add it to the children array on an empty space
+                if parent_index < current_index {
+                    let parent = &mut visible_nodes[parent_index];
+                    parent.children[child_index] = current_index;
+                    parent.children_mask |= 1 << node.child_index;
+                }
             }
         }
 

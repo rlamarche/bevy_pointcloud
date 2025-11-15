@@ -102,9 +102,9 @@ fn count_one_bits_compat(x: u32) -> u32 {
     return (((v + (v >> 4u)) & 0x0F0F0F0Fu) * 0x01010101u) >> 24u;
 }
 
-// Fonction auxiliaire : compter combien de bits sont à 1 avant l'index donné
+// Count number of bits before provided index
 fn count_bits_before(mask: u32, index: u32) -> u32 {
-    // Créer un masque pour les bits avant index
+    // Create a mask for bits before index
     let before_mask = (1u << index) - 1u;
 
     // TODO add ifdef to use native version if available
@@ -112,33 +112,8 @@ fn count_bits_before(mask: u32, index: u32) -> u32 {
 //    return countOneBits(mask & before_mask);
 }
 
-/**
- * number of 1-bits up to inclusive index position
- * number is treated as if it were an integer in the range 0-255
- *
- */
-fn number_of_ones(mask: u32, index: u32) -> u32 {
-    var number = mask;
-	var num_ones: u32 = 0u;
-	var tmp: u32 = 128u;
 
-	for(var i: i32 = 7; i >= 0; i--){
-
-		if(number >= tmp){
-			number = number - tmp;
-
-			if(u32(i) <= index){
-				num_ones++;
-			}
-		}
-
-		tmp = tmp / 2u;
-	}
-
-	return num_ones;
-}
-
-fn get_max_relative_depth(position: vec3<f32>) -> vec2<f32> {
+fn get_max_relative_depth(position: vec3<f32>) -> f32 {
 
     var current_index = visible_node.node_index;
     var relative_depth: i32 = 0;
@@ -149,16 +124,15 @@ fn get_max_relative_depth(position: vec3<f32>) -> vec2<f32> {
     for (var i = 0; i <= 30; i ++) {
         let current_node = textureLoad(visible_nodes, vec2<u32>(current_index, visible_node.octree_index), 0);
 
-        // Décomposer les données
+        // Extract data
         let children_mask = current_node.r;  // u8 dans le canal R
 
-        // current_node.g est le padding (inutilisé)
         let first_child_index = current_node.b | (current_node.a << 8u);  // u16 reconstruit à partir de B et A
 
-        // Déterminer dans quel octant se trouve la position
+        // Determiner in whoch octant is the position
         let relative_position = position - center;
 
-        // index3d contient 0 ou 1 pour chaque axe
+        // index3d contains 0 or 1 for each axe
         let index3d = step(vec3(0.0), relative_position);
 
         // compute the child_index
@@ -172,7 +146,6 @@ fn get_max_relative_depth(position: vec3<f32>) -> vec2<f32> {
                 child_offset = count_bits_before(children_mask, child_index);
             }
 
-//            let child_offset = number_of_ones(children_mask, child_index - 1);
             let actual_child_index = first_child_index + child_offset;
 
             relative_depth ++;
@@ -184,13 +157,12 @@ fn get_max_relative_depth(position: vec3<f32>) -> vec2<f32> {
             center = center + offset;
         } else {
             let offset = f32(current_node.g) / 10.0 - 10.0;
-//            return f32(relative_depth) + offset;
-            return vec2(f32(relative_depth), offset);
+            return f32(relative_depth) + offset;
         }
 
     }
 
-    return vec2(f32(relative_depth), 0.0);
+    return f32(relative_depth);
 }
 
 #endif
@@ -229,10 +201,8 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 	) / octree_node.spacing;
 	proj_factor = proj_factor * scale;
 
-
     let max_relative_depth = get_max_relative_depth(vertex.i_pos_size.xyz);
-    let attenuation = pow(2.0, max_relative_depth.x + max_relative_depth.y);
-//    let attenuation = 0.5 * pow(1.3, max_relative_depth.x + max_relative_depth.y);
+    let attenuation = pow(2.0, max_relative_depth);
 
     var radius = octree_node.spacing * 1.7 / attenuation;
     radius = radius * proj_factor;
@@ -263,28 +233,14 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 #ifdef DEBUG_COLOR
     var debug_color = vec3<f32>(1.0, 1.0, 1.0);
 
-//    let absolute_depth = max_relative_depth + octree_node.level;
-//
-//    if absolute_depth == 0u {
-//        debug_color = vec3<f32>(1.0, 0.0, 0.0); // Rouge = problème !
-//    } else if absolute_depth == 1u {
-//        debug_color = vec3<f32>(1.0, 1.0, 0.0); // Jaune
-//    } else if absolute_depth == 2u {
-//        debug_color = vec3<f32>(0.0, 1.0, 0.0); // Vert
-//    } else {
-//        debug_color = vec3<f32>(0.0, 0.0, f32(absolute_depth) / 10.0); // Bleu = profond
-//    }
-//
-//    out.color = vec4<f32>(debug_color, 1.0);
+    let absolute_depth = u32(max_relative_depth) + octree_node.level;
 
-    let absolute_depth = max_relative_depth.y;
-
-    if absolute_depth < 1.0 {
-        debug_color = vec3<f32>(absolute_depth + 1.0, 0.0, 0.0); // Rouge = problème !
-    } else if absolute_depth < 2.0 {
-        debug_color = vec3<f32>(absolute_depth, absolute_depth, 0.0); // Jaune
-    } else if absolute_depth < 3.0 {
-        debug_color = vec3<f32>(0.0, absolute_depth, 0.0); // Vert
+    if absolute_depth == 0u {
+        debug_color = vec3<f32>(1.0, 0.0, 0.0); // Rouge = problème !
+    } else if absolute_depth == 1u {
+        debug_color = vec3<f32>(1.0, 1.0, 0.0); // Jaune
+    } else if absolute_depth == 2u {
+        debug_color = vec3<f32>(0.0, 1.0, 0.0); // Vert
     } else {
         debug_color = vec3<f32>(0.0, 0.0, f32(absolute_depth) / 10.0); // Bleu = profond
     }
