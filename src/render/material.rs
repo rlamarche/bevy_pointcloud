@@ -8,12 +8,17 @@ use bevy_ecs::system::lifetimeless::{Read, SRes};
 use bevy_ecs::world::FromWorld;
 use bevy_render::render_asset::{PrepareAssetError, RenderAsset, RenderAssets};
 use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
-use bevy_render::render_resource::{AsBindGroup, BindGroupLayout, PreparedBindGroup};
-use bevy_render::renderer::RenderDevice;
+use bevy_render::render_resource::binding_types::uniform_buffer;
+use bevy_render::render_resource::{
+    AsBindGroup, BindGroup, BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries,
+    PreparedBindGroup, ShaderStages, UniformBuffer,
+};
+use bevy_render::renderer::{RenderDevice, RenderQueue};
 
 /// The render world representation of a [`PointCloudMaterial`].
 pub struct RenderPointCloudMaterial {
-    pub prepared: PreparedBindGroup,
+    pub uniform: BindGroup,
+    pub uniform_buffer: UniformBuffer<PointCloudMaterial>,
 }
 
 #[derive(Resource)]
@@ -24,7 +29,13 @@ pub struct RenderPointCloudMaterialLayout {
 impl FromWorld for RenderPointCloudMaterialLayout {
     fn from_world(world: &mut World) -> Self {
         let render_device = world.resource::<RenderDevice>();
-        let layout = PointCloudMaterial::bind_group_layout(&render_device);
+        let layout = render_device.create_bind_group_layout(
+            "pcl_material",
+            &BindGroupLayoutEntries::single(
+                ShaderStages::VERTEX,
+                uniform_buffer::<PointCloudMaterial>(false),
+            ),
+        );
         RenderPointCloudMaterialLayout { layout }
     }
 }
@@ -33,30 +44,31 @@ impl RenderAsset for RenderPointCloudMaterial {
     type SourceAsset = PointCloudMaterial;
     type Param = (
         SRes<RenderDevice>,
+        SRes<RenderQueue>,
         SRes<RenderPointCloudMaterialLayout>,
-        (
-            SRes<RenderAssets<bevy_render::texture::GpuImage>>,
-            SRes<bevy_render::texture::FallbackImage>,
-            SRes<RenderAssets<bevy_render::storage::GpuShaderStorageBuffer>>,
-        ),
     );
 
     fn prepare_asset(
         source_asset: Self::SourceAsset,
         _asset_id: AssetId<Self::SourceAsset>,
-        (render_device, prepared_point_cloud_material_layout, material): &mut SystemParamItem<
+        (render_device, render_queue, prepared_point_cloud_material_layout): &mut SystemParamItem<
             Self::Param,
         >,
         _: Option<&Self>,
     ) -> Result<Self, PrepareAssetError<Self::SourceAsset>> {
-        match source_asset.as_bind_group(
+        let mut uniform_buffer = UniformBuffer::from(source_asset);
+        uniform_buffer.write_buffer(render_device, render_queue);
+
+        let uniform = render_device.create_bind_group(
+            "pcl_material",
             &prepared_point_cloud_material_layout.layout,
-            render_device,
-            material,
-        ) {
-            Ok(prepared) => Ok(RenderPointCloudMaterial { prepared }),
-            Err(error) => Err(PrepareAssetError::AsBindGroupError(error)),
-        }
+            &BindGroupEntries::single(uniform_buffer.binding().unwrap()),
+        );
+
+        Ok(RenderPointCloudMaterial {
+            uniform,
+            uniform_buffer,
+        })
     }
 }
 
@@ -84,7 +96,11 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudMaterialGro
             return RenderCommandResult::Skip;
         };
 
-        pass.set_bind_group(I, &render_point_cloud_material.prepared.bind_group, &[]);
+        pass.set_bind_group(
+            I,
+            &render_point_cloud_material.uniform,
+            &[],
+        );
 
         RenderCommandResult::Success
     }

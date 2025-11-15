@@ -133,7 +133,7 @@ fn queue_depth_pass(
     mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloudOctree3dDepthPhase>>,
     mut views: Query<(
         &ExtractedView,
-        &RenderVisibleOctreeNodes<PointCloudOctree3d>,
+        &RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>,
         &Msaa,
         Option<&PointCloudRenderMode>,
     )>,
@@ -160,7 +160,7 @@ fn queue_depth_pass(
         let pipeline_id = pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, depth_key);
 
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
-        for (render_entity, visible_octree_nodes) in &visible_entities.octrees {
+        for (render_entity, (_asset_id, visible_octree_nodes)) in &visible_entities.octrees {
             let Ok(main_entity) = main_entities.get(*render_entity) else {
                 warn!("Render entity not found, skipping.");
                 continue;

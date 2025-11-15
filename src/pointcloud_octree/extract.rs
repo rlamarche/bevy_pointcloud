@@ -37,6 +37,7 @@ pub struct RenderPointCloudNodeData {
     pub uniform: BindGroup,
     pub uniform_buffer: UniformBuffer<PointCloudNodeDataUniform>,
     pub num_points: usize,
+    pub offset: f32,
 }
 
 impl RenderOctreeNode for RenderPointCloudNodeData {
@@ -87,6 +88,7 @@ impl RenderOctreeNode for RenderPointCloudNodeData {
             uniform,
             uniform_buffer,
             num_points: source_node.data.num_points,
+            offset: source_node.data.offset,
         })
     }
 }

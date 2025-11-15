@@ -10,6 +10,7 @@ use bevy_log::prelude::*;
 use bevy_math::prelude::*;
 use bevy_tasks::{block_on, futures_lite::future};
 use bevy_transform::prelude::*;
+use potree::octree::node::iter_one_bits;
 use potree::prelude::OctreeNodeSnapshot;
 
 #[derive(Component)]
@@ -137,16 +138,22 @@ fn compute_visible_nodes<'a>(
 
     // We intersect this node, recursively check children for visibility
     if node.children.len() > 0 {
-        node.children
-            .iter()
-            .flat_map(|child| {
-                if *child > 0 {
-                    compute_visible_nodes(nodes, &nodes[*child], transform, frustum)
-                } else {
-                    vec![]
-                }
+        iter_one_bits(node.children_mask)
+            .into_iter()
+            .flat_map(|child_index| {
+                compute_visible_nodes(nodes, &nodes[node.children[child_index]], transform, frustum)
             })
             .collect::<Vec<_>>()
+        // node.children
+        //     .iter()
+        //     .flat_map(|child| {
+        //         if *child > 0 {
+        //             compute_visible_nodes(nodes, &nodes[*child], transform, frustum)
+        //         } else {
+        //             vec![]
+        //         }
+        //     })
+        //     .collect::<Vec<_>>()
     } else {
         // if no children, return the node itself
         vec![node]

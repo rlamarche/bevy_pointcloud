@@ -44,7 +44,7 @@ pub trait ExtractOctreeNode: Send + Sync + Sized + TypePath {
 /// This system extract visible octree nodes using the provided trait implementation for `T`: [`ExtractOctreeNode`].
 /// It extracts only visible octree nodes previously computed.
 pub fn extract_render_octree_nodes<T, C, A>(
-    views: Extract<Query<(Entity, &VisibleOctreeNodes<C>), With<Camera>>>,
+    views: Extract<Query<(Entity, &VisibleOctreeNodes<T, C>), With<Camera>>>,
     query: Extract<Query<(&ViewVisibility, &C, T::QueryData), T::QueryFilter>>,
     octrees: Extract<Res<Assets<Octree<T>>>>,
     mut render_octrees: ResMut<RenderOctrees<A>>,
@@ -61,7 +61,7 @@ pub fn extract_render_octree_nodes<T, C, A>(
     // iter views to get visible nodes
     for (_view_entity, visible_octree_nodes) in views.iter() {
         // for each visible octree
-        for (main_entity, visible_octree_nodes) in &visible_octree_nodes.octrees {
+        for (main_entity, (_, visible_octree_nodes)) in &visible_octree_nodes.octrees {
             let Ok((visibility, octree_component, item)) = query.get(*main_entity) else {
                 warn!(
                     "Query item not found when extracting octree nodes: {}",
@@ -130,6 +130,7 @@ pub fn extract_render_octree_nodes<T, C, A>(
                                 child_index: octree_node.child_index,
                                 children: octree_node.children.clone(),
                                 children_mask: octree_node.children_mask.clone(),
+                                depth: octree_node.depth,
                                 bounding_box: octree_node.bounding_box.clone(),
                                 data,
                             });

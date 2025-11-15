@@ -9,7 +9,6 @@ use bevy_log::prelude::*;
 use bevy_platform::collections::HashMap;
 use bevy_render::render_resource::AsBindGroupError;
 use thiserror::Error;
-use crate::octree::visibility::RenderOctreeIndex;
 
 #[derive(Debug, Error)]
 pub enum PrepareOctreeNodeError<T: Send + Sync + 'static> {
@@ -177,6 +176,7 @@ pub fn prepare_assets<A: RenderOctreeNode, C: Component>(
             child_index: extracted_octree_node.child_index,
             children: extracted_octree_node.children.clone(),
             children_mask: extracted_octree_node.children_mask,
+            depth: extracted_octree_node.depth,
             bounding_box: extracted_octree_node.bounding_box.clone(),
             data: (),
         };
@@ -189,6 +189,7 @@ pub fn prepare_assets<A: RenderOctreeNode, C: Component>(
                     child_index: cloned_node.child_index,
                     children: cloned_node.children,
                     children_mask: cloned_node.children_mask,
+                    depth: cloned_node.depth,
                     bounding_box: cloned_node.bounding_box,
                     data: prepared_octree_node,
                 };
@@ -239,6 +240,7 @@ pub fn prepare_assets<A: RenderOctreeNode, C: Component>(
                 child_index: extracted_octree_node.child_index,
                 children: extracted_octree_node.children.clone(),
                 children_mask: extracted_octree_node.children_mask,
+                depth: extracted_octree_node.depth,
                 bounding_box: extracted_octree_node.bounding_box.clone(),
                 data: (),
             };
@@ -251,6 +253,7 @@ pub fn prepare_assets<A: RenderOctreeNode, C: Component>(
                         child_index: cloned_node.child_index,
                         children: cloned_node.children,
                         children_mask: cloned_node.children_mask,
+                        depth: cloned_node.depth,
                         bounding_box: cloned_node.bounding_box,
                         data: prepared_octree_node,
                     };

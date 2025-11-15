@@ -43,6 +43,7 @@ where
     pub children: [NodeId; 8],
     pub children_mask: u8,
     pub bounding_box: Aabb,
+    pub depth: u32,
     pub data: T,
 }
 
@@ -69,6 +70,7 @@ where
             parent_id: None,
             children: [NodeId::default(); 8],
             children_mask: 0b00000000,
+            depth: 0,
             bounding_box,
             data,
         };
@@ -99,6 +101,7 @@ where
         bounding_box: Aabb,
         data: T,
     ) -> Result<NodeId, InsertNodeError> {
+        let mut depth = None;
         if let Some((parent_id, child_index)) = &parent_id_and_child_index {
             if *child_index >= 8 {
                 return Err(InsertNodeError::ChildIndexOutOfBounds);
@@ -112,6 +115,7 @@ where
                     if (parent.children_mask & (1_u8 << child_index)) > 0 {
                         return Err(InsertNodeError::ChildIndexOccupied);
                     }
+                    depth = Some(parent.depth + 1);
                 }
             };
         } else {
@@ -130,6 +134,7 @@ where
                 .unwrap_or(0),
             children: [NodeId::default(); 8],
             children_mask: 0b00000000,
+            depth: depth.unwrap_or_default(),
             bounding_box,
             data,
         });

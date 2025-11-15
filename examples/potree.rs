@@ -75,7 +75,7 @@ fn setup_window(mut windows: Query<&mut Window>) {
 
     #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
     {
-        window.present_mode = PresentMode::Fifo;
+        window.present_mode = PresentMode::Mailbox;
     }
 }
 
@@ -146,20 +146,48 @@ fn load_pointcloud(
 ) {
     let my_material = point_cloud_materials.add(PointCloudMaterial {
         point_size: 30.0,
+        min_point_size: 2.0,
+        max_point_size: 50.0,
         ..default()
     });
     commands.spawn(MyMaterial(my_material.clone()));
 
     let potree_point_cloud_handle: Handle<PotreePointCloud> =
         asset_server.load("potree/heidentor/metadata.json");
+    // asset_server.load("/home/romain/Documents/Potree/Liban");
+
     commands.spawn((
         PotreePointCloud3d {
-            handle: potree_point_cloud_handle,
+            handle: potree_point_cloud_handle.clone(),
         },
         DrawPotreeGizmo,
         Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2)),
         PointCloudMaterial3d(my_material.clone()),
     ));
+
+    // for i in 0..8 {
+    //     for j in 0..8 {
+    //         commands.spawn((
+    //             PotreePointCloud3d {
+    //                 handle: potree_point_cloud_handle.clone(),
+    //             },
+    //             // DrawPotreeGizmo,
+    //             Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2))
+    //                 .with_translation(Vec3::new(10.0 * i as f32, 0.0, 10.0 * j as f32)),
+    //             PointCloudMaterial3d(my_material.clone()),
+    //         ));
+    //     }
+    // }
+
+    // commands.spawn((
+    //     PotreePointCloud3d {
+    //         handle: potree_point_cloud_handle,
+    //     },
+    //     DrawPotreeGizmo,
+    //     Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2))
+    //         .with_translation(Vec3::new(10.0, 0.0, 0.0)),
+    //     PointCloudMaterial3d(my_material.clone()),
+    // ));
 
     return;
 

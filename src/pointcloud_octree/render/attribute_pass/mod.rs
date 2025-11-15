@@ -125,7 +125,7 @@ fn queue_attribute_pass(
     custom_draw_pipeline: Res<AttributePassPipeline>,
     point_cloud_octrees_3d: Query<&PointCloudOctree3d>,
     mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloudOctree3dAttributePhase>>,
-    mut views: Query<(&ExtractedView, &RenderVisibleOctreeNodes<PointCloudOctree3d>, &Msaa)>,
+    mut views: Query<(&ExtractedView, &RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>, &Msaa)>,
     main_entities: Query<&MainEntity>,
     mut next_tick: Local<Tick>,
 ) {
@@ -149,7 +149,7 @@ fn queue_attribute_pass(
             pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, attribute_key);
 
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
-        for (render_entity, visible_octree_nodes) in &visible_entities.octrees {
+        for (render_entity, (_asset_id, visible_octree_nodes)) in &visible_entities.octrees {
             let Ok(main_entity) = main_entities.get(*render_entity) else {
                 warn!("Render entity not found, skipping.");
                 continue;

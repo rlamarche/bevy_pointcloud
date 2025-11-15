@@ -12,6 +12,9 @@ pub struct PointCloudNodeData {
     pub spacing: f32,
     #[uniform(1)]
     pub level: u32,
+    /// offset applied to point size
+    #[uniform(2)]
+    pub offset: f32,
     pub num_points: usize,
     pub points: Vec<PointData>,
 }

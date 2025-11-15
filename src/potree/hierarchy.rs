@@ -239,7 +239,7 @@ impl UpdateHierarchyTask {
             let screen_pixel_radius =
                 self.compute_screen_pixel_radius(node, transform, camera_view);
             if let Some(screen_pixel_radius) = screen_pixel_radius {
-                if screen_pixel_radius < 300.0 {
+                if screen_pixel_radius < 150.0 {
                     // this node is too small to display it
                     continue;
                 }
@@ -301,17 +301,14 @@ impl UpdateHierarchyTask {
             let mut node_snapshot: OctreeNodeSnapshot = node.into();
             // don't forget to set its index
             node_snapshot.index = current_index;
+            let child_index = node_snapshot.child_index;
             visible_nodes.push(node_snapshot);
 
             // if there is a parent, add it to the children array on an empty space
             if parent_index < current_index {
-                let parent_node = &mut visible_nodes[parent_index];
-                *parent_node
-                    .children
-                    .iter_mut()
-                    .find(|child| **child == 0)
-                    .expect("no empty child space available, there might be a problem") =
-                    current_index;
+                let parent = &mut visible_nodes[parent_index];
+                parent.children[child_index] = current_index;
+                parent.children_mask |= 1 << node.child_index;
             }
         }
 

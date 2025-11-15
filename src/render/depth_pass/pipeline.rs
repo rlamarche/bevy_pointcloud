@@ -1,7 +1,6 @@
 use crate::point_cloud::PointCloudData;
 use crate::point_cloud_material::PointCloudMaterial;
 use crate::pointcloud_octree::extract::PointCloudNodeDataUniform;
-use crate::pointcloud_octree::visible_nodes_texture::PointCloudVisibleNodeUniform;
 use crate::render::POINTCLOUD_SHADER_HANDLE;
 use crate::render::point_cloud_uniform::PointCloudUniform;
 use bevy_asset::prelude::*;
@@ -43,7 +42,13 @@ impl FromWorld for DepthPipeline {
             mesh_pipeline: mesh_pipeline.clone(),
             shader_handle: POINTCLOUD_SHADER_HANDLE,
             point_cloud_layout: PointCloudUniform::bind_group_layout(render_device),
-            point_cloud_material_layout: PointCloudMaterial::bind_group_layout(render_device),
+            point_cloud_material_layout: render_device.create_bind_group_layout(
+                "pcl_material",
+                &BindGroupLayoutEntries::single(
+                    ShaderStages::VERTEX,
+                    uniform_buffer::<PointCloudMaterial>(false),
+                ),
+            ),
             point_cloud_octree_node_data_layout: render_device.create_bind_group_layout(
                 "pcl_octree_node_data",
                 &BindGroupLayoutEntries::single(

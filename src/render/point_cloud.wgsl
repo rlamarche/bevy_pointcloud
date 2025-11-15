@@ -37,9 +37,11 @@ var<uniform> world_from_local: mat4x4<f32>;
 
 struct PointCloudMaterial {
     point_size: f32,
+    min_point_size: f32,
+    max_point_size: f32,
 #ifdef SIXTEEN_BYTE_ALIGNMENT
     // WebGL2 structs must be 16 byte aligned.
-    _webgl2_padding: vec3<f32>
+    _webgl2_padding: f32
 #endif
 };
 
@@ -107,26 +109,49 @@ fn count_bits_before(mask: u32, index: u32) -> u32 {
 
     // TODO add ifdef to use native version if available
     return count_one_bits_compat(mask & before_mask);
-    //return countOneBits(mask & before_mask);
+//    return countOneBits(mask & before_mask);
 }
 
-fn get_max_relative_depth(position: vec3<f32>) -> u32 {
+/**
+ * number of 1-bits up to inclusive index position
+ * number is treated as if it were an integer in the range 0-255
+ *
+ */
+fn number_of_ones(mask: u32, index: u32) -> u32 {
+    var number = mask;
+	var num_ones: u32 = 0u;
+	var tmp: u32 = 128u;
 
-//    var current_index = octree_node.node_index;
+	for(var i: i32 = 7; i >= 0; i--){
+
+		if(number >= tmp){
+			number = number - tmp;
+
+			if(u32(i) <= index){
+				num_ones++;
+			}
+		}
+
+		tmp = tmp / 2u;
+	}
+
+	return num_ones;
+}
+
+fn get_max_relative_depth(position: vec3<f32>) -> vec2<f32> {
+
     var current_index = visible_node.node_index;
-    var relative_depth: u32 = 0;
+    var relative_depth: i32 = 0;
 
     var center = octree_node.center;
     var half_extents = octree_node.half_extents;
 
     for (var i = 0; i <= 30; i ++) {
-
-//        let current_node = textureLoad(visible_nodes, vec2<u32>(current_index, octree_node.octree_index), 0);
         let current_node = textureLoad(visible_nodes, vec2<u32>(current_index, visible_node.octree_index), 0);
-
 
         // Décomposer les données
         let children_mask = current_node.r;  // u8 dans le canal R
+
         // current_node.g est le padding (inutilisé)
         let first_child_index = current_node.b | (current_node.a << 8u);  // u16 reconstruit à partir de B et A
 
@@ -142,7 +167,12 @@ fn get_max_relative_depth(position: vec3<f32>) -> u32 {
         // check if a children exists at this index
         if is_bit_set(children_mask, child_index) {
             // compute child offset
-            let child_offset = count_bits_before(children_mask, child_index);
+            var child_offset: u32 = 0u;
+            if child_index > 0 {
+                child_offset = count_bits_before(children_mask, child_index);
+            }
+
+//            let child_offset = number_of_ones(children_mask, child_index - 1);
             let actual_child_index = first_child_index + child_offset;
 
             relative_depth ++;
@@ -153,12 +183,14 @@ fn get_max_relative_depth(position: vec3<f32>) -> u32 {
             let offset = (index3d * 2.0 - 1.0) * half_extents;
             center = center + offset;
         } else {
-            return relative_depth;
+            let offset = f32(current_node.g) / 10.0 - 10.0;
+//            return f32(relative_depth) + offset;
+            return vec2(f32(relative_depth), offset);
         }
 
     }
 
-    return relative_depth;
+    return vec2(f32(relative_depth), 0.0);
 }
 
 #endif
@@ -181,19 +213,34 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     let world_position = mesh_position_local_to_world(world_from_local, vec4<f32>(vertex.i_pos_size.xyz, 1.0));
     var view_position = position_world_to_view(world_position.xyz);
 
-    // Get the fov from projection matrix
-//    let f = view_bindings::view.clip_from_view[1][1];
-//    let fov = 2.0 * atan(1.0 / f);
-//    let slope = tan(fov / 2.0);
-//    var proj_factor = -0.5 * viewport[3] / (slope * view_position.z);
-
 #ifdef IS_OCTREE
+    // Get the fov from projection matrix
+    let f = view_bindings::view.clip_from_view[1][1];
+    let fov = 2.0 * atan(1.0 / f);
+    let slope = tan(fov / 2.0);
+    var proj_factor = -0.5 * viewport[3] / (slope * view_position.z);
+
+    // TODO precalculate it on cpu
+    let model_view = view_bindings::view.view_from_world * world_from_local;
+
+	let scale = length(
+		model_view * vec4(0, 0, 0, 1) -
+		model_view * vec4(octree_node.spacing, 0, 0, 1)
+	) / octree_node.spacing;
+	proj_factor = proj_factor * scale;
 
 
     let max_relative_depth = get_max_relative_depth(vertex.i_pos_size.xyz);
-    let attenuation = pow(2.0, f32(max_relative_depth));
+    let attenuation = pow(2.0, max_relative_depth.x + max_relative_depth.y);
+//    let attenuation = 0.5 * pow(1.3, max_relative_depth.x + max_relative_depth.y);
 
-    let radius = octree_node.spacing * 1.7 / attenuation;
+    var radius = octree_node.spacing * 1.7 / attenuation;
+    radius = radius * proj_factor;
+
+	radius = max(material.min_point_size, radius);
+	radius = min(material.max_point_size, radius);
+
+	radius = radius / proj_factor;
 #else
     // Compute radius to size the point correctly with viewport size
     let radius = point_size / min(viewport[2], viewport[3]);
@@ -216,14 +263,28 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 #ifdef DEBUG_COLOR
     var debug_color = vec3<f32>(1.0, 1.0, 1.0);
 
-    let absolute_depth = max_relative_depth + octree_node.level;
+//    let absolute_depth = max_relative_depth + octree_node.level;
+//
+//    if absolute_depth == 0u {
+//        debug_color = vec3<f32>(1.0, 0.0, 0.0); // Rouge = problème !
+//    } else if absolute_depth == 1u {
+//        debug_color = vec3<f32>(1.0, 1.0, 0.0); // Jaune
+//    } else if absolute_depth == 2u {
+//        debug_color = vec3<f32>(0.0, 1.0, 0.0); // Vert
+//    } else {
+//        debug_color = vec3<f32>(0.0, 0.0, f32(absolute_depth) / 10.0); // Bleu = profond
+//    }
+//
+//    out.color = vec4<f32>(debug_color, 1.0);
 
-    if absolute_depth == 0u {
-        debug_color = vec3<f32>(1.0, 0.0, 0.0); // Rouge = problème !
-    } else if absolute_depth == 1u {
-        debug_color = vec3<f32>(1.0, 1.0, 0.0); // Jaune
-    } else if absolute_depth == 2u {
-        debug_color = vec3<f32>(0.0, 1.0, 0.0); // Vert
+    let absolute_depth = max_relative_depth.y;
+
+    if absolute_depth < 1.0 {
+        debug_color = vec3<f32>(absolute_depth + 1.0, 0.0, 0.0); // Rouge = problème !
+    } else if absolute_depth < 2.0 {
+        debug_color = vec3<f32>(absolute_depth, absolute_depth, 0.0); // Jaune
+    } else if absolute_depth < 3.0 {
+        debug_color = vec3<f32>(0.0, absolute_depth, 0.0); // Vert
     } else {
         debug_color = vec3<f32>(0.0, 0.0, f32(absolute_depth) / 10.0); // Bleu = profond
     }
