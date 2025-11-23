@@ -11,6 +11,10 @@ resolver = "2"
 name = "potree"
 required-features = ["potree"]
 
+[[example]]
+name = "loader"
+required-features = ["potree"]
+
 [lib]
 name = "bevy_pointcloud"
 crate-type = ["lib"]
@@ -56,6 +60,7 @@ crossbeam = { version = "0.8", features = [
 ] }
 async-channel = "2.5"
 async-lock = "3.4"
+async-trait = "0.1"
 
 wasm-bindgen = { version = "=0.2.100", optional = true }
 wasm-bindgen-futures = { version = "=0.4.50", optional = true }
@@ -63,6 +68,8 @@ wasm_thread = { version = "0.3.3", optional = true }
 
 bevy_rich_text3d = "0.5.1"
 
+
+parking_lot = { version = "0.12" }
 
 [dev-dependencies]
 bevy = { version = "0.17", features = ["bevy_dev_tools"] }

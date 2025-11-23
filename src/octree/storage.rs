@@ -24,6 +24,65 @@ impl<T> Default for GenerationalSlab<T> {
     }
 }
 
+#[derive(Debug)]
+pub struct VacantEntry<'a, T> {
+    vacant_entry: slab::VacantEntry<'a, (usize, T)>,
+    key: NodeId,
+}
+
+
+impl<'a, T> VacantEntry<'a, T> {
+    /// Insert a value in the entry, returning a mutable reference to the value.
+    ///
+    /// To get the key associated with the value, use `key` prior to calling
+    /// `insert`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use slab::*;
+    /// let mut slab = Slab::new();
+    ///
+    /// let hello = {
+    ///     let entry = slab.vacant_entry();
+    ///     let key = entry.key();
+    ///
+    ///     entry.insert((key, "hello"));
+    ///     key
+    /// };
+    ///
+    /// assert_eq!(hello, slab[hello].0);
+    /// assert_eq!("hello", slab[hello].1);
+    /// ```
+    pub fn insert(self, val: T) -> &'a mut T {
+        &mut self.vacant_entry.insert((self.key.generation, val)).1
+    }
+
+    /// Return the key associated with this entry.
+    ///
+    /// A value stored in this entry will be associated with this key.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let mut slab = GenerationalSlab::new();
+    ///
+    /// let hello = {
+    ///     let entry = slab.vacant_entry();
+    ///     let key = entry.key();
+    ///
+    ///     entry.insert((key, "hello"));
+    ///     key
+    /// };
+    ///
+    /// assert_eq!(hello, slab[hello].0);
+    /// assert_eq!("hello", slab[hello].1);
+    /// ```
+    pub fn key(&self) -> NodeId {
+        self.key
+    }
+}
+
 impl<T> GenerationalSlab<T> {
     /// Creates an empty `GenerationalSlab`.
     pub fn new() -> Self {
@@ -33,11 +92,13 @@ impl<T> GenerationalSlab<T> {
         }
     }
 
-    /// Inserts a new value into the slab.
-    /// Returns a `NodeId` with the current generation for that slot.
-    pub fn insert(&mut self, value: T) -> NodeId {
-        // Insert a placeholder; we'll update its generation afterward.
-        let index = self.slab.insert((0, value));
+    // pub fn vacant_entry(&mut self) -> VacantEntry<'_, T> {
+    //     let vacant_entry = self.slab.vacant_entry();
+    // }
+
+    pub fn vacant_entry(&mut self) -> VacantEntry<'_, T> {
+        let vacant_entry = self.slab.vacant_entry();
+        let index = vacant_entry.key();
 
         // Make sure `generations` is large enough.
         if self.generations.len() <= index {
@@ -45,16 +106,40 @@ impl<T> GenerationalSlab<T> {
         }
 
         // Get the current generation for this index.
-        let generation_value = self.generations[index];
+        let generation = self.generations[index];
 
-        // Update the generation stored in the slab entry.
-        if let Some((stored_generation, _)) = self.slab.get_mut(index) {
-            *stored_generation = generation_value;
+
+        VacantEntry {
+            vacant_entry,
+            key: NodeId {
+                index,
+                generation,
+            },
         }
+    }
+
+
+    /// Inserts a new value into the slab.
+    /// Returns a `NodeId` with the current generation for that slot.
+    pub fn insert(&mut self, value: T) -> NodeId {
+        // Insert a placeholder; we'll update its generation afterward.
+        let vacant_entry = self.slab.vacant_entry();
+        let index = vacant_entry.key();
+
+        // Make sure `generations` is large enough.
+        if self.generations.len() <= index {
+            self.generations.resize(index + 1, 0);
+        }
+
+        // Get the current generation for this index.
+        let generation = self.generations[index];
+
+        // Effectively insert the value in the slab
+        vacant_entry.insert((generation, value));
 
         NodeId {
             index,
-            generation: generation_value,
+            generation,
         }
     }
 
@@ -105,7 +190,7 @@ impl<T> GenerationalSlab<T> {
     }
 
     /// Returns an iterator over all valid entries.
-    pub fn iter(&self) -> impl Iterator<Item = (NodeId, &T)> {
+    pub fn iter(&self) -> impl Iterator<Item=(NodeId, &T)> {
         self.slab.iter().map(move |(index, (generation_value, value))| {
             (
                 NodeId {

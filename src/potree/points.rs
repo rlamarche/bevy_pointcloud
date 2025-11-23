@@ -88,7 +88,7 @@ pub fn load_points_tx(
             let node_id = octree_node.id.expect("missing node id");
 
             // do not try to load points of a proxy
-            if octree_node.node_type != 2
+            if octree_node.node_type.has_points()
                 && !load_points_task_holder.loaded_points.contains(&node_id)
             {
                 if let Ok(_) =

@@ -470,6 +470,8 @@ where
             parent.children_mask |= 1 << node.child_index;
         }
     }
+
+    // info!("Visible nodes: {}", visible_nodes.len());
 }
 
 /// This system extracts computed visible octree nodes and add them in the render world, for each view (camera)

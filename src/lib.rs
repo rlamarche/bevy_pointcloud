@@ -17,6 +17,7 @@ pub mod pointcloud_octree;
 pub mod potree;
 pub mod prelude;
 pub mod render;
+pub mod new_potree;
 
 pub struct PointCloudPlugin;
 

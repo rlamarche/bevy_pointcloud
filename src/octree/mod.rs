@@ -9,6 +9,7 @@ pub mod render_asset;
 mod storage;
 
 pub mod visibility;
+pub mod new_asset;
 
 pub struct OctreeAssetPlugin<T>(PhantomData<T>)
 where

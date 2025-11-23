@@ -5,6 +5,7 @@ use bevy_asset::io::Reader;
 use bevy_asset::{AssetLoader, LoadContext};
 use bevy_camera::primitives::Aabb;
 use bevy_log::prelude::*;
+use potree::hierarchy::{Hierarchy, LoadPotreePointCloudError};
 use potree::resource::ResourceLoader;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -57,9 +58,7 @@ impl AssetLoader for PotreeLoader {
 
         info!("Loading Potree Point Cloud from path {}", asset_path);
 
-        let point_cloud =
-            potree::hierarchy::Hierarchy::from_url(&asset_path, ResourceLoader::new())
-                .await?;
+        let point_cloud = Hierarchy::from_url(&asset_path, ResourceLoader::new()).await?;
 
         info!("Potree Point Cloud loaded");
 

@@ -12,7 +12,7 @@ use bevy_math::prelude::*;
 use bevy_math::{Vec3, Vec3A};
 use bevy_transform::prelude::*;
 use crossbeam::queue::ArrayQueue;
-use potree::octree::node::{OctreeNode, iter_one_bits};
+use potree::octree::node::{OctreeNode, iter_one_bits, NodeType};
 use potree::octree::{FlatOctree, NodeId};
 use potree::prelude::OctreeNodeSnapshot;
 use std::sync::Arc;
@@ -233,6 +233,11 @@ impl UpdateHierarchyTask {
         let world_from_local = transform.affine();
 
         while let Some((parent_index, node, mut completely_visible)) = stack.pop_front() {
+            if node.node_type.has_points() && node.num_points == 0 {
+                // skip nodes with no points
+                continue;
+            }
+
             // get the current node future index
             let current_index = visible_nodes.len();
 
@@ -283,7 +288,7 @@ impl UpdateHierarchyTask {
                 }
             }
 
-            if node.node_type == 2 {
+            if matches!(node.node_type, NodeType::Proxy) {
                 // the node has a child hierarchy, plan to load it
                 nodes_to_load.push(node.id.expect("node should have a node id"));
             } else {
