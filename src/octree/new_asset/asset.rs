@@ -19,6 +19,8 @@ pub enum InsertNodeError {
     ChildIndexOccupied,
     #[error("child index is out of bounds")]
     ChildIndexOutOfBounds,
+    #[error("node not found")]
+    NodeNotFound,
 }
 
 #[derive(Debug, Clone, TypePath, Asset)]
@@ -65,6 +67,19 @@ where
             modified: Vec::new(),
             removed: Vec::new(),
         }
+    }
+
+    pub fn update_hierarchy_node(&mut self, node_id: NodeId, node: HierarchyNode<H>) -> Result<(), InsertNodeError> {
+        let Some(hierarchy_octree_node) = self.hierarchy.get_mut(node_id) else {
+            return Err(InsertNodeError::NodeNotFound)
+        };
+
+        hierarchy_octree_node.status = node.status;
+        hierarchy_octree_node.child_index = node.child_index;
+        hierarchy_octree_node.bounding_box = node.bounding_box;
+        hierarchy_octree_node.data = node.data;
+
+        Ok(())
     }
 
     /// Inserts a new child node to an existing node
@@ -133,6 +148,10 @@ where
 
     pub fn hierarchy_node(&self, node_id: NodeId) -> Option<&HierarchyOctreeNode<H>> {
         self.hierarchy.get(node_id)
+    }
+
+    pub fn hierarchy_node_mut(&mut self, node_id: NodeId) -> Option<&mut HierarchyOctreeNode<H>> {
+        self.hierarchy.get_mut(node_id)
     }
 
     pub fn hierarchy_root(&self) -> Option<&HierarchyOctreeNode<H>> {

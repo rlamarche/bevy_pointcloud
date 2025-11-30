@@ -6,6 +6,7 @@ use crate::octree::storage::NodeId;
 pub enum HierarchyNodeStatus {
     Loaded,
     Proxy,
+    Loading,
 }
 
 pub trait HierarchyNodeData: Send + Sync + TypePath + Clone {

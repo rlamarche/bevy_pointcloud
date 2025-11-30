@@ -33,8 +33,7 @@ pub struct MyMaterial(Handle<PointCloudMaterial>);
 
 fn load_pointcloud(mut commands: Commands, octree_server: Res<PotreeServer>) {
     let octree_handle = octree_server
-        .load_octree("file:///home/romain/Documents/Potree/Messerschmitt".to_string())
-        .expect("Could not load octree");
+        .load_octree("file:///home/romain/Documents/Potree/Messerschmitt".to_string());
 
     commands.spawn((
         NewPotreePointCloud3d(octree_handle),

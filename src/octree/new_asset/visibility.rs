@@ -3,9 +3,10 @@ use crate::octree::new_asset::hierarchy::{
     HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode,
 };
 use crate::octree::new_asset::loader::OctreeLoader;
+use crate::octree::new_asset::server::OctreeServerHelper;
 use crate::octree::storage::NodeId;
 use bevy_app::{App, Plugin, PreUpdate};
-use bevy_asset::{AssetId, Assets};
+use bevy_asset::AssetId;
 use bevy_camera::primitives::{Aabb, Frustum};
 use bevy_camera::{Camera, Projection};
 use bevy_ecs::prelude::*;
@@ -35,7 +36,7 @@ where
     A: Send + Sync + 'static,
 {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreUpdate, check_octree_nodes_visibility::<H, T, C>);
+        app.add_systems(PreUpdate, check_octree_nodes_visibility::<L, H, T, C>);
     }
 }
 
@@ -106,12 +107,13 @@ where
     fn add_node(&mut self, node: &HierarchyOctreeNode<H>) -> Result<(), BudgetError>;
 }
 
-pub fn check_octree_nodes_visibility<H, T, C>(
-    assets: Res<Assets<NewOctree<H, T>>>,
+pub fn check_octree_nodes_visibility<L, H, T, C>(
     entities: Query<(&C, &GlobalTransform)>,
     // TODO add a way to disable checking of a camera
     views: Query<(&Camera, &Frustum, &GlobalTransform, &Projection)>,
+    mut server: OctreeServerHelper<L, H, T>,
 ) where
+    L: OctreeLoader<H>,
     H: HierarchyNodeData,
     T: Send + Sync + TypePath,
     C: Component,
@@ -129,7 +131,7 @@ pub fn check_octree_nodes_visibility<H, T, C>(
         // for each point cloud instance
         for (component, global_transform) in entities {
             // get the asset
-            let Some(asset) = assets.get(component) else {
+            let Some(asset) = server.assets.get(component) else {
                 warn!(
                     "Asset {} is missing, skip visibility check",
                     Into::<AssetId<NewOctree<H, T>>>::into(component)
@@ -143,18 +145,24 @@ pub fn check_octree_nodes_visibility<H, T, C>(
             };
 
             let filter = <ScreenPixelRadiusFilter as OctreeHierarchyFilter<H>>::new(150.0);
-            let (visible_nodes, nodes_to_load) = compute_visible_nodes(
+            let (visible_nodes, hierarchy_to_load) = compute_visible_nodes(
                 asset,
                 hierarchy_root,
                 global_transform,
                 &camera_view,
                 &filter,
             );
-            info!(
-                "computed {} visible nodes and {} nodes to load",
-                visible_nodes.len(),
-                nodes_to_load.len()
-            );
+            // info!(
+            //     "computed {} visible nodes and {} nodes to load",
+            //     visible_nodes.len(),
+            //     hierarchy_to_load.len()
+            // );
+
+            for node_id in hierarchy_to_load {
+                if let Err(error) = server.load_sub_hierarchy(component, node_id) {
+                    warn!("Error loading sub hierarchy node: {}", error);
+                }
+            }
         }
     }
 }
@@ -210,7 +218,7 @@ where
 {
     let mut stack = VecDeque::from([(0_usize, node, false)]);
     let mut visible_nodes = Vec::<VisibleHierarchyNode<H>>::new();
-    let mut nodes_to_load = Vec::new();
+    let mut hierarchy_to_load = Vec::new();
 
     let world_from_local = transform.affine();
 
@@ -294,12 +302,15 @@ where
                 }
             }
             HierarchyNodeStatus::Proxy => {
-                nodes_to_load.push(node.id);
+                hierarchy_to_load.push(node.id);
+            }
+            HierarchyNodeStatus::Loading => {
+                // the node is already loading, nothing to do
             }
         }
     }
 
-    (visible_nodes, nodes_to_load)
+    (visible_nodes, hierarchy_to_load)
 }
 
 pub struct VisibleHierarchyNode<H>
