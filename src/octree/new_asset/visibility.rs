@@ -8,13 +8,16 @@ use crate::octree::storage::NodeId;
 use bevy_app::{App, Plugin, PreUpdate};
 use bevy_asset::AssetId;
 use bevy_camera::primitives::{Aabb, Frustum};
+use bevy_camera::visibility::{Visibility, VisibilityClass, VisibleEntities, add_visibility_class, check_visibility};
 use bevy_camera::{Camera, Projection};
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
 use bevy_math::prelude::*;
+use bevy_platform::collections::{HashMap, HashSet};
 use bevy_reflect::TypePath;
 use bevy_transform::prelude::*;
 use potree::octree::node::iter_one_bits;
+use std::any::TypeId;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 use thiserror::Error;
@@ -36,8 +39,125 @@ where
     A: Send + Sync + 'static,
 {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreUpdate, check_octree_nodes_visibility::<L, H, T, C>);
+        app.register_required_components::<C, Visibility>()
+            .register_required_components::<C, VisibilityClass>()
+            .register_required_components::<Camera, OctreesVisibility<H, T, C>>()
+            .add_systems(PreUpdate, check_octree_nodes_visibility::<L, H, T, C>.after(check_visibility));
+
+        app.world_mut()
+            .register_component_hooks::<C>()
+            .on_add(add_visibility_class::<C>);
     }
+}
+
+/// This component stores the visible nodes for each octree at view level (camera) in "main world".
+#[derive(Debug, Component)]
+pub struct OctreesVisibility<H, T, C>
+where
+    H: HierarchyNodeData,
+    T: Send + Sync + TypePath,
+    C: Component,
+{
+    pub octrees: HashMap<Entity, (AssetId<NewOctree<H, T>>, Vec<VisibleOctreeNode>)>,
+    _phantom_data: PhantomData<fn() -> (H, T, C)>,
+}
+
+impl<H, T, C> Default for OctreesVisibility<H, T, C>
+where
+    H: HierarchyNodeData,
+    T: Send + Sync + TypePath,
+    C: Component,
+{
+    fn default() -> Self {
+        Self {
+            octrees: HashMap::default(),
+            _phantom_data: PhantomData,
+        }
+    }
+}
+
+impl<H, T, C> OctreesVisibility<H, T, C>
+where
+    H: HierarchyNodeData,
+    T: Send + Sync + TypePath,
+    C: Component,
+{
+    pub fn get_mut(
+        &mut self,
+        entity: Entity,
+    ) -> &mut (AssetId<NewOctree<H, T>>, Vec<VisibleOctreeNode>) {
+        self.octrees.entry(entity).or_default()
+    }
+
+    pub fn clear_all(&mut self) {
+        // Don't just nuke the hash table; we want to reuse allocations.
+        for (asset_id, nodes) in self.octrees.values_mut() {
+            *asset_id = Default::default();
+            nodes.clear();
+        }
+    }
+}
+
+// #[derive(Clone, Debug)]
+// pub struct OctreeVisibility<H, T>
+// where
+//     H: HierarchyNodeData,
+//     T: Send + Sync + TypePath,
+// {
+//     pub asset_id: AssetId<NewOctree<H, T>>,
+//     pub visible_nodes: Vec<VisibleOctreeNode>,
+//     pub visible_hierarchy_nodes_to_load: Vec<NodeId>,
+//     pub visible_nodes_to_load: Vec<NodeId>,
+// }
+
+/// Contains useful informations about a visible node
+#[derive(Clone, Debug)]
+pub struct VisibleOctreeNode {
+    pub id: NodeId,
+    pub children: [usize; 8],
+    pub children_mask: u8,
+    pub first_child_index: usize,
+}
+
+// pub struct VisibleHierarchyNode<H>
+// where
+//     H: HierarchyNodeData,
+// {
+//     pub index: usize,
+//     pub children: [usize; 8],
+//     pub children_mask: u8,
+//     pub node: HierarchyOctreeNode<H>,
+// }
+
+
+impl<H> From<&HierarchyOctreeNode<H>> for VisibleOctreeNode
+where
+    H: HierarchyNodeData,
+{
+    fn from(value: &HierarchyOctreeNode<H>) -> Self {
+        VisibleOctreeNode {
+            id: value.id,
+            children: [0_usize; 8],
+            children_mask: 0b00000000,
+            first_child_index: 0,
+        }
+    }
+}
+
+pub struct OctreeVisibilityInfo {
+    pub visible_nodes: HashSet<NodeId>,
+    pub lod_info: HashMap<NodeId, LodInfo>,
+}
+
+#[derive(Component)]
+pub struct UnloadTracker {
+    pub last_visible: HashMap<NodeId, u64>, // node_index -> last_frame_visible
+}
+
+pub struct LodInfo {
+    pub distance_to_camera: f32,
+    pub screen_size: f32,
+    pub should_expand: bool,
 }
 
 pub trait OctreeHierarchyFilter<H>: Send + Sync
@@ -110,7 +230,14 @@ where
 pub fn check_octree_nodes_visibility<L, H, T, C>(
     entities: Query<(&C, &GlobalTransform)>,
     // TODO add a way to disable checking of a camera
-    views: Query<(&Camera, &Frustum, &GlobalTransform, &Projection)>,
+    mut views: Query<(
+        &VisibleEntities,
+        &Camera,
+        &Frustum,
+        &GlobalTransform,
+        &Projection,
+        &mut OctreesVisibility<H, T, C>,
+    )>,
     mut server: OctreeServerHelper<L, H, T>,
 ) where
     L: OctreeLoader<H>,
@@ -120,7 +247,22 @@ pub fn check_octree_nodes_visibility<L, H, T, C>(
     for<'a> &'a C: Into<AssetId<NewOctree<H, T>>>,
 {
     // for each view
-    for (camera, frustum, camera_global_transform, camera_projection) in views.iter() {
+    for (
+        visible_entities,
+        camera,
+        frustum,
+        camera_global_transform,
+        camera_projection,
+        mut visible_octree_nodes,
+    ) in &mut views
+    {
+        if !camera.is_active {
+            continue;
+        }
+
+        // Reset previously computed visibility
+        visible_octree_nodes.clear_all();
+
         let camera_view = CameraView {
             global_transform: camera_global_transform,
             frustum,
@@ -128,8 +270,22 @@ pub fn check_octree_nodes_visibility<L, H, T, C>(
             physical_target_size: camera.physical_target_size(),
         };
 
-        // for each point cloud instance
-        for (component, global_transform) in entities {
+        // get all visible octrees
+        let visible_octree_entities = visible_entities.get(TypeId::of::<C>());
+
+        // for each visible octree
+        for entity in visible_octree_entities {
+            let (component, global_transform) = match entities.get(*entity) {
+                Ok(item) => item,
+                Err(error) => {
+                    warn!(
+                        "Unable to read octree entity for computing nodes visibility: {:#}",
+                        error
+                    );
+                    continue;
+                }
+            };
+
             // get the asset
             let Some(asset) = server.assets.get(component) else {
                 warn!(
@@ -139,18 +295,24 @@ pub fn check_octree_nodes_visibility<L, H, T, C>(
                 continue;
             };
 
+            let (asset_id, visible_nodes) = visible_octree_nodes.get_mut(*entity);
+
+            // update the asset id
+            *asset_id = component.into();
+
             let Some(hierarchy_root) = asset.hierarchy_root() else {
                 warn!("Octree node has not yet hierarchy root loaded.");
                 continue;
             };
 
             let filter = <ScreenPixelRadiusFilter as OctreeHierarchyFilter<H>>::new(150.0);
-            let (visible_nodes, hierarchy_to_load) = compute_visible_nodes(
+            let hierarchy_to_load = compute_visible_nodes(
                 asset,
                 hierarchy_root,
                 global_transform,
                 &camera_view,
                 &filter,
+                visible_nodes,
             );
             // info!(
             //     "computed {} visible nodes and {} nodes to load",
@@ -175,7 +337,7 @@ pub struct CameraView<'a> {
     pub physical_target_size: Option<UVec2>,
 }
 
-fn compute_screen_pixel_radius<'a>(
+fn compute_screen_pixel_radius(
     aabb: &Aabb,
     transform: &GlobalTransform,
     camera_view: &CameraView,
@@ -204,20 +366,50 @@ fn compute_screen_pixel_radius<'a>(
     }
 }
 
+// fn compute_distance_and_screen_size(
+//     aabb: &Aabb,
+//     transform: &GlobalTransform,
+//     camera_view: &CameraView,
+// ) -> Option<(f32, f32)> {
+//     let radius = (aabb.max() - aabb.min()).length() / 2.0;
+//
+//     let center = transform.affine().transform_point3a(aabb.center);
+//     let camera_center = Into::<Vec3A>::into(camera_view.global_transform.translation());
+//     let distance = (center - camera_center).length();
+//
+//     match &camera_view.projection {
+//         Projection::Perspective(perspective_projection) => {
+//             let Some(physical_target_size) = &camera_view.physical_target_size else {
+//                 return None;
+//             };
+//
+//             let slope = (perspective_projection.fov / 2.0).atan();
+//             let proj_factor = (0.5 * physical_target_size.y as f32) / (slope * distance);
+//
+//             Some((distance, radius * proj_factor))
+//         }
+//         Projection::Orthographic(orthographic_projection) => {
+//             Some((distance, radius * orthographic_projection.scale))
+//         }
+//         Projection::Custom(_) => None,
+//     }
+// }
+
 fn compute_visible_nodes<'a, H, T, F>(
     octree: &'a NewOctree<H, T>,
     node: &'a HierarchyOctreeNode<H>,
     transform: &GlobalTransform,
     camera_view: &CameraView,
     filter: &F,
-) -> (Vec<VisibleHierarchyNode<H>>, Vec<NodeId>)
+    visible_nodes: &mut Vec<VisibleOctreeNode>,
+) -> Vec<NodeId>
 where
     H: HierarchyNodeData,
     T: Send + Sync + TypePath,
     F: OctreeHierarchyFilter<H>,
 {
     let mut stack = VecDeque::from([(0_usize, node, false)]);
-    let mut visible_nodes = Vec::<VisibleHierarchyNode<H>>::new();
+    // let mut visible_nodes = Vec::<VisibleHierarchyNode<H>>::new();
     let mut hierarchy_to_load = Vec::new();
 
     let world_from_local = transform.affine();
@@ -284,21 +476,31 @@ where
 
                 // add the current node because it is visible or partially visible
 
-                let visible_node = VisibleHierarchyNode {
-                    node: (*node).clone(),
-                    index: current_index,
-                    children: [0; 8],
-                    children_mask: 0,
-                };
-
                 let child_index = node.child_index;
-                visible_nodes.push(visible_node);
+                visible_nodes.push(node.into());
+
+                // let visible_node = VisibleHierarchyNode {
+                //     node: (*node).clone(),
+                //     index: current_index,
+                //     children: [0; 8],
+                //     children_mask: 0,
+                // };
+
+                // visible_nodes.push(visible_node);
 
                 // if there is a parent, add it to the children array on an empty space
                 if parent_index < current_index {
                     let parent = &mut visible_nodes[parent_index];
+
+                    // if there is no first child, set it
+                    // this is the first child index, because children are always processed in the same order
+                    if parent.first_child_index == 0 {
+                        parent.first_child_index = current_index;
+                    }
+
                     parent.children[child_index] = current_index;
                     parent.children_mask |= 1 << node.child_index;
+
                 }
             }
             HierarchyNodeStatus::Proxy => {
@@ -310,15 +512,5 @@ where
         }
     }
 
-    (visible_nodes, hierarchy_to_load)
-}
-
-pub struct VisibleHierarchyNode<H>
-where
-    H: HierarchyNodeData,
-{
-    pub index: usize,
-    pub children: [usize; 8],
-    pub children_mask: u8,
-    pub node: HierarchyOctreeNode<H>,
+    hierarchy_to_load
 }
