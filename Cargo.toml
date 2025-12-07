@@ -61,6 +61,7 @@ crossbeam = { version = "0.8", features = [
 async-channel = "2.5"
 async-lock = "3.4"
 async-trait = "0.1"
+ordered-float = "5.1.0"
 
 wasm-bindgen = { version = "=0.2.100", optional = true }
 wasm-bindgen-futures = { version = "=0.4.50", optional = true }

@@ -14,6 +14,7 @@ use bevy_tasks::IoTaskPool;
 use crossbeam::channel::{Receiver, Sender};
 use std::sync::Arc;
 use thiserror::Error;
+use crate::octree::new_asset::visibility::resources::OctreeLoadTasks;
 
 #[derive(Resource)]
 pub struct OctreeServer<L, H, T>
@@ -137,7 +138,7 @@ where
 
 impl<L, H, T> FromWorld for OctreeServer<L, H, T>
 where
-    L: OctreeLoader<H> + 'static,
+    L: OctreeLoader<H>,
     H: HierarchyNodeData,
     T: Send + Sync + TypePath,
 {
@@ -181,12 +182,47 @@ where
 
         handle
     }
+
+    pub fn load_sub_hierarchy(
+        &mut self,
+        asset_id: AssetId<NewOctree<H, T>>,
+        asset: &mut NewOctree<H, T>,
+        node_id: NodeId,
+    ) -> Result<(), OctreeServerError> {
+        let hierarchy_octree_node_mut = asset
+            .hierarchy_node_mut(node_id)
+            .ok_or(OctreeServerError::HierarchyNodeNotFound)?;
+
+        hierarchy_octree_node_mut.status = HierarchyNodeStatus::Loading;
+
+        let hierarchy_octree_node = hierarchy_octree_node_mut.clone();
+
+        let Some(loader) = self.loaders.get(&asset_id).cloned() else {
+            return Err(OctreeServerError::LoaderNotFound);
+        };
+        let data = self.data.clone();
+
+        let task = IoTaskPool::get().spawn(async move {
+            if let Err(err) = data
+                .load_sub_hierarchy_internal(asset_id, loader, hierarchy_octree_node)
+                .await
+            {
+                error!("{}", err);
+            }
+        });
+
+        #[cfg(any(target_arch = "wasm32", not(feature = "multi_threaded")))]
+        task.detach();
+
+        Ok(())
+    }
 }
 
 /// A system that manages internal [`OctreeServer`] events, such as finalizing asset loads.
 pub fn handle_internal_octree_events<L, H, T>(
     mut server: ResMut<OctreeServer<L, H, T>>,
     mut assets: ResMut<Assets<NewOctree<H, T>>>,
+    mut load_tasks: ResMut<OctreeLoadTasks<H, T>>,
 ) where
     L: OctreeLoader<H> + 'static,
     H: HierarchyNodeData,
@@ -215,6 +251,11 @@ pub fn handle_internal_octree_events<L, H, T>(
                 node_id,
                 hierarchy_nodes,
             } => {
+                let key = (id, node_id);
+
+                // update in flight hashset
+                load_tasks.hierarchy_in_flight.remove(&key);
+
                 let Some(octree) = assets.get_mut(id) else {
                     warn!(
                         "No asset found for {:?}, unable to append loaded hierarchy nodes.",
