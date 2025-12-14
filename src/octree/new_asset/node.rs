@@ -1,9 +1,9 @@
 use crate::octree::new_asset::hierarchy::{HierarchyNodeData, HierarchyOctreeNode};
 use bevy_reflect::TypePath;
 
-pub trait NodeData: Send + Sync + TypePath + Clone {}
+pub trait NodeData: Send + Sync + TypePath {}
 
-impl<T: Send + Sync + TypePath + Clone> NodeData for T {}
+impl<T: Send + Sync + TypePath> NodeData for T {}
 
 #[derive(Debug, Clone, Copy)]
 pub enum NodeStatus {

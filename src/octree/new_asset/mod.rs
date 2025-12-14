@@ -5,51 +5,29 @@ pub mod loader;
 pub mod node;
 pub mod server;
 pub mod visibility;
+pub mod extract;
 
 use asset::NewOctree;
-use loader::{OctreeLoader, process_octree_load_tasks};
-use server::{OctreeServer, handle_internal_octree_events};
 
-use bevy_app::{App, Plugin, PreUpdate};
-use bevy_asset::{AssetApp, AssetId, Assets};
-use bevy_ecs::prelude::*;
+use bevy_app::{App, Plugin};
+use bevy_asset::{AssetApp, AssetId};
 use hierarchy::HierarchyNodeData;
 use node::NodeData;
 use std::marker::PhantomData;
-use visibility::check_octree_nodes_visibility;
 
-pub struct NewOctreeServerPlugin<L, H, T, C, A>(PhantomData<fn() -> (L, H, T, C, A)>);
+pub struct NewOctreeAssetPlugin<H, T>(PhantomData<fn() -> (H, T)>);
 
-impl<L, H, T, C, A> Default for NewOctreeServerPlugin<L, H, T, C, A> {
+impl<H, T> Default for NewOctreeAssetPlugin<H, T> {
     fn default() -> Self {
-        NewOctreeServerPlugin(PhantomData)
+        NewOctreeAssetPlugin(PhantomData)
     }
 }
-impl<L, H, T, C, A> Plugin for NewOctreeServerPlugin<L, H, T, C, A>
+impl<H, T> Plugin for NewOctreeAssetPlugin<H, T>
 where
-    L: OctreeLoader<H, T> + 'static,
     H: HierarchyNodeData,
     T: NodeData,
-    C: Component,
-    for<'a> &'a C: Into<AssetId<NewOctree<H, T>>>,
-    A: Send + Sync + 'static,
 {
     fn build(&self, app: &mut App) {
-        // register asset type if needed
-        // TODO do this in a specific plugin
-        if !app.world().contains_resource::<Assets<NewOctree<H, T>>>() {
-            app.init_asset::<NewOctree<H, T>>();
-        }
-
-        app.init_asset::<NewOctree<H, T>>()
-            .init_resource::<OctreeServer<L, H, T>>()
-            .add_systems(
-                PreUpdate,
-                (
-                    handle_internal_octree_events::<L, H, T>,
-                    process_octree_load_tasks::<L, H, T>
-                        .after(check_octree_nodes_visibility::<L, H, T, C>),
-                ),
-            );
+        app.init_asset::<NewOctree<H, T>>();
     }
 }

@@ -6,10 +6,7 @@ use bevy_color::palettes::basic::{GREEN, RED};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pointcloud::new_potree::component::NewPotreePointCloud3d;
 use bevy_pointcloud::new_potree::loader::PotreeHierarchy;
-use bevy_pointcloud::new_potree::{
-    PotreeAsset, PotreeAssetPlugin, PotreeServer, PotreeVisibilityPlugin,
-};
-use bevy_pointcloud::octree::new_asset::asset::NewOctree;
+use bevy_pointcloud::new_potree::{PotreeAsset, PotreeAssetPlugin, PotreeServer, PotreeServerPlugin, PotreeVisibilityPlugin};
 use bevy_pointcloud::octree::new_asset::visibility::components::OctreesVisibility;
 use bevy_pointcloud::point_cloud_material::PointCloudMaterial;
 use bevy_pointcloud::pointcloud_octree::asset::PointCloudNodeData;
@@ -26,6 +23,7 @@ fn main() {
         DefaultPlugins,
         PanOrbitCameraPlugin,
         PotreeAssetPlugin::default(),
+        PotreeServerPlugin::default(),
         PotreeVisibilityPlugin::default(),
     ));
 

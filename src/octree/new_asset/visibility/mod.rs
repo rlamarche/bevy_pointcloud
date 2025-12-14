@@ -6,7 +6,7 @@ pub mod stack;
 use crate::octree::new_asset::asset::NewOctree;
 use crate::octree::new_asset::hierarchy::{HierarchyNodeData, HierarchyNodeStatus};
 use crate::octree::new_asset::loader::OctreeLoader;
-use crate::octree::new_asset::loader::resources::{LoadRequestType, OctreeLoadTasks};
+use crate::octree::new_asset::server::resources::{LoadRequestType, OctreeLoadTasks};
 use crate::octree::new_asset::node::{NodeData, NodeStatus, OctreeNode};
 use crate::octree::storage::NodeId;
 use bevy_app::{App, Plugin, PreUpdate};

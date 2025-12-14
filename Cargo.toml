@@ -43,8 +43,7 @@ bytemuck = "1"
 nonmax = "0.5"
 thiserror = "2.0"
 serde = { version = "1", features = ["derive"] }
-las = { version = "0.9", features = ["laz"], optional = true }
-ply-rs = { version = "0.1.3", optional = true }
+las = { version = "0.9", features = ["laz"] }
 
 # Added for octree
 slab = "0.4"
@@ -79,7 +78,8 @@ bevy_panorbit_camera = "0.29"
 bevy-inspector-egui = "0.35.0"
 
 [features]
-default = ["ply", "las"]
+default = []
+multi_threaded = []
 webgl = [
     "bevy_core_pipeline/webgl",
     "bevy_pbr/webgl",
@@ -87,8 +87,6 @@ webgl = [
     "bevy_gizmos/webgl",
 ]
 webgpu = []
-ply = ["dep:ply-rs"]
-las = ["dep:las"]
 potree = ["dep:potree"]
 potree_wasm = ["potree/wasm"]
 potree_wasm_worker = ["potree/wasm_worker", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:wasm_thread"]

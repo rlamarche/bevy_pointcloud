@@ -1,11 +1,16 @@
+pub mod process;
+pub mod resources;
+
 use super::asset::NewOctree;
 use super::hierarchy::{
     HierarchyNode, HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode,
 };
-use super::loader::resources::OctreeLoadTasks;
 use super::loader::OctreeLoader;
-use super::node::{NodeData, NodeStatus, OctreeNode};
+use super::node::{NodeData, NodeStatus};
+use super::visibility::check_octree_nodes_visibility;
 use crate::octree::storage::NodeId;
+use bevy_app::prelude::*;
+use bevy_asset::prelude::*;
 use bevy_asset::{AssetHandleProvider, AssetId, Assets, Handle};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
@@ -13,8 +18,39 @@ use bevy_log::prelude::*;
 use bevy_platform::collections::HashMap;
 use bevy_tasks::IoTaskPool;
 use crossbeam::channel::{Receiver, Sender};
+use process::process_octree_load_tasks;
+use resources::OctreeLoadTasks;
+use std::marker::PhantomData;
 use std::sync::Arc;
 use thiserror::Error;
+
+pub struct NewOctreeServerPlugin<L, H, T, C, A>(PhantomData<fn() -> (L, H, T, C, A)>);
+
+impl<L, H, T, C, A> Default for NewOctreeServerPlugin<L, H, T, C, A> {
+    fn default() -> Self {
+        NewOctreeServerPlugin(PhantomData)
+    }
+}
+impl<L, H, T, C, A> Plugin for NewOctreeServerPlugin<L, H, T, C, A>
+where
+    L: OctreeLoader<H, T> + 'static,
+    H: HierarchyNodeData,
+    T: NodeData,
+    C: Component,
+    for<'a> &'a C: Into<AssetId<NewOctree<H, T>>>,
+    A: Send + Sync + 'static,
+{
+    fn build(&self, app: &mut App) {
+        app.init_resource::<OctreeServer<L, H, T>>().add_systems(
+            PreUpdate,
+            (
+                handle_internal_octree_events::<L, H, T>,
+                process_octree_load_tasks::<L, H, T>
+                    .after(check_octree_nodes_visibility::<L, H, T, C>),
+            ),
+        );
+    }
+}
 
 #[derive(Resource)]
 pub struct OctreeServer<L, H, T>
