@@ -1,9 +1,8 @@
 pub mod resources;
 
 use crate::octree::new_asset::asset::NewOctree;
-use crate::octree::new_asset::hierarchy::{
-    HierarchyNode, HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode,
-};
+use crate::octree::new_asset::hierarchy::{HierarchyNode, HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode};
+use crate::octree::new_asset::node::{NodeData, NodeStatus, OctreeNode};
 use crate::octree::new_asset::server::OctreeServer;
 use async_trait::async_trait;
 use bevy_asset::prelude::*;
@@ -18,7 +17,7 @@ use std::fmt::Display;
 pub trait OctreeLoader<H, T>: Send + Sync + Sized + TypePath
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     type Error: Into<BevyError> + Send + Sync + Display;
 
@@ -40,10 +39,7 @@ where
         node: &HierarchyOctreeNode<H>,
     ) -> Result<Vec<HierarchyNode<H>>, Self::Error>;
 
-    async fn load_node(
-        &self,
-        node: &HierarchyOctreeNode<H>,
-    ) -> Result<T, Self::Error>;
+    async fn load_node_data(&self, node: &HierarchyOctreeNode<H>) -> Result<T, Self::Error>;
 }
 
 pub fn process_octree_load_tasks<L, H, T>(
@@ -53,7 +49,7 @@ pub fn process_octree_load_tasks<L, H, T>(
 ) where
     L: OctreeLoader<H, T>,
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     const MAX_CONCURRENT_HIERARCHY: usize = 4;
     const MAX_CONCURRENT_NODES: usize = 8;
@@ -67,12 +63,12 @@ pub fn process_octree_load_tasks<L, H, T>(
     );
 
     // ========== Process node loads ==========
-    // process_node_data_loads(
-    //     &mut load_tasks,
-    //     &mut octree_assets,
-    //     &thread_pool,
-    //     MAX_CONCURRENT_NODES,
-    // );
+    process_node_data_loads(
+        &mut load_tasks,
+        &mut octree_assets,
+        &mut server,
+        MAX_CONCURRENT_NODES,
+    );
 }
 
 fn process_hierarchy_loads<L, H, T>(
@@ -83,7 +79,7 @@ fn process_hierarchy_loads<L, H, T>(
 ) where
     L: OctreeLoader<H, T>,
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath + 'static,
+    T: NodeData,
 {
     while load_tasks.hierarchy_in_flight.len() < max_concurrent {
         // Pop highest weight task
@@ -126,5 +122,59 @@ fn process_hierarchy_loads<L, H, T>(
 
         // Set in flight
         load_tasks.hierarchy_in_flight.insert(key);
+    }
+}
+
+fn process_node_data_loads<L, H, T>(
+    load_tasks: &mut OctreeLoadTasks<H, T>,
+    octree_assets: &mut Assets<NewOctree<H, T>>,
+    server: &mut ResMut<OctreeServer<L, H, T>>,
+    max_concurrent: usize,
+) where
+    L: OctreeLoader<H, T>,
+    H: HierarchyNodeData,
+    T: NodeData,
+{
+    while load_tasks.node_in_flight.len() < max_concurrent {
+        // Pop highest weight task
+        let Some(task) = load_tasks.node_heap.pop() else {
+            break; // no more tasks
+        };
+
+        let key = (task.asset_id, task.node_id);
+
+        // Check if this load is not already processed
+        if load_tasks.node_in_flight.contains(&key) {
+            continue;
+        }
+
+        let Some(octree) = octree_assets.get_mut(task.asset_id) else {
+            warn!("Octree asset not found: {:?}", task.asset_id);
+            continue;
+        };
+
+        let Some(node) = octree.node_mut(task.node_id) else {
+            warn!("Node not found in octree: {:?}", task.node_id);
+            continue;
+        };
+
+        // Check that we still need to load this node
+        let should_load = matches!(node.status, NodeStatus::HierarchyOnly);
+
+        if !should_load {
+            continue;
+        }
+
+        // Set loading status of the node
+        node.status = NodeStatus::Loading;
+
+        // Spawn load sub hierarchy task
+        if let Err(error) = server.load_node_data(task.asset_id, octree, task.node_id) {
+            warn!("An error occured loading node data: {:#} ", error);
+            continue;
+        }
+
+        // Set in flight
+        load_tasks.node_in_flight.insert(key);
     }
 }

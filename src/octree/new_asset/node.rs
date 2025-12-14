@@ -1,21 +1,26 @@
-use bevy_camera::primitives::Aabb;
-use crate::octree::storage::NodeId;
+use crate::octree::new_asset::hierarchy::{HierarchyNodeData, HierarchyOctreeNode};
+use bevy_reflect::TypePath;
 
-#[derive(Debug, Clone)]
-pub struct OctreeNode<T>
+pub trait NodeData: Send + Sync + TypePath + Clone {}
+
+impl<T: Send + Sync + TypePath + Clone> NodeData for T {}
+
+#[derive(Debug, Clone, Copy)]
+pub enum NodeStatus {
+    HierarchyOnly,
+    Loading,
+    Loaded,
+}
+
+/// This type contains the hierarchy only data of an octree node
+/// It can be in state where it's loaded or not (`status`)
+#[derive(Clone, Debug)]
+pub struct OctreeNode<H, T>
 where
-    T: Send + Sync,
+    H: HierarchyNodeData,
+    T: NodeData,
 {
-    pub id: NodeId,
-    /// child index must follow the following rules:
-    /// - Split parent in 2 along all 3 axis. This gives 8 cubes.
-    /// - Child index stores child cubes indices along each coordinates in a single number: 0x0XYZ where X, Y and Z are coordinates on corresponding axe
-    /// - Child index min value is 0 = 0b000, and max value is 7 = 0b111
-    pub child_index: usize,
-    pub parent_id: Option<NodeId>,
-    pub children: [NodeId; 8],
-    pub children_mask: u8,
-    pub bounding_box: Aabb,
-    pub depth: u32,
-    pub data: T,
+    pub hierarchy: HierarchyOctreeNode<H>,
+    pub status: NodeStatus,
+    pub data: Option<T>,
 }

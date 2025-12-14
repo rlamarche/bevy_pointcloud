@@ -13,8 +13,8 @@ use server::{OctreeServer, handle_internal_octree_events};
 use bevy_app::{App, Plugin, PreUpdate};
 use bevy_asset::{AssetApp, AssetId, Assets};
 use bevy_ecs::prelude::*;
-use bevy_reflect::TypePath;
 use hierarchy::HierarchyNodeData;
+use node::NodeData;
 use std::marker::PhantomData;
 use visibility::check_octree_nodes_visibility;
 
@@ -29,7 +29,7 @@ impl<L, H, T, C, A> Plugin for NewOctreeServerPlugin<L, H, T, C, A>
 where
     L: OctreeLoader<H, T> + 'static,
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
     C: Component,
     for<'a> &'a C: Into<AssetId<NewOctree<H, T>>>,
     A: Send + Sync + 'static,

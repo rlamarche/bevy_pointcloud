@@ -4,17 +4,17 @@ use crate::octree::storage::NodeId;
 use bevy_asset::AssetId;
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashSet;
-use bevy_reflect::TypePath;
 use ordered_float::OrderedFloat;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::marker::PhantomData;
+use crate::octree::new_asset::node::NodeData;
 
 #[derive(Resource)]
 pub struct OctreeLoadTasks<H, T>
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     pub hierarchy_heap: BinaryHeap<OctreeNodeLoadTask<H, T>>,
     pub node_heap: BinaryHeap<OctreeNodeLoadTask<H, T>>,
@@ -26,13 +26,13 @@ where
 #[derive(Clone, Debug)]
 pub enum LoadRequestType {
     Hierarchy,
-    Node,
+    NodeData,
 }
 
 impl<H, T> OctreeLoadTasks<H, T>
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     pub fn queue_load_request(
         &mut self,
@@ -53,7 +53,7 @@ where
                     });
                 }
             }
-            LoadRequestType::Node => {
+            LoadRequestType::NodeData => {
                 if !self.node_in_flight.contains(&key) {
                     self.node_heap.push(OctreeNodeLoadTask {
                         asset_id,
@@ -68,7 +68,7 @@ where
 impl<H, T> Default for OctreeLoadTasks<H, T>
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     fn default() -> Self {
         Self {
@@ -85,7 +85,7 @@ where
 pub struct OctreeNodeLoadTask<H, T>
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     pub asset_id: AssetId<NewOctree<H, T>>,
     pub node_id: NodeId,
@@ -95,14 +95,14 @@ where
 impl<H, T> Eq for OctreeNodeLoadTask<H, T>
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
 }
 
 impl<H, T> PartialEq<Self> for OctreeNodeLoadTask<H, T>
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     fn eq(&self, other: &Self) -> bool {
         self.weight == other.weight
@@ -112,7 +112,7 @@ where
 impl<H, T> PartialOrd<Self> for OctreeNodeLoadTask<H, T>
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.weight.partial_cmp(&other.weight)
@@ -122,7 +122,7 @@ where
 impl<H, T> Ord for OctreeNodeLoadTask<H, T>
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     fn cmp(&self, other: &Self) -> Ordering {
         self.weight.cmp(&other.weight)

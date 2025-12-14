@@ -1,20 +1,18 @@
 use crate::octree::new_asset::asset::NewOctree;
-use crate::octree::new_asset::hierarchy::{
-    HierarchyNodeData, HierarchyOctreeNode,
-};
+use crate::octree::new_asset::hierarchy::HierarchyNodeData;
+use crate::octree::new_asset::node::{NodeData, OctreeNode};
 use bevy_ecs::prelude::*;
-use bevy_reflect::TypePath;
 use ordered_float::OrderedFloat;
 use std::cmp::Ordering;
 
 pub struct StackedOctreeNode<'a, H, T>
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     pub octree: &'a NewOctree<H, T>,
     pub entity: Entity,
-    pub node: &'a HierarchyOctreeNode<H>,
+    pub node: &'a OctreeNode<H, T>,
     pub screen_pixel_radius: Option<f32>,
     pub weight: OrderedFloat<f32>,
     pub completely_visible: bool,
@@ -24,14 +22,14 @@ where
 impl<'a, H, T> Eq for StackedOctreeNode<'a, H, T>
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
 }
 
 impl<'a, H, T> PartialEq<Self> for StackedOctreeNode<'a, H, T>
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     fn eq(&self, other: &Self) -> bool {
         self.weight.eq(&other.weight)
@@ -41,7 +39,7 @@ where
 impl<'a, H, T> PartialOrd<Self> for StackedOctreeNode<'a, H, T>
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.weight.partial_cmp(&other.weight)
@@ -51,7 +49,7 @@ where
 impl<'a, H, T> Ord for StackedOctreeNode<'a, H, T>
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     fn cmp(&self, other: &Self) -> Ordering {
         self.weight.cmp(&other.weight)

@@ -1,27 +1,27 @@
-use super::loader::OctreeLoader;
-use crate::octree::new_asset::asset::NewOctree;
-use crate::octree::new_asset::hierarchy::{
+use super::asset::NewOctree;
+use super::hierarchy::{
     HierarchyNode, HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode,
 };
+use super::loader::resources::OctreeLoadTasks;
+use super::loader::OctreeLoader;
+use super::node::{NodeData, NodeStatus, OctreeNode};
 use crate::octree::storage::NodeId;
 use bevy_asset::{AssetHandleProvider, AssetId, Assets, Handle};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use bevy_log::prelude::*;
 use bevy_platform::collections::HashMap;
-use bevy_reflect::TypePath;
 use bevy_tasks::IoTaskPool;
 use crossbeam::channel::{Receiver, Sender};
 use std::sync::Arc;
 use thiserror::Error;
-use super::loader::resources::OctreeLoadTasks;
 
 #[derive(Resource)]
 pub struct OctreeServer<L, H, T>
 where
     L: OctreeLoader<H, T> + 'static,
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     pub(crate) data: Arc<OctreeServerData<L, H, T>>,
     pub(crate) loaders: HashMap<AssetId<NewOctree<H, T>>, Arc<L>>,
@@ -32,7 +32,7 @@ where
 // where
 //     L: OctreeLoader<H> + 'static,
 //     H: Send + Sync + TypePath,
-//     T: Send + Sync + TypePath,
+//     T: NodeData,
 // {
 //     fn clone(&self) -> Self {
 //         Self {
@@ -46,7 +46,7 @@ pub struct OctreeServerData<L, H, T>
 where
     L: OctreeLoader<H, T>,
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     pub(crate) handle_provider: AssetHandleProvider,
     pub(crate) octree_event_sender: Sender<InternalOctreeEvent<L, H, T>>,
@@ -57,7 +57,7 @@ impl<L, H, T> OctreeServerData<L, H, T>
 where
     L: OctreeLoader<H, T> + 'static,
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     async fn load_internal(
         &self,
@@ -98,7 +98,7 @@ where
         &self,
         id: AssetId<NewOctree<H, T>>,
         loader: Arc<L>,
-        hierarchy_node: HierarchyOctreeNode<H>,
+        hierarchy_node: &HierarchyOctreeNode<H>,
     ) -> Result<(), BevyError> {
         let hierarchy_nodes = loader
             .load_hierarchy(&hierarchy_node)
@@ -115,6 +115,28 @@ where
 
         Ok(())
     }
+
+    async fn load_node_data_internal(
+        &self,
+        id: AssetId<NewOctree<H, T>>,
+        loader: Arc<L>,
+        hierarchy_node: &HierarchyOctreeNode<H>,
+    ) -> Result<(), BevyError> {
+        let node_data = loader
+            .load_node_data(&hierarchy_node)
+            .await
+            .map_err(|error| error.into())?;
+
+        self.octree_event_sender
+            .send(InternalOctreeEvent::NodeDataLoaded {
+                id,
+                node_id: hierarchy_node.id,
+                node_data,
+            })
+            .expect("Failed to send internal octree event");
+
+        Ok(())
+    }
 }
 
 /// Internal events for asset load results
@@ -122,7 +144,7 @@ pub(crate) enum InternalOctreeEvent<L, H, T>
 where
     L: OctreeLoader<H, T>,
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     Loaded {
         id: AssetId<NewOctree<H, T>>,
@@ -134,13 +156,18 @@ where
         node_id: NodeId,
         hierarchy_nodes: Vec<HierarchyNode<H>>,
     },
+    NodeDataLoaded {
+        id: AssetId<NewOctree<H, T>>,
+        node_id: NodeId,
+        node_data: T,
+    },
 }
 
 impl<L, H, T> FromWorld for OctreeServer<L, H, T>
 where
     L: OctreeLoader<H, T>,
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     fn from_world(world: &mut World) -> Self {
         let asset_server = world.resource::<Assets<NewOctree<H, T>>>();
@@ -163,7 +190,7 @@ impl<L, H, T> OctreeServer<L, H, T>
 where
     L: OctreeLoader<H, T> + 'static,
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     /// Load an octree lazily (octree content will be loaded on the fly when needed)
     pub fn load_octree(&self, url: String) -> Handle<NewOctree<H, T>> {
@@ -204,7 +231,41 @@ where
 
         let task = IoTaskPool::get().spawn(async move {
             if let Err(err) = data
-                .load_sub_hierarchy_internal(asset_id, loader, hierarchy_octree_node)
+                .load_sub_hierarchy_internal(asset_id, loader, &hierarchy_octree_node)
+                .await
+            {
+                error!("{}", err);
+            }
+        });
+
+        #[cfg(any(target_arch = "wasm32", not(feature = "multi_threaded")))]
+        task.detach();
+
+        Ok(())
+    }
+
+    pub fn load_node_data(
+        &mut self,
+        asset_id: AssetId<NewOctree<H, T>>,
+        asset: &mut NewOctree<H, T>,
+        node_id: NodeId,
+    ) -> Result<(), OctreeServerError> {
+        let node_mut = asset
+            .node_mut(node_id)
+            .ok_or(OctreeServerError::HierarchyNodeNotFound)?;
+
+        node_mut.status = NodeStatus::Loading;
+
+        let hierarchy_octree_node = node_mut.hierarchy.clone();
+
+        let Some(loader) = self.loaders.get(&asset_id).cloned() else {
+            return Err(OctreeServerError::LoaderNotFound);
+        };
+        let data = self.data.clone();
+
+        let task = IoTaskPool::get().spawn(async move {
+            if let Err(err) = data
+                .load_node_data_internal(asset_id, loader, &hierarchy_octree_node)
                 .await
             {
                 error!("{}", err);
@@ -226,7 +287,7 @@ pub fn handle_internal_octree_events<L, H, T>(
 ) where
     L: OctreeLoader<H, T> + 'static,
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     // clone `server.data` because we need to borrow server as mutable in the loop
     for event in server.data.clone().octree_event_receiver.try_iter() {
@@ -295,6 +356,31 @@ pub fn handle_internal_octree_events<L, H, T>(
                 }
                 info!("Loaded {} new hierarchy nodes", parents.len());
             }
+            InternalOctreeEvent::NodeDataLoaded {
+                id,
+                node_id,
+                node_data,
+            } => {
+                let key = (id, node_id);
+
+                // update in flight hashset
+                load_tasks.node_in_flight.remove(&key);
+
+                let Some(octree) = assets.get_mut(id) else {
+                    warn!("No asset found for {:?}, unable to store node data.", id);
+                    continue;
+                };
+
+                let Some(node) = octree.node_mut(node_id) else {
+                    warn!(
+                        "No node found for asset {:?} and node id {:?}, unable to store node data.",
+                        id, node_id,
+                    );
+                    continue;
+                };
+                node.data = Some(node_data);
+                node.status = NodeStatus::Loaded;
+            }
         }
     }
 }
@@ -314,7 +400,7 @@ pub struct OctreeServerHelper<'w, L, H, T>
 where
     L: OctreeLoader<H, T>,
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     pub(crate) assets: ResMut<'w, Assets<NewOctree<H, T>>>,
     server: Res<'w, OctreeServer<L, H, T>>,
@@ -324,7 +410,7 @@ impl<'w, L, H, T> OctreeServerHelper<'w, L, H, T>
 where
     L: OctreeLoader<H, T>,
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     pub fn load_octree(&self, url: String) -> Handle<NewOctree<H, T>> {
         self.server.load_octree(url)
@@ -354,7 +440,7 @@ where
 
         let task = IoTaskPool::get().spawn(async move {
             if let Err(err) = data
-                .load_sub_hierarchy_internal(asset_id, loader, hierarchy_octree_node)
+                .load_sub_hierarchy_internal(asset_id, loader, &hierarchy_octree_node)
                 .await
             {
                 error!("{}", err);

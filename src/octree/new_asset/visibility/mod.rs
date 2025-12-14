@@ -4,12 +4,10 @@ pub mod filter;
 pub mod stack;
 
 use crate::octree::new_asset::asset::NewOctree;
-use crate::octree::new_asset::hierarchy::{
-    HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode,
-};
+use crate::octree::new_asset::hierarchy::{HierarchyNodeData, HierarchyNodeStatus};
 use crate::octree::new_asset::loader::OctreeLoader;
 use crate::octree::new_asset::loader::resources::{LoadRequestType, OctreeLoadTasks};
-use crate::octree::new_asset::server::OctreeServer;
+use crate::octree::new_asset::node::{NodeData, NodeStatus, OctreeNode};
 use crate::octree::storage::NodeId;
 use bevy_app::{App, Plugin, PreUpdate};
 use bevy_asset::{AssetId, Assets};
@@ -44,7 +42,7 @@ impl<L, H, T, C, A> Plugin for NewOctreeVisiblityPlugin<L, H, T, C, A>
 where
     L: OctreeLoader<H, T> + 'static,
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
     C: Component,
     for<'a> &'a C: Into<AssetId<NewOctree<H, T>>>,
     A: Send + Sync + 'static,
@@ -81,7 +79,7 @@ pub fn check_octree_nodes_visibility<L, H, T, C>(
 ) where
     L: OctreeLoader<H, T>,
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
     C: Component,
     for<'a> &'a C: Into<AssetId<NewOctree<H, T>>>,
 {
@@ -146,13 +144,13 @@ pub fn check_octree_nodes_visibility<L, H, T, C>(
             // update the asset id
             *asset_id = component.into();
 
-            let Some(hierarchy_root) = asset.hierarchy_root() else {
+            let Some(node_root) = asset.node_root() else {
                 warn!("Octree node has not yet hierarchy root loaded.");
                 continue;
             };
 
             let screen_pixel_radius = compute_screen_pixel_radius(
-                &hierarchy_root.bounding_box,
+                &node_root.hierarchy.bounding_box,
                 global_transform,
                 &camera_view,
             );
@@ -161,7 +159,7 @@ pub fn check_octree_nodes_visibility<L, H, T, C>(
             priority_stack.push(StackedOctreeNode {
                 octree: asset,
                 entity: *entity,
-                node: hierarchy_root,
+                node: node_root,
                 weight: screen_pixel_radius.unwrap_or(f32::MAX).into(),
                 screen_pixel_radius,
                 // TODO check for this ?
@@ -192,7 +190,7 @@ pub fn check_octree_nodes_visibility<L, H, T, C>(
         }
 
         // TODO make filter configurable
-        let filter = <ScreenPixelRadiusFilter as OctreeHierarchyFilter<H>>::new(150.0);
+        let filter = <ScreenPixelRadiusFilter as OctreeHierarchyFilter<H, T>>::new(150.0);
         compute_visible_nodes_stack(
             &camera_view,
             &filter,
@@ -279,9 +277,9 @@ fn compute_visible_nodes_stack<'a, H, T, C, F>(
     load_tasks: &mut OctreeLoadTasks<H, T>,
 ) where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
     C: Component,
-    F: OctreeHierarchyFilter<H>,
+    F: OctreeHierarchyFilter<H, T>,
 {
     loop {
         let Some(StackedOctreeNode {
@@ -316,8 +314,8 @@ fn compute_visible_nodes_stack<'a, H, T, C, F>(
         if !completely_visible {
             // check if the node aabb against the frustum
             let model_sphere = bevy_camera::primitives::Sphere {
-                center: world_from_local.transform_point3a(node.bounding_box.center),
-                radius: transform.radius_vec3a(node.bounding_box.half_extents),
+                center: world_from_local.transform_point3a(node.hierarchy.bounding_box.center),
+                radius: transform.radius_vec3a(node.hierarchy.bounding_box.half_extents),
             };
 
             // Do quick sphere-based frustum culling
@@ -329,14 +327,14 @@ fn compute_visible_nodes_stack<'a, H, T, C, F>(
             // Check if the aabb is completly inside the frustum
             if camera_view
                 .frustum
-                .contains_aabb(&node.bounding_box, &world_from_local)
+                .contains_aabb(&node.hierarchy.bounding_box, &world_from_local)
             {
                 // mark as completely visible to prevent later checks
                 completely_visible = true;
 
                 // else, do oriented bounding box frustum culling
             } else if !camera_view.frustum.intersects_obb(
-                &node.bounding_box,
+                &node.hierarchy.bounding_box,
                 &world_from_local,
                 true,
                 // we do not set a distance limit because too small might have been already filtered
@@ -348,17 +346,46 @@ fn compute_visible_nodes_stack<'a, H, T, C, F>(
         }
 
         match node.status {
-            HierarchyNodeStatus::Loaded => {
+            NodeStatus::HierarchyOnly => {
+                match node.hierarchy.status {
+                    HierarchyNodeStatus::Proxy => {
+                        load_tasks.queue_load_request(
+                            *asset_id,
+                            node.hierarchy.id,
+                            weight,
+                            LoadRequestType::Hierarchy,
+                        );
+                    }
+                    HierarchyNodeStatus::Loading => {
+                        // the node hierarchy is already loading, nothing to do
+                    }
+                    HierarchyNodeStatus::Loaded => {
+                        load_tasks.queue_load_request(
+                            *asset_id,
+                            node.hierarchy.id,
+                            weight,
+                            LoadRequestType::NodeData,
+                        );
+                    }
+                }
+            }
+            NodeStatus::Loading => {
+                // the node data is already loading, nothing to do
+            }
+            NodeStatus::Loaded => {
                 // we have to process child nodes, sending flag `completely_visible` to prevent useless visibility checks
-                for i in iter_one_bits(node.children_mask) {
-                    let child = &node.children[i];
-                    let Some(child) = octree.hierarchy_node(*child) else {
+                for i in iter_one_bits(node.hierarchy.children_mask) {
+                    let child = &node.hierarchy.children[i];
+                    let Some(child) = octree.node(*child) else {
                         warn!("missing node in hierarchy, shouldn't happen");
                         continue;
                     };
 
-                    let child_screen_pixel_radius =
-                        compute_screen_pixel_radius(&child.bounding_box, transform, camera_view);
+                    let child_screen_pixel_radius = compute_screen_pixel_radius(
+                        &child.hierarchy.bounding_box,
+                        transform,
+                        camera_view,
+                    );
                     let weight = child_screen_pixel_radius.unwrap_or(f32::MAX);
 
                     stack.push(StackedOctreeNode {
@@ -373,7 +400,7 @@ fn compute_visible_nodes_stack<'a, H, T, C, F>(
                 }
 
                 // add the current node because it is visible or partially visible
-                let child_index = node.child_index;
+                let child_index = node.hierarchy.child_index;
                 visible_nodes.push(node.into());
 
                 // if there is a parent, add it to the visible children array
@@ -388,19 +415,8 @@ fn compute_visible_nodes_stack<'a, H, T, C, F>(
                     }
 
                     parent.children[child_index] = current_index;
-                    parent.children_mask |= 1 << node.child_index;
+                    parent.children_mask |= 1 << node.hierarchy.child_index;
                 }
-            }
-            HierarchyNodeStatus::Proxy => {
-                load_tasks.queue_load_request(
-                    *asset_id,
-                    node.id,
-                    weight,
-                    LoadRequestType::Hierarchy,
-                );
-            }
-            HierarchyNodeStatus::Loading => {
-                // the node is already loading, nothing to do
             }
         }
     }
@@ -408,20 +424,21 @@ fn compute_visible_nodes_stack<'a, H, T, C, F>(
 
 fn compute_visible_nodes<'a, H, T, F>(
     octree: &'a NewOctree<H, T>,
-    node: &'a HierarchyOctreeNode<H>,
+    node: &'a OctreeNode<H, T>,
     transform: &GlobalTransform,
     camera_view: &CameraView,
     filter: &F,
     visible_nodes: &mut Vec<VisibleOctreeNode>,
-) -> Vec<NodeId>
+) -> (Vec<NodeId>, Vec<NodeId>)
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
-    F: OctreeHierarchyFilter<H>,
+    T: NodeData,
+    F: OctreeHierarchyFilter<H, T>,
 {
     let mut stack = VecDeque::from([(0_usize, node, false)]);
     // let mut visible_nodes = Vec::<VisibleHierarchyNode<H>>::new();
     let mut hierarchy_to_load = Vec::new();
+    let mut node_data_to_load = Vec::new();
 
     let world_from_local = transform.affine();
 
@@ -435,7 +452,7 @@ where
         let current_index = visible_nodes.len();
 
         let screen_pixel_radius =
-            compute_screen_pixel_radius(&node.bounding_box, transform, camera_view);
+            compute_screen_pixel_radius(&node.hierarchy.bounding_box, transform, camera_view);
 
         // check node visibility
         if !filter.filter(node, transform, camera_view, screen_pixel_radius) {
@@ -445,8 +462,8 @@ where
         if !completely_visible {
             // check if the node aabb against the frustum
             let model_sphere = bevy_camera::primitives::Sphere {
-                center: world_from_local.transform_point3a(node.bounding_box.center),
-                radius: transform.radius_vec3a(node.bounding_box.half_extents),
+                center: world_from_local.transform_point3a(node.hierarchy.bounding_box.center),
+                radius: transform.radius_vec3a(node.hierarchy.bounding_box.half_extents),
             };
 
             // Do quick sphere-based frustum culling
@@ -458,14 +475,14 @@ where
             // Check if the aabb is completly inside the frustum
             if camera_view
                 .frustum
-                .contains_aabb(&node.bounding_box, &world_from_local)
+                .contains_aabb(&node.hierarchy.bounding_box, &world_from_local)
             {
                 // mark as completely visible to prevent later checks
                 completely_visible = true;
 
                 // else, do oriented bounding box frustum culling
             } else if !camera_view.frustum.intersects_obb(
-                &node.bounding_box,
+                &node.hierarchy.bounding_box,
                 &world_from_local,
                 true,
                 // we do not set a distance limit because too small might have been already filtered
@@ -477,12 +494,29 @@ where
         }
 
         match node.status {
-            HierarchyNodeStatus::Loaded => {
+            NodeStatus::HierarchyOnly => {
+                match node.hierarchy.status {
+                    HierarchyNodeStatus::Proxy => {
+                        hierarchy_to_load.push(node.hierarchy.id);
+                    }
+                    HierarchyNodeStatus::Loading => {
+                        // the node hierarchy is already loading, nothing to do
+                    }
+                    HierarchyNodeStatus::Loaded => {
+                        // mark node data to load
+                        node_data_to_load.push(node.hierarchy.id);
+                    }
+                }
+            }
+            NodeStatus::Loading => {
+                // the node data is already loading, nothing to do
+            }
+            NodeStatus::Loaded => {
                 // we have to process child nodes, sending flag `completely_visible` to prevent useless visibility checks
-                for i in iter_one_bits(node.children_mask) {
-                    let child = &node.children[i];
-                    let Some(child) = octree.hierarchy_node(*child) else {
-                        warn!("missing node in hierarchy, shouldn't happen");
+                for i in iter_one_bits(node.hierarchy.children_mask) {
+                    let child = &node.hierarchy.children[i];
+                    let Some(child) = octree.node(*child) else {
+                        warn!("missing node in octree, shouldn't happen");
                         continue;
                     };
                     stack.push_back((current_index, child, completely_visible));
@@ -490,7 +524,7 @@ where
 
                 // add the current node because it is visible or partially visible
 
-                let child_index = node.child_index;
+                let child_index = node.hierarchy.child_index;
                 visible_nodes.push(node.into());
 
                 // let visible_node = VisibleHierarchyNode {
@@ -513,17 +547,11 @@ where
                     }
 
                     parent.children[child_index] = current_index;
-                    parent.children_mask |= 1 << node.child_index;
+                    parent.children_mask |= 1 << node.hierarchy.child_index;
                 }
-            }
-            HierarchyNodeStatus::Proxy => {
-                hierarchy_to_load.push(node.id);
-            }
-            HierarchyNodeStatus::Loading => {
-                // the node is already loading, nothing to do
             }
         }
     }
 
-    hierarchy_to_load
+    (hierarchy_to_load, node_data_to_load)
 }

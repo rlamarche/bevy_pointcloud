@@ -1,9 +1,7 @@
 use super::hierarchy::{HierarchyNode, HierarchyNodeData, HierarchyOctreeNode};
-use super::node::OctreeNode;
+use super::node::{NodeData, NodeStatus, OctreeNode};
 use crate::octree::storage::{GenerationalSlab, NodeId};
 use bevy_asset::Asset;
-use bevy_camera::primitives::Aabb;
-use bevy_platform::collections::HashMap;
 use bevy_reflect::TypePath;
 use std::fmt::Debug;
 use thiserror::Error;
@@ -26,10 +24,9 @@ pub enum InsertNodeError {
 pub struct NewOctree<H, T>
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
-    pub(crate) hierarchy: GenerationalSlab<HierarchyOctreeNode<H>>,
-    pub(crate) nodes: HashMap<NodeId, OctreeNode<T>>,
+    pub(crate) hierarchy: GenerationalSlab<OctreeNode<H, T>>,
     pub(crate) root_id: Option<NodeId>,
 
     pub(crate) added: Vec<NodeId>,
@@ -40,12 +37,11 @@ where
 impl<H, T> NewOctree<H, T>
 where
     H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
+    T: NodeData,
 {
     pub fn new() -> Self {
         Self {
             hierarchy: GenerationalSlab::new(),
-            nodes: HashMap::new(),
             root_id: None,
             added: Vec::new(),
             modified: Vec::new(),
@@ -56,16 +52,16 @@ where
     pub fn update_hierarchy_node(
         &mut self,
         node_id: NodeId,
-        node: HierarchyNode<H>,
+        hierarchy_node: HierarchyNode<H>,
     ) -> Result<(), InsertNodeError> {
-        let Some(hierarchy_octree_node) = self.hierarchy.get_mut(node_id) else {
+        let Some(node) = self.hierarchy.get_mut(node_id) else {
             return Err(InsertNodeError::NodeNotFound);
         };
 
-        hierarchy_octree_node.status = node.status;
-        hierarchy_octree_node.child_index = node.child_index;
-        hierarchy_octree_node.bounding_box = node.bounding_box;
-        hierarchy_octree_node.data = node.data;
+        node.hierarchy.status = hierarchy_node.status;
+        node.hierarchy.child_index = hierarchy_node.child_index;
+        node.hierarchy.bounding_box = hierarchy_node.bounding_box;
+        node.hierarchy.data = hierarchy_node.data;
 
         Ok(())
     }
@@ -74,11 +70,11 @@ where
     pub fn insert_hierarchy_node(
         &mut self,
         parent_id: Option<NodeId>,
-        node: HierarchyNode<H>,
+        hierarchy_node: HierarchyNode<H>,
     ) -> Result<NodeId, InsertNodeError> {
         let mut depth = None;
         if let Some(parent_id) = &parent_id {
-            if node.child_index >= 8 {
+            if hierarchy_node.child_index >= 8 {
                 return Err(InsertNodeError::ChildIndexOutOfBounds);
             }
             // check the parent
@@ -87,10 +83,10 @@ where
                     return Err(InsertNodeError::ParentNotExists);
                 }
                 Some(parent) => {
-                    if (parent.children_mask & (1_u8 << node.child_index)) > 0 {
+                    if (parent.hierarchy.children_mask & (1_u8 << hierarchy_node.child_index)) > 0 {
                         return Err(InsertNodeError::ChildIndexOccupied);
                     }
-                    depth = Some(parent.depth + 1);
+                    depth = Some(parent.hierarchy.depth + 1);
                 }
             };
         } else {
@@ -104,16 +100,20 @@ where
 
         let id = vacant_entry.key();
 
-        vacant_entry.insert(HierarchyOctreeNode::<H> {
-            id,
-            status: node.status,
-            child_index: node.child_index,
-            parent_id,
-            children: [Default::default(); 8],
-            children_mask: 0,
-            bounding_box: node.bounding_box,
-            depth: depth.unwrap_or_default(),
-            data: node.data,
+        vacant_entry.insert(OctreeNode::<H, T> {
+            hierarchy: HierarchyOctreeNode::<H> {
+                id,
+                status: hierarchy_node.status,
+                child_index: hierarchy_node.child_index,
+                parent_id,
+                children: [Default::default(); 8],
+                children_mask: 0,
+                bounding_box: hierarchy_node.bounding_box,
+                depth: depth.unwrap_or_default(),
+                data: hierarchy_node.data,
+            },
+            status: NodeStatus::HierarchyOnly,
+            data: None,
         });
 
         // update parent children / children_mask
@@ -122,8 +122,8 @@ where
             let parent = self.hierarchy.get_mut(*parent_id).unwrap();
 
             // add to children array and update mask
-            parent.children[node.child_index] = id;
-            parent.children_mask |= 1u8 << node.child_index;
+            parent.hierarchy.children[hierarchy_node.child_index] = id;
+            parent.hierarchy.children_mask |= 1u8 << hierarchy_node.child_index;
         } else {
             self.root_id = Some(id);
         }
@@ -135,15 +135,27 @@ where
     }
 
     pub fn hierarchy_node(&self, node_id: NodeId) -> Option<&HierarchyOctreeNode<H>> {
-        self.hierarchy.get(node_id)
+        Some(&self.hierarchy.get(node_id)?.hierarchy)
     }
 
     pub fn hierarchy_node_mut(&mut self, node_id: NodeId) -> Option<&mut HierarchyOctreeNode<H>> {
-        self.hierarchy.get_mut(node_id)
+        Some(&mut self.hierarchy.get_mut(node_id)?.hierarchy)
     }
 
     pub fn hierarchy_root(&self) -> Option<&HierarchyOctreeNode<H>> {
         self.root_id
             .and_then(|root_id| self.hierarchy_node(root_id))
+    }
+
+    pub fn node(&self, node_id: NodeId) -> Option<&OctreeNode<H, T>> {
+        self.hierarchy.get(node_id)
+    }
+
+    pub fn node_mut(&mut self, node_id: NodeId) -> Option<&mut OctreeNode<H, T>> {
+        self.hierarchy.get_mut(node_id)
+    }
+
+    pub fn node_root(&self) -> Option<&OctreeNode<H, T>> {
+        self.root_id.and_then(|root_id| self.node(root_id))
     }
 }

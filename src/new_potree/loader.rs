@@ -2,10 +2,12 @@ use crate::octree::new_asset::hierarchy::{
     HierarchyNode, HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode,
 };
 use crate::octree::new_asset::loader::OctreeLoader;
+use crate::octree::new_asset::node::OctreeNode;
 use crate::pointcloud_octree::asset::PointCloudNodeData;
 use async_trait::async_trait;
 use bevy_camera::primitives::Aabb;
 use bevy_ecs::error::BevyError;
+use bevy_log::prelude::*;
 use bevy_reflect::TypePath;
 use potree::metadata::Points;
 use potree::octree::node::{FlatOctreeNode, NodeType};
@@ -19,8 +21,6 @@ pub struct PotreeLoader {
 
 #[derive(Clone, TypePath)]
 pub struct PotreeHierarchy(pub(crate) FlatOctreeNode);
-
-impl HierarchyNodeData for PotreeHierarchy {}
 
 #[async_trait]
 impl OctreeLoader<PotreeHierarchy, PointCloudNodeData> for PotreeLoader {
@@ -53,7 +53,7 @@ impl OctreeLoader<PotreeHierarchy, PointCloudNodeData> for PotreeLoader {
             .collect())
     }
 
-    async fn load_node(
+    async fn load_node_data(
         &self,
         node: &HierarchyOctreeNode<PotreeHierarchy>,
     ) -> Result<PointCloudNodeData, Self::Error> {
@@ -61,6 +61,8 @@ impl OctreeLoader<PotreeHierarchy, PointCloudNodeData> for PotreeLoader {
 
         // magic formula from Potree
         let offset = (density as f32).log2() / 2.0 - 1.5;
+
+        info!("Loaded {} points", points.len());
 
         Ok(PointCloudNodeData {
             spacing: node.data.0.spacing as f32,
