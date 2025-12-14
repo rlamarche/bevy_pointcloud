@@ -14,12 +14,12 @@ use bevy_tasks::IoTaskPool;
 use crossbeam::channel::{Receiver, Sender};
 use std::sync::Arc;
 use thiserror::Error;
-use crate::octree::new_asset::visibility::resources::OctreeLoadTasks;
+use super::loader::resources::OctreeLoadTasks;
 
 #[derive(Resource)]
 pub struct OctreeServer<L, H, T>
 where
-    L: OctreeLoader<H> + 'static,
+    L: OctreeLoader<H, T> + 'static,
     H: HierarchyNodeData,
     T: Send + Sync + TypePath,
 {
@@ -44,7 +44,7 @@ where
 
 pub struct OctreeServerData<L, H, T>
 where
-    L: OctreeLoader<H>,
+    L: OctreeLoader<H, T>,
     H: HierarchyNodeData,
     T: Send + Sync + TypePath,
 {
@@ -55,7 +55,7 @@ where
 
 impl<L, H, T> OctreeServerData<L, H, T>
 where
-    L: OctreeLoader<H> + 'static,
+    L: OctreeLoader<H, T> + 'static,
     H: HierarchyNodeData,
     T: Send + Sync + TypePath,
 {
@@ -120,7 +120,7 @@ where
 /// Internal events for asset load results
 pub(crate) enum InternalOctreeEvent<L, H, T>
 where
-    L: OctreeLoader<H>,
+    L: OctreeLoader<H, T>,
     H: HierarchyNodeData,
     T: Send + Sync + TypePath,
 {
@@ -138,7 +138,7 @@ where
 
 impl<L, H, T> FromWorld for OctreeServer<L, H, T>
 where
-    L: OctreeLoader<H>,
+    L: OctreeLoader<H, T>,
     H: HierarchyNodeData,
     T: Send + Sync + TypePath,
 {
@@ -161,7 +161,7 @@ where
 
 impl<L, H, T> OctreeServer<L, H, T>
 where
-    L: OctreeLoader<H> + 'static,
+    L: OctreeLoader<H, T> + 'static,
     H: HierarchyNodeData,
     T: Send + Sync + TypePath,
 {
@@ -224,7 +224,7 @@ pub fn handle_internal_octree_events<L, H, T>(
     mut assets: ResMut<Assets<NewOctree<H, T>>>,
     mut load_tasks: ResMut<OctreeLoadTasks<H, T>>,
 ) where
-    L: OctreeLoader<H> + 'static,
+    L: OctreeLoader<H, T> + 'static,
     H: HierarchyNodeData,
     T: Send + Sync + TypePath,
 {
@@ -312,7 +312,7 @@ pub enum OctreeServerError {
 #[derive(SystemParam)]
 pub struct OctreeServerHelper<'w, L, H, T>
 where
-    L: OctreeLoader<H>,
+    L: OctreeLoader<H, T>,
     H: HierarchyNodeData,
     T: Send + Sync + TypePath,
 {
@@ -322,7 +322,7 @@ where
 
 impl<'w, L, H, T> OctreeServerHelper<'w, L, H, T>
 where
-    L: OctreeLoader<H>,
+    L: OctreeLoader<H, T>,
     H: HierarchyNodeData,
     T: Send + Sync + TypePath,
 {

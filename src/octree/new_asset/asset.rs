@@ -1,6 +1,5 @@
-use crate::octree::new_asset::hierarchy::{
-    HierarchyNode, HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode,
-};
+use super::hierarchy::{HierarchyNode, HierarchyNodeData, HierarchyOctreeNode};
+use super::node::OctreeNode;
 use crate::octree::storage::{GenerationalSlab, NodeId};
 use bevy_asset::Asset;
 use bevy_camera::primitives::Aabb;
@@ -30,31 +29,12 @@ where
     T: Send + Sync + TypePath,
 {
     pub(crate) hierarchy: GenerationalSlab<HierarchyOctreeNode<H>>,
-    pub(crate) nodes: HashMap<NodeId, NewOctreeNode<T>>,
+    pub(crate) nodes: HashMap<NodeId, OctreeNode<T>>,
     pub(crate) root_id: Option<NodeId>,
 
     pub(crate) added: Vec<NodeId>,
     pub(crate) modified: Vec<NodeId>,
     pub(crate) removed: Vec<NodeId>,
-}
-
-#[derive(Debug, Clone)]
-pub struct NewOctreeNode<T>
-where
-    T: Send + Sync,
-{
-    pub id: NodeId,
-    /// child index must follow the following rules:
-    /// - Split parent in 2 along all 3 axis. This gives 8 cubes.
-    /// - Child index stores child cubes indices along each coordinates in a single number: 0x0XYZ where X, Y and Z are coordinates on corresponding axe
-    /// - Child index min value is 0 = 0b000, and max value is 7 = 0b111
-    pub child_index: usize,
-    pub parent_id: Option<NodeId>,
-    pub children: [NodeId; 8],
-    pub children_mask: u8,
-    pub bounding_box: Aabb,
-    pub depth: u32,
-    pub data: T,
 }
 
 impl<H, T> NewOctree<H, T>
@@ -73,9 +53,13 @@ where
         }
     }
 
-    pub fn update_hierarchy_node(&mut self, node_id: NodeId, node: HierarchyNode<H>) -> Result<(), InsertNodeError> {
+    pub fn update_hierarchy_node(
+        &mut self,
+        node_id: NodeId,
+        node: HierarchyNode<H>,
+    ) -> Result<(), InsertNodeError> {
         let Some(hierarchy_octree_node) = self.hierarchy.get_mut(node_id) else {
-            return Err(InsertNodeError::NodeNotFound)
+            return Err(InsertNodeError::NodeNotFound);
         };
 
         hierarchy_octree_node.status = node.status;
@@ -159,6 +143,7 @@ where
     }
 
     pub fn hierarchy_root(&self) -> Option<&HierarchyOctreeNode<H>> {
-        self.root_id.and_then(|root_id| self.hierarchy_node(root_id))
+        self.root_id
+            .and_then(|root_id| self.hierarchy_node(root_id))
     }
 }

@@ -1,7 +1,6 @@
 pub mod budget;
 pub mod components;
 pub mod filter;
-pub mod resources;
 pub mod stack;
 
 use crate::octree::new_asset::asset::NewOctree;
@@ -9,8 +8,8 @@ use crate::octree::new_asset::hierarchy::{
     HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode,
 };
 use crate::octree::new_asset::loader::OctreeLoader;
+use crate::octree::new_asset::loader::resources::{LoadRequestType, OctreeLoadTasks};
 use crate::octree::new_asset::server::OctreeServer;
-use crate::octree::new_asset::visibility::resources::{LoadRequestType, OctreeLoadTasks};
 use crate::octree::storage::NodeId;
 use bevy_app::{App, Plugin, PreUpdate};
 use bevy_asset::{AssetId, Assets};
@@ -43,7 +42,7 @@ impl<L, H, T, C, A> Default for NewOctreeVisiblityPlugin<L, H, T, C, A> {
 }
 impl<L, H, T, C, A> Plugin for NewOctreeVisiblityPlugin<L, H, T, C, A>
 where
-    L: OctreeLoader<H> + 'static,
+    L: OctreeLoader<H, T> + 'static,
     H: HierarchyNodeData,
     T: Send + Sync + TypePath,
     C: Component,
@@ -57,11 +56,7 @@ where
             .init_resource::<OctreeLoadTasks<H, T>>()
             .add_systems(
                 PreUpdate,
-                (
-                    check_octree_nodes_visibility::<L, H, T, C>.after(check_visibility),
-                    process_octree_load_tasks::<L, H, T>
-                        .after(check_octree_nodes_visibility::<L, H, T, C>),
-                ),
+                check_octree_nodes_visibility::<L, H, T, C>.after(check_visibility),
             );
 
         app.world_mut()
@@ -84,7 +79,7 @@ pub fn check_octree_nodes_visibility<L, H, T, C>(
     octrees: Res<Assets<NewOctree<H, T>>>,
     mut octree_load_tasks: ResMut<OctreeLoadTasks<H, T>>,
 ) where
-    L: OctreeLoader<H>,
+    L: OctreeLoader<H, T>,
     H: HierarchyNodeData,
     T: Send + Sync + TypePath,
     C: Component,
@@ -117,6 +112,7 @@ pub fn check_octree_nodes_visibility<L, H, T, C>(
         // get all visible octrees
         let visible_octree_entities = visible_entities.get(TypeId::of::<C>());
 
+        // TODO: reuse allocations (using Local<> in system)
         let mut priority_stack = BinaryHeap::<StackedOctreeNode<H, T>>::new();
 
         let mut entities_transform = HashMap::new();
@@ -161,7 +157,7 @@ pub fn check_octree_nodes_visibility<L, H, T, C>(
                 &camera_view,
             );
 
-            // add the octree to the priority stack
+            // add the root octree to the priority stack
             priority_stack.push(StackedOctreeNode {
                 octree: asset,
                 entity: *entity,
@@ -195,6 +191,7 @@ pub fn check_octree_nodes_visibility<L, H, T, C>(
             // }
         }
 
+        // TODO make filter configurable
         let filter = <ScreenPixelRadiusFilter as OctreeHierarchyFilter<H>>::new(150.0);
         compute_visible_nodes_stack(
             &camera_view,
@@ -376,25 +373,16 @@ fn compute_visible_nodes_stack<'a, H, T, C, F>(
                 }
 
                 // add the current node because it is visible or partially visible
-
                 let child_index = node.child_index;
                 visible_nodes.push(node.into());
 
-                // let visible_node = VisibleHierarchyNode {
-                //     node: (*node).clone(),
-                //     index: current_index,
-                //     children: [0; 8],
-                //     children_mask: 0,
-                // };
-
-                // visible_nodes.push(visible_node);
-
-                // if there is a parent, add it to the children array on an empty space
+                // if there is a parent, add it to the visible children array
                 if let Some(parent_index) = parent_index {
                     let parent = &mut visible_nodes[parent_index];
 
                     // if there is no first child, set it
                     // this is the first child index, because children are always processed in the same order
+                    // TODO the line above is not true anymore because of the binary heap
                     if parent.first_child_index == 0 {
                         parent.first_child_index = current_index;
                     }
@@ -538,87 +526,4 @@ where
     }
 
     hierarchy_to_load
-}
-
-pub fn process_octree_load_tasks<L, H, T>(
-    mut load_tasks: ResMut<OctreeLoadTasks<H, T>>,
-    mut octree_assets: ResMut<Assets<NewOctree<H, T>>>,
-    mut server: ResMut<OctreeServer<L, H, T>>,
-) where
-    L: OctreeLoader<H>,
-    H: HierarchyNodeData,
-    T: Send + Sync + TypePath,
-{
-    const MAX_CONCURRENT_HIERARCHY: usize = 4;
-    const MAX_CONCURRENT_NODES: usize = 8;
-
-    // ========== Process hierarchy loads ==========
-    process_hierarchy_loads(
-        &mut load_tasks,
-        &mut octree_assets,
-        &mut server,
-        MAX_CONCURRENT_HIERARCHY,
-    );
-
-    // ========== Process node loads ==========
-    // process_node_data_loads(
-    //     &mut load_tasks,
-    //     &mut octree_assets,
-    //     &thread_pool,
-    //     MAX_CONCURRENT_NODES,
-    // );
-}
-
-fn process_hierarchy_loads<L, H, T>(
-    load_tasks: &mut OctreeLoadTasks<H, T>,
-    octree_assets: &mut Assets<NewOctree<H, T>>,
-    server: &mut ResMut<OctreeServer<L, H, T>>,
-    max_concurrent: usize,
-) where
-    L: OctreeLoader<H>,
-    H: HierarchyNodeData,
-    T: Send + Sync + TypePath + 'static,
-{
-    while load_tasks.hierarchy_in_flight.len() < max_concurrent {
-        // Pop highest weight task
-        let Some(task) = load_tasks.hierarchy_heap.pop() else {
-            break; // no more tasks
-        };
-
-        let key = (task.asset_id, task.node_id);
-
-        // Check if this load is not already processed
-        if load_tasks.hierarchy_in_flight.contains(&key) {
-            continue;
-        }
-
-        let Some(octree) = octree_assets.get_mut(task.asset_id) else {
-            warn!("Octree asset not found: {:?}", task.asset_id);
-            continue;
-        };
-
-        let Some(node) = octree.hierarchy_node_mut(task.node_id) else {
-            warn!("Node not found in octree: {:?}", task.node_id);
-            continue;
-        };
-
-        // Check that we still need to load this node
-        let should_load = matches!(node.status, HierarchyNodeStatus::Proxy);
-
-        if !should_load {
-            continue;
-        }
-
-        // Set loading status of the node
-        node.status = HierarchyNodeStatus::Loading;
-
-        // Spawn load sub hierarchy task
-        if let Err(error) = server.load_sub_hierarchy(task.asset_id, octree, task.node_id) {
-            warn!("An error occured loading node hierarchy: {:#} ", error);
-            continue;
-        }
-
-        // Set in flight
-        load_tasks.hierarchy_in_flight.insert(key);
-    }
 }

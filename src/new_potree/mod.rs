@@ -1,5 +1,6 @@
 use crate::new_potree::component::NewPotreePointCloud3d;
 use crate::new_potree::loader::{PotreeHierarchy, PotreeLoader};
+use crate::octree::new_asset::asset::NewOctree;
 use crate::octree::new_asset::NewOctreeServerPlugin;
 use crate::octree::new_asset::server::OctreeServer;
 use crate::octree::new_asset::visibility::NewOctreeVisiblityPlugin;
@@ -19,6 +20,8 @@ pub type PotreeAssetPlugin = NewOctreeServerPlugin<
     NewPotreePointCloud3d,
     RenderPointCloudNodeData,
 >;
+
+pub type PotreeAsset = NewOctree<PotreeHierarchy, PointCloudNodeData>;
 
 pub type PotreeVisibilityPlugin = NewOctreeVisiblityPlugin<
     PotreeLoader,

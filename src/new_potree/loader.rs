@@ -2,10 +2,12 @@ use crate::octree::new_asset::hierarchy::{
     HierarchyNode, HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode,
 };
 use crate::octree::new_asset::loader::OctreeLoader;
+use crate::pointcloud_octree::asset::PointCloudNodeData;
 use async_trait::async_trait;
 use bevy_camera::primitives::Aabb;
 use bevy_ecs::error::BevyError;
 use bevy_reflect::TypePath;
+use potree::metadata::Points;
 use potree::octree::node::{FlatOctreeNode, NodeType};
 use potree::prelude::FlatHierarchy;
 use potree::resource::ResourceLoader;
@@ -21,7 +23,7 @@ pub struct PotreeHierarchy(pub(crate) FlatOctreeNode);
 impl HierarchyNodeData for PotreeHierarchy {}
 
 #[async_trait]
-impl OctreeLoader<PotreeHierarchy> for PotreeLoader {
+impl OctreeLoader<PotreeHierarchy, PointCloudNodeData> for PotreeLoader {
     type Error = BevyError;
 
     async fn from_url(url: &str) -> Result<Self, Self::Error> {
@@ -50,6 +52,24 @@ impl OctreeLoader<PotreeHierarchy> for PotreeLoader {
             .map(Into::into)
             .collect())
     }
+
+    async fn load_node(
+        &self,
+        node: &HierarchyOctreeNode<PotreeHierarchy>,
+    ) -> Result<PointCloudNodeData, Self::Error> {
+        let Points { density, points } = self.hierarchy.load_points(&node.data.0).await?;
+
+        // magic formula from Potree
+        let offset = (density as f32).log2() / 2.0 - 1.5;
+
+        Ok(PointCloudNodeData {
+            spacing: node.data.0.spacing as f32,
+            level: node.data.0.level,
+            offset,
+            num_points: node.data.0.num_points as usize,
+            points: points.into_iter().map(Into::into).collect(),
+        })
+    }
 }
 
 impl From<FlatOctreeNode> for HierarchyNode<PotreeHierarchy> {
@@ -66,6 +86,21 @@ impl From<FlatOctreeNode> for HierarchyNode<PotreeHierarchy> {
                 value.bounding_box.max.as_vec3(),
             ),
             data: PotreeHierarchy(value),
+        }
+    }
+}
+
+impl From<(&FlatOctreeNode, Points)> for PointCloudNodeData {
+    fn from((node, Points { points, density }): (&FlatOctreeNode, Points)) -> Self {
+        // magic formula from Potree
+        let offset = (density as f32).log2() / 2.0 - 1.5;
+
+        PointCloudNodeData {
+            spacing: node.spacing as f32,
+            level: node.level,
+            offset,
+            num_points: node.num_points as usize,
+            points: points.into_iter().map(Into::into).collect(),
         }
     }
 }
