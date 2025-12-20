@@ -3,11 +3,12 @@ pub mod components;
 pub mod filter;
 pub mod stack;
 
+use crate::octree::new_asset::NewOctreeAssetPlugin;
 use crate::octree::new_asset::asset::NewOctree;
 use crate::octree::new_asset::hierarchy::{HierarchyNodeData, HierarchyNodeStatus};
 use crate::octree::new_asset::loader::OctreeLoader;
-use crate::octree::new_asset::server::resources::{LoadRequestType, OctreeLoadTasks};
 use crate::octree::new_asset::node::{NodeData, NodeStatus, OctreeNode};
+use crate::octree::new_asset::server::resources::{LoadRequestType, OctreeLoadTasks};
 use crate::octree::storage::NodeId;
 use bevy_app::{App, Plugin, PreUpdate};
 use bevy_asset::{AssetId, Assets};
@@ -16,12 +17,17 @@ use bevy_camera::visibility::{
     Visibility, VisibilityClass, VisibleEntities, add_visibility_class, check_visibility,
 };
 use bevy_camera::{Camera, Projection};
+use bevy_diagnostic::{
+    DEFAULT_MAX_HISTORY_LENGTH, Diagnostic, DiagnosticPath, Diagnostics, FrameCount,
+    RegisterDiagnostic,
+};
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
 use bevy_math::prelude::*;
 use bevy_platform::collections::{HashMap, HashSet};
 use bevy_reflect::TypePath;
 use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool};
+use bevy_time::{Real, Time};
 use bevy_transform::prelude::*;
 use components::*;
 use filter::*;
@@ -30,8 +36,15 @@ use stack::*;
 use std::any::TypeId;
 use std::collections::{BinaryHeap, VecDeque};
 use std::marker::PhantomData;
+use std::time::Instant;
 
 pub struct NewOctreeVisiblityPlugin<L, H, T, C, A>(PhantomData<fn() -> (L, H, T, C, A)>);
+
+impl<L, H, T, C, A> NewOctreeVisiblityPlugin<L, H, T, C, A> {
+    /// Visibility check diagnostic
+    pub const VISIBILITY_CHECK_TIME: DiagnosticPath =
+        DiagnosticPath::const_new("pcl_octree_visibility_check");
+}
 
 impl<L, H, T, C, A> Default for NewOctreeVisiblityPlugin<L, H, T, C, A> {
     fn default() -> Self {
@@ -48,13 +61,20 @@ where
     A: Send + Sync + 'static,
 {
     fn build(&self, app: &mut App) {
+        app.register_diagnostic(
+            Diagnostic::new(Self::VISIBILITY_CHECK_TIME)
+                .with_suffix("ms")
+                .with_max_history_length(DEFAULT_MAX_HISTORY_LENGTH)
+                .with_smoothing_factor(2.0 / (DEFAULT_MAX_HISTORY_LENGTH as f64 + 1.0)),
+        );
+
         app.register_required_components::<C, Visibility>()
             .register_required_components::<C, VisibilityClass>()
             .register_required_components::<Camera, OctreesVisibility<H, T, C>>()
             .init_resource::<OctreeLoadTasks<H, T>>()
             .add_systems(
                 PreUpdate,
-                check_octree_nodes_visibility::<L, H, T, C>.after(check_visibility),
+                check_octree_nodes_visibility::<L, H, T, C, A>.after(check_visibility),
             );
 
         app.world_mut()
@@ -63,7 +83,9 @@ where
     }
 }
 
-pub fn check_octree_nodes_visibility<L, H, T, C>(
+pub fn check_octree_nodes_visibility<L, H, T, C, A>(
+    mut diagnostics: Diagnostics,
+    time: Res<Time<Real>>,
     entities: Query<(&C, &GlobalTransform)>,
     // TODO add a way to disable checking of a camera
     mut views: Query<(
@@ -82,7 +104,10 @@ pub fn check_octree_nodes_visibility<L, H, T, C>(
     T: NodeData,
     C: Component,
     for<'a> &'a C: Into<AssetId<NewOctree<H, T>>>,
+    A: Send + Sync + 'static,
 {
+    let start = Instant::now();
+
     // for each view
     for (
         visible_entities,
@@ -200,6 +225,11 @@ pub fn check_octree_nodes_visibility<L, H, T, C>(
             &mut octree_load_tasks,
         );
     }
+
+    let duration = start.elapsed();
+    let msecs = duration.as_secs_f64() * 1000.0;
+
+    diagnostics.add_measurement(&NewOctreeVisiblityPlugin::<L, H, T, C, A>::VISIBILITY_CHECK_TIME, || msecs);
 }
 
 #[derive(Clone, Debug)]

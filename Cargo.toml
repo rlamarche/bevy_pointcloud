@@ -39,6 +39,9 @@ bevy_platform = { version = "0.17" }
 bevy_utils = { version = "0.17" }
 bevy_image = { version = "0.17" }
 bevy_color = { version = "0.17" }
+bevy_diagnostic = { version = "0.17" }
+bevy_time = { version = "0.17" }
+
 bytemuck = "1"
 nonmax = "0.5"
 thiserror = "2.0"

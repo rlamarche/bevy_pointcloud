@@ -35,6 +35,28 @@ use resources::ExtractedOctreeNodes;
 use slab::Slab;
 use std::marker::PhantomData;
 
+pub trait OctreeNodeExtraction: Send + Sync + TypePath {
+    /// ECS [`ReadOnlyQueryData`] to fetch the components to extract.
+    type QueryData: ReadOnlyQueryData;
+
+    /// Filters the entities with additional constraints.
+    type QueryFilter: QueryFilter;
+
+    type NodeData: NodeData;
+
+    type NodeHierarchy: HierarchyNodeData;
+
+    type Component: Component;
+
+    type ExtractedNodeData: Send + Sync;
+
+    /// Defines how the component is transferred into the "render world".
+    fn extract_octree_node(
+        node: &OctreeNode<Self::NodeHierarchy, Self::NodeData>,
+        item: &QueryItem<'_, '_, Self::QueryData>,
+    ) -> Option<Self::ExtractedNodeData>;
+}
+
 /// This plugin extracts visible octree nodes from the "app world" into the "render world"
 /// and prepares them for the GPU. They can be accessed from the [`RenderVisibleOctreeNodes`] resource.
 ///
@@ -49,25 +71,40 @@ use std::marker::PhantomData;
 /// The `AFTER` generic parameter can be used to specify that `A::prepare_octree_node` should not be run until
 /// `prepare_assets::<AFTER>` has completed. This allows the `prepare_octree_node` function to depend on another
 /// prepared [`RenderOctreeNode`].
-pub struct ExtractVisibleOctreeNodesPlugin<T, C, A, AFTER = ()>(
-    PhantomData<fn() -> (T, C, A, AFTER)>,
-);
+pub struct ExtractVisibleOctreeNodesPlugin<E, A, AFTER = ()>(PhantomData<fn() -> (E, A, AFTER)>)
+where
+    E: OctreeNodeExtraction,
+    A: RenderOctreeNode<
+            ExtractedOctreeNode = E::ExtractedNodeData,
+            SourceOctreeNode = E::NodeData,
+            SourceOctreeHierarchy = E::NodeHierarchy,
+        >,
+    AFTER: RenderOctreeDependency + 'static;
 
-impl<T, C, A, AFTER> Default for ExtractVisibleOctreeNodesPlugin<T, C, A, AFTER> {
+impl<E, A, AFTER> Default for ExtractVisibleOctreeNodesPlugin<E, A, AFTER>
+where
+    E: OctreeNodeExtraction,
+    for<'a> &'a E::Component: Into<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>>,
+    A: RenderOctreeNode<
+            ExtractedOctreeNode = E::ExtractedNodeData,
+            SourceOctreeNode = E::NodeData,
+            SourceOctreeHierarchy = E::NodeHierarchy,
+        >,
+    AFTER: RenderOctreeDependency + 'static,
+{
     fn default() -> Self {
         ExtractVisibleOctreeNodesPlugin(PhantomData)
     }
 }
 
-impl<T, C, A, AFTER> Plugin for ExtractVisibleOctreeNodesPlugin<T, C, A, AFTER>
+impl<E, A, AFTER> Plugin for ExtractVisibleOctreeNodesPlugin<E, A, AFTER>
 where
-    T: NodeData + ExtractOctreeNode,
-    C: Component,
-    for<'a> &'a C: Into<AssetId<NewOctree<T::Hierarchy, T>>>,
+    E: OctreeNodeExtraction,
+    for<'a> &'a E::Component: Into<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>>,
     A: RenderOctreeNode<
-            ExtractedOctreeNode = T::Out,
-            SourceOctreeNode = T,
-            SourceOctreeHierarchy = T::Hierarchy,
+            SourceOctreeHierarchy = E::NodeHierarchy,
+            SourceOctreeNode = E::NodeData,
+            ExtractedOctreeNode = E::ExtractedNodeData,
         >,
     AFTER: RenderOctreeDependency + 'static,
 {
@@ -87,22 +124,21 @@ where
             );
 
         render_app
-            .init_resource::<ExtractedOctreeNodes<T>>()
+            .init_resource::<ExtractedOctreeNodes<E>>()
             .init_resource::<RenderOctrees<A>>()
             .init_resource::<PrepareNextFrameOctreeNodes<A>>()
-            .init_resource::<RenderOctreeIndex<C>>()
+            .init_resource::<RenderOctreeIndex<E::Component>>()
             .add_systems(
                 ExtractSchedule,
                 (
-                    extract_visible_octree_nodes::<T, C>.after(extract_cameras),
-                    extract_render_octree_nodes::<T, C, A>
-                        .after(extract_visible_octree_nodes::<T, C>),
+                    extract_visible_octree_nodes::<E>.after(extract_cameras),
+                    extract_render_octree_nodes::<E, A>.after(extract_visible_octree_nodes::<E>),
                 ),
             );
 
         AFTER::register_system(
             render_app,
-            prepare_assets::<A, C>.in_set(RenderSystems::PrepareAssets),
+            prepare_assets::<E, A>.in_set(RenderSystems::PrepareAssets),
         );
     }
 }
@@ -165,19 +201,23 @@ impl<C: Component> RenderOctreeIndex<C> {
 }
 
 /// This system extracts computed visible octree nodes and add them in the render world, for each view (camera)
-pub fn extract_visible_octree_nodes<T, C>(
+pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction>(
     mut commands: Commands,
-    query: Extract<Query<(RenderEntity, &OctreesVisibility<T::Hierarchy, T, C>), With<Camera>>>,
+    query: Extract<
+        Query<
+            (
+                RenderEntity,
+                &OctreesVisibility<E::NodeHierarchy, E::NodeData, E::Component>,
+            ),
+            With<Camera>,
+        >,
+    >,
     mapper: Extract<Query<&RenderEntity>>,
-    point_cloud_octree_3ds: Extract<Query<&C>>,
-    mut render_octree_index: ResMut<RenderOctreeIndex<C>>,
-) where
-    T: NodeData + ExtractOctreeNode,
-    C: Component,
-{
+    mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,
+) {
     for (render_entity, visible_point_cloud_octree_3d_nodes) in query.iter() {
         let render_visible_point_cloud_octree_3d_nodes =
-            RenderVisibleOctreeNodes::<T::Hierarchy, T, C> {
+            RenderVisibleOctreeNodes::<E::NodeHierarchy, E::NodeData, E::Component> {
                 octrees: visible_point_cloud_octree_3d_nodes
                     .octrees
                     .clone()
@@ -187,10 +227,6 @@ pub fn extract_visible_octree_nodes<T, C>(
                         let render_entity = mapper
                             .get(entity)
                             .expect("Render entity for PointCloudOctree3d not found");
-
-                        let asset_id = point_cloud_octree_3ds
-                            .get(entity)
-                            .expect("Point cloud octree asset not found");
 
                         // makes sure an index exists for this entity
                         render_octree_index.add_octree(render_entity.id());
@@ -219,42 +255,42 @@ where
     _phantom_data: PhantomData<C>,
 }
 
-impl<H, T, C> ExtractComponent for OctreesVisibility<H, T, C>
-where
-    H: HierarchyNodeData,
-    T: NodeData,
-    C: Component,
-{
-    type QueryData = &'static Self;
-    type QueryFilter = With<Camera>;
-    type Out = RenderVisibleOctreeNodes<H, T, C>;
+// impl<H, T, C> ExtractComponent for OctreesVisibility<H, T, C>
+// where
+//     H: HierarchyNodeData,
+//     T: NodeData,
+//     C: Component,
+// {
+//     type QueryData = &'static Self;
+//     type QueryFilter = With<Camera>;
+//     type Out = RenderVisibleOctreeNodes<H, T, C>;
+//
+//     fn extract_component(
+//         visible_octree_nodes: QueryItem<'_, '_, Self::QueryData>,
+//     ) -> Option<Self::Out> {
+//         Some(RenderVisibleOctreeNodes::<H, T, C> {
+//             octrees: visible_octree_nodes.octrees.clone(),
+//             _phantom_data: PhantomData,
+//         })
+//     }
+// }
 
-    fn extract_component(
-        visible_octree_nodes: QueryItem<'_, '_, Self::QueryData>,
-    ) -> Option<Self::Out> {
-        Some(RenderVisibleOctreeNodes::<H, T, C> {
-            octrees: visible_octree_nodes.octrees.clone(),
-            _phantom_data: PhantomData,
-        })
-    }
-}
-
-fn iter_one_bits(mask: u8) -> impl Iterator<Item = usize> {
-    (0..8).filter(move |&i| (mask & (1 << i)) != 0)
-}
-
-#[cfg(test)]
-mod tests {
-    // Note this useful idiom: importing names from outer (for mod tests) scope.
-    use super::*;
-
-    #[test]
-    fn test_iter_one_bits() {
-        let mask: u8 = 0b01010101;
-        let indexes = iter_one_bits(mask).collect::<Vec<_>>();
-        assert_eq!(indexes, vec![0, 2, 4, 6]);
-    }
-}
+// fn iter_one_bits(mask: u8) -> impl Iterator<Item = usize> {
+//     (0..8).filter(move |&i| (mask & (1 << i)) != 0)
+// }
+//
+// #[cfg(test)]
+// mod tests {
+//     // Note this useful idiom: importing names from outer (for mod tests) scope.
+//     use super::*;
+//
+//     #[test]
+//     fn test_iter_one_bits() {
+//         let mask: u8 = 0b01010101;
+//         let indexes = iter_one_bits(mask).collect::<Vec<_>>();
+//         assert_eq!(indexes, vec![0, 2, 4, 6]);
+//     }
+// }
 
 /// Describes how an octree node gets extracted and prepared for rendering.
 pub trait ExtractOctreeNode: Send + Sync + Sized + TypePath {
@@ -289,20 +325,26 @@ pub trait ExtractOctreeNode: Send + Sync + Sized + TypePath {
 
 /// This system extract visible octree nodes using the provided trait implementation for `T`: [`ExtractOctreeNode`].
 /// It extracts only visible octree nodes previously computed.
-pub fn extract_render_octree_nodes<T, C, A>(
-    views: Extract<Query<(Entity, &OctreesVisibility<T::Hierarchy, T, C>), With<Camera>>>,
-    query: Extract<Query<(&ViewVisibility, &C, T::QueryData), T::QueryFilter>>,
-    octrees: Extract<Res<Assets<NewOctree<T::Hierarchy, T>>>>,
+pub fn extract_render_octree_nodes<E: OctreeNodeExtraction, A>(
+    views: Extract<
+        Query<
+            (
+                Entity,
+                &OctreesVisibility<E::NodeHierarchy, E::NodeData, E::Component>,
+            ),
+            With<Camera>,
+        >,
+    >,
+    query: Extract<Query<(&ViewVisibility, &E::Component, E::QueryData), E::QueryFilter>>,
+    octrees: Extract<Res<Assets<NewOctree<E::NodeHierarchy, E::NodeData>>>>,
     mut render_octrees: ResMut<RenderOctrees<A>>,
-    mut render_octree_nodes: ResMut<ExtractedOctreeNodes<T>>,
+    mut render_octree_nodes: ResMut<ExtractedOctreeNodes<E>>,
 ) where
-    T: ExtractOctreeNode,
-    C: Component,
-    for<'a> &'a C: Into<AssetId<NewOctree<T::Hierarchy, T>>>,
+    for<'a> &'a E::Component: Into<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>>,
     A: RenderOctreeNode<
-            ExtractedOctreeNode = T::Out,
-            SourceOctreeNode = T,
-            SourceOctreeHierarchy = T::Hierarchy,
+            ExtractedOctreeNode = E::ExtractedNodeData,
+            SourceOctreeNode = E::NodeData,
+            SourceOctreeHierarchy = E::NodeHierarchy,
         >,
 {
     // clear previously computed data
@@ -329,7 +371,9 @@ pub fn extract_render_octree_nodes<T, C, A>(
             let Some(octree) = octrees.get(octree_component) else {
                 warn!(
                     "Octree asset {:?} not found when extracting octree nodes",
-                    Into::<AssetId<NewOctree<T::Hierarchy, T>>>::into(octree_component)
+                    Into::<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>>::into(
+                        octree_component
+                    )
                 );
                 continue;
             };
@@ -344,6 +388,7 @@ pub fn extract_render_octree_nodes<T, C, A>(
             let mut added_nodes = Vec::new();
 
             // for each visible node
+            // TODO do not iterate all nodes, but just nodes just loaded or modified (visible children)
             for VisibleOctreeNode { id: node_id, .. } in visible_octree_nodes {
                 // check if the node is already prepared
                 if prepared_octree.nodes.contains_key(node_id) {
@@ -355,7 +400,9 @@ pub fn extract_render_octree_nodes<T, C, A>(
                     warn!(
                         "Octree node {:?} not found in asset {:?}",
                         node_id,
-                        Into::<AssetId<NewOctree<T::Hierarchy, T>>>::into(octree_component)
+                        Into::<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>>::into(
+                            octree_component
+                        )
                     );
                     continue;
                 };
@@ -365,16 +412,16 @@ pub fn extract_render_octree_nodes<T, C, A>(
                     Entry::<_, _>::Occupied(mut entry) => {
                         let node = entry.get_mut();
                         // only the children can change
-                        if !node.children.eq(&octree_node.hierarchy.children) {
+                        if !node.children_mask.eq(&octree_node.hierarchy.children_mask) {
                             node.children = octree_node.hierarchy.children.clone();
                             node.children_mask = octree_node.hierarchy.children_mask.clone();
                             modified_nodes.push(*node_id);
                         }
                     }
                     Entry::<_, _>::Vacant(entry) => {
-                        if let Some(data) = T::extract_octree_node(octree_node, &item) {
+                        if let Some(data) = E::extract_octree_node(octree_node, &item) {
                             added_nodes.push(*node_id);
-                            entry.insert(RenderOctreeNodeData::<T::Out> {
+                            entry.insert(RenderOctreeNodeData::<E::ExtractedNodeData> {
                                 id: octree_node.hierarchy.id,
                                 parent_id: octree_node.hierarchy.parent_id,
                                 child_index: octree_node.hierarchy.child_index,

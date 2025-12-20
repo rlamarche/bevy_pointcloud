@@ -1,8 +1,7 @@
+use super::OctreeNodeExtraction;
 use super::prepare::RenderOctreeNode;
-use super::ExtractOctreeNode;
 use super::render_asset::{RenderOctree, RenderOctreeNodeData};
 use crate::octree::new_asset::asset::NewOctree;
-use crate::octree::new_asset::node::{NodeData, OctreeNode};
 use crate::octree::storage::NodeId;
 use bevy_asset::AssetId;
 use bevy_ecs::prelude::*;
@@ -29,10 +28,7 @@ impl<A: RenderOctreeNode> Default for PrepareNextFrameOctreeNodes<A> {
 /// of [`RenderAsset::SourceAsset`] as long as they exist.
 #[derive(Resource)]
 pub struct RenderOctrees<A: RenderOctreeNode>(
-    HashMap<
-        AssetId<NewOctree<A::SourceOctreeHierarchy, A::SourceOctreeNode>>,
-        RenderOctree<A>,
-    >,
+    HashMap<AssetId<NewOctree<A::SourceOctreeHierarchy, A::SourceOctreeNode>>, RenderOctree<A>>,
 );
 
 impl<A: RenderOctreeNode> Default for RenderOctrees<A> {
@@ -66,28 +62,32 @@ impl<A: RenderOctreeNode> RenderOctrees<A> {
 
 /// Contains all extracted octree nodes for preparing
 #[derive(Resource)]
-pub struct ExtractedOctreeNodes<T: ExtractOctreeNode> {
-    pub octrees: HashMap<AssetId<NewOctree<T::Hierarchy, T>>, HashMap<NodeId, RenderOctreeNodeData<T::Out>>>,
+pub struct ExtractedOctreeNodes<E: OctreeNodeExtraction> {
+    pub octrees: HashMap<
+        AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>,
+        HashMap<NodeId, RenderOctreeNodeData<E::ExtractedNodeData>>,
+    >,
 
     /// contains all already prepared octree nodes living in render world
-    pub prepared_octrees: HashMap<AssetId<NewOctree<T::Hierarchy, T>>, HashSet<NodeId>>,
+    pub prepared_octrees:
+        HashMap<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>, HashSet<NodeId>>,
 
     /// IDs of the assets that were removed this frame.
     ///
     /// These assets will not be present in [`ExtractedAssets::extracted`].
-    // removed_assets: HashSet<AssetId<Octree<T>>>,
-    pub removed_nodes: HashMap<AssetId<NewOctree<T::Hierarchy, T>>, Vec<NodeId>>,
+    // removed_assets: HashSet<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>>,
+    pub removed_nodes: HashMap<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>, Vec<NodeId>>,
 
     /// IDs of the assets that were modified this frame.
-    // modified_assets: HashSet<AssetId<NewOctree<T::Hierarchy, T>>>,
-    pub modified_nodes: HashMap<AssetId<NewOctree<T::Hierarchy, T>>, Vec<NodeId>>,
+    // modified_assets: HashSet<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>>,
+    pub modified_nodes: HashMap<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>, Vec<NodeId>>,
 
     /// IDs of the assets that were added this frame.
-    // added_assets: HashSet<AssetId<NewOctree<T::Hierarchy, T>>>,
-    pub added_nodes: HashMap<AssetId<NewOctree<T::Hierarchy, T>>, Vec<NodeId>>,
+    // added_assets: HashSet<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>>,
+    pub added_nodes: HashMap<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>, Vec<NodeId>>,
 }
 
-impl<T: ExtractOctreeNode> Default for ExtractedOctreeNodes<T> {
+impl<E: OctreeNodeExtraction> Default for ExtractedOctreeNodes<E> {
     fn default() -> Self {
         Self {
             octrees: HashMap::new(),
@@ -102,7 +102,7 @@ impl<T: ExtractOctreeNode> Default for ExtractedOctreeNodes<T> {
     }
 }
 
-impl<T: ExtractOctreeNode> ExtractedOctreeNodes<T> {
+impl<E: OctreeNodeExtraction> ExtractedOctreeNodes<E> {
     pub fn clear_all(&mut self) {
         // self.added_assets.clear();
         self.added_nodes.clear();
@@ -114,8 +114,8 @@ impl<T: ExtractOctreeNode> ExtractedOctreeNodes<T> {
 
     pub fn get_or_create_mut(
         &mut self,
-        id: impl Into<AssetId<NewOctree<T::Hierarchy, T>>>,
-    ) -> &mut HashMap<NodeId, RenderOctreeNodeData<T::Out>> {
+        id: impl Into<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>>,
+    ) -> &mut HashMap<NodeId, RenderOctreeNodeData<E::ExtractedNodeData>> {
         self.octrees
             .entry(id.into())
             .or_insert_with(Default::default)

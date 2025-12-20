@@ -46,7 +46,7 @@ where
             (
                 handle_internal_octree_events::<L, H, T>,
                 process_octree_load_tasks::<L, H, T>
-                    .after(check_octree_nodes_visibility::<L, H, T, C>),
+                    .after(check_octree_nodes_visibility::<L, H, T, C, A>),
             ),
         );
     }

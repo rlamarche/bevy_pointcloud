@@ -1,6 +1,6 @@
 use super::super::node::{NodeData, OctreeNode};
 use super::limiter::RenderOctreeNodesBytesPerFrameLimiter;
-use super::{ExtractOctreeNode, ExtractedOctreeNodes};
+use super::{ExtractOctreeNode, ExtractedOctreeNodes, OctreeNodeExtraction};
 use crate::octree::new_asset::asset::NewOctree;
 use crate::octree::new_asset::extract::render_asset::RenderOctreeNodeData;
 use crate::octree::new_asset::hierarchy::HierarchyNodeData;
@@ -30,8 +30,7 @@ pub enum PrepareOctreeNodeError<T: Send + Sync> {
 pub trait RenderOctreeNode: Send + Sync + Sized + 'static {
     /// The representation of the octree node in the "main world".
     type SourceOctreeHierarchy: HierarchyNodeData;
-    type SourceOctreeNode: NodeData
-        + ExtractOctreeNode<Out = Self::ExtractedOctreeNode, Hierarchy = Self::SourceOctreeHierarchy>;
+    type SourceOctreeNode: NodeData;
 
     type ExtractedOctreeNode: NodeData + Sized;
 
@@ -47,9 +46,7 @@ pub trait RenderOctreeNode: Send + Sync + Sized + 'static {
         unused_variables,
         reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
     )]
-    fn byte_len(
-        source_node: &RenderOctreeNodeData<Self::ExtractedOctreeNode>,
-    ) -> Option<usize> {
+    fn byte_len(_source_node: &RenderOctreeNodeData<Self::ExtractedOctreeNode>) -> Option<usize> {
         None
     }
 
@@ -77,13 +74,20 @@ pub trait RenderOctreeNode: Send + Sync + Sized + 'static {
 
 /// This system prepares all assets of the corresponding [`RenderAsset::SourceAsset`] type
 /// which where extracted this frame for the GPU.
-pub fn prepare_assets<A: RenderOctreeNode, C: Component>(
-    mut extracted_assets: ResMut<ExtractedOctreeNodes<A::SourceOctreeNode>>,
+pub fn prepare_assets<E, A>(
+    mut extracted_assets: ResMut<ExtractedOctreeNodes<E>>,
     mut render_assets: ResMut<super::resources::RenderOctrees<A>>,
     mut prepare_next_frame: ResMut<super::resources::PrepareNextFrameOctreeNodes<A>>,
     param: StaticSystemParam<<A as RenderOctreeNode>::Param>,
     bpf: Res<RenderOctreeNodesBytesPerFrameLimiter>,
-) {
+) where
+    E: OctreeNodeExtraction,
+    A: RenderOctreeNode<
+            SourceOctreeHierarchy = E::NodeHierarchy,
+            SourceOctreeNode = E::NodeData,
+            ExtractedOctreeNode = E::ExtractedNodeData,
+        >,
+{
     let mut wrote_asset_count = 0;
 
     let mut param = param.into_inner();
