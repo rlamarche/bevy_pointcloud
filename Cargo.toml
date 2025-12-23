@@ -35,7 +35,8 @@ bytemuck = "1"
 nonmax = "0.5"
 thiserror = "2.0"
 serde = { version = "1", features = ["derive"] }
-las = { version = "0.9", features = ["laz"] }
+las = { version = "0.9", features = ["laz"], optional = true }
+ply-rs = { version = "0.1.3", optional = true }
 
 [dev-dependencies]
 bevy = { version = "0.17", features = ["bevy_dev_tools"] }
@@ -44,9 +45,11 @@ bevy_panorbit_camera = "0.29"
 
 
 [features]
-default = []
+default = ["ply", "las"]
 webgl = []
 webgpu = []
+ply = ["dep:ply-rs"]
+las = ["dep:las"]
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
