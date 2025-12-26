@@ -4,33 +4,35 @@ pub mod render_asset;
 pub mod resources;
 
 use super::asset::NewOctree;
-use super::extract::resources::{PrepareNextFrameOctreeNodes, RenderOctrees};
+pub(crate) use super::extract::resources::{PrepareNextFrameOctreeNodes, RenderOctrees};
 use super::hierarchy::HierarchyNodeData;
 use super::node::{NodeData, OctreeNode};
 use crate::octree::new_asset::extract::render_asset::RenderOctreeNodeData;
-use crate::octree::new_asset::visibility::components::{OctreesVisibility, VisibleOctreeNode};
-use crate::octree::storage::NodeId;
+pub(crate) use crate::octree::new_asset::visibility::components::{
+    OctreesVisibility, VisibleOctreeNode,
+};
+use crate::point_cloud_material::PointCloudMaterial3d;
 use bevy_app::prelude::*;
 use bevy_asset::{AssetId, Assets};
-use bevy_camera::Camera;
 use bevy_camera::visibility::ViewVisibility;
+use bevy_camera::Camera;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::{QueryFilter, QueryItem, ReadOnlyQueryData};
 use bevy_ecs::schedule::ScheduleConfigs;
 use bevy_ecs::system::ScheduleSystem;
 use bevy_log::prelude::*;
 use bevy_platform::collections::hash_map::Entry;
-use bevy_platform::collections::{HashMap, HashSet};
+use bevy_platform::collections::HashMap;
 use bevy_reflect::TypePath;
 use bevy_render::camera::extract_cameras;
-use bevy_render::extract_component::ExtractComponent;
+use bevy_render::extract_component::{ExtractComponent, ExtractComponentPlugin};
 use bevy_render::sync_world::RenderEntity;
 use bevy_render::{Extract, ExtractSchedule, Render, RenderApp, RenderSystems};
 use limiter::{
-    RenderOctreeNodesBytesPerFrame, RenderOctreeNodesBytesPerFrameLimiter,
     extract_render_asset_bytes_per_frame, reset_render_asset_bytes_per_frame,
+    RenderOctreeNodesBytesPerFrame, RenderOctreeNodesBytesPerFrameLimiter,
 };
-use prepare::{RenderOctreeNode, prepare_assets};
+use prepare::{prepare_assets, RenderOctreeNode};
 use resources::ExtractedOctreeNodes;
 use slab::Slab;
 use std::marker::PhantomData;
@@ -44,15 +46,13 @@ pub trait OctreeNodeExtraction: Send + Sync + TypePath {
 
     type NodeData: NodeData;
 
-    type NodeHierarchy: HierarchyNodeData;
-
-    type Component: Component;
+    type Component: Component + ExtractComponent;
 
     type ExtractedNodeData: Send + Sync;
 
     /// Defines how the component is transferred into the "render world".
     fn extract_octree_node(
-        node: &OctreeNode<Self::NodeHierarchy, Self::NodeData>,
+        node: &OctreeNode<Self::NodeData>,
         item: &QueryItem<'_, '_, Self::QueryData>,
     ) -> Option<Self::ExtractedNodeData>;
 }
@@ -74,22 +74,14 @@ pub trait OctreeNodeExtraction: Send + Sync + TypePath {
 pub struct ExtractVisibleOctreeNodesPlugin<E, A, AFTER = ()>(PhantomData<fn() -> (E, A, AFTER)>)
 where
     E: OctreeNodeExtraction,
-    A: RenderOctreeNode<
-            ExtractedOctreeNode = E::ExtractedNodeData,
-            SourceOctreeNode = E::NodeData,
-            SourceOctreeHierarchy = E::NodeHierarchy,
-        >,
+    A: RenderOctreeNode<ExtractedOctreeNode = E::ExtractedNodeData, SourceOctreeNode = E::NodeData>,
     AFTER: RenderOctreeDependency + 'static;
 
 impl<E, A, AFTER> Default for ExtractVisibleOctreeNodesPlugin<E, A, AFTER>
 where
     E: OctreeNodeExtraction,
-    for<'a> &'a E::Component: Into<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>>,
-    A: RenderOctreeNode<
-            ExtractedOctreeNode = E::ExtractedNodeData,
-            SourceOctreeNode = E::NodeData,
-            SourceOctreeHierarchy = E::NodeHierarchy,
-        >,
+    for<'a> &'a E::Component: Into<AssetId<NewOctree<E::NodeData>>>,
+    A: RenderOctreeNode<ExtractedOctreeNode = E::ExtractedNodeData, SourceOctreeNode = E::NodeData>,
     AFTER: RenderOctreeDependency + 'static,
 {
     fn default() -> Self {
@@ -100,15 +92,12 @@ where
 impl<E, A, AFTER> Plugin for ExtractVisibleOctreeNodesPlugin<E, A, AFTER>
 where
     E: OctreeNodeExtraction,
-    for<'a> &'a E::Component: Into<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>>,
-    A: RenderOctreeNode<
-            SourceOctreeHierarchy = E::NodeHierarchy,
-            SourceOctreeNode = E::NodeData,
-            ExtractedOctreeNode = E::ExtractedNodeData,
-        >,
+    for<'a> &'a E::Component: Into<AssetId<NewOctree<E::NodeData>>>,
+    A: RenderOctreeNode<SourceOctreeNode = E::NodeData, ExtractedOctreeNode = E::ExtractedNodeData>,
     AFTER: RenderOctreeDependency + 'static,
 {
     fn build(&self, app: &mut App) {
+        app.add_plugins(ExtractComponentPlugin::<E::Component>::default());
         app.init_resource::<RenderOctreeNodesBytesPerFrame>();
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -204,34 +193,29 @@ impl<C: Component> RenderOctreeIndex<C> {
 pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction>(
     mut commands: Commands,
     query: Extract<
-        Query<
-            (
-                RenderEntity,
-                &OctreesVisibility<E::NodeHierarchy, E::NodeData, E::Component>,
-            ),
-            With<Camera>,
-        >,
+        Query<(RenderEntity, &OctreesVisibility<E::NodeData, E::Component>), With<Camera>>,
     >,
     mapper: Extract<Query<&RenderEntity>>,
     mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,
 ) {
     for (render_entity, visible_point_cloud_octree_3d_nodes) in query.iter() {
         let render_visible_point_cloud_octree_3d_nodes =
-            RenderVisibleOctreeNodes::<E::NodeHierarchy, E::NodeData, E::Component> {
+            RenderVisibleOctreeNodes::<E::NodeData, E::Component> {
                 octrees: visible_point_cloud_octree_3d_nodes
                     .octrees
                     .clone()
                     .into_iter()
                     // for each visible octree, extract visible nodes, and store them using the render entity reference
-                    .map(|(entity, data)| {
-                        let render_entity = mapper
-                            .get(entity)
-                            .expect("Render entity for PointCloudOctree3d not found");
+                    .filter_map(|(entity, data)| {
+                        let Ok(render_entity) = mapper.get(entity) else {
+                            warn!("Render entity for PointCloudOctree3d not found");
+                            return None;
+                        };
 
                         // makes sure an index exists for this entity
                         render_octree_index.add_octree(render_entity.id());
 
-                        (render_entity.id(), data)
+                        Some((render_entity.id(), data))
                     })
                     .collect(),
                 _phantom_data: PhantomData,
@@ -244,14 +228,13 @@ pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction>(
 
 /// This component stores the visible nodes for each octree at view level (camera) in "render world".
 #[derive(Clone, Component, Default, Debug)]
-pub struct RenderVisibleOctreeNodes<H, T, C>
+pub struct RenderVisibleOctreeNodes<T, C>
 where
-    H: HierarchyNodeData,
     T: NodeData,
     C: Component,
 {
     /// The `Entity` used here refers to the "render world"
-    pub octrees: HashMap<Entity, (AssetId<NewOctree<H, T>>, Vec<VisibleOctreeNode>)>,
+    pub octrees: HashMap<Entity, (AssetId<NewOctree<T>>, Vec<VisibleOctreeNode>)>,
     _phantom_data: PhantomData<C>,
 }
 
@@ -318,7 +301,7 @@ pub trait ExtractOctreeNode: Send + Sync + Sized + TypePath {
 
     /// Defines how the component is transferred into the "render world".
     fn extract_octree_node(
-        node: &OctreeNode<Self::Hierarchy, Self>,
+        node: &OctreeNode<Self>,
         item: &QueryItem<'_, '_, Self::QueryData>,
     ) -> Option<Self::Out>;
 }
@@ -326,26 +309,14 @@ pub trait ExtractOctreeNode: Send + Sync + Sized + TypePath {
 /// This system extract visible octree nodes using the provided trait implementation for `T`: [`ExtractOctreeNode`].
 /// It extracts only visible octree nodes previously computed.
 pub fn extract_render_octree_nodes<E: OctreeNodeExtraction, A>(
-    views: Extract<
-        Query<
-            (
-                Entity,
-                &OctreesVisibility<E::NodeHierarchy, E::NodeData, E::Component>,
-            ),
-            With<Camera>,
-        >,
-    >,
+    views: Extract<Query<(Entity, &OctreesVisibility<E::NodeData, E::Component>), With<Camera>>>,
     query: Extract<Query<(&ViewVisibility, &E::Component, E::QueryData), E::QueryFilter>>,
-    octrees: Extract<Res<Assets<NewOctree<E::NodeHierarchy, E::NodeData>>>>,
+    octrees: Extract<Res<Assets<NewOctree<E::NodeData>>>>,
     mut render_octrees: ResMut<RenderOctrees<A>>,
     mut render_octree_nodes: ResMut<ExtractedOctreeNodes<E>>,
 ) where
-    for<'a> &'a E::Component: Into<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>>,
-    A: RenderOctreeNode<
-            ExtractedOctreeNode = E::ExtractedNodeData,
-            SourceOctreeNode = E::NodeData,
-            SourceOctreeHierarchy = E::NodeHierarchy,
-        >,
+    for<'a> &'a E::Component: Into<AssetId<NewOctree<E::NodeData>>>,
+    A: RenderOctreeNode<ExtractedOctreeNode = E::ExtractedNodeData, SourceOctreeNode = E::NodeData>,
 {
     // clear previously computed data
     render_octree_nodes.clear_all();
@@ -371,9 +342,7 @@ pub fn extract_render_octree_nodes<E: OctreeNodeExtraction, A>(
             let Some(octree) = octrees.get(octree_component) else {
                 warn!(
                     "Octree asset {:?} not found when extracting octree nodes",
-                    Into::<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>>::into(
-                        octree_component
-                    )
+                    Into::<AssetId<NewOctree<E::NodeData>>>::into(octree_component)
                 );
                 continue;
             };
@@ -400,9 +369,7 @@ pub fn extract_render_octree_nodes<E: OctreeNodeExtraction, A>(
                     warn!(
                         "Octree node {:?} not found in asset {:?}",
                         node_id,
-                        Into::<AssetId<NewOctree<E::NodeHierarchy, E::NodeData>>>::into(
-                            octree_component
-                        )
+                        Into::<AssetId<NewOctree<E::NodeData>>>::into(octree_component)
                     );
                     continue;
                 };
@@ -412,7 +379,7 @@ pub fn extract_render_octree_nodes<E: OctreeNodeExtraction, A>(
                     Entry::<_, _>::Occupied(mut entry) => {
                         let node = entry.get_mut();
                         // only the children can change
-                        if !node.children_mask.eq(&octree_node.hierarchy.children_mask) {
+                        if !node.children.eq(&octree_node.hierarchy.children) {
                             node.children = octree_node.hierarchy.children.clone();
                             node.children_mask = octree_node.hierarchy.children_mask.clone();
                             modified_nodes.push(*node_id);

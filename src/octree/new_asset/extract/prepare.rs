@@ -1,9 +1,8 @@
-use super::super::node::{NodeData, OctreeNode};
+use super::super::node::{NodeData};
 use super::limiter::RenderOctreeNodesBytesPerFrameLimiter;
-use super::{ExtractOctreeNode, ExtractedOctreeNodes, OctreeNodeExtraction};
+use super::{ExtractedOctreeNodes, OctreeNodeExtraction};
 use crate::octree::new_asset::asset::NewOctree;
 use crate::octree::new_asset::extract::render_asset::RenderOctreeNodeData;
-use crate::octree::new_asset::hierarchy::HierarchyNodeData;
 use bevy_asset::AssetId;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::{StaticSystemParam, SystemParam, SystemParamItem};
@@ -28,8 +27,6 @@ pub enum PrepareOctreeNodeError<T: Send + Sync> {
 /// After that in the [`RenderSystems::PrepareAssets`] step the extracted octree nodes
 /// are transformed into their GPU-representation of type [`RenderOctreeNode`].
 pub trait RenderOctreeNode: Send + Sync + Sized + 'static {
-    /// The representation of the octree node in the "main world".
-    type SourceOctreeHierarchy: HierarchyNodeData;
     type SourceOctreeNode: NodeData;
 
     type ExtractedOctreeNode: NodeData + Sized;
@@ -55,7 +52,7 @@ pub trait RenderOctreeNode: Send + Sync + Sized + 'static {
     /// ECS data may be accessed via `param`.
     fn prepare_octree_node(
         source_node: RenderOctreeNodeData<Self::ExtractedOctreeNode>,
-        asset_id: AssetId<NewOctree<Self::SourceOctreeHierarchy, Self::SourceOctreeNode>>,
+        asset_id: AssetId<NewOctree<Self::SourceOctreeNode>>,
         param: &mut SystemParamItem<Self::Param>,
     ) -> Result<Self, PrepareOctreeNodeError<Self::ExtractedOctreeNode>>;
 
@@ -66,7 +63,7 @@ pub trait RenderOctreeNode: Send + Sync + Sized + 'static {
     ///
     /// The default implementation does nothing.
     fn unload_asset(
-        _source_asset: AssetId<NewOctree<Self::SourceOctreeHierarchy, Self::SourceOctreeNode>>,
+        _source_asset: AssetId<NewOctree<Self::SourceOctreeNode>>,
         _param: &mut SystemParamItem<Self::Param>,
     ) {
     }
@@ -83,7 +80,6 @@ pub fn prepare_assets<E, A>(
 ) where
     E: OctreeNodeExtraction,
     A: RenderOctreeNode<
-            SourceOctreeHierarchy = E::NodeHierarchy,
             SourceOctreeNode = E::NodeData,
             ExtractedOctreeNode = E::ExtractedNodeData,
         >,
@@ -167,6 +163,7 @@ pub fn prepare_assets<E, A>(
         }
     }
 
+    // TODO cleanup
     // for removed in extracted_assets.removed_assets.drain() {
     //     render_assets.remove(removed);
     //     A::unload_asset(removed, &mut param);

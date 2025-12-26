@@ -14,13 +14,12 @@ use bevy_log::prelude::*;
 use bevy_reflect::TypePath;
 use std::fmt::Display;
 
-pub fn process_octree_load_tasks<L, H, T>(
-    mut load_tasks: ResMut<OctreeLoadTasks<H, T>>,
-    mut octree_assets: ResMut<Assets<NewOctree<H, T>>>,
-    mut server: ResMut<OctreeServer<L, H, T>>,
+pub fn process_octree_load_tasks<L, T>(
+    mut load_tasks: ResMut<OctreeLoadTasks<T>>,
+    mut octree_assets: ResMut<Assets<NewOctree<T>>>,
+    mut server: ResMut<OctreeServer<L, T>>,
 ) where
-    L: OctreeLoader<H, T>,
-    H: HierarchyNodeData,
+    L: OctreeLoader<T>,
     T: NodeData,
 {
     const MAX_CONCURRENT_HIERARCHY: usize = 4;
@@ -43,14 +42,13 @@ pub fn process_octree_load_tasks<L, H, T>(
     );
 }
 
-fn process_hierarchy_loads<L, H, T>(
-    load_tasks: &mut OctreeLoadTasks<H, T>,
-    octree_assets: &mut Assets<NewOctree<H, T>>,
-    server: &mut ResMut<OctreeServer<L, H, T>>,
+fn process_hierarchy_loads<L, T>(
+    load_tasks: &mut OctreeLoadTasks<T>,
+    octree_assets: &mut Assets<NewOctree<T>>,
+    server: &mut ResMut<OctreeServer<L, T>>,
     max_concurrent: usize,
 ) where
-    L: OctreeLoader<H, T>,
-    H: HierarchyNodeData,
+    L: OctreeLoader<T>,
     T: NodeData,
 {
     while load_tasks.hierarchy_in_flight.len() < max_concurrent {
@@ -97,14 +95,13 @@ fn process_hierarchy_loads<L, H, T>(
     }
 }
 
-fn process_node_data_loads<L, H, T>(
-    load_tasks: &mut OctreeLoadTasks<H, T>,
-    octree_assets: &mut Assets<NewOctree<H, T>>,
-    server: &mut ResMut<OctreeServer<L, H, T>>,
+fn process_node_data_loads<L, T>(
+    load_tasks: &mut OctreeLoadTasks<T>,
+    octree_assets: &mut Assets<NewOctree<T>>,
+    server: &mut ResMut<OctreeServer<L, T>>,
     max_concurrent: usize,
 ) where
-    L: OctreeLoader<H, T>,
-    H: HierarchyNodeData,
+    L: OctreeLoader<T>,
     T: NodeData,
 {
     while load_tasks.node_in_flight.len() < max_concurrent {

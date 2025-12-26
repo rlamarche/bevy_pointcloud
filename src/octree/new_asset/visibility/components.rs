@@ -6,22 +6,21 @@ use bevy_asset::AssetId;
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashMap;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 /// This component stores the visible nodes for each octree at view level (camera) in "main world".
 #[derive(Debug, Component)]
-pub struct OctreesVisibility<H, T, C>
+pub struct OctreesVisibility<T, C>
 where
-    H: HierarchyNodeData,
     T: NodeData,
     C: Component,
 {
-    pub octrees: HashMap<Entity, (AssetId<NewOctree<H, T>>, Vec<VisibleOctreeNode>)>,
-    _phantom_data: PhantomData<fn() -> (H, T, C)>,
+    pub octrees: HashMap<Entity, (AssetId<NewOctree<T>>, Vec<VisibleOctreeNode>)>,
+    _phantom_data: PhantomData<fn() -> (T, C)>,
 }
 
-impl<H, T, C> Default for OctreesVisibility<H, T, C>
+impl<T, C> Default for OctreesVisibility<T, C>
 where
-    H: HierarchyNodeData,
     T: NodeData,
     C: Component,
 {
@@ -33,16 +32,15 @@ where
     }
 }
 
-impl<H, T, C> OctreesVisibility<H, T, C>
+impl<T, C> OctreesVisibility<T, C>
 where
-    H: HierarchyNodeData,
     T: NodeData,
     C: Component,
 {
     pub fn get_mut(
         &mut self,
         entity: Entity,
-    ) -> &mut (AssetId<NewOctree<H, T>>, Vec<VisibleOctreeNode>) {
+    ) -> &mut (AssetId<NewOctree<T>>, Vec<VisibleOctreeNode>) {
         self.octrees.entry(entity).or_default()
     }
 
@@ -57,15 +55,14 @@ where
 
 /// This component stores the visible nodes for each octree at view level (camera) in "main world".
 #[derive(Debug, Component)]
-pub struct OctreeVisibility<H, T, C>
+pub struct OctreeVisibility<T, C>
 where
-    H: HierarchyNodeData,
     T: NodeData,
     C: Component,
 {
-    pub asset_id: AssetId<NewOctree<H, T>>,
+    pub asset_id: AssetId<NewOctree<T>>,
     pub visible_nodes: Vec<VisibleOctreeNode>,
-    _phantom_data: PhantomData<fn() -> (H, T, C)>,
+    _phantom_data: PhantomData<fn() -> (T, C)>,
 }
 
 // #[derive(Clone, Debug)]
@@ -84,9 +81,12 @@ where
 #[derive(Clone, Debug)]
 pub struct VisibleOctreeNode {
     pub id: NodeId,
+    pub name: Arc<str>,
+    pub parent_id: Option<NodeId>,
+    pub depth: u32,
+    pub child_index: u8,
     pub children: [usize; 8],
     pub children_mask: u8,
-    pub first_child_index: usize,
 }
 
 // pub struct VisibleHierarchyNode<H>
@@ -99,17 +99,17 @@ pub struct VisibleOctreeNode {
 //     pub node: HierarchyOctreeNode<H>,
 // }
 
-impl<H, T> From<&OctreeNode<H, T>> for VisibleOctreeNode
-where
-    H: HierarchyNodeData,
-    T: NodeData,
+impl<T: NodeData> From<&OctreeNode<T>> for VisibleOctreeNode
 {
-    fn from(value: &OctreeNode<H, T>) -> Self {
+    fn from(value: &OctreeNode<T>) -> Self {
         VisibleOctreeNode {
             id: value.hierarchy.id,
+            name: value.hierarchy.name.clone(),
+            parent_id: value.hierarchy.parent_id,
+            depth: value.hierarchy.depth,
+            child_index: value.hierarchy.child_index,
             children: [0_usize; 8],
             children_mask: 0b00000000,
-            first_child_index: 0,
         }
     }
 }

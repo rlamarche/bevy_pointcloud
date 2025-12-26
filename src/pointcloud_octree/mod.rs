@@ -20,6 +20,7 @@ pub mod potree;
 pub mod render;
 
 pub mod visible_nodes_texture;
+pub mod new_asset;
 
 pub type PointCloudOctreeAssetPlugin = OctreeAssetPlugin<PointCloudNodeData>;
 

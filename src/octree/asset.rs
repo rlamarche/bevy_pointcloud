@@ -42,7 +42,7 @@ where
     /// - Split parent in 2 along all 3 axis. This gives 8 cubes.
     /// - Child index stores child cubes indices along each coordinates in a single number: 0x0XYZ where X, Y and Z are coordinates on corresponding axe
     /// - Child index min value is 0 = 0b000, and max value is 7 = 0b111
-    pub child_index: usize,
+    pub child_index: u8,
     pub parent_id: Option<NodeId>,
     pub children: [NodeId; 8],
     pub children_mask: u8,
@@ -101,7 +101,7 @@ where
     /// Inserts a new child node to an existing node
     pub fn insert(
         &mut self,
-        parent_id_and_child_index: Option<(NodeId, usize)>,
+        parent_id_and_child_index: Option<(NodeId, u8)>,
         bounding_box: Aabb,
         data: T,
     ) -> Result<NodeId, InsertNodeError> {
@@ -151,7 +151,7 @@ where
             let parent = self.nodes.get_mut(*parent_id).unwrap();
 
             // add to children array and update mask
-            parent.children[*child_index] = id;
+            parent.children[*child_index as usize] = id;
             parent.children_mask |= 1u8 << child_index;
         } else {
             self.root_id = Some(id);

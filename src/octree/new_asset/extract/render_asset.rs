@@ -49,7 +49,7 @@ where
     T: Send + Sync,
 {
     pub id: NodeId,
-    pub child_index: usize,
+    pub child_index: u8,
     pub parent_id: Option<NodeId>,
     pub children: [NodeId; 8],
     pub children_mask: u8,

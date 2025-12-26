@@ -1,5 +1,6 @@
 use crate::octree::new_asset::asset::NewOctree;
 use crate::octree::new_asset::hierarchy::HierarchyNodeData;
+use crate::octree::new_asset::node::NodeData;
 use crate::octree::storage::NodeId;
 use bevy_asset::AssetId;
 use bevy_ecs::prelude::*;
@@ -8,19 +9,14 @@ use ordered_float::OrderedFloat;
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::marker::PhantomData;
-use crate::octree::new_asset::node::NodeData;
 
 #[derive(Resource)]
-pub struct OctreeLoadTasks<H, T>
-where
-    H: HierarchyNodeData,
-    T: NodeData,
-{
-    pub hierarchy_heap: BinaryHeap<OctreeNodeLoadTask<H, T>>,
-    pub node_heap: BinaryHeap<OctreeNodeLoadTask<H, T>>,
-    pub hierarchy_in_flight: HashSet<(AssetId<NewOctree<H, T>>, NodeId)>,
-    pub node_in_flight: HashSet<(AssetId<NewOctree<H, T>>, NodeId)>,
-    _phantom_data: PhantomData<fn() -> (H, T)>,
+pub struct OctreeLoadTasks<T: NodeData> {
+    pub hierarchy_heap: BinaryHeap<OctreeNodeLoadTask<T>>,
+    pub node_heap: BinaryHeap<OctreeNodeLoadTask<T>>,
+    pub hierarchy_in_flight: HashSet<(AssetId<NewOctree<T>>, NodeId)>,
+    pub node_in_flight: HashSet<(AssetId<NewOctree<T>>, NodeId)>,
+    _phantom_data: PhantomData<fn() -> T>,
 }
 
 #[derive(Clone, Debug)]
@@ -29,14 +25,10 @@ pub enum LoadRequestType {
     NodeData,
 }
 
-impl<H, T> OctreeLoadTasks<H, T>
-where
-    H: HierarchyNodeData,
-    T: NodeData,
-{
+impl<T: NodeData> OctreeLoadTasks<T> {
     pub fn queue_load_request(
         &mut self,
-        asset_id: AssetId<NewOctree<H, T>>,
+        asset_id: AssetId<NewOctree<T>>,
         node_id: NodeId,
         weight: OrderedFloat<f32>,
         request_type: LoadRequestType,
@@ -65,11 +57,7 @@ where
         }
     }
 }
-impl<H, T> Default for OctreeLoadTasks<H, T>
-where
-    H: HierarchyNodeData,
-    T: NodeData,
-{
+impl<T: NodeData> Default for OctreeLoadTasks<T> {
     fn default() -> Self {
         Self {
             hierarchy_heap: Default::default(),
@@ -82,48 +70,27 @@ where
 }
 
 #[derive(Debug, Component)]
-pub struct OctreeNodeLoadTask<H, T>
-where
-    H: HierarchyNodeData,
-    T: NodeData,
-{
-    pub asset_id: AssetId<NewOctree<H, T>>,
+pub struct OctreeNodeLoadTask<T: NodeData> {
+    pub asset_id: AssetId<NewOctree<T>>,
     pub node_id: NodeId,
     pub weight: OrderedFloat<f32>,
 }
 
-impl<H, T> Eq for OctreeNodeLoadTask<H, T>
-where
-    H: HierarchyNodeData,
-    T: NodeData,
-{
-}
+impl<T: NodeData> Eq for OctreeNodeLoadTask<T> {}
 
-impl<H, T> PartialEq<Self> for OctreeNodeLoadTask<H, T>
-where
-    H: HierarchyNodeData,
-    T: NodeData,
-{
+impl<T: NodeData> PartialEq<Self> for OctreeNodeLoadTask<T> {
     fn eq(&self, other: &Self) -> bool {
         self.weight == other.weight
     }
 }
 
-impl<H, T> PartialOrd<Self> for OctreeNodeLoadTask<H, T>
-where
-    H: HierarchyNodeData,
-    T: NodeData,
-{
+impl<T: NodeData> PartialOrd<Self> for OctreeNodeLoadTask<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.weight.partial_cmp(&other.weight)
     }
 }
 
-impl<H, T> Ord for OctreeNodeLoadTask<H, T>
-where
-    H: HierarchyNodeData,
-    T: NodeData,
-{
+impl<T: NodeData> Ord for OctreeNodeLoadTask<T> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.weight.cmp(&other.weight)
     }

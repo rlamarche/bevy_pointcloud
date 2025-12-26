@@ -1,11 +1,13 @@
-use crate::octree::asset::NodeId;
-use crate::octree::visibility::prepare::RenderOctrees;
-use crate::octree::visibility::{RenderOctreeIndex, RenderVisibleOctreeNodes};
-use crate::pointcloud_octree::component::PointCloudOctree3d;
-use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
-use crate::pointcloud_octree::render::attribute_pass::phase::PointCloudOctree3dAttributePhase;
-use crate::pointcloud_octree::render::depth_pass::phase::PointCloudOctree3dDepthPhase;
-use crate::pointcloud_octree::render::phase::PointCloudOctree3dPhase;
+use super::attribute_pass::phase::PointCloudOctree3dAttributePhase;
+use super::depth_pass::phase::PointCloudOctree3dDepthPhase;
+use super::phase::PointCloudOctree3dPhase;
+use crate::octree::new_asset::extract::{
+    RenderOctreeIndex, RenderOctrees, RenderVisibleOctreeNodes,
+};
+use crate::octree::storage::NodeId;
+use crate::pointcloud_octree::asset::PointCloudNodeData;
+use crate::pointcloud_octree::extract::{PointCloudNodeDataUniform, RenderPointCloudNodeData};
+use crate::pointcloud_octree::new_asset::component::NewPointCloudOctree3d;
 use bevy_color::LinearRgba;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::ROQueryItem;
@@ -30,7 +32,9 @@ use bevy_render::renderer::{RenderDevice, RenderQueue};
 use bevy_render::texture::{ColorAttachment, TextureCache};
 use bevy_render::view::ExtractedView;
 use bytemuck::{Pod, Zeroable};
-use crate::pointcloud_octree::asset::PointCloudNodeData;
+use std::cmp::Ordering;
+use std::collections::VecDeque;
+use potree::octree::node::iter_one_bits;
 
 #[derive(ShaderType)]
 pub struct PointCloudVisibleNodeUniform {
@@ -73,12 +77,20 @@ impl ::core::fmt::Debug for VisibleOctreeNodeUniform {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct PreparedVisibleOctreeNode {
+    pub id: NodeId,
+    pub children_mask: u8,
+    pub first_child_index: u16,
+}
+
+
 pub fn prepare_visible_nodes_texture(
     mut commands: Commands,
     mut texture_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
-    render_octree_index: Res<RenderOctreeIndex<PointCloudOctree3d>>,
+    render_octree_index: Res<RenderOctreeIndex<NewPointCloudOctree3d>>,
     point_cloud_octree_3d_attribute_phases: Res<
         ViewBinnedRenderPhases<PointCloudOctree3dAttributePhase>,
     >,
@@ -88,7 +100,7 @@ pub fn prepare_visible_nodes_texture(
         &ExtractedCamera,
         &ExtractedView,
         &Msaa,
-        &RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>,
+        &RenderVisibleOctreeNodes<PointCloudNodeData, NewPointCloudOctree3d>,
     )>,
     mut visible_nodes_buffer: Local<Vec<VisibleOctreeNodeUniform>>,
     render_octrees: Res<RenderOctrees<RenderPointCloudNodeData>>,
@@ -161,18 +173,64 @@ pub fn prepare_visible_nodes_texture(
             let base_offset = octree_index * MAX_NODES_PER_OCTREE;
 
             let Some(octree) = render_octrees.get(*asset_id) else {
-                warn!("Render Point Cloud octree {} not found in RenderOctrees, skip", entity);
+                warn!(
+                    "Render Point Cloud octree {} not found in RenderOctrees, skip",
+                    entity
+                );
                 continue;
             };
 
-            for (i, visible_node) in octree_nodes.iter().enumerate() {
+
+            // sort nodes in order or depth, then child index ordering
+            let mut sorted_octree_nodes = octree_nodes.clone();
+            sorted_octree_nodes.sort_by(|a, b| {
+                if a.depth < b.depth {
+                    return Ordering::Less;
+                }
+                if a.depth > b.depth {
+                    return Ordering::Greater;
+                }
+
+                a.name.cmp(&b.name)
+            });
+
+            // create an index of child indexes for each parent
+            let index = sorted_octree_nodes
+                .iter()
+                .enumerate()
+                .map(|(index, node)| ((node.parent_id, node.child_index), index))
+                .collect::<HashMap<_, _>>();
+
+            // prepare octree nodes
+            let prepared_octree_nodes = sorted_octree_nodes.clone().into_iter()
+                .map(|node| {
+                    let mut first_child_index = 0;
+                    // get the first child index
+                    if let Some(child_index) = iter_one_bits(node.children_mask).next() {
+                        if let Some(index) = index.get(&(Some(node.id), child_index)) {
+                            first_child_index = *index as u16;
+                        } else {
+                            warn!("No first child index found in index");
+                        }
+                    }
+                    PreparedVisibleOctreeNode {
+                        id: node.id,
+                        children_mask: node.children_mask,
+                        first_child_index,
+                    }
+                }).collect::<Vec<_>>();
+
+            for (i, visible_node) in prepared_octree_nodes.iter().enumerate() {
                 if i >= MAX_NODES_PER_OCTREE {
                     warn!("Too many nodes in octree, some will be ignored.");
                     break;
                 }
 
                 let Some(node) = octree.nodes.get(&visible_node.id) else {
-                    warn!("Render Point Cloud Octree node {:?} not found in RenderOctrees, skip.", visible_node.id);
+                    warn!(
+                        "Render Point Cloud Octree node {:?} not found in RenderOctrees, skip.",
+                        visible_node.id
+                    );
                     continue;
                 };
 
@@ -182,7 +240,7 @@ pub fn prepare_visible_nodes_texture(
                 visible_nodes_buffer[base_offset + i] = VisibleOctreeNodeUniform {
                     children_mask: visible_node.children_mask,
                     offset,
-                    first_child_index: visible_node.first_child_index as u16,
+                    first_child_index: visible_node.first_child_index,
                 };
 
                 node_mapping.insert(visible_node.id, i as u32);
@@ -304,7 +362,7 @@ pub struct OctreeNodeMapping {
 }
 
 pub fn prepare_octree_nodes_mapping_buffers(
-    render_octree_index: Res<RenderOctreeIndex<PointCloudOctree3d>>,
+    render_octree_index: Res<RenderOctreeIndex<NewPointCloudOctree3d>>,
     mut mappings: ResMut<OctreeNodesMappingBindGroups>,
     render_device: Res<RenderDevice>,
 ) {
@@ -496,12 +554,12 @@ impl<P: PhaseItem + PointCloudOctree3dPhase, const I: usize> RenderCommand<P>
     for SetVisibleOctreeUniformGroup<I>
 {
     type Param = (
-        SRes<RenderOctreeIndex<PointCloudOctree3d>>,
+        SRes<RenderOctreeIndex<NewPointCloudOctree3d>>,
         SRes<RenderOctrees<RenderPointCloudNodeData>>,
         SRes<OctreeNodesMappingBindGroups>,
     );
     type ViewQuery = Read<VisibleNodesTexture>;
-    type ItemQuery = Read<PointCloudOctree3d>;
+    type ItemQuery = Read<NewPointCloudOctree3d>;
 
     fn render<'w>(
         item: &P,

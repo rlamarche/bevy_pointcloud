@@ -1,23 +1,15 @@
-use bevy_reflect::TypePath;
-use crate::octree::new_asset::hierarchy::{
-    HierarchyNodeData,
-};
-use bevy_transform::prelude::*;
-use crate::octree::new_asset::node::{NodeData, OctreeNode};
 use super::CameraView;
+use crate::octree::new_asset::node::{NodeData, OctreeNode};
+use bevy_transform::prelude::*;
 
-pub trait OctreeHierarchyFilter<H, T>: Send + Sync
-where
-    H: HierarchyNodeData,
-    T: NodeData,
-{
+pub trait OctreeHierarchyFilter<T: NodeData>: Send + Sync {
     type Settings: Send + Sync;
 
     fn new(settings: Self::Settings) -> Self;
 
     fn filter(
         &self,
-        node: &OctreeNode<H, T>,
+        node: &OctreeNode<T>,
         global_transform: &GlobalTransform,
         camera_view: &CameraView,
         screen_pixel_radius: Option<f32>,
@@ -28,11 +20,7 @@ pub struct ScreenPixelRadiusFilter {
     min_radius: f32,
 }
 
-impl<H, T> OctreeHierarchyFilter<H, T> for ScreenPixelRadiusFilter
-where
-    H: HierarchyNodeData,
-    T: NodeData,
-{
+impl<T: NodeData> OctreeHierarchyFilter<T> for ScreenPixelRadiusFilter {
     type Settings = f32;
 
     fn new(min_radius: Self::Settings) -> Self {
@@ -41,7 +29,7 @@ where
 
     fn filter(
         &self,
-        _node: &OctreeNode<H, T>,
+        _node: &OctreeNode<T>,
         _global_transform: &GlobalTransform,
         _camera_view: &CameraView,
         screen_pixel_radius: Option<f32>,

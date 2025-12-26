@@ -1,6 +1,10 @@
+use std::any::Any;
+use std::borrow::Cow;
+use std::sync::Arc;
 use crate::octree::storage::NodeId;
 use bevy_camera::primitives::Aabb;
 use bevy_reflect::TypePath;
+use crate::octree::new_asset::loader::LoadedHierarchyNode;
 
 #[derive(Debug, Clone, Copy)]
 pub enum HierarchyNodeStatus {
@@ -15,30 +19,40 @@ impl<T: Send + Sync + TypePath + Clone> HierarchyNodeData for T {}
 
 /// This type contains the hierarchy only data of an octree node
 /// It can be in state where it's loaded or not (`status`)
-#[derive(Debug, Clone)]
-pub struct HierarchyNode<H>
-where
-    H: HierarchyNodeData,
+#[derive(Clone, Debug)]
+pub struct HierarchyNode
 {
     pub status: HierarchyNodeStatus,
-    pub child_index: usize,
+    pub child_index: u8,
     pub parent_id: Option<usize>,
     pub bounding_box: Aabb,
-    pub data: H,
+    pub data: Arc<dyn Any + Send + Sync>,
 }
 
-#[derive(Debug, Clone)]
-pub struct HierarchyOctreeNode<H>
-where
-    H: HierarchyNodeData,
+#[derive(Clone, Debug)]
+pub struct HierarchyOctreeNode
 {
     pub id: NodeId,
+    // e.g. r, r0, r3, r4, r01, r07, r30, ...
+    pub name: Arc<str>,
     pub status: HierarchyNodeStatus,
-    pub child_index: usize,
+    pub child_index: u8,
     pub parent_id: Option<NodeId>,
     pub children: [NodeId; 8],
     pub children_mask: u8,
     pub bounding_box: Aabb,
     pub depth: u32,
-    pub data: H,
+    pub data: Arc<dyn Any + Send + Sync>,
+}
+
+impl<H: HierarchyNodeData> From<LoadedHierarchyNode<H>> for HierarchyNode {
+    fn from(value: LoadedHierarchyNode<H>) -> Self {
+        Self {
+            status: value.status,
+            child_index: value.child_index,
+            parent_id: value.parent_id,
+            bounding_box: value.bounding_box,
+            data: Arc::new(value),
+        }
+    }
 }

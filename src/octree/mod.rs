@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 
 pub mod asset;
 pub mod render_asset;
-mod storage;
+pub mod storage;
 
 pub mod visibility;
 pub mod new_asset;

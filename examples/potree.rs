@@ -13,7 +13,7 @@ use bevy_color::palettes::basic::GREEN;
 use bevy_ecs::world::CommandQueue;
 use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
-use bevy_panorbit_camera::PanOrbitCameraPlugin;
+use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pointcloud::PointCloudPlugin;
 use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
 use bevy_pointcloud::potree::prelude::*;
@@ -26,8 +26,8 @@ fn main() {
             unapproved_path_mode: UnapprovedPathMode::Allow,
             ..Default::default()
         }),
-        EguiPlugin::default(),
-        WorldInspectorPlugin::new(),
+        // EguiPlugin::default(),
+        // WorldInspectorPlugin::new(),
         PanOrbitCameraPlugin,
         PointCloudPlugin,
         CameraControllerPlugin,
@@ -153,14 +153,16 @@ fn load_pointcloud(
     commands.spawn(MyMaterial(my_material.clone()));
 
     let potree_point_cloud_handle: Handle<PotreePointCloud> =
-        asset_server.load("potree/heidentor/metadata.json");
-    // asset_server.load("/home/romain/Documents/Potree/Liban");
+        // asset_server.load("potree/heidentor/metadata.json");
+        // asset_server.load("/home/romain/Documents/Potree/Liban");
+        asset_server.load("/home/romain/Documents/Potree/Messerschmitt");
+    // asset_server.load("/home/romain/backup/FastData/Pro/Biodiv/model_dense_potree");
 
     commands.spawn((
         PotreePointCloud3d {
             handle: potree_point_cloud_handle.clone(),
         },
-        DrawPotreeGizmo,
+        // DrawPotreeGizmo,
         Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2)),
         PointCloudMaterial3d(my_material.clone()),
     ));

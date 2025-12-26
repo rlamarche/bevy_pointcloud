@@ -1,52 +1,67 @@
-use crate::new_potree::component::NewPotreePointCloud3d;
-use crate::new_potree::loader::PotreeHierarchy;
-use crate::octree::new_asset::extract::OctreeNodeExtraction;
 use crate::octree::new_asset::extract::prepare::{PrepareOctreeNodeError, RenderOctreeNode};
+use crate::octree::new_asset::extract::OctreeNodeExtraction;
 use crate::octree::new_asset::node::OctreeNode;
 use crate::pointcloud_octree::asset::{PointCloudNodeData, PointData};
-use crate::pointcloud_octree::extract::{PointCloudNodeDataUniform, PointCloudOctreeNodeUniformLayout, RenderPointCloudNodeData};
+use crate::pointcloud_octree::extract::{PointCloudNodeDataUniform, RenderPointCloudNodeData};
 
+use crate::octree::new_asset::asset::NewOctree;
+use crate::octree::new_asset::extract::render_asset::RenderOctreeNodeData;
 use bevy_asset::AssetId;
 use bevy_ecs::query::QueryItem;
 use bevy_ecs::{
     prelude::*,
-    system::{SystemParamItem, lifetimeless::SRes},
+    system::{lifetimeless::SRes, SystemParamItem},
 };
-use bevy_math::Vec3;
 use bevy_reflect::TypePath;
-use bevy_render::extract_component::ExtractComponent;
-use bevy_render::render_resource::binding_types::uniform_buffer;
 use bevy_render::render_resource::{
-    BindGroup, BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, Buffer,
+    BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, Buffer,
     BufferInitDescriptor, BufferUsages, PreparedBindGroup, ShaderStages, ShaderType, UniformBuffer,
 };
+use bevy_render::render_resource::binding_types::uniform_buffer;
 use bevy_render::renderer::{RenderDevice, RenderQueue};
-use bevy_transform::prelude::GlobalTransform;
 use bytemuck::{Pod, Zeroable};
-use crate::octree::new_asset::asset::NewOctree;
-use crate::octree::new_asset::extract::render_asset::RenderOctreeNodeData;
+use crate::pointcloud_octree::new_asset::component::NewPointCloudOctree3d;
 
 #[derive(TypePath)]
-pub struct PotreeExtraction;
+pub struct NewPointCloudOctreeExtraction;
 
-impl OctreeNodeExtraction for PotreeExtraction {
+impl OctreeNodeExtraction for NewPointCloudOctreeExtraction {
     type QueryData = ();
     type QueryFilter = ();
     type NodeData = PointCloudNodeData;
-    type NodeHierarchy = PotreeHierarchy;
-    type Component = NewPotreePointCloud3d;
+    type Component = NewPointCloudOctree3d;
     type ExtractedNodeData = PointCloudNodeData;
 
     fn extract_octree_node(
-        node: &OctreeNode<Self::NodeHierarchy, Self::NodeData>,
+        node: &OctreeNode<Self::NodeData>,
         _item: &QueryItem<'_, '_, Self::QueryData>,
     ) -> Option<Self::ExtractedNodeData> {
         node.data.clone()
     }
 }
 
+#[derive(Resource)]
+pub struct PointCloudOctreeNodeUniformLayout {
+    pub layout: BindGroupLayout,
+}
+
+impl FromWorld for PointCloudOctreeNodeUniformLayout {
+    fn from_world(world: &mut World) -> Self {
+        let render_device = world.resource::<RenderDevice>();
+
+        Self {
+            layout: render_device.create_bind_group_layout(
+                "pcl_octree_node_data",
+                &BindGroupLayoutEntries::single(
+                    ShaderStages::VERTEX,
+                    uniform_buffer::<PointCloudNodeDataUniform>(false),
+                ),
+            ),
+        }
+    }
+}
+
 impl RenderOctreeNode for RenderPointCloudNodeData {
-    type SourceOctreeHierarchy = PotreeHierarchy;
     type SourceOctreeNode = PointCloudNodeData;
     type ExtractedOctreeNode = PointCloudNodeData;
     type Param = (
@@ -61,7 +76,7 @@ impl RenderOctreeNode for RenderPointCloudNodeData {
 
     fn prepare_octree_node(
         source_node: RenderOctreeNodeData<Self::ExtractedOctreeNode>,
-        _asset_id: AssetId<NewOctree<Self::SourceOctreeHierarchy, Self::SourceOctreeNode>>,
+        _asset_id: AssetId<NewOctree<Self::SourceOctreeNode>>,
         (render_device, render_queue, point_cloud_octree_node_uniform_layout): &mut SystemParamItem<
             Self::Param,
         >,

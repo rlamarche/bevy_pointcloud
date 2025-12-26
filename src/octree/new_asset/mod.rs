@@ -14,20 +14,19 @@ use bevy_asset::{AssetApp, AssetId};
 use hierarchy::HierarchyNodeData;
 use node::NodeData;
 use std::marker::PhantomData;
+use bevy_ecs::prelude::Component;
+use bevy_reflect::TypePath;
 
-pub struct NewOctreeAssetPlugin<H, T>(PhantomData<fn() -> (H, T)>);
+pub struct NewOctreeAssetPlugin<T>(PhantomData<fn() -> T>);
 
-impl<H, T> Default for NewOctreeAssetPlugin<H, T> {
+impl<T> Default for NewOctreeAssetPlugin<T> {
     fn default() -> Self {
         NewOctreeAssetPlugin(PhantomData)
     }
 }
-impl<H, T> Plugin for NewOctreeAssetPlugin<H, T>
-where
-    H: HierarchyNodeData,
-    T: NodeData,
+impl<T: NodeData> Plugin for NewOctreeAssetPlugin<T>
 {
     fn build(&self, app: &mut App) {
-        app.init_asset::<NewOctree<H, T>>();
+        app.init_asset::<NewOctree<T>>();
     }
 }

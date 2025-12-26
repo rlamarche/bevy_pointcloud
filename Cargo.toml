@@ -13,7 +13,7 @@ required-features = ["potree"]
 
 [[example]]
 name = "loader"
-required-features = ["potree"]
+required-features = ["potree", "potree_ehttp"]
 
 [lib]
 name = "bevy_pointcloud"
@@ -91,6 +91,8 @@ webgl = [
 ]
 webgpu = []
 potree = ["dep:potree"]
+potree_reqwest = ["potree/reqwest"]
+potree_ehttp = ["potree/ehttp"]
 potree_wasm = ["potree/wasm"]
 potree_wasm_worker = ["potree/wasm_worker", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:wasm_thread"]
 potree_fs = ["potree/fs"]

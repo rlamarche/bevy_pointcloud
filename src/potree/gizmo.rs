@@ -70,7 +70,10 @@ pub fn update_text_gizmos(
     >,
     camera: Query<(&Camera, &Transform), With<PotreeMainCamera>>,
 ) {
-    let (_camera, camera_transform) = camera.single().unwrap();
+    let Ok((_camera, camera_transform)) = camera.single() else {
+        return;
+    };
+
     let camera_pos: Vec3 = camera_transform.compute_affine().translation.into();
 
     let text_material = text_material
@@ -233,7 +236,7 @@ fn compute_visible_nodes<'a>(
         .flat_map(|child_index| {
             compute_visible_nodes(
                 nodes,
-                &nodes[node.children[child_index]],
+                &nodes[node.children[child_index as usize]],
                 transform,
                 frustum,
             )

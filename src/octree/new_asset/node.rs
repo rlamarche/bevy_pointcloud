@@ -15,12 +15,9 @@ pub enum NodeStatus {
 /// This type contains the hierarchy only data of an octree node
 /// It can be in state where it's loaded or not (`status`)
 #[derive(Clone, Debug)]
-pub struct OctreeNode<H, T>
-where
-    H: HierarchyNodeData,
-    T: NodeData,
+pub struct OctreeNode<T: NodeData>
 {
-    pub hierarchy: HierarchyOctreeNode<H>,
+    pub hierarchy: HierarchyOctreeNode,
     pub status: NodeStatus,
     pub data: Option<T>,
 }

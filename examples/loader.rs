@@ -2,31 +2,34 @@
 mod camera_controller;
 
 use bevy::dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig};
-use bevy::diagnostic;
 use bevy::prelude::*;
 use bevy::text::FontSmoothing;
 use bevy::window::PresentMode;
 use bevy_color::palettes::basic::{GREEN, RED};
-use bevy_diagnostic::{DiagnosticPath, Diagnostics, DiagnosticsStore};
+use bevy_diagnostic::DiagnosticsStore;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
-use bevy_pointcloud::new_potree::component::NewPotreePointCloud3d;
-use bevy_pointcloud::new_potree::loader::PotreeHierarchy;
-use bevy_pointcloud::new_potree::{PotreeAsset, PotreeAssetPlugin, PotreeExtractVisibleOctreeNodesPlugin, PotreeServer, PotreeServerPlugin, PotreeVisibilityPlugin};
+use bevy_pointcloud::new_potree::{PotreeServer, PotreeServerPlugin};
 use bevy_pointcloud::octree::new_asset::visibility::components::OctreesVisibility;
-use bevy_pointcloud::point_cloud_material::PointCloudMaterial;
+use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
 use bevy_pointcloud::pointcloud_octree::asset::PointCloudNodeData;
+use bevy_pointcloud::pointcloud_octree::new_asset::component::NewPointCloudOctree3d;
+use bevy_pointcloud::pointcloud_octree::new_asset::{
+    NewPointCloudOctree, NewPointCloudOctreePlugin, NewPointCloudOctreeVisibilityPlugin,
+};
+use bevy_pointcloud::render::PointCloudRenderMode;
+use bevy_pointcloud::PointCloudPlugin;
 use bevy_transform::systems::propagate_parent_transforms;
 use std::ops::Mul;
+use bevy_render::view::NoIndirectDrawing;
 
 fn main() {
     let mut app = App::new();
     app.add_plugins((
         DefaultPlugins,
         PanOrbitCameraPlugin,
-        PotreeAssetPlugin::default(),
+        PointCloudPlugin,
+        NewPointCloudOctreePlugin,
         PotreeServerPlugin::default(),
-        PotreeVisibilityPlugin::default(),
-        // PotreeExtractVisibleOctreeNodesPlugin::default(),
     ));
 
     #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
@@ -83,7 +86,19 @@ fn setup(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(5.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        // We need this component because we use `draw_indexed` and `draw`
+        // instead of `draw_indirect_indexed` and `draw_indirect` in
+        // `DrawMeshInstanced::render`.
+        NoIndirectDrawing,
         PanOrbitCamera::default(),
+        Msaa::Off,
+        PointCloudRenderMode {
+            use_edl: true,
+            edl_radius: 1.4,
+            edl_strength: 0.4,
+            edl_neighbour_count: 4,
+            ..Default::default()
+        },
     ));
 }
 
@@ -119,7 +134,8 @@ fn update_ui(
     query: Query<Entity, With<TimedText>>,
 ) {
     for entity in &query {
-        if let Some(time) = diagnostic.get(&PotreeVisibilityPlugin::VISIBILITY_CHECK_TIME)
+        if let Some(time) =
+            diagnostic.get(&NewPointCloudOctreeVisibilityPlugin::VISIBILITY_CHECK_TIME)
             && let Some(value) = time.smoothed()
         {
             *writer.text(entity, 1) = format!("{value:.2}");
@@ -130,22 +146,34 @@ fn update_ui(
 #[derive(Component)]
 pub struct MyMaterial(Handle<PointCloudMaterial>);
 
-fn load_pointcloud(mut commands: Commands, octree_server: Res<PotreeServer>) {
+fn load_pointcloud(
+    mut commands: Commands,
+    mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
+    octree_server: Res<PotreeServer>,
+) {
+    let my_material = point_cloud_materials.add(PointCloudMaterial {
+        point_size: 30.0,
+        min_point_size: 2.0,
+        max_point_size: 50.0,
+        ..default()
+    });
+    commands.spawn(MyMaterial(my_material.clone()));
+
     let octree_handle =
         octree_server.load_octree("file:///home/romain/Documents/Potree/Messerschmitt".to_string());
 
+
     commands.spawn((
-        NewPotreePointCloud3d(octree_handle),
+        NewPointCloudOctree3d(octree_handle),
         Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2)),
+        PointCloudMaterial3d(my_material.clone()),
     ));
 }
 
 fn draw_gizmos(
-    octrees: Res<Assets<PotreeAsset>>,
-    entities: Query<&GlobalTransform, With<NewPotreePointCloud3d>>,
-    octrees_vibility: Query<
-        &OctreesVisibility<PotreeHierarchy, PointCloudNodeData, NewPotreePointCloud3d>,
-    >,
+    octrees: Res<Assets<NewPointCloudOctree>>,
+    entities: Query<&GlobalTransform, With<NewPointCloudOctree3d>>,
+    octrees_vibility: Query<&OctreesVisibility<PointCloudNodeData, NewPointCloudOctree3d>>,
     mut gizmos: Gizmos,
 ) {
     for octree_visibility in octrees_vibility {

@@ -294,7 +294,7 @@ impl UpdateHierarchyTask {
             } else {
                 // we have to process child nodes, sending flag `completely_visible` to prevent useless visibility checks
                 for i in iter_one_bits(node.children_mask) {
-                    let child = &node.children[i];
+                    let child = &node.children[i as usize];
                     let child = octree
                         .node(*child)
                         .expect("missing node in hierarchy, shouldn't happen");
@@ -311,7 +311,7 @@ impl UpdateHierarchyTask {
                 // if there is a parent, add it to the children array on an empty space
                 if parent_index < current_index {
                     let parent = &mut visible_nodes[parent_index];
-                    parent.children[child_index] = current_index;
+                    parent.children[child_index as usize] = current_index;
                     parent.children_mask |= 1 << node.child_index;
                 }
             }

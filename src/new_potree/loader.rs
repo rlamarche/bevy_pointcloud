@@ -1,8 +1,5 @@
-use crate::octree::new_asset::hierarchy::{
-    HierarchyNode, HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode,
-};
-use crate::octree::new_asset::loader::OctreeLoader;
-use crate::octree::new_asset::node::OctreeNode;
+use crate::octree::new_asset::hierarchy::{HierarchyNodeStatus, HierarchyOctreeNode};
+use crate::octree::new_asset::loader::{LoadedHierarchyNode, OctreeLoader};
 use crate::pointcloud_octree::asset::PointCloudNodeData;
 use async_trait::async_trait;
 use bevy_camera::primitives::Aabb;
@@ -23,7 +20,8 @@ pub struct PotreeLoader {
 pub struct PotreeHierarchy(pub(crate) FlatOctreeNode);
 
 #[async_trait]
-impl OctreeLoader<PotreeHierarchy, PointCloudNodeData> for PotreeLoader {
+impl OctreeLoader<PointCloudNodeData> for PotreeLoader {
+    type Hierarchy = PotreeHierarchy;
     type Error = BevyError;
 
     async fn from_url(url: &str) -> Result<Self, Self::Error> {
@@ -34,7 +32,7 @@ impl OctreeLoader<PotreeHierarchy, PointCloudNodeData> for PotreeLoader {
 
     async fn load_initial_hierarchy(
         &self,
-    ) -> Result<Vec<HierarchyNode<PotreeHierarchy>>, Self::Error> {
+    ) -> Result<Vec<LoadedHierarchyNode<PotreeHierarchy>>, Self::Error> {
         let hierarchy = self.hierarchy.load_initial_hierarchy().await?;
 
         Ok(hierarchy.into_iter().map(Into::into).collect())
@@ -42,8 +40,8 @@ impl OctreeLoader<PotreeHierarchy, PointCloudNodeData> for PotreeLoader {
 
     async fn load_hierarchy(
         &self,
-        node: &HierarchyOctreeNode<PotreeHierarchy>,
-    ) -> Result<Vec<HierarchyNode<PotreeHierarchy>>, Self::Error> {
+        node: &LoadedHierarchyNode<PotreeHierarchy>,
+    ) -> Result<Vec<LoadedHierarchyNode<PotreeHierarchy>>, Self::Error> {
         Ok(self
             .hierarchy
             .load_hierarchy(&node.data.0)
@@ -55,14 +53,14 @@ impl OctreeLoader<PotreeHierarchy, PointCloudNodeData> for PotreeLoader {
 
     async fn load_node_data(
         &self,
-        node: &HierarchyOctreeNode<PotreeHierarchy>,
+        node: &LoadedHierarchyNode<PotreeHierarchy>,
     ) -> Result<PointCloudNodeData, Self::Error> {
         let Points { density, points } = self.hierarchy.load_points(&node.data.0).await?;
 
         // magic formula from Potree
         let offset = (density as f32).log2() / 2.0 - 1.5;
 
-        info!("Loaded {} points", points.len());
+        // info!("Loaded {} points", points.len());
 
         Ok(PointCloudNodeData {
             spacing: node.data.0.spacing as f32,
@@ -74,9 +72,9 @@ impl OctreeLoader<PotreeHierarchy, PointCloudNodeData> for PotreeLoader {
     }
 }
 
-impl From<FlatOctreeNode> for HierarchyNode<PotreeHierarchy> {
+impl From<FlatOctreeNode> for LoadedHierarchyNode<PotreeHierarchy> {
     fn from(value: FlatOctreeNode) -> Self {
-        HierarchyNode {
+        Self {
             status: match value.node_type {
                 NodeType::Proxy => HierarchyNodeStatus::Proxy,
                 _ => HierarchyNodeStatus::Loaded,
