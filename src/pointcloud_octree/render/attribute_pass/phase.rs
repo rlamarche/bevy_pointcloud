@@ -7,8 +7,8 @@ use bevy_render::render_phase::{
 use bevy_render::render_resource::CachedRenderPipelineId;
 use bevy_render::sync_world::MainEntity;
 use std::ops::Range;
-use crate::octree::asset::NodeId;
-use crate::pointcloud_octree::render::phase::{PointCloudOctree3dBinKey, PointCloudOctree3dPhase};
+use crate::octree::storage::NodeId;
+use super::super::phase::{PointCloudOctree3dBinKey, PointCloudOctree3dPhase};
 
 pub struct PointCloudOctree3dAttributePhase {
     /// Determines which objects can be placed into a *batch set*.

@@ -1,5 +1,5 @@
-use crate::octree::asset::NodeId;
-use crate::pointcloud_octree::render::phase::{PointCloudOctree3dBinKey, PointCloudOctree3dPhase};
+use super::super::phase::{PointCloudOctree3dBinKey, PointCloudOctree3dPhase};
+use crate::octree::storage::NodeId;
 use crate::render::phase::PointCloud3dBatchSetKey;
 use bevy_ecs::prelude::*;
 use bevy_render::render_phase::{

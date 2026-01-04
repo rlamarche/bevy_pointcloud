@@ -1,31 +1,49 @@
-use crate::pointcloud_octree::asset::PointCloudOctree;
-use bevy_asset::{AsAssetId, AssetId, Handle};
-use bevy_derive::{Deref, DerefMut};
+use crate::octree::asset::Octree;
+use super::asset::data::PointCloudNodeData;
+use bevy_asset::{AssetId, Handle};
 use bevy_ecs::prelude::*;
-use bevy_reflect::{std_traits::ReflectDefault, Reflect};
-use bevy_transform::prelude::*;
+use bevy_ecs::query::QueryItem;
+use bevy_render::extract_component::ExtractComponent;
+use bevy_transform::prelude::GlobalTransform;
+use crate::point_cloud_material::PointCloudMaterial3d;
+use crate::pointcloud_octree::render::data::PointCloudOctree3dUniform;
 
-#[derive(Component, Clone, Debug, Default, Deref, DerefMut, Reflect, PartialEq, Eq)]
-#[reflect(Component, Default, Clone, PartialEq, Debug)]
-#[require(Transform)]
-pub struct PointCloudOctree3d(pub Handle<PointCloudOctree>);
+#[derive(Component, Clone, Debug)]
+pub struct PointCloudOctree3d(pub Handle<Octree<PointCloudNodeData>>);
 
-impl AsAssetId for PointCloudOctree3d {
-    type Asset = PointCloudOctree;
-
-    fn as_asset_id(&self) -> AssetId<Self::Asset> {
-        self.id()
+impl Into<AssetId<Octree<PointCloudNodeData>>> for &PointCloudOctree3d {
+    fn into(self) -> AssetId<Octree<PointCloudNodeData>> {
+        self.0.clone().id()
     }
 }
 
-impl From<PointCloudOctree3d> for AssetId<PointCloudOctree> {
-    fn from(point_cloud: PointCloudOctree3d) -> Self {
-        point_cloud.id()
-    }
-}
+impl ExtractComponent for PointCloudOctree3d {
+    type QueryData = (
+        &'static PointCloudOctree3d,
+        &'static GlobalTransform,
+        &'static PointCloudMaterial3d,
+    );
+    type QueryFilter = ();
+    type Out = (
+        PointCloudOctree3d,
+        PointCloudOctree3dUniform,
+        PointCloudMaterial3d,
+    );
 
-impl From<&PointCloudOctree3d> for AssetId<PointCloudOctree> {
-    fn from(pointcloud: &PointCloudOctree3d) -> Self {
-        pointcloud.id()
+    fn extract_component(
+        (point_cloud_3d, global_transform, point_cloud_material_3d): QueryItem<
+            '_,
+            '_,
+            Self::QueryData,
+        >,
+    ) -> Option<Self::Out> {
+        let point_cloud_octree_3d_uniform = PointCloudOctree3dUniform {
+            world_from_local: global_transform.to_matrix(),
+        };
+        Some((
+            point_cloud_3d.clone(),
+            point_cloud_octree_3d_uniform,
+            point_cloud_material_3d.clone(),
+        ))
     }
 }

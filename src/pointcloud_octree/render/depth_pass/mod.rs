@@ -1,17 +1,13 @@
 pub mod node;
 pub mod phase;
 
-use crate::octree::visibility::{RenderVisibleOctreeNodes, VisibleOctreeNode};
-use crate::pointcloud_octree::asset::PointCloudNodeData;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
-use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
-use crate::pointcloud_octree::render::depth_pass::node::DepthPassOctreeLabel;
-use crate::pointcloud_octree::render::draw::{
-    DrawPointCloudOctreeNode, SetPointCloudOctreeNodeUniformGroup,
-};
-use crate::pointcloud_octree::render::phase::PointCloudOctree3dBinKey;
-use crate::pointcloud_octree::visible_nodes_texture::{SetVisibleNodesTexture, SetVisibleOctreeUniformGroup};
-use crate::render::attribute_pass::node::AttributePassLabel;
+use super::data::SetPointCloudOctree3dUniformGroup;
+use super::draw::{DrawPointCloudOctreeNode, SetPointCloudOctreeNodeUniformGroup};
+use super::phase::PointCloudOctree3dBinKey;
+use super::prepare::{SetVisibleNodesTexture, SetVisibleOctreeUniformGroup};
+use crate::octree::extract::{RenderVisibleOctreeNodes, VisibleOctreeNode};
+use crate::pointcloud_octree::asset::data::PointCloudNodeData;
 use crate::render::depth_pass::pipeline::{DepthPipeline, DepthPipelineKey};
 use crate::render::depth_pass::texture::prepare_depth_pass_textures;
 use crate::render::material::SetPointCloudMaterialGroup;
@@ -19,7 +15,7 @@ use crate::render::phase::PointCloud3dBatchSetKey;
 use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
-use bevy_core_pipeline::core_3d::graph::Core3d;
+use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy_ecs::component::Tick;
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
@@ -39,6 +35,7 @@ use bevy_render::{
     RenderApp,
     RenderSystems,
 };
+use node::DepthPassOctreeLabel;
 use phase::PointCloudOctree3dDepthPhase;
 
 pub struct DepthPassPlugin;
@@ -68,7 +65,7 @@ impl Plugin for DepthPassPlugin {
                 DepthPassOctreeLabel,
             )
             // Tell the node to run before the main transparent pass
-            .add_render_graph_edges(Core3d, (DepthPassOctreeLabel, AttributePassLabel));
+            .add_render_graph_edges(Core3d, (DepthPassOctreeLabel, Node3d::MainTransparentPass));
     }
 }
 

@@ -11,7 +11,7 @@ use bevy_render::{
     renderer::RenderContext,
     view::ExtractedView,
 };
-use crate::pointcloud_octree::render::depth_pass::phase::PointCloudOctree3dDepthPhase;
+use super::phase::PointCloudOctree3dDepthPhase;
 
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DepthPassOctreeLabel;
@@ -41,7 +41,7 @@ impl ViewNode for DepthPassOctreeNode {
         let Some(point_cloud_3d_phases) =
             world.get_resource::<ViewBinnedRenderPhases<PointCloudOctree3dDepthPhase>>()
         else {
-            info!("no pointcloud phases");
+            info!("no pointcloud octree phases");
             return Ok(());
         };
 

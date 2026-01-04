@@ -1,36 +1,34 @@
 #[path = "helpers/camera_controller.rs"]
 mod camera_controller;
 
-use crate::camera_controller::{CameraController, CameraControllerPlugin};
 use bevy::dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig};
-use bevy::tasks::Task;
+use bevy::prelude::*;
 use bevy::text::FontSmoothing;
-#[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
 use bevy::window::PresentMode;
-use bevy::{prelude::*, render::view::NoIndirectDrawing};
-use bevy_asset::UnapprovedPathMode;
-use bevy_color::palettes::basic::GREEN;
-use bevy_ecs::world::CommandQueue;
-use bevy_inspector_egui::bevy_egui::EguiPlugin;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use bevy_color::palettes::basic::{GREEN, RED};
+use bevy_diagnostic::DiagnosticsStore;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pointcloud::PointCloudPlugin;
+use bevy_pointcloud::octree::visibility::components::OctreesVisibility;
 use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
-use bevy_pointcloud::potree::prelude::*;
+use bevy_pointcloud::pointcloud_octree::{PointCloudOctreePlugin, PointCloudOctreeVisibilityPlugin};
+use bevy_pointcloud::pointcloud_octree::asset::PointCloudOctree;
+use bevy_pointcloud::pointcloud_octree::component::PointCloudOctree3d;
+use bevy_pointcloud::pointcloud_octree::asset::data::PointCloudNodeData;
+use bevy_pointcloud::potree::{PotreeServer, PotreeServerPlugin};
 use bevy_pointcloud::render::PointCloudRenderMode;
+use bevy_render::view::NoIndirectDrawing;
+use bevy_transform::systems::propagate_parent_transforms;
+use std::ops::Mul;
 
 fn main() {
     let mut app = App::new();
     app.add_plugins((
-        DefaultPlugins.set(AssetPlugin {
-            unapproved_path_mode: UnapprovedPathMode::Allow,
-            ..Default::default()
-        }),
-        // EguiPlugin::default(),
-        // WorldInspectorPlugin::new(),
+        DefaultPlugins,
         PanOrbitCameraPlugin,
         PointCloudPlugin,
-        CameraControllerPlugin,
+        PointCloudOctreePlugin,
+        PotreeServerPlugin::default(),
     ));
 
     #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
@@ -66,7 +64,10 @@ fn main() {
             ..Default::default()
         },
     });
-    app.add_systems(Startup, (setup_window, setup, load_pointcloud, load_meshes))
+
+    app.add_systems(Startup, (setup_window, setup_ui, setup, load_pointcloud))
+        .add_systems(PreUpdate, draw_gizmos.after(propagate_parent_transforms))
+        .add_systems(Update, update_ui)
         .run();
 }
 
@@ -88,9 +89,7 @@ fn setup(mut commands: Commands) {
         // instead of `draw_indirect_indexed` and `draw_indirect` in
         // `DrawMeshInstanced::render`.
         NoIndirectDrawing,
-        CameraController::default(),
-        // PanOrbitCamera::default(),
-        // disable msaa for WASM/WebGL (but works in native mode)
+        PanOrbitCamera::default(),
         Msaa::Off,
         PointCloudRenderMode {
             use_edl: true,
@@ -99,39 +98,48 @@ fn setup(mut commands: Commands) {
             edl_neighbour_count: 4,
             ..Default::default()
         },
-        // Use this camera for potree octree loading
-        PotreeMainCamera,
     ));
 }
 
-fn load_meshes(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    // let sphere = meshes.add(Sphere::default().mesh().ico(5).unwrap());
-    // commands.spawn((
-    //     Mesh3d(sphere),
-    //     MeshMaterial3d(materials.add(Color::from(RED))),
-    //     Transform::from_translation(Vec3::new(0.0, 2.0, 1.0)),
-    //     NotShadowCaster,
-    // ));
+#[derive(Component)]
+struct TimedText;
 
-    // commands.spawn((
-    //     PointLight {
-    //         shadows_enabled: true,
-    //         intensity: 10_000_000.,
-    //         range: 100.0,
-    //         shadow_depth_bias: 0.2,
-    //         ..default()
-    //     },
-    //     Transform::from_xyz(8.0, 16.0, 8.0),
-    // ));
-    //
-    // commands.spawn((
-    //     Mesh3d(meshes.add(Plane3d::default().mesh().size(50.0, 50.0).subdivisions(10))),
-    //     MeshMaterial3d(materials.add(Color::from(SILVER))),
-    // ));
+fn setup_ui(mut commands: Commands) {
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                flex_direction: FlexDirection::Column,
+                bottom: percent(1.0),
+                right: percent(1.0),
+                ..default()
+            },
+            Pickable::IGNORE,
+        ))
+        .with_children(|p| {
+            p.spawn((
+                Text::new("VISIBILITY TIME: "),
+                TextColor(Color::WHITE.into()),
+                TimedText,
+                Pickable::IGNORE,
+            ))
+            .with_child(TextSpan::default());
+        });
+}
+
+fn update_ui(
+    diagnostic: Res<DiagnosticsStore>,
+    mut writer: TextUiWriter,
+    query: Query<Entity, With<TimedText>>,
+) {
+    for entity in &query {
+        if let Some(time) =
+            diagnostic.get(&PointCloudOctreeVisibilityPlugin::VISIBILITY_CHECK_TIME)
+            && let Some(value) = time.smoothed()
+        {
+            *writer.text(entity, 1) = format!("{value:.2}");
+        }
+    }
 }
 
 #[derive(Component)]
@@ -140,9 +148,7 @@ pub struct MyMaterial(Handle<PointCloudMaterial>);
 fn load_pointcloud(
     mut commands: Commands,
     mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
-    // mut point_clouds: ResMut<Assets<PointCloud>>,
-    asset_server: Res<AssetServer>,
-    // mut gizmo_assets: ResMut<Assets<GizmoAsset>>,
+    octree_server: Res<PotreeServer>,
 ) {
     let my_material = point_cloud_materials.add(PointCloudMaterial {
         point_size: 30.0,
@@ -152,51 +158,46 @@ fn load_pointcloud(
     });
     commands.spawn(MyMaterial(my_material.clone()));
 
-    let potree_point_cloud_handle: Handle<PotreePointCloud> =
-        // asset_server.load("potree/heidentor/metadata.json");
-        // asset_server.load("/home/romain/Documents/Potree/Liban");
-        asset_server.load("/home/romain/Documents/Potree/Messerschmitt");
-    // asset_server.load("/home/romain/backup/FastData/Pro/Biodiv/model_dense_potree");
+    let octree_handle =
+        octree_server.load_octree("file:///home/romain/Documents/Potree/Messerschmitt".to_string());
 
     commands.spawn((
-        PotreePointCloud3d {
-            handle: potree_point_cloud_handle.clone(),
-        },
-        // DrawPotreeGizmo,
+        PointCloudOctree3d(octree_handle),
         Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2)),
         PointCloudMaterial3d(my_material.clone()),
     ));
+}
 
-    // for i in 0..8 {
-    //     for j in 0..8 {
-    //         commands.spawn((
-    //             PotreePointCloud3d {
-    //                 handle: potree_point_cloud_handle.clone(),
-    //             },
-    //             // DrawPotreeGizmo,
-    //             Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2))
-    //                 .with_translation(Vec3::new(10.0 * i as f32, 0.0, 10.0 * j as f32)),
-    //             PointCloudMaterial3d(my_material.clone()),
-    //         ));
-    //     }
-    // }
+fn draw_gizmos(
+    octrees: Res<Assets<PointCloudOctree>>,
+    entities: Query<&GlobalTransform, With<PointCloudOctree3d>>,
+    octrees_vibility: Query<&OctreesVisibility<PointCloudNodeData, PointCloudOctree3d>>,
+    mut gizmos: Gizmos,
+) {
+    for octree_visibility in octrees_vibility {
+        for (entity, (asset_id, visible_nodes)) in &octree_visibility.octrees {
+            let Ok(global_transform) = entities.get(*entity) else {
+                continue;
+            };
+            let Some(octree) = octrees.get(*asset_id) else {
+                continue;
+            };
 
-    // commands.spawn((
-    //     PotreePointCloud3d {
-    //         handle: potree_point_cloud_handle,
-    //     },
-    //     DrawPotreeGizmo,
-    //     Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2))
-    //         .with_translation(Vec3::new(10.0, 0.0, 0.0)),
-    //     PointCloudMaterial3d(my_material.clone()),
-    // ));
+            for visible_node in visible_nodes {
+                let Some(node) = octree.hierarchy_node(visible_node.id) else {
+                    continue;
+                };
 
-    return;
+                let center = node.bounding_box.center.clone();
+                let scale = node.bounding_box.half_extents.mul(2.0);
 
-    // let point_cloud = asset_server.load::<PointCloud>("potree/heidentor/metadata.json");
-    // commands.spawn((
-    //     PointCloud3d(point_cloud),
-    //     PointCloudMaterial3d(my_material.clone()),
-    //     MainPointCloud,
-    // ));
+                let local_transform =
+                    Transform::from_translation(center.into()).with_scale(scale.into());
+
+                let world_transform = global_transform.mul_transform(local_transform);
+
+                gizmos.cuboid(world_transform, RED);
+            }
+        }
+    }
 }

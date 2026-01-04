@@ -1,7 +1,7 @@
-use crate::octree::visibility::prepare::RenderOctrees;
-use crate::pointcloud_octree::component::PointCloudOctree3d;
+use super::phase::PointCloudOctree3dPhase;
+use crate::octree::extract::resources::RenderOctrees;
 use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
-use crate::pointcloud_octree::render::phase::PointCloudOctree3dPhase;
+use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::render::mesh::PointCloudMesh;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::system::{lifetimeless::*, SystemParamItem};
@@ -9,7 +9,6 @@ use bevy_log::prelude::*;
 use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
 use bevy_render::render_resource::IndexFormat;
 use bevy_render::renderer::RenderQueue;
-use crate::pointcloud_octree::visible_nodes_texture::VisibleNodesTexture;
 
 pub struct DrawPointCloudOctreeNode;
 
@@ -73,7 +72,10 @@ pub struct SetPointCloudOctreeNodeUniformGroup<const I: usize>;
 impl<P: PhaseItem + PointCloudOctree3dPhase, const I: usize> RenderCommand<P>
     for SetPointCloudOctreeNodeUniformGroup<I>
 {
-    type Param = (SRes<RenderOctrees<RenderPointCloudNodeData>>, SRes<RenderQueue>);
+    type Param = (
+        SRes<RenderOctrees<RenderPointCloudNodeData>>,
+        SRes<RenderQueue>,
+    );
     type ViewQuery = ();
     type ItemQuery = Read<PointCloudOctree3d>;
 

@@ -1,6 +1,6 @@
-use crate::octree::render_asset::NodeId;
-use crate::pointcloud_octree::asset::PointCloudOctree;
+use crate::octree::storage::NodeId;
 use bevy_asset::AssetId;
+use crate::pointcloud_octree::asset::PointCloudOctree;
 
 pub trait PointCloudOctree3dPhase {
     fn node_id(&self) -> NodeId;

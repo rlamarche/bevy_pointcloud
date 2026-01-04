@@ -9,10 +9,6 @@ resolver = "2"
 
 [[example]]
 name = "potree"
-required-features = ["potree"]
-
-[[example]]
-name = "loader"
 required-features = ["potree", "potree_ehttp"]
 
 [lib]

@@ -1,69 +1,106 @@
-use crate::pointcloud_octree::asset::PointCloudOctree;
-use crate::potree::asset::PotreePointCloud;
-use async_lock::RwLock;
-use bevy_asset::io::Reader;
-use bevy_asset::{AssetLoader, LoadContext};
+use crate::octree::hierarchy::{HierarchyNodeStatus, HierarchyOctreeNode};
+use crate::octree::loader::{LoadedHierarchyNode, OctreeLoader};
+use crate::pointcloud_octree::asset::data::PointCloudNodeData;
+use async_trait::async_trait;
 use bevy_camera::primitives::Aabb;
+use bevy_ecs::error::BevyError;
 use bevy_log::prelude::*;
-use potree::hierarchy::{Hierarchy, LoadPotreePointCloudError};
+use bevy_reflect::TypePath;
+use potree::metadata::Points;
+use potree::octree::node::{FlatOctreeNode, NodeType};
+use potree::prelude::FlatHierarchy;
 use potree::resource::ResourceLoader;
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use thiserror::Error;
 
-#[derive(Default, Serialize, Deserialize)]
-pub struct PotreeLoaderSettings {}
-
-#[derive(Error, Debug)]
-pub enum PotreeLoaderError {
-    /// Failed to load a file.
-    #[error("failed to load potree point cloud: {0}")]
-    Potree(#[from] potree::prelude::LoadPotreePointCloudError),
-
-    #[error("failed to load potree points: {0}")]
-    LoadPoints(#[from] potree::prelude::LoadPointsError),
-
-    #[error("invalid path")]
-    InvalidPath,
+#[derive(TypePath)]
+pub struct PotreeLoader {
+    pub(crate) hierarchy: FlatHierarchy,
 }
 
-pub struct PotreeLoader {}
+#[derive(Clone, TypePath)]
+pub struct PotreeHierarchy(pub(crate) FlatOctreeNode);
 
-impl AssetLoader for PotreeLoader {
-    type Asset = PotreePointCloud;
-    type Settings = PotreeLoaderSettings;
-    type Error = PotreeLoaderError;
+#[async_trait]
+impl OctreeLoader<PointCloudNodeData> for PotreeLoader {
+    type Hierarchy = PotreeHierarchy;
+    type Error = BevyError;
 
-    async fn load(
+    async fn from_url(url: &str) -> Result<Self, Self::Error> {
+        let hierarchy = FlatHierarchy::from_url(url, ResourceLoader::new()).await?;
+
+        Ok(PotreeLoader { hierarchy })
+    }
+
+    async fn load_initial_hierarchy(
         &self,
-        _reader: &mut dyn Reader,
-        _settings: &Self::Settings,
-        load_context: &mut LoadContext<'_>,
-    ) -> Result<Self::Asset, Self::Error> {
-        let mut path = load_context
-            .path()
-            .to_str()
-            .ok_or(PotreeLoaderError::InvalidPath)?;
+    ) -> Result<Vec<LoadedHierarchyNode<PotreeHierarchy>>, Self::Error> {
+        let hierarchy = self.hierarchy.load_initial_hierarchy().await?;
 
-        if path.ends_with("/metadata.json") {
-            path = path.strip_suffix("/metadata.json").unwrap();
-        }
+        Ok(hierarchy.into_iter().map(Into::into).collect())
+    }
 
-        let asset_path = if path.starts_with("/") {
-            format!("file://{}", path).to_string()
-        } else {
-            // transform to relative asset path
-            format!("assets/{}", path).to_string()
-        };
+    async fn load_hierarchy(
+        &self,
+        node: &LoadedHierarchyNode<PotreeHierarchy>,
+    ) -> Result<Vec<LoadedHierarchyNode<PotreeHierarchy>>, Self::Error> {
+        Ok(self
+            .hierarchy
+            .load_hierarchy(&node.data.0)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
 
-        info!("Loading Potree Point Cloud from path {}", asset_path);
+    async fn load_node_data(
+        &self,
+        node: &LoadedHierarchyNode<PotreeHierarchy>,
+    ) -> Result<PointCloudNodeData, Self::Error> {
+        let Points { density, points } = self.hierarchy.load_points(&node.data.0).await?;
 
-        let point_cloud = Hierarchy::from_url(&asset_path, ResourceLoader::new()).await?;
+        // magic formula from Potree
+        let offset = (density as f32).log2() / 2.0 - 1.5;
 
-        info!("Potree Point Cloud loaded");
+        // info!("Loaded {} points", points.len());
 
-        Ok(PotreePointCloud {
-            hierarchy: Arc::new(RwLock::new(point_cloud)),
+        Ok(PointCloudNodeData {
+            spacing: node.data.0.spacing as f32,
+            level: node.data.0.level,
+            offset,
+            num_points: node.data.0.num_points as usize,
+            points: points.into_iter().map(Into::into).collect(),
         })
+    }
+}
+
+impl From<FlatOctreeNode> for LoadedHierarchyNode<PotreeHierarchy> {
+    fn from(value: FlatOctreeNode) -> Self {
+        Self {
+            status: match value.node_type {
+                NodeType::Proxy => HierarchyNodeStatus::Proxy,
+                _ => HierarchyNodeStatus::Loaded,
+            },
+            child_index: value.child_index,
+            parent_id: value.parent,
+            bounding_box: Aabb::from_min_max(
+                value.bounding_box.min.as_vec3(),
+                value.bounding_box.max.as_vec3(),
+            ),
+            data: PotreeHierarchy(value),
+        }
+    }
+}
+
+impl From<(&FlatOctreeNode, Points)> for PointCloudNodeData {
+    fn from((node, Points { points, density }): (&FlatOctreeNode, Points)) -> Self {
+        // magic formula from Potree
+        let offset = (density as f32).log2() / 2.0 - 1.5;
+
+        PointCloudNodeData {
+            spacing: node.spacing as f32,
+            level: node.level,
+            offset,
+            num_points: node.num_points as usize,
+            points: points.into_iter().map(Into::into).collect(),
+        }
     }
 }

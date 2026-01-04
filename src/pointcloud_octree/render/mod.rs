@@ -1,38 +1,40 @@
 pub mod data;
 pub mod draw;
+pub mod prepare;
 // pub mod node;
 pub mod phase;
 
 pub mod attribute_pass;
 pub mod depth_pass;
 
-use crate::pointcloud_octree::component::PointCloudOctree3d;
-use crate::pointcloud_octree::render::data::{
-    prepare_point_cloud_octree_3d_uniform, PointCloudOctree3dUniformLayout,
-};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_render::extract_component::ExtractComponentPlugin;
 use bevy_render::{Render, RenderApp, RenderSystems};
+use data::{prepare_point_cloud_octree_3d_uniform, PointCloudOctree3dUniformLayout};
+use prepare::{
+    prepare_octree_nodes_mapping_buffers, prepare_visible_nodes_texture, prepare_visible_nodes_texture_bind_group,
+    OctreeNodesMappingBindGroups,
+    VisibleNodesTextureLayout,
+};
 
 pub struct RenderPointCloudOctreePlugin;
 
 impl Plugin for RenderPointCloudOctreePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(ExtractComponentPlugin::<PointCloudOctree3d>::default());
-
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
 
         render_app
-            // .add_systems(
-            //     ExtractSchedule,
-            //     (extract_visible_point_cloud_octree_3d_nodes.after(extract_cameras),),
-            // )
             .add_systems(
                 Render,
-                (prepare_point_cloud_octree_3d_uniform.in_set(RenderSystems::PrepareResources),),
+                (
+                    prepare_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
+                    prepare_octree_nodes_mapping_buffers.in_set(RenderSystems::PrepareBindGroups),
+                    prepare_visible_nodes_texture_bind_group
+                        .in_set(RenderSystems::PrepareBindGroups),
+                    prepare_point_cloud_octree_3d_uniform.in_set(RenderSystems::PrepareResources),
+                ),
             );
 
         app.add_plugins((
@@ -46,37 +48,7 @@ impl Plugin for RenderPointCloudOctreePlugin {
             return;
         };
         render_app.init_resource::<PointCloudOctree3dUniformLayout>();
+        render_app.init_resource::<VisibleNodesTextureLayout>();
+        render_app.init_resource::<OctreeNodesMappingBindGroups>();
     }
 }
-
-// fn extract_visible_point_cloud_octree_3d_nodes(
-//     mut commands: Commands,
-//     query: Extract<
-//         Query<(
-//             Entity,
-//             RenderEntity,
-//             &Camera,
-//             &VisiblePointCloudOctree3dNodes,
-//         )>,
-//     >,
-//     mapper: Extract<Query<&RenderEntity>>,
-// ) {
-//     for (_entity, render_entity, camera, visible_point_cloud_octree_3d_nodes) in query.iter() {
-//         let render_visible_point_cloud_octree_3d_nodes = RenderVisiblePointCloudOctree3dNodes {
-//             octrees: visible_point_cloud_octree_3d_nodes
-//                 .nodes
-//                 .clone()
-//                 .into_iter()
-//                 .map(|(entity, nodes)| {
-//                     let render_entity = mapper
-//                         .get(entity)
-//                         .expect("Render entity for PointCloudOctree3d not found");
-//                     (render_entity.id(), nodes)
-//                 })
-//                 .collect(),
-//         };
-//         commands
-//             .entity(render_entity)
-//             .insert(render_visible_point_cloud_octree_3d_nodes);
-//     }
-// }

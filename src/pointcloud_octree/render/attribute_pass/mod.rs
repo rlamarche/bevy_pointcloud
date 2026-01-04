@@ -1,13 +1,15 @@
 pub mod node;
 pub mod phase;
 
-use crate::octree::visibility::{RenderVisibleOctreeNodes, VisibleOctreeNode};
 use crate::pointcloud_octree::component::PointCloudOctree3d;
-use crate::pointcloud_octree::render::attribute_pass::node::AttributePassOctreeLabel;
-use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
-use crate::pointcloud_octree::render::depth_pass::node::DepthPassOctreeLabel;
-use crate::pointcloud_octree::render::draw::{DrawPointCloudOctreeNode, SetPointCloudOctreeNodeUniformGroup};
-use crate::pointcloud_octree::render::phase::PointCloudOctree3dBinKey;
+use super::attribute_pass::node::AttributePassOctreeLabel;
+use super::data::SetPointCloudOctree3dUniformGroup;
+use super::depth_pass::node::DepthPassOctreeLabel;
+use super::draw::{DrawPointCloudOctreeNode, SetPointCloudOctreeNodeUniformGroup};
+use super::phase::PointCloudOctree3dBinKey;
+use super::prepare::{SetVisibleNodesTexture, SetVisibleOctreeUniformGroup};
+use crate::octree::extract::{RenderVisibleOctreeNodes, VisibleOctreeNode};
+use crate::pointcloud_octree::asset::data::PointCloudNodeData;
 use crate::render::attribute_pass::pipeline::{AttributePassPipeline, AttributePipelineKey};
 use crate::render::attribute_pass::texture::prepare_attribute_pass_bind_groups;
 use crate::render::material::SetPointCloudMaterialGroup;
@@ -28,14 +30,12 @@ use bevy_render::render_resource::{PipelineCache, SpecializedRenderPipelines};
 use bevy_render::sync_world::MainEntity;
 use bevy_render::view::{ExtractedView, NoIndirectDrawing};
 use bevy_render::{
-    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
-    prelude::*,
-    render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline},
-    view::RetainedViewEntity,
+    prelude::*, render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline}, view::RetainedViewEntity, Extract, ExtractSchedule,
+    Render,
+    RenderApp,
+    RenderSystems,
 };
 use phase::PointCloudOctree3dAttributePhase;
-use crate::pointcloud_octree::asset::PointCloudNodeData;
-use crate::pointcloud_octree::visible_nodes_texture::{SetVisibleNodesTexture, SetVisibleOctreeUniformGroup};
 
 pub struct AttributePassPlugin;
 impl Plugin for AttributePassPlugin {
@@ -125,7 +125,11 @@ fn queue_attribute_pass(
     custom_draw_pipeline: Res<AttributePassPipeline>,
     point_cloud_octrees_3d: Query<&PointCloudOctree3d>,
     mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloudOctree3dAttributePhase>>,
-    mut views: Query<(&ExtractedView, &RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>, &Msaa)>,
+    mut views: Query<(
+        &ExtractedView,
+        &RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>,
+        &Msaa,
+    )>,
     main_entities: Query<&MainEntity>,
     mut next_tick: Local<Tick>,
 ) {

@@ -1,11 +1,8 @@
 use crate::point_cloud::{PointCloud, PointCloud3d};
 use crate::point_cloud_material::PointCloudMaterial;
-use crate::pointcloud_octree::PointCloudOctreePlugin;
-#[cfg(feature = "potree")]
-use crate::potree::PotreePlugin;
 use bevy_app::prelude::*;
 use bevy_asset::AssetApp;
-use bevy_camera::visibility::{Visibility, VisibilityClass, add_visibility_class};
+use bevy_camera::visibility::{add_visibility_class, Visibility, VisibilityClass};
 use bevy_ecs::prelude::*;
 
 pub mod loader;
@@ -13,11 +10,10 @@ pub mod octree;
 pub mod point_cloud;
 pub mod point_cloud_material;
 pub mod pointcloud_octree;
-#[cfg(feature = "potree")]
-pub mod potree;
 pub mod prelude;
 pub mod render;
-pub mod new_potree;
+#[cfg(feature = "potree")]
+pub mod potree;
 
 pub struct PointCloudPlugin;
 
@@ -32,11 +28,6 @@ impl Plugin for PointCloudPlugin {
             .register_asset_reflect::<PointCloud>()
             .register_asset_reflect::<PointCloudMaterial>();
         app.add_plugins(render::RenderPipelinePlugin);
-
-        app.add_plugins(PointCloudOctreePlugin);
-
-        #[cfg(feature = "potree")]
-        app.add_plugins(PotreePlugin);
 
         app.world_mut()
             .register_component_hooks::<PointCloud3d>()

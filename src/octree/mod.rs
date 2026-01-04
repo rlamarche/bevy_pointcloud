@@ -1,33 +1,33 @@
-use crate::octree::asset::Octree;
-use bevy_app::{App, Plugin};
-use bevy_asset::AssetApp;
-use bevy_reflect::TypePath;
-use std::marker::PhantomData;
-
 pub mod asset;
-pub mod render_asset;
+
+pub mod hierarchy;
+pub mod loader;
+pub mod node;
+pub mod server;
+pub mod visibility;
+pub mod extract;
 pub mod storage;
 
-pub mod visibility;
-pub mod new_asset;
+use asset::Octree;
 
-pub struct OctreeAssetPlugin<T>(PhantomData<T>)
-where
-    T: Send + Sync + TypePath;
+use bevy_app::{App, Plugin};
+use bevy_asset::AssetApp;
+use hierarchy::HierarchyNodeData;
+use node::NodeData;
+use std::marker::PhantomData;
+use bevy_ecs::prelude::Component;
+use bevy_reflect::TypePath;
 
-impl<T> Default for OctreeAssetPlugin<T> where T: Send + Sync + TypePath {
+pub struct OctreeAssetPlugin<T>(PhantomData<fn() -> T>);
+
+impl<T> Default for OctreeAssetPlugin<T> {
     fn default() -> Self {
         OctreeAssetPlugin(PhantomData)
     }
 }
-
-impl<T> Plugin for OctreeAssetPlugin<T>
-where
-    T: Send + Sync + TypePath,
+impl<T: NodeData> Plugin for OctreeAssetPlugin<T>
 {
     fn build(&self, app: &mut App) {
-        app
-            .init_asset::<Octree<T>>()
-            .register_asset_reflect::<Octree<T>>();
+        app.init_asset::<Octree<T>>();
     }
 }

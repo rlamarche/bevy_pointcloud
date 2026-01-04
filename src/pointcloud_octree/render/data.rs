@@ -55,7 +55,7 @@ pub fn prepare_point_cloud_octree_3d_uniform<'w>(
                 &mut material,
             )
             .expect("Unable to build bind group from PointCloudUniform.");
-
+        
         commands
             .entity(entity)
             .insert(PreparedPointCloudOctree3dUniform { prepared });

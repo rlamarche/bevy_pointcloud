@@ -10,7 +10,6 @@ pub mod phase;
 pub mod point_cloud;
 pub mod point_cloud_uniform;
 mod draw;
-mod node;
 
 use crate::point_cloud::PointCloud3d;
 use crate::render::eye_dome_lighting::{
