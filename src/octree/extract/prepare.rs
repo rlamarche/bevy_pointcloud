@@ -43,7 +43,7 @@ pub trait RenderOctreeNode: Send + Sync + Sized + 'static {
         unused_variables,
         reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
     )]
-    fn byte_len(_source_node: &RenderOctreeNodeData<Self::ExtractedOctreeNode>) -> Option<usize> {
+    fn byte_len(source_node: &RenderOctreeNodeData<Self::ExtractedOctreeNode>) -> Option<usize> {
         None
     }
 

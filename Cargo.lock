@@ -4700,6 +4700,7 @@ dependencies = [
  "serde_json",
  "slab",
  "thiserror 2.0.17",
+ "tokio",
  "tracing",
  "url",
  "wasm-bindgen",

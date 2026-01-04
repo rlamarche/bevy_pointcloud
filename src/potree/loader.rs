@@ -1,4 +1,4 @@
-use crate::octree::hierarchy::{HierarchyNodeStatus, HierarchyOctreeNode};
+use crate::octree::hierarchy::HierarchyNodeStatus;
 use crate::octree::loader::{LoadedHierarchyNode, OctreeLoader};
 use crate::pointcloud_octree::asset::data::PointCloudNodeData;
 use async_trait::async_trait;
@@ -7,17 +7,17 @@ use bevy_ecs::error::BevyError;
 use bevy_log::prelude::*;
 use bevy_reflect::TypePath;
 use potree::metadata::Points;
-use potree::octree::node::{FlatOctreeNode, NodeType};
-use potree::prelude::FlatHierarchy;
+use potree::octree::node::{NodeType, OctreeNode as PotreeOctreeNode};
+use potree::prelude::Hierarchy;
 use potree::resource::ResourceLoader;
 
 #[derive(TypePath)]
 pub struct PotreeLoader {
-    pub(crate) hierarchy: FlatHierarchy,
+    pub(crate) hierarchy: Hierarchy,
 }
 
 #[derive(Clone, TypePath)]
-pub struct PotreeHierarchy(pub(crate) FlatOctreeNode);
+pub struct PotreeHierarchy(pub(crate) PotreeOctreeNode);
 
 #[async_trait]
 impl OctreeLoader<PointCloudNodeData> for PotreeLoader {
@@ -25,7 +25,7 @@ impl OctreeLoader<PointCloudNodeData> for PotreeLoader {
     type Error = BevyError;
 
     async fn from_url(url: &str) -> Result<Self, Self::Error> {
-        let hierarchy = FlatHierarchy::from_url(url, ResourceLoader::new()).await?;
+        let hierarchy = Hierarchy::from_url(url, ResourceLoader::new()).await?;
 
         Ok(PotreeLoader { hierarchy })
     }
@@ -72,8 +72,8 @@ impl OctreeLoader<PointCloudNodeData> for PotreeLoader {
     }
 }
 
-impl From<FlatOctreeNode> for LoadedHierarchyNode<PotreeHierarchy> {
-    fn from(value: FlatOctreeNode) -> Self {
+impl From<PotreeOctreeNode> for LoadedHierarchyNode<PotreeHierarchy> {
+    fn from(value: PotreeOctreeNode) -> Self {
         Self {
             status: match value.node_type {
                 NodeType::Proxy => HierarchyNodeStatus::Proxy,
@@ -90,8 +90,8 @@ impl From<FlatOctreeNode> for LoadedHierarchyNode<PotreeHierarchy> {
     }
 }
 
-impl From<(&FlatOctreeNode, Points)> for PointCloudNodeData {
-    fn from((node, Points { points, density }): (&FlatOctreeNode, Points)) -> Self {
+impl From<(&PotreeOctreeNode, Points)> for PointCloudNodeData {
+    fn from((node, Points { points, density }): (&PotreeOctreeNode, Points)) -> Self {
         // magic formula from Potree
         let offset = (density as f32).log2() / 2.0 - 1.5;
 
