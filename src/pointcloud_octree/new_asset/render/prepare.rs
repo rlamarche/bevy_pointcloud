@@ -106,13 +106,6 @@ pub fn prepare_visible_nodes_texture(
     render_octrees: Res<RenderOctrees<RenderPointCloudNodeData>>,
 ) {
     const MAX_NODES_PER_OCTREE: usize = 2048;
-    const MAX_OCTREES: usize = 64;
-    const REQUIRED_BUFFER_SIZE: usize = MAX_NODES_PER_OCTREE * MAX_OCTREES;
-
-    // prepare the buffer only once
-    if visible_nodes_buffer.len() < REQUIRED_BUFFER_SIZE {
-        visible_nodes_buffer.resize(REQUIRED_BUFFER_SIZE, VisibleOctreeNodeUniform::default());
-    }
 
     for (entity, camera, extracted_view, msaa, visible_nodes) in &views_3d {
         if !point_cloud_octree_3d_attribute_phases
@@ -127,6 +120,19 @@ pub fn prepare_visible_nodes_texture(
             continue;
         };
 
+        let octrees_count = visible_nodes.octrees.len();
+
+        if octrees_count == 0 {
+            continue;
+        }
+
+        let required_buffer_size = octrees_count * MAX_NODES_PER_OCTREE;
+
+        // prepare the buffer only once
+        if visible_nodes_buffer.len() < required_buffer_size {
+            visible_nodes_buffer.resize(required_buffer_size, VisibleOctreeNodeUniform::default());
+        }
+
         let size = Extent3d {
             depth_or_array_layers: 1,
             width: physical_target_size.x,
@@ -137,8 +143,8 @@ pub fn prepare_visible_nodes_texture(
         let visible_nodes_texture = {
             // The size of the depth texture
             let size = Extent3d {
-                width: 2048, // max 2048 nodes per octree visible at the same time
-                height: 64,  // max 64 octrees visibles at the same time
+                width: MAX_NODES_PER_OCTREE as u32, // max 2048 nodes per octree visible at the same time
+                height: octrees_count as u32,  // max 64 octrees visibles at the same time
                 depth_or_array_layers: 1,
             };
 
@@ -163,10 +169,6 @@ pub fn prepare_visible_nodes_texture(
             let octree_index = render_octree_index
                 .get_octree_index(*entity)
                 .expect("octree index out of bounds");
-            if octree_index >= MAX_OCTREES {
-                warn!("Too many octrees, some will be ignored.");
-                break 'main_loop;
-            }
 
             let node_mapping = &mut node_index[octree_index];
 
@@ -253,11 +255,11 @@ pub fn prepare_visible_nodes_texture(
             TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some((MAX_NODES_PER_OCTREE * 4) as u32), // 4 bytes par texel RGBA8Uint
-                rows_per_image: Some(MAX_OCTREES as u32),
+                rows_per_image: Some(octrees_count as u32),
             },
             Extent3d {
                 width: MAX_NODES_PER_OCTREE as u32,
-                height: MAX_OCTREES as u32,
+                height: octrees_count as u32,
                 depth_or_array_layers: 1,
             },
         );
