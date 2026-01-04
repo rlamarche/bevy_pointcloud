@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="en">
 
-<body style="margin: 0px;">
+<body style="margin: 0;">
 <script type="module">
     import init from './bevy_pointcloud.js'
 
     init().catch((error) => {
-        if (!error.message.startsWith("Using exceptions for control flow, don't mind me. This isn't actually an error!")) {
+        if (!error.message.startsWith("Cursed hack to keep workers alive. See https://github.com/rustwasm/wasm-bindgen/issues/2945")) {
             throw error;
         }
     });

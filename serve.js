@@ -13,5 +13,5 @@ app.use((req, res, next) => {
 app.use(express.static(__dirname));
 
 app.listen(8080, () => {
-    console.log('Server started on http://localhost:8080');
+    console.log('Server started on http://localhost:8080/wasm/');
 });

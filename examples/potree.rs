@@ -11,10 +11,12 @@ use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pointcloud::PointCloudPlugin;
 use bevy_pointcloud::octree::visibility::components::OctreesVisibility;
 use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
-use bevy_pointcloud::pointcloud_octree::{PointCloudOctreePlugin, PointCloudOctreeVisibilityPlugin};
 use bevy_pointcloud::pointcloud_octree::asset::PointCloudOctree;
-use bevy_pointcloud::pointcloud_octree::component::PointCloudOctree3d;
 use bevy_pointcloud::pointcloud_octree::asset::data::PointCloudNodeData;
+use bevy_pointcloud::pointcloud_octree::component::PointCloudOctree3d;
+use bevy_pointcloud::pointcloud_octree::{
+    PointCloudOctreePlugin, PointCloudOctreeVisibilityPlugin,
+};
 use bevy_pointcloud::potree::{PotreeServer, PotreeServerPlugin};
 use bevy_pointcloud::render::PointCloudRenderMode;
 use bevy_render::view::NoIndirectDrawing;
@@ -133,8 +135,7 @@ fn update_ui(
     query: Query<Entity, With<TimedText>>,
 ) {
     for entity in &query {
-        if let Some(time) =
-            diagnostic.get(&PointCloudOctreeVisibilityPlugin::VISIBILITY_CHECK_TIME)
+        if let Some(time) = diagnostic.get(&PointCloudOctreeVisibilityPlugin::VISIBILITY_CHECK_TIME)
             && let Some(value) = time.smoothed()
         {
             *writer.text(entity, 1) = format!("{value:.2}");
@@ -158,8 +159,7 @@ fn load_pointcloud(
     });
     commands.spawn(MyMaterial(my_material.clone()));
 
-    let octree_handle =
-        octree_server.load_octree("file:///home/romain/Documents/Potree/Messerschmitt".to_string());
+    let octree_handle = octree_server.load_octree("assets/potree/heidentor".to_string());
 
     commands.spawn((
         PointCloudOctree3d(octree_handle),

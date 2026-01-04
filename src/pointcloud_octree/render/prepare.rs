@@ -340,7 +340,8 @@ impl FromWorld for OctreeNodesMappingBindGroups {
             .wgpu_device()
             .limits()
             .min_uniform_buffer_offset_alignment
-            as usize;
+            as usize * 2; // for android compat we multiply by 2
+        // TODO: create a special case ?
         let max_nodes_per_buffer = BUFFER_SIZE / min_uniform_buffer_offset_alignment;
         let nb_buffers = MAX_NODES / max_nodes_per_buffer;
 

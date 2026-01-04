@@ -30,7 +30,7 @@ use stack::*;
 use std::any::TypeId;
 use std::collections::{BinaryHeap, VecDeque};
 use std::marker::PhantomData;
-use std::time::Instant;
+use bevy_platform::time::Instant;
 
 pub struct OctreeVisiblityPlugin<T, C, A>(PhantomData<fn() -> (T, C, A)>);
 

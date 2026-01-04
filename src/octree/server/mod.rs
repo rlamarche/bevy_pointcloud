@@ -1,5 +1,6 @@
 pub mod process;
 pub mod resources;
+mod task;
 
 use super::asset::Octree;
 use super::hierarchy::{
@@ -16,13 +17,13 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use bevy_log::prelude::*;
 use bevy_platform::collections::HashMap;
-use bevy_tasks::IoTaskPool;
 use crossbeam::channel::{Receiver, Sender};
 use process::process_octree_load_tasks;
 use resources::OctreeLoadTasks;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use thiserror::Error;
+use crate::octree::server::task::spawn_async_task;
 
 pub struct OctreeServerPlugin<L, T, C, A>(PhantomData<fn() -> (L, T, C, A)>);
 
@@ -239,7 +240,7 @@ where
         let owned_handle = handle.clone();
 
         let data = self.data.clone();
-        let task = IoTaskPool::get().spawn(async move {
+        let task = spawn_async_task(async move {
             if let Err(err) = data.load_internal(&url, owned_handle).await {
                 error!("{}", err);
             }
@@ -270,7 +271,7 @@ where
         };
         let data = self.data.clone();
 
-        let task = IoTaskPool::get().spawn(async move {
+        let task = spawn_async_task(async move {
             if let Err(err) = data
                 .load_sub_hierarchy_internal(asset_id, loader, &hierarchy_octree_node)
                 .await
@@ -304,7 +305,7 @@ where
         };
         let data = self.data.clone();
 
-        let task = IoTaskPool::get().spawn(async move {
+        let task = spawn_async_task(async move {
             if let Err(err) = data
                 .load_node_data_internal(asset_id, loader, &hierarchy_octree_node)
                 .await
@@ -476,7 +477,7 @@ where
         };
         let data = self.server.data.clone();
 
-        let task = IoTaskPool::get().spawn(async move {
+        let task = spawn_async_task(async move {
             if let Err(err) = data
                 .load_sub_hierarchy_internal(asset_id, loader, &hierarchy_octree_node)
                 .await

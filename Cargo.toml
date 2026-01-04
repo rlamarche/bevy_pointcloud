@@ -11,6 +11,16 @@ resolver = "2"
 name = "potree"
 required-features = ["potree", "potree_fs"]
 
+[[example]]
+path = "examples/potree_wasm.rs"
+name = "potree_wasm"
+required-features = ["potree_wasm"]
+
+[[example]]
+path = "examples/potree_wasm.rs"
+name = "potree_wasm_worker"
+required-features = ["potree_wasm_worker"]
+
 [lib]
 name = "bevy_pointcloud"
 crate-type = ["lib"]
@@ -78,7 +88,7 @@ bevy_panorbit_camera = "0.29"
 bevy-inspector-egui = "0.35.0"
 
 [features]
-default = []
+default = ["las", "ply"]
 multi_threaded = []
 webgl = [
     "bevy_core_pipeline/webgl",
@@ -92,6 +102,7 @@ las = ["dep:las"]
 potree = ["dep:potree"]
 potree_reqwest = ["potree/reqwest"]
 potree_ehttp = ["potree/ehttp"]
+potree_ehttp_local = ["potree/ehttp_local"]
 potree_wasm = ["potree/wasm"]
 potree_wasm_worker = ["potree/wasm_worker", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:wasm_thread"]
 potree_fs = ["potree/fs"]
@@ -121,6 +132,7 @@ inherits = "release"
 # Optimize with size in mind (also try "z", sometimes it is better).
 # Slightly slows compile times, great improvements to file size and runtime performance.
 opt-level = "s"
+lto = true
 # Strip all debugging information from the binary to slightly reduce file size.
 strip = "debuginfo"
 
