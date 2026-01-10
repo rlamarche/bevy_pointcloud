@@ -11,7 +11,6 @@ use crate::octree::extract::render_asset::RenderOctreeNodeData;
 pub(crate) use crate::octree::visibility::components::{
     OctreesVisibility, VisibleOctreeNode,
 };
-use crate::point_cloud_material::PointCloudMaterial3d;
 use bevy_app::prelude::*;
 use bevy_asset::{AssetId, Assets};
 use bevy_camera::visibility::ViewVisibility;

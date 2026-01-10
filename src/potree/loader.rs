@@ -1,11 +1,9 @@
-use std::cell::LazyCell;
 use crate::octree::hierarchy::HierarchyNodeStatus;
 use crate::octree::loader::{LoadedHierarchyNode, OctreeLoader};
 use crate::pointcloud_octree::asset::data::PointCloudNodeData;
 use async_trait::async_trait;
 use bevy_camera::primitives::Aabb;
 use bevy_ecs::error::BevyError;
-use bevy_log::prelude::*;
 use bevy_reflect::TypePath;
 use potree::metadata::Points;
 use potree::octree::node::{NodeType, OctreeNode as PotreeOctreeNode};

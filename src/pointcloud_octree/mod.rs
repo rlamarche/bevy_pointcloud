@@ -11,7 +11,6 @@ use crate::pointcloud_octree::asset::data::PointCloudNodeData;
 use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
 use asset::extract::{PointCloudOctreeExtraction, PointCloudOctreeNodeUniformLayout};
 use bevy_app::{App, Plugin};
-use bevy_ecs::prelude::*;
 use bevy_render::RenderApp;
 use component::PointCloudOctree3d;
 use render::RenderPointCloudOctreePlugin;

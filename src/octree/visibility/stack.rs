@@ -1,5 +1,5 @@
 use crate::octree::asset::Octree;
-use crate::octree::node::{NodeData, OctreeNode};
+use crate::octree::node::NodeData;
 use bevy_ecs::prelude::*;
 use ordered_float::OrderedFloat;
 use std::cmp::Ordering;

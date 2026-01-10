@@ -1,5 +1,4 @@
 use crate::octree::asset::Octree;
-use crate::octree::hierarchy::HierarchyNodeData;
 use crate::octree::node::{NodeData, OctreeNode};
 use crate::octree::storage::NodeId;
 use bevy_asset::AssetId;

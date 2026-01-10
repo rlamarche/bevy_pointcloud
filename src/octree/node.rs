@@ -1,4 +1,4 @@
-use crate::octree::hierarchy::{HierarchyNodeData, HierarchyOctreeNode};
+use crate::octree::hierarchy::HierarchyOctreeNode;
 use bevy_reflect::TypePath;
 
 pub trait NodeData: Send + Sync + TypePath {}

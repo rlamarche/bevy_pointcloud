@@ -11,10 +11,9 @@ use bevy_color::palettes::basic::{RED, SILVER};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pointcloud::PointCloudPlugin;
 use bevy_pointcloud::loader::las::LasLoaderPlugin;
-use bevy_pointcloud::point_cloud::{PointCloud, PointCloud3d, PointCloudData};
+use bevy_pointcloud::point_cloud::{PointCloud, PointCloud3d};
 use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
 use bevy_pointcloud::render::PointCloudRenderMode;
-use rand::Rng;
 use std::ops::Neg;
 #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
 use bevy::window::PresentMode;
@@ -58,10 +57,12 @@ fn main() {
 }
 
 fn setup_window(mut windows: Query<&mut Window>) {
+    #[allow(unused, unused_mut)]
     let mut window = windows.single_mut().unwrap();
+
     #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
     {
-        window.present_mode = PresentMode::Fifo;
+        window.present_mode = PresentMode::Mailbox;
     }
 }
 
@@ -133,7 +134,7 @@ struct MainPointCloud;
 fn load_pointcloud(
     mut commands: Commands,
     mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
-    mut point_clouds: ResMut<Assets<PointCloud>>,
+    _point_clouds: ResMut<Assets<PointCloud>>,
     asset_server: Res<AssetServer>,
 ) {
     let my_material = point_cloud_materials.add(PointCloudMaterial {
@@ -238,7 +239,7 @@ fn center_point_cloud(
         (aabb.center.neg() + Vec3A::new(0.0, aabb.half_extents.y, 0.0)).into(),
     );
 
-    let (mut camera_transform, mut pan_orbit_camera) = camera.single_mut().unwrap();
+    let (camera_transform, mut pan_orbit_camera) = camera.single_mut().unwrap();
 
     let target_focus = Vec3::new(0.0, aabb.half_extents.y, 0.0);
     let (yaw, pitch, radius) = calculate_from_translation_and_focus(

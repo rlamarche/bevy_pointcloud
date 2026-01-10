@@ -1,9 +1,7 @@
 use super::super::asset::Octree;
-use super::super::hierarchy::{
-    HierarchyNode, HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode,
-};
+use super::super::hierarchy::HierarchyNodeStatus;
 use super::super::loader::OctreeLoader;
-use super::super::node::{NodeData, NodeStatus, OctreeNode};
+use super::super::node::{NodeData, NodeStatus};
 use super::resources::{OctreeLoadTasks, WeightedOctreeNodeLoadTask};
 use super::OctreeServer;
 use bevy_asset::prelude::*;

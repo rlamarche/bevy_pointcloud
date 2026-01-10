@@ -16,11 +16,10 @@ use bevy_ecs::{
 use bevy_reflect::TypePath;
 use bevy_render::render_resource::binding_types::uniform_buffer;
 use bevy_render::render_resource::{
-    BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, Buffer, BufferInitDescriptor,
-    BufferUsages, PreparedBindGroup, ShaderStages, ShaderType, UniformBuffer,
+    BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, BufferInitDescriptor,
+    BufferUsages, ShaderStages, UniformBuffer,
 };
 use bevy_render::renderer::{RenderDevice, RenderQueue};
-use bytemuck::{Pod, Zeroable};
 
 #[derive(TypePath)]
 pub struct PointCloudOctreeExtraction;

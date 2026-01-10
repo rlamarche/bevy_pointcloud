@@ -1,18 +1,11 @@
-use super::asset::data::{PointCloudNodeData, PointData};
-use bevy_asset::AssetId;
-use bevy_ecs::query::QueryItem;
-use bevy_ecs::{
-    prelude::*,
-    system::{lifetimeless::SRes, SystemParamItem},
-};
+use bevy_ecs::prelude::*;
 use bevy_math::Vec3;
 use bevy_reflect::TypePath;
 use bevy_render::render_resource::binding_types::uniform_buffer;
 use bevy_render::render_resource::{
-    BindGroup, BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, Buffer,
-    BufferInitDescriptor, BufferUsages, PreparedBindGroup, ShaderStages, ShaderType, UniformBuffer,
+    BindGroup, BindGroupLayout, BindGroupLayoutEntries, Buffer, PreparedBindGroup, ShaderStages, ShaderType, UniformBuffer,
 };
-use bevy_render::renderer::{RenderDevice, RenderQueue};
+use bevy_render::renderer::RenderDevice;
 use bytemuck::{Pod, Zeroable};
 
 #[derive(ShaderType, Pod, Zeroable, Clone, Copy)]

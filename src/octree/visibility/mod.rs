@@ -77,7 +77,7 @@ where
 
 pub fn check_octree_nodes_visibility<T, C, A>(
     mut diagnostics: Diagnostics,
-    time: Res<Time<Real>>,
+    _time: Res<Time<Real>>,
     entities: Query<(&C, &GlobalTransform)>,
     // TODO add a way to disable checking of a camera
     mut views: Query<(

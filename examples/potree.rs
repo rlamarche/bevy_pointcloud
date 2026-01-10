@@ -1,10 +1,7 @@
 #[path = "helpers/camera_controller.rs"]
 mod camera_controller;
 
-use bevy::dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig};
 use bevy::prelude::*;
-use bevy::text::FontSmoothing;
-use bevy::window::PresentMode;
 use bevy_color::palettes::basic::{GREEN, RED};
 use bevy_diagnostic::DiagnosticsStore;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
@@ -18,6 +15,12 @@ use bevy_pointcloud::pointcloud_octree::{PointCloudOctreePlugin, PointCloudOctre
 use bevy_pointcloud::render::PointCloudRenderMode;
 use bevy_render::view::NoIndirectDrawing;
 use std::ops::Mul;
+#[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
+use bevy::dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig};
+#[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
+use bevy::text::FontSmoothing;
+#[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
+use bevy::window::PresentMode;
 use bevy_pointcloud::potree::loader::PotreeLoader;
 
 fn main() {
@@ -71,6 +74,7 @@ fn main() {
 }
 
 fn setup_window(mut windows: Query<&mut Window>) {
+    #[allow(unused, unused_mut)]
     let mut window = windows.single_mut().unwrap();
 
     #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]

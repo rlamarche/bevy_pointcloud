@@ -10,7 +10,6 @@ use bevy_pointcloud::pointcloud_octree::component::PointCloudOctree3d;
 use bevy_pointcloud::pointcloud_octree::{PointCloudOctreePlugin, PointCloudOctreeServer, PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin};
 use bevy_pointcloud::render::PointCloudRenderMode;
 use bevy_render::view::NoIndirectDrawing;
-use std::ops::Mul;
 use bevy_pointcloud::potree::loader::PotreeLoader;
 
 fn main() {

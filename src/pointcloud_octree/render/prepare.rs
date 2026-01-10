@@ -103,7 +103,7 @@ pub fn prepare_visible_nodes_texture(
     mut visible_nodes_buffer: Local<Vec<VisibleOctreeNodeUniform>>,
     render_octrees: Res<RenderOctrees<RenderPointCloudNodeData>>,
 ) {
-    for (entity, camera, extracted_view, msaa, visible_nodes) in &views_3d {
+    for (entity, camera, extracted_view, _msaa, visible_nodes) in &views_3d {
         if !point_cloud_octree_3d_attribute_phases
             .contains_key(&extracted_view.retained_view_entity)
             || !point_cloud_octree_3d_depth_phases
@@ -473,7 +473,7 @@ pub fn prepare_visible_nodes_texture_bind_group(
     // render_queue: Res<RenderQueue>,
     views: Query<(Entity, &VisibleNodesTexture, &Msaa)>,
 ) {
-    for (entity, prepass_textures, msaa) in &views {
+    for (entity, prepass_textures, _msaa) in &views {
         let Some(texture) = &prepass_textures.visible_nodes else {
             warn!("No visible nodes pass texture for {}", entity);
             continue;
@@ -582,7 +582,7 @@ impl<P: PhaseItem + PointCloudOctree3dPhase, const I: usize> RenderCommand<P>
             return RenderCommandResult::Skip;
         };
 
-        let Some(octree) = render_octrees.get(point_cloud_octree_3d) else {
+        let Some(_octree) = render_octrees.get(point_cloud_octree_3d) else {
             warn!("Missing octree when render");
             return RenderCommandResult::Skip;
         };

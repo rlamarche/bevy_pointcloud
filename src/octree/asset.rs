@@ -1,4 +1,4 @@
-use super::hierarchy::{HierarchyNode, HierarchyNodeData, HierarchyOctreeNode};
+use super::hierarchy::{HierarchyNode, HierarchyOctreeNode};
 use super::node::{NodeData, NodeStatus, OctreeNode};
 use crate::octree::storage::{GenerationalSlab, NodeId};
 use bevy_asset::Asset;

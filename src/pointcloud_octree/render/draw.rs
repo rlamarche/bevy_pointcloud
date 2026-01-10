@@ -87,7 +87,7 @@ impl<P: PhaseItem + PointCloudOctree3dPhase, const I: usize> RenderCommand<P>
         item: &P,
         _: ROQueryItem<'w, '_, Self::ViewQuery>,
         point_cloud_octree_3d: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
-        (render_octrees, render_queue): SystemParamItem<'w, '_, Self::Param>,
+        (render_octrees, _render_queue): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         let render_octrees = render_octrees.into_inner();
