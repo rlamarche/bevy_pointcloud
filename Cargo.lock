@@ -1232,8 +1232,6 @@ dependencies = [
 name = "bevy_pointcloud"
 version = "0.1.0"
 dependencies = [
- "async-channel",
- "async-lock",
  "async-trait",
  "bevy",
  "bevy-inspector-egui",
@@ -1255,7 +1253,6 @@ dependencies = [
  "bevy_platform",
  "bevy_reflect",
  "bevy_render",
- "bevy_rich_text3d",
  "bevy_shader",
  "bevy_tasks",
  "bevy_time",
@@ -1263,14 +1260,12 @@ dependencies = [
  "bevy_utils",
  "bytemuck",
  "crossbeam",
- "futures",
  "getrandom 0.3.4",
  "las",
- "nonmax",
  "ordered-float 5.1.0",
- "parking_lot",
  "ply-rs",
  "potree",
+ "priority-queue",
  "rand",
  "serde",
  "slab",
@@ -1417,20 +1412,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "bevy_rich_text3d"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4d2a20437b6f1c9ef6371b0ff07731d42b565ce4713c4244c84d36c3e65f497"
-dependencies = [
- "bevy",
- "cosmic-text",
- "rustc-hash 2.1.1",
- "sys-locale",
- "thiserror 2.0.17",
- "zeno",
 ]
 
 [[package]]
@@ -4822,6 +4803,17 @@ name = "presser"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8cf8e6a8aa66ce33f63993ffc4ea4271eb5b0530a9002db8455ea6050c77bfa"
+
+[[package]]
+name = "priority-queue"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93980406f12d9f8140ed5abe7155acb10bb1e69ea55c88960b9c2f117445ef96"
+dependencies = [
+ "equivalent",
+ "indexmap",
+ "serde",
+]
 
 [[package]]
 name = "proc-macro-crate"

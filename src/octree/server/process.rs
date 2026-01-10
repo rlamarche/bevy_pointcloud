@@ -53,7 +53,7 @@ fn process_hierarchy_loads<L, T>(
 {
     while load_tasks.hierarchy_in_flight.len() < max_concurrent {
         // Pop highest weight task
-        let Some(task) = load_tasks.hierarchy_heap.pop() else {
+        let Some((task, ..)) = load_tasks.hierarchy_heap.pop() else {
             break; // no more tasks
         };
 
@@ -106,7 +106,7 @@ fn process_node_data_loads<L, T>(
 {
     while load_tasks.node_in_flight.len() < max_concurrent {
         // Pop highest weight task
-        let Some(task) = load_tasks.node_heap.pop() else {
+        let Some((task, ..)) = load_tasks.node_heap.pop() else {
             break; // no more tasks
         };
 
