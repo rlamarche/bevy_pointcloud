@@ -8,12 +8,11 @@ use super::hierarchy::HierarchyNodeStatus;
 use super::node::{NodeData, NodeStatus, OctreeNode};
 use super::server::resources::{LoadRequestType, OctreeLoadTasks};
 use crate::octree::storage::NodeId;
-use bevy_app::{App, Plugin, PreUpdate};
+use bevy_app::{App, Plugin, PostUpdate};
 use bevy_asset::{AssetId, Assets};
 use bevy_camera::primitives::{Aabb, Frustum};
-use bevy_camera::visibility::{
-    Visibility, VisibilityClass, VisibleEntities, add_visibility_class, check_visibility,
-};
+use bevy_camera::visibility::VisibilitySystems::CheckVisibility;
+use bevy_camera::visibility::{Visibility, VisibilityClass, VisibleEntities, add_visibility_class};
 use bevy_camera::{Camera, Projection};
 use bevy_diagnostic::{
     DEFAULT_MAX_HISTORY_LENGTH, Diagnostic, DiagnosticPath, Diagnostics, RegisterDiagnostic,
@@ -25,6 +24,7 @@ use bevy_platform::collections::HashMap;
 use bevy_platform::time::Instant;
 use bevy_time::{Real, Time};
 use bevy_transform::prelude::*;
+use budget::OctreeNodesBudget;
 use components::*;
 use filter::*;
 use stack::*;
@@ -32,25 +32,35 @@ use std::any::TypeId;
 use std::collections::{BinaryHeap, VecDeque};
 use std::marker::PhantomData;
 
-pub struct OctreeVisiblityPlugin<T, C, A>(PhantomData<fn() -> (T, C, A)>);
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CheckOctreeNodesVisibility;
 
-impl<T, C, A> OctreeVisiblityPlugin<T, C, A> {
+pub struct OctreeVisiblityPlugin<T, C, F = ScreenPixelRadiusFilter, B = ()>(
+    PhantomData<fn() -> (T, C, F, B)>,
+);
+
+impl<T, C, F, B> OctreeVisiblityPlugin<T, C, F, B> {
     /// Visibility check diagnostic
     pub const VISIBILITY_CHECK_TIME: DiagnosticPath =
         DiagnosticPath::const_new("pcl_octree_visibility_check");
+
+    /// Budget diagnostic
+    pub const BUDGET: DiagnosticPath =
+        DiagnosticPath::const_new("pcl_octree_budget");
 }
 
-impl<T, C, A> Default for OctreeVisiblityPlugin<T, C, A> {
+impl<T, C, F, B> Default for OctreeVisiblityPlugin<T, C, F, B> {
     fn default() -> Self {
         OctreeVisiblityPlugin(PhantomData)
     }
 }
-impl<T, C, A> Plugin for OctreeVisiblityPlugin<T, C, A>
+impl<T, C, F, B> Plugin for OctreeVisiblityPlugin<T, C, F, B>
 where
     T: NodeData,
     C: Component,
     for<'a> &'a C: Into<AssetId<Octree<T>>>,
-    A: Send + Sync + 'static,
+    F: OctreeNodesFilter<T>,
+    B: OctreeNodesBudget<T>,
 {
     fn build(&self, app: &mut App) {
         app.register_diagnostic(
@@ -59,14 +69,23 @@ where
                 .with_max_history_length(DEFAULT_MAX_HISTORY_LENGTH)
                 .with_smoothing_factor(2.0 / (DEFAULT_MAX_HISTORY_LENGTH as f64 + 1.0)),
         );
+        app.register_diagnostic(
+            Diagnostic::new(Self::BUDGET)
+                .with_suffix("ms")
+                .with_max_history_length(DEFAULT_MAX_HISTORY_LENGTH),
+        );
 
         app.register_required_components::<C, Visibility>()
             .register_required_components::<C, VisibilityClass>()
             .register_required_components::<Camera, OctreesVisibility<T, C>>()
             .init_resource::<OctreeLoadTasks<T>>()
             .add_systems(
-                PreUpdate,
-                check_octree_nodes_visibility::<T, C, A>.after(check_visibility),
+                PostUpdate,
+                check_octree_nodes_visibility::<T, C, F, B>.in_set(CheckOctreeNodesVisibility),
+            )
+            .configure_sets(
+                PostUpdate,
+                (CheckVisibility, CheckOctreeNodesVisibility).chain(),
             );
 
         app.world_mut()
@@ -75,7 +94,7 @@ where
     }
 }
 
-pub fn check_octree_nodes_visibility<T, C, A>(
+pub fn check_octree_nodes_visibility<T, C, F, B>(
     mut diagnostics: Diagnostics,
     _time: Res<Time<Real>>,
     entities: Query<(&C, &GlobalTransform)>,
@@ -86,6 +105,7 @@ pub fn check_octree_nodes_visibility<T, C, A>(
         &Frustum,
         &GlobalTransform,
         &Projection,
+        Option<&OctreeVisibilitySettings<T, F, B>>,
         &mut OctreesVisibility<T, C>,
     )>,
     octrees: Res<Assets<Octree<T>>>,
@@ -95,7 +115,8 @@ pub fn check_octree_nodes_visibility<T, C, A>(
     T: NodeData,
     C: Component,
     for<'a> &'a C: Into<AssetId<Octree<T>>>,
-    A: Send + Sync + 'static,
+    F: OctreeNodesFilter<T> + 'static,
+    B: OctreeNodesBudget<T> + 'static,
 {
     let start = Instant::now();
     octree_load_tasks.hierarchy_heap.clear();
@@ -108,6 +129,7 @@ pub fn check_octree_nodes_visibility<T, C, A>(
         frustum,
         camera_global_transform,
         camera_projection,
+        visibility_settings,
         mut visible_octree_nodes,
     ) in &mut views
     {
@@ -189,39 +211,37 @@ pub fn check_octree_nodes_visibility<T, C, A>(
                 completely_visible: false,
                 parent_index: None,
             });
-
-            // let filter = <ScreenPixelRadiusFilter as OctreeHierarchyFilter<H>>::new(150.0);
-            // let hierarchy_to_load = compute_visible_nodes(
-            //     asset,
-            //     hierarchy_root,
-            //     global_transform,
-            //     &camera_view,
-            //     &filter,
-            //     visible_nodes,
-            // );
-            // // info!(
-            // //     "computed {} visible nodes and {} nodes to load",
-            // //     visible_nodes.len(),
-            // //     hierarchy_to_load.len()
-            // // );
-            //
-            // for node_id in hierarchy_to_load {
-            //     if let Err(error) = server.load_sub_hierarchy(component, node_id) {
-            //         warn!("Error loading sub hierarchy node: {}", error);
-            //     }
-            // }
         }
 
-        // TODO make filter configurable
-        let filter = <ScreenPixelRadiusFilter as OctreeHierarchyFilter<T>>::new(150.0);
+        let filter = visibility_settings.and_then(|settings| {
+            settings
+                .filter
+                .as_ref()
+                .and_then(|settings| <Option<F> as OctreeNodesFilter<T>>::new(settings))
+        });
+
+
+        let mut budget = visibility_settings.and_then(|settings| {
+            settings
+                .budget
+                .as_ref()
+                .and_then(|settings| <Option<B> as OctreeNodesBudget<T>>::new(settings))
+        });
+
         compute_visible_nodes_stack(
             octrees.as_ref(),
             &camera_view,
             &filter,
+            &mut budget,
             &mut priority_stack,
             &mut visible_octree_nodes,
             &entities_transform,
             &mut octree_load_tasks,
+        );
+
+        diagnostics.add_measurement(
+            &OctreeVisiblityPlugin::<T, C, B>::BUDGET,
+            || budget.value(),
         );
     }
 
@@ -229,7 +249,7 @@ pub fn check_octree_nodes_visibility<T, C, A>(
     let msecs = duration.as_secs_f64() * 1000.0;
 
     diagnostics.add_measurement(
-        &OctreeVisiblityPlugin::<T, C, A>::VISIBILITY_CHECK_TIME,
+        &OctreeVisiblityPlugin::<T, C, B>::VISIBILITY_CHECK_TIME,
         || msecs,
     );
 }
@@ -300,10 +320,11 @@ fn compute_screen_pixel_radius(
 //     }
 // }
 
-fn compute_visible_nodes_stack<'a, T, C, F>(
+fn compute_visible_nodes_stack<'a, T, C, F, B>(
     octrees: &Assets<Octree<T>>,
     camera_view: &CameraView,
     filter: &F,
+    budget: &mut Option<B>,
     stack: &mut BinaryHeap<StackedOctreeNode<T>>,
     visible_octree_nodes: &mut OctreesVisibility<T, C>,
     entities_transform: &HashMap<Entity, &GlobalTransform>,
@@ -311,7 +332,8 @@ fn compute_visible_nodes_stack<'a, T, C, F>(
 ) where
     T: NodeData,
     C: Component,
-    F: OctreeHierarchyFilter<T>,
+    F: OctreeNodesFilter<T>,
+    B: OctreeNodesBudget<T>,
 {
     loop {
         let Some(StackedOctreeNode {
@@ -413,42 +435,44 @@ fn compute_visible_nodes_stack<'a, T, C, F>(
                 // the node data is already loading, nothing to do
             }
             NodeStatus::Loaded => {
-                // we have to process child nodes, sending flag `completely_visible` to prevent useless visibility checks
-                for i in iter_one_bits(node.hierarchy.children_mask) {
-                    let child_id = &node.hierarchy.children[i as usize];
-                    let Some(child) = octree.node(*child_id) else {
-                        warn!("missing node in hierarchy, shouldn't happen");
-                        continue;
-                    };
+                if budget.add_node(node) {
+                    // we have to process child nodes, sending flag `completely_visible` to prevent useless visibility checks
+                    for i in iter_one_bits(node.hierarchy.children_mask) {
+                        let child_id = &node.hierarchy.children[i as usize];
+                        let Some(child) = octree.node(*child_id) else {
+                            warn!("missing node in hierarchy, shouldn't happen");
+                            continue;
+                        };
 
-                    let child_screen_pixel_radius = compute_screen_pixel_radius(
-                        &child.hierarchy.bounding_box,
-                        transform,
-                        camera_view,
-                    );
-                    let weight = child_screen_pixel_radius.unwrap_or(f32::MAX);
+                        let child_screen_pixel_radius = compute_screen_pixel_radius(
+                            &child.hierarchy.bounding_box,
+                            transform,
+                            camera_view,
+                        );
+                        let weight = child_screen_pixel_radius.unwrap_or(f32::MAX);
 
-                    stack.push(StackedOctreeNode {
-                        entity,
-                        asset_id,
-                        node_id: *child_id,
-                        screen_pixel_radius: child_screen_pixel_radius,
-                        weight: weight.into(),
-                        completely_visible,
-                        parent_index: Some(current_index),
-                    });
-                }
+                        stack.push(StackedOctreeNode {
+                            entity,
+                            asset_id,
+                            node_id: *child_id,
+                            screen_pixel_radius: child_screen_pixel_radius,
+                            weight: weight.into(),
+                            completely_visible,
+                            parent_index: Some(current_index),
+                        });
+                    }
 
-                // add the current node because it is visible or partially visible
-                let child_index = node.hierarchy.child_index;
-                visible_nodes.push(node.into());
+                    // add the current node because it is visible or partially visible
+                    let child_index = node.hierarchy.child_index;
+                    visible_nodes.push(node.into());
 
-                // if there is a parent, add it to the visible children array
-                if let Some(parent_index) = parent_index {
-                    let parent = &mut visible_nodes[parent_index];
+                    // if there is a parent, add it to the visible children array
+                    if let Some(parent_index) = parent_index {
+                        let parent = &mut visible_nodes[parent_index];
 
-                    parent.children[child_index as usize] = current_index;
-                    parent.children_mask |= 1 << node.hierarchy.child_index;
+                        parent.children[child_index as usize] = current_index;
+                        parent.children_mask |= 1 << node.hierarchy.child_index;
+                    }
                 }
             }
         }
@@ -465,7 +489,7 @@ fn compute_visible_nodes<'a, T, F>(
 ) -> (Vec<NodeId>, Vec<NodeId>)
 where
     T: NodeData,
-    F: OctreeHierarchyFilter<T>,
+    F: OctreeNodesFilter<T>,
 {
     let mut stack = VecDeque::from([(0_usize, node, false)]);
     // let mut visible_nodes = Vec::<VisibleHierarchyNode<H>>::new();

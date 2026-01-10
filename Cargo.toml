@@ -75,8 +75,9 @@ wasm_thread = { version = "0.3.3", optional = true }
 [dev-dependencies]
 bevy = { version = "0.17", features = ["bevy_dev_tools"] }
 rand = "0.9"
-bevy_panorbit_camera = "0.29"
-bevy-inspector-egui = "0.35.0"
+bevy_panorbit_camera = { version = "0.33.1", features = ["bevy_egui"] }
+egui = { version = "0.33.0", default-features = false }
+bevy_egui = "0.38.0"
 
 [features]
 default = ["las", "ply"]
@@ -124,7 +125,7 @@ inherits = "release"
 # Optimize with size in mind (also try "z", sometimes it is better).
 # Slightly slows compile times, great improvements to file size and runtime performance.
 opt-level = "s"
-#lto = true
+lto = true
 # Strip all debugging information from the binary to slightly reduce file size.
 strip = "debuginfo"
 

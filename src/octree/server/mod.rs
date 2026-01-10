@@ -6,7 +6,7 @@ use super::asset::Octree;
 use super::hierarchy::{HierarchyNode, HierarchyNodeStatus, HierarchyOctreeNode};
 use super::loader::{ErasedOctreeLoader, OctreeLoader};
 use super::node::{NodeData, NodeStatus};
-use super::visibility::check_octree_nodes_visibility;
+use super::visibility::CheckOctreeNodesVisibility;
 use crate::octree::server::task::spawn_async_task;
 use crate::octree::storage::NodeId;
 use bevy_app::prelude::*;
@@ -38,10 +38,10 @@ where
 {
     fn build(&self, app: &mut App) {
         app.init_resource::<OctreeServer<T>>().add_systems(
-            PreUpdate,
+            PostUpdate,
             (
                 handle_internal_octree_events::<T>,
-                process_octree_load_tasks::<T>.after(check_octree_nodes_visibility::<T, C, A>),
+                process_octree_load_tasks::<T>.after(CheckOctreeNodesVisibility),
             ),
         );
     }
@@ -193,7 +193,8 @@ where
     T: NodeData,
 {
     /// Load an octree lazily (octree content will be loaded on the fly when needed)
-    pub fn load_octree<L: OctreeLoader<T>>(&self, url: String) -> Handle<Octree<T>> {
+    pub fn load_octree<L: OctreeLoader<T>>(&self, url: &str) -> Handle<Octree<T>> {
+        let url = url.to_string();
         let handle = self.data.handle_provider.reserve_handle().typed();
         let owned_handle = handle.clone();
 

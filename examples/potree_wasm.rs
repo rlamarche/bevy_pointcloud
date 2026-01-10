@@ -2,28 +2,33 @@
 mod camera_controller;
 
 use bevy::prelude::*;
-use bevy_diagnostic::DiagnosticsStore;
+use bevy_diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
-use bevy_pointcloud::PointCloudPlugin;
 use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
 use bevy_pointcloud::pointcloud_octree::component::PointCloudOctree3d;
-use bevy_pointcloud::pointcloud_octree::{PointCloudOctreePlugin, PointCloudOctreeServer, PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin};
-use bevy_pointcloud::render::PointCloudRenderMode;
-use bevy_render::view::NoIndirectDrawing;
+use bevy_pointcloud::pointcloud_octree::{
+    PointCloudOctreePlugin, PointCloudOctreeServer, PointCloudOctreeServerPlugin,
+    PointCloudOctreeVisibilityPlugin, PointCloudOctreeVisibilitySettings,
+};
 use bevy_pointcloud::potree::loader::PotreeLoader;
+use bevy_pointcloud::render::PointCloudRenderMode;
+use bevy_pointcloud::PointCloudPlugin;
+use bevy_render::view::NoIndirectDrawing;
 
 fn main() {
     let mut app = App::new();
     app.add_plugins((
         DefaultPlugins,
+        EguiPlugin::default(),
         PanOrbitCameraPlugin,
         PointCloudPlugin,
         PointCloudOctreePlugin,
         PointCloudOctreeServerPlugin::default(),
     ));
 
-    app.add_systems(Startup, (setup_ui, setup, load_pointcloud))
-        .add_systems(Update, update_ui)
+    app.add_systems(Startup, (setup, load_pointcloud))
+        .add_systems(EguiPrimaryContextPass, ui_settings)
         .run();
 }
 
@@ -45,47 +50,11 @@ fn setup(mut commands: Commands) {
             edl_neighbour_count: 4,
             ..Default::default()
         },
+        PointCloudOctreeVisibilitySettings {
+            filter: Some(150.0),
+            budget: Some(1_000_000),
+        },
     ));
-}
-
-#[derive(Component)]
-struct TimedText;
-
-fn setup_ui(mut commands: Commands) {
-    commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                flex_direction: FlexDirection::Column,
-                bottom: percent(1.0),
-                right: percent(1.0),
-                ..default()
-            },
-            Pickable::IGNORE,
-        ))
-        .with_children(|p| {
-            p.spawn((
-                Text::new("VISIBILITY TIME: "),
-                TextColor(Color::WHITE.into()),
-                TimedText,
-                Pickable::IGNORE,
-            ))
-            .with_child(TextSpan::default());
-        });
-}
-
-fn update_ui(
-    diagnostic: Res<DiagnosticsStore>,
-    mut writer: TextUiWriter,
-    query: Query<Entity, With<TimedText>>,
-) {
-    for entity in &query {
-        if let Some(time) = diagnostic.get(&PointCloudOctreeVisibilityPlugin::VISIBILITY_CHECK_TIME)
-            && let Some(value) = time.smoothed()
-        {
-            *writer.text(entity, 1) = format!("{value:.2}");
-        }
-    }
 }
 
 #[derive(Component)]
@@ -104,11 +73,119 @@ fn load_pointcloud(
     });
     commands.spawn(MyMaterial(my_material.clone()));
 
-    let octree_handle = octree_server.load_octree::<PotreeLoader>("https://pub-e2043f8abc6f45d983f8f77641ea772e.r2.dev/potree/heidentor".to_string());
+    let octree_handle = octree_server.load_octree::<PotreeLoader>(
+        "https://pub-e2043f8abc6f45d983f8f77641ea772e.r2.dev/potree/heidentor",
+    );
 
     commands.spawn((
         PointCloudOctree3d(octree_handle),
         Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2)),
         PointCloudMaterial3d(my_material.clone()),
     ));
+}
+
+fn ui_settings(
+    mut contexts: EguiContexts,
+    mut point_cloud_settings: Query<(
+        &mut PointCloudOctreeVisibilitySettings,
+        &mut PointCloudRenderMode,
+    )>,
+    diagnostic: Res<DiagnosticsStore>,
+) -> Result {
+    let (mut point_cloud_settings, mut point_cloud_render_mode) =
+        point_cloud_settings.single_mut().unwrap();
+
+    let mut use_edl = point_cloud_render_mode.use_edl;
+    let mut edl_radius = point_cloud_render_mode.edl_radius;
+    let mut edl_strength = point_cloud_render_mode.edl_strength;
+    let mut edl_neighbour_count = point_cloud_render_mode.edl_neighbour_count;
+    let mut min_node_size: f32 = point_cloud_settings.filter.unwrap_or(0.0);
+    let mut point_budget: usize = point_cloud_settings.budget.unwrap_or(0);
+
+    let visibility_time = diagnostic
+        .get(&PointCloudOctreeVisibilityPlugin::VISIBILITY_CHECK_TIME)
+        .and_then(|value| value.smoothed());
+
+    let nb_points = diagnostic
+        .get(&PointCloudOctreeVisibilityPlugin::BUDGET)
+        .and_then(|value| value.smoothed());
+
+    let fps = diagnostic
+        .get(&FrameTimeDiagnosticsPlugin::FPS)
+        .and_then(|value| value.smoothed());
+
+    egui::Window::new("Settings & Statistics")
+        .auto_sized()
+        .show(contexts.ctx_mut()?, |ui| {
+            ui.vertical(|ui| {
+                ui.label("Render Settings");
+                ui.checkbox(&mut use_edl, "Eye Dome Lightning");
+                ui.add(
+                    egui::Slider::new(&mut edl_radius, 0.0..=10.0)
+                        .text("EDL radius")
+                        .step_by(0.01)
+                        .drag_value_speed(0.01),
+                );
+                ui.add(
+                    egui::Slider::new(&mut edl_strength, 0.0..=10.0)
+                        .text("EDL strength")
+                        .step_by(0.01)
+                        .drag_value_speed(0.01),
+                );
+                ui.add(
+                    egui::Slider::new(&mut edl_neighbour_count, 4..=8)
+                        .text("EDL neighbour count")
+                        .step_by(4.0)
+                        .drag_value_speed(4.0),
+                );
+
+                ui.label("Budget Settings");
+                ui.add(
+                    egui::Slider::new(&mut min_node_size, 50.0..=1000.0)
+                        .text("Min node size")
+                        .step_by(10.0)
+                        .drag_value_speed(10.0),
+                );
+                ui.add(
+                    egui::Slider::new(&mut point_budget, 100_000..=10_000_000)
+                        .text("Point budget")
+                        .step_by(1000.0)
+                        .drag_value_speed(1000.0),
+                );
+
+                ui.label("Statistics");
+
+                if let Some(fps) = fps {
+                    ui.horizontal(|ui| {
+                        ui.label("FPS: ");
+                        ui.label(format!("{fps:.0}"))
+                    });
+                };
+
+                if let Some(visibility_time) = visibility_time {
+                    ui.horizontal(|ui| {
+                        ui.label("Visibility time: ");
+                        ui.label(format!("{visibility_time:.2}ms"))
+                    });
+                };
+
+                if let Some(nb_points) = nb_points {
+                    let nb_points = nb_points as usize;
+                    ui.horizontal(|ui| {
+                        ui.label("Nb points: ");
+                        ui.label(format!("{nb_points}"))
+                    });
+                };
+            });
+        });
+
+    point_cloud_render_mode.use_edl = use_edl;
+    point_cloud_render_mode.edl_radius = edl_radius;
+    point_cloud_render_mode.edl_strength = edl_strength;
+    point_cloud_render_mode.edl_neighbour_count = edl_neighbour_count;
+
+    point_cloud_settings.filter = Some(min_node_size);
+    point_cloud_settings.budget = Some(point_budget);
+
+    Ok(())
 }

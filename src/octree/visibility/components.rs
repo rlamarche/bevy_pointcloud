@@ -1,11 +1,20 @@
 use crate::octree::asset::Octree;
 use crate::octree::node::{NodeData, OctreeNode};
 use crate::octree::storage::NodeId;
+use crate::octree::visibility::budget::OctreeNodesBudget;
 use bevy_asset::AssetId;
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashMap;
+use bevy_reflect::Reflect;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use crate::octree::visibility::filter::OctreeNodesFilter;
+
+#[derive(Debug, Component, Reflect)]
+pub struct OctreeVisibilitySettings<T: NodeData, F: OctreeNodesFilter<T>, B: OctreeNodesBudget<T>> {
+    pub filter: Option<F::Settings>,
+    pub budget: Option<B::Settings>,
+}
 
 /// This component stores the visible nodes for each octree at view level (camera) in "main world".
 #[derive(Debug, Component)]
@@ -36,10 +45,7 @@ where
     T: NodeData,
     C: Component,
 {
-    pub fn get_mut(
-        &mut self,
-        entity: Entity,
-    ) -> &mut (AssetId<Octree<T>>, Vec<VisibleOctreeNode>) {
+    pub fn get_mut(&mut self, entity: Entity) -> &mut (AssetId<Octree<T>>, Vec<VisibleOctreeNode>) {
         self.octrees.entry(entity).or_default()
     }
 
@@ -86,8 +92,7 @@ pub struct VisibleOctreeNode {
 //     pub node: HierarchyOctreeNode<H>,
 // }
 
-impl<T: NodeData> From<&OctreeNode<T>> for VisibleOctreeNode
-{
+impl<T: NodeData> From<&OctreeNode<T>> for VisibleOctreeNode {
     fn from(value: &OctreeNode<T>) -> Self {
         VisibleOctreeNode {
             id: value.hierarchy.id,
