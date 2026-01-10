@@ -198,6 +198,7 @@ where
         let owned_handle = handle.clone();
 
         let data = self.data.clone();
+        #[allow(unused)]
         let task = IoTaskPool::get().spawn(async move {
             if let Err(err) = data.load_internal::<L>(&url, owned_handle).await {
                 error!("{}", err);
@@ -229,6 +230,7 @@ where
         };
         let data = self.data.clone();
 
+        #[allow(unused)]
         let task = spawn_async_task(async move {
             if let Err(err) = data
                 .load_sub_hierarchy_internal(asset_id, loader, &hierarchy_octree_node)
@@ -266,6 +268,7 @@ where
         };
         let data = self.data.clone();
 
+        #[allow(unused)]
         let task = spawn_async_task(async move {
             if let Err(err) = data
                 .load_node_data_internal(asset_id, loader, &hierarchy_octree_node)

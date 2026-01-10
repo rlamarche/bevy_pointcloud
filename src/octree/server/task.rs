@@ -1,6 +1,7 @@
-use bevy_tasks::prelude::*;
 #[cfg(feature = "potree_wasm_worker")]
 use bevy_log::prelude::*;
+#[cfg(not(feature = "potree_wasm_worker"))]
+use bevy_tasks::IoTaskPool;
 
 #[cfg(not(feature = "potree_wasm_worker"))]
 pub fn spawn_async_task<T>(
