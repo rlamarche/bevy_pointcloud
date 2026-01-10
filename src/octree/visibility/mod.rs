@@ -98,6 +98,8 @@ pub fn check_octree_nodes_visibility<T, C, A>(
     A: Send + Sync + 'static,
 {
     let start = Instant::now();
+    octree_load_tasks.hierarchy_heap.clear();
+    octree_load_tasks.node_heap.clear();
 
     // for each view
     for (
