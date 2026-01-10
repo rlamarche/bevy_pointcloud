@@ -20,19 +20,13 @@ pub struct PotreeLoader {
 #[derive(Clone, TypePath)]
 pub struct PotreeHierarchy(pub(crate) PotreeOctreeNode);
 
-
-// Need to initialize it on main thread for multithread / wasm to work
-const RESOURCE_LOADER: LazyCell<ResourceLoader> = LazyCell::new(|| {
-    ResourceLoader::new()
-});
-
 #[async_trait]
 impl OctreeLoader<PointCloudNodeData> for PotreeLoader {
     type Hierarchy = PotreeHierarchy;
     type Error = BevyError;
 
     async fn from_url(url: &str) -> Result<Self, Self::Error> {
-        let hierarchy = Hierarchy::from_url(url, RESOURCE_LOADER.clone()).await?;
+        let hierarchy = Hierarchy::from_url(url, ResourceLoader::new()).await?;
 
         Ok(PotreeLoader { hierarchy })
     }

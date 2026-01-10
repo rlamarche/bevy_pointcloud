@@ -1,16 +1,95 @@
 <!doctype html>
 <html lang="en">
 
-<body style="margin: 0;">
+<head>
+    <meta charset="utf-8">
+    <title>Bevy Point Cloud Demo</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: sans-serif;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .attribution {
+            position: fixed;
+            bottom: 8px;
+            left: 10px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.7);
+            background: rgba(0, 0, 0, 0.4);
+            padding: 4px 6px;
+            border-radius: 4px;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        .attribution a {
+            color: rgba(255, 255, 255, 0.85);
+            text-decoration: none;
+            pointer-events: auto;
+        }
+
+        .attribution a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
 <script type="module">
     import init from './bevy_pointcloud.js'
 
+    // Fonction pour redimensionner le canvas
+    function resizeCanvas() {
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            canvas.style.width = window.innerWidth + 'px';
+            canvas.style.height = window.innerHeight + 'px';
+        }
+    }
+
+    // Observer pour détecter l'ajout du canvas dans le DOM
+    const observer = new MutationObserver((mutations) => {
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+            resizeCanvas();
+            observer.disconnect();
+        }
+    });
+
+    observer.observe(document.body, {childList: true, subtree: true});
+
+    // Écouter les changements de taille de fenêtre
+    window.addEventListener('resize', resizeCanvas);
+
+    // Initialiser Bevy
     init().catch((error) => {
-        if (!error.message.startsWith("Cursed hack to keep workers alive. See https://github.com/rustwasm/wasm-bindgen/issues/2945")) {
+        if (!error.message.startsWith(
+            "Cursed hack to keep workers alive. See https://github.com/rustwasm/wasm-bindgen/issues/2945"
+        )) {
             throw error;
         }
     });
 </script>
+
+<div class="attribution">
+    Point cloud data: <a href="https://potree.org/" target="_blank" rel="noopener">
+    Heidentor (Potree / TU Wien)
+</a>
+</div>
 </body>
 
 </html>

@@ -99,12 +99,13 @@ webgl = [
 webgpu = []
 ply = ["dep:ply-rs"]
 las = ["dep:las"]
+wasm_worker = ["dep:wasm_thread", "multi_threaded"]
 potree = ["dep:potree"]
 potree_reqwest = ["potree/reqwest"]
 potree_ehttp = ["potree/ehttp"]
 potree_ehttp_local = ["potree/ehttp_local"]
 potree_wasm = ["potree/wasm"]
-potree_wasm_worker = ["potree/wasm_worker", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:wasm_thread"]
+potree_wasm_worker = ["wasm_worker", "potree/wasm_worker", "dep:wasm-bindgen", "dep:wasm-bindgen-futures"]
 potree_fs = ["potree/fs"]
 potree_async_fs = ["potree/async-fs"]
 
@@ -132,7 +133,7 @@ inherits = "release"
 # Optimize with size in mind (also try "z", sometimes it is better).
 # Slightly slows compile times, great improvements to file size and runtime performance.
 opt-level = "s"
-lto = true
+#lto = true
 # Strip all debugging information from the binary to slightly reduce file size.
 strip = "debuginfo"
 

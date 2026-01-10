@@ -22,6 +22,7 @@ use process::process_octree_load_tasks;
 use resources::OctreeLoadTasks;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use bevy_tasks::IoTaskPool;
 use thiserror::Error;
 use crate::octree::server::task::spawn_async_task;
 
@@ -240,7 +241,7 @@ where
         let owned_handle = handle.clone();
 
         let data = self.data.clone();
-        let task = spawn_async_task(async move {
+        let task = IoTaskPool::get().spawn(async move {
             if let Err(err) = data.load_internal(&url, owned_handle).await {
                 error!("{}", err);
             }
@@ -280,7 +281,7 @@ where
             }
         });
 
-        #[cfg(any(target_arch = "wasm32", not(feature = "multi_threaded")))]
+        #[cfg(any(all(target_arch = "wasm32", not(feature = "wasm_worker")), not(feature = "multi_threaded")))]
         task.detach();
 
         Ok(())
@@ -314,7 +315,7 @@ where
             }
         });
 
-        #[cfg(any(target_arch = "wasm32", not(feature = "multi_threaded")))]
+        #[cfg(any(all(target_arch = "wasm32", not(feature = "wasm_worker")), not(feature = "multi_threaded")))]
         task.detach();
 
         Ok(())
@@ -486,7 +487,7 @@ where
             }
         });
 
-        #[cfg(any(target_arch = "wasm32", not(feature = "multi_threaded")))]
+        #[cfg(any(all(target_arch = "wasm32", not(feature = "wasm_worker")), not(feature = "multi_threaded")))]
         task.detach();
 
         Ok(())
