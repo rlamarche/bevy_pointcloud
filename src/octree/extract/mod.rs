@@ -276,7 +276,7 @@ where
 // }
 
 /// Describes how an octree node gets extracted and prepared for rendering.
-pub trait ExtractOctreeNode: Send + Sync + Sized + TypePath {
+pub trait ExtractOctreeNode: NodeData + Sized + TypePath {
     /// ECS [`ReadOnlyQueryData`] to fetch the components to extract.
     type QueryData: ReadOnlyQueryData;
     /// Filters the entities with additional constraints.

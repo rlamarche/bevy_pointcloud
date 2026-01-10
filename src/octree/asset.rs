@@ -157,4 +157,8 @@ impl<T: NodeData> Octree<T>
     pub fn node_root(&self) -> Option<&OctreeNode<T>> {
         self.root_id.and_then(|root_id| self.node(root_id))
     }
+
+    pub fn root_id(&self) -> Option<NodeId> {
+        self.root_id
+    }
 }

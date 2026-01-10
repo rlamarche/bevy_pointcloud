@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use bevy_reflect::Reflect;
 /// Generated using claude.ai
 
@@ -8,6 +9,12 @@ use slab::Slab;
 pub struct NodeId {
     pub index: usize,
     pub generation: usize,
+}
+
+impl Display for NodeId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "NodeId({}, {})", self.index, self.generation)
+    }
 }
 
 /// A wrapper around `slab::Slab` that adds generation tracking.

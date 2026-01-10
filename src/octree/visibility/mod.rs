@@ -12,16 +12,17 @@ use bevy_app::{App, Plugin, PreUpdate};
 use bevy_asset::{AssetId, Assets};
 use bevy_camera::primitives::{Aabb, Frustum};
 use bevy_camera::visibility::{
-    add_visibility_class, check_visibility, Visibility, VisibilityClass, VisibleEntities,
+    Visibility, VisibilityClass, VisibleEntities, add_visibility_class, check_visibility,
 };
 use bevy_camera::{Camera, Projection};
 use bevy_diagnostic::{
-    Diagnostic, DiagnosticPath, Diagnostics, RegisterDiagnostic, DEFAULT_MAX_HISTORY_LENGTH,
+    DEFAULT_MAX_HISTORY_LENGTH, Diagnostic, DiagnosticPath, Diagnostics, RegisterDiagnostic,
 };
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
 use bevy_math::prelude::*;
 use bevy_platform::collections::HashMap;
+use bevy_platform::time::Instant;
 use bevy_time::{Real, Time};
 use bevy_transform::prelude::*;
 use components::*;
@@ -30,7 +31,6 @@ use stack::*;
 use std::any::TypeId;
 use std::collections::{BinaryHeap, VecDeque};
 use std::marker::PhantomData;
-use bevy_platform::time::Instant;
 
 pub struct OctreeVisiblityPlugin<T, C, A>(PhantomData<fn() -> (T, C, A)>);
 
@@ -90,6 +90,7 @@ pub fn check_octree_nodes_visibility<T, C, A>(
     )>,
     octrees: Res<Assets<Octree<T>>>,
     mut octree_load_tasks: ResMut<OctreeLoadTasks<T>>,
+    mut priority_stack: Local<BinaryHeap<StackedOctreeNode<T>>>,
 ) where
     T: NodeData,
     C: Component,
@@ -125,8 +126,8 @@ pub fn check_octree_nodes_visibility<T, C, A>(
         // get all visible octrees
         let visible_octree_entities = visible_entities.get(TypeId::of::<C>());
 
-        // TODO: reuse allocations (using Local<> in system)
-        let mut priority_stack = BinaryHeap::<StackedOctreeNode<T>>::new();
+        // clear the priority stack
+        priority_stack.clear();
 
         let mut entities_transform = HashMap::new();
 
@@ -159,6 +160,11 @@ pub fn check_octree_nodes_visibility<T, C, A>(
             // update the asset id
             *asset_id = component.into();
 
+            let Some(root_id) = asset.root_id() else {
+                warn!("Octree node has not yet hierarchy root loaded.");
+                continue;
+            };
+
             let Some(node_root) = asset.node_root() else {
                 warn!("Octree node has not yet hierarchy root loaded.");
                 continue;
@@ -172,9 +178,9 @@ pub fn check_octree_nodes_visibility<T, C, A>(
 
             // add the root octree to the priority stack
             priority_stack.push(StackedOctreeNode {
-                octree: asset,
                 entity: *entity,
-                node: node_root,
+                asset_id: *asset_id,
+                node_id: root_id,
                 weight: screen_pixel_radius.unwrap_or(f32::MAX).into(),
                 screen_pixel_radius,
                 // TODO check for this ?
@@ -207,9 +213,10 @@ pub fn check_octree_nodes_visibility<T, C, A>(
         // TODO make filter configurable
         let filter = <ScreenPixelRadiusFilter as OctreeHierarchyFilter<T>>::new(150.0);
         compute_visible_nodes_stack(
+            octrees.as_ref(),
             &camera_view,
             &filter,
-            priority_stack,
+            &mut priority_stack,
             &mut visible_octree_nodes,
             &entities_transform,
             &mut octree_load_tasks,
@@ -292,9 +299,10 @@ fn compute_screen_pixel_radius(
 // }
 
 fn compute_visible_nodes_stack<'a, T, C, F>(
+    octrees: &Assets<Octree<T>>,
     camera_view: &CameraView,
     filter: &F,
-    mut stack: BinaryHeap<StackedOctreeNode<T>>,
+    stack: &mut BinaryHeap<StackedOctreeNode<T>>,
     visible_octree_nodes: &mut OctreesVisibility<T, C>,
     entities_transform: &HashMap<Entity, &GlobalTransform>,
     load_tasks: &mut OctreeLoadTasks<T>,
@@ -305,9 +313,9 @@ fn compute_visible_nodes_stack<'a, T, C, F>(
 {
     loop {
         let Some(StackedOctreeNode {
-            octree,
             entity,
-            node,
+            asset_id,
+            node_id,
             screen_pixel_radius,
             weight,
             mut completely_visible,
@@ -317,9 +325,17 @@ fn compute_visible_nodes_stack<'a, T, C, F>(
             break;
         };
 
-        let (asset_id, visible_nodes) = visible_octree_nodes.get_mut(entity);
+        let (_, visible_nodes) = visible_octree_nodes.get_mut(entity);
         let Some(transform) = entities_transform.get(&entity) else {
             warn!("Missing transform for entity {}, skip", entity);
+            continue;
+        };
+        let Some(octree) = octrees.get(asset_id) else {
+            warn!("Missing asset {}", asset_id);
+            continue;
+        };
+        let Some(node) = octree.node(node_id) else {
+            warn!("Missing node {} in asset {}", node_id, asset_id);
             continue;
         };
 
@@ -372,7 +388,7 @@ fn compute_visible_nodes_stack<'a, T, C, F>(
                 match node.hierarchy.status {
                     HierarchyNodeStatus::Proxy => {
                         load_tasks.queue_load_request(
-                            *asset_id,
+                            asset_id,
                             node.hierarchy.id,
                             weight,
                             LoadRequestType::Hierarchy,
@@ -383,7 +399,7 @@ fn compute_visible_nodes_stack<'a, T, C, F>(
                     }
                     HierarchyNodeStatus::Loaded => {
                         load_tasks.queue_load_request(
-                            *asset_id,
+                            asset_id,
                             node.hierarchy.id,
                             weight,
                             LoadRequestType::NodeData,
@@ -397,8 +413,8 @@ fn compute_visible_nodes_stack<'a, T, C, F>(
             NodeStatus::Loaded => {
                 // we have to process child nodes, sending flag `completely_visible` to prevent useless visibility checks
                 for i in iter_one_bits(node.hierarchy.children_mask) {
-                    let child = &node.hierarchy.children[i as usize];
-                    let Some(child) = octree.node(*child) else {
+                    let child_id = &node.hierarchy.children[i as usize];
+                    let Some(child) = octree.node(*child_id) else {
                         warn!("missing node in hierarchy, shouldn't happen");
                         continue;
                     };
@@ -411,9 +427,9 @@ fn compute_visible_nodes_stack<'a, T, C, F>(
                     let weight = child_screen_pixel_radius.unwrap_or(f32::MAX);
 
                     stack.push(StackedOctreeNode {
-                        octree,
                         entity,
-                        node: child,
+                        asset_id,
+                        node_id: *child_id,
                         screen_pixel_radius: child_screen_pixel_radius,
                         weight: weight.into(),
                         completely_visible,
