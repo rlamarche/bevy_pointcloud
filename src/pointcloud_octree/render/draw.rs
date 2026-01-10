@@ -56,7 +56,11 @@ impl<P: PhaseItem + PointCloudOctree3dPhase> RenderCommand<P> for DrawPointCloud
             IndexFormat::Uint32,
         );
 
-        pass.set_vertex_buffer(1, node.data.points.slice(..));
+        let Some(points) = &node.data.points else {
+            return RenderCommandResult::Skip;
+        };
+
+        pass.set_vertex_buffer(1, points.slice(..));
 
         pass.draw_indexed(
             0..point_cloud_mesh.index_count,

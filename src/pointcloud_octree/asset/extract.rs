@@ -1,26 +1,26 @@
-use crate::octree::extract::prepare::{PrepareOctreeNodeError, RenderOctreeNode};
 use crate::octree::extract::OctreeNodeExtraction;
+use crate::octree::extract::prepare::{PrepareOctreeNodeError, RenderOctreeNode};
 use crate::octree::node::OctreeNode;
 use crate::pointcloud_octree::asset::data::{PointCloudNodeData, PointData};
 use crate::pointcloud_octree::extract::{PointCloudNodeDataUniform, RenderPointCloudNodeData};
 
 use crate::octree::asset::Octree;
 use crate::octree::extract::render_asset::RenderOctreeNodeData;
+use crate::pointcloud_octree::component::PointCloudOctree3d;
 use bevy_asset::AssetId;
 use bevy_ecs::query::QueryItem;
 use bevy_ecs::{
     prelude::*,
-    system::{lifetimeless::SRes, SystemParamItem},
+    system::{SystemParamItem, lifetimeless::SRes},
 };
 use bevy_reflect::TypePath;
-use bevy_render::render_resource::{
-    BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, Buffer,
-    BufferInitDescriptor, BufferUsages, PreparedBindGroup, ShaderStages, ShaderType, UniformBuffer,
-};
 use bevy_render::render_resource::binding_types::uniform_buffer;
+use bevy_render::render_resource::{
+    BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, Buffer, BufferInitDescriptor,
+    BufferUsages, PreparedBindGroup, ShaderStages, ShaderType, UniformBuffer,
+};
 use bevy_render::renderer::{RenderDevice, RenderQueue};
 use bytemuck::{Pod, Zeroable};
-use crate::pointcloud_octree::component::PointCloudOctree3d;
 
 #[derive(TypePath)]
 pub struct PointCloudOctreeExtraction;
@@ -81,11 +81,17 @@ impl RenderOctreeNode for RenderPointCloudNodeData {
             Self::Param,
         >,
     ) -> Result<Self, PrepareOctreeNodeError<Self::ExtractedOctreeNode>> {
-        let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-            label: Some("PointCloud data buffer"),
-            contents: bytemuck::cast_slice(source_node.data.points.as_slice()),
-            usage: BufferUsages::VERTEX,
-        });
+        let buffer = if source_node.data.points.len() > 0 {
+            Some(
+                render_device.create_buffer_with_data(&BufferInitDescriptor {
+                    label: Some("PointCloud data buffer"),
+                    contents: bytemuck::cast_slice(source_node.data.points.as_slice()),
+                    usage: BufferUsages::VERTEX,
+                }),
+            )
+        } else {
+            None
+        };
 
         let mut uniform_buffer = UniformBuffer::from(PointCloudNodeDataUniform {
             spacing: source_node.data.spacing,

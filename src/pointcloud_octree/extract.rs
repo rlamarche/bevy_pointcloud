@@ -28,7 +28,7 @@ pub struct PointCloudNodeDataUniform {
 
 #[derive(TypePath)]
 pub struct RenderPointCloudNodeData {
-    pub points: Buffer,
+    pub points: Option<Buffer>,
     pub uniform: BindGroup,
     pub uniform_buffer: UniformBuffer<PointCloudNodeDataUniform>,
     pub num_points: usize,
