@@ -103,8 +103,6 @@ pub fn prepare_visible_nodes_texture(
     mut visible_nodes_buffer: Local<Vec<VisibleOctreeNodeUniform>>,
     render_octrees: Res<RenderOctrees<RenderPointCloudNodeData>>,
 ) {
-    const MAX_NODES_PER_OCTREE: usize = 2048;
-
     for (entity, camera, extracted_view, msaa, visible_nodes) in &views_3d {
         if !point_cloud_octree_3d_attribute_phases
             .contains_key(&extracted_view.retained_view_entity)
@@ -124,7 +122,7 @@ pub fn prepare_visible_nodes_texture(
             continue;
         }
 
-        let required_buffer_size = octrees_count * MAX_NODES_PER_OCTREE;
+        let required_buffer_size = octrees_count * MAX_NODES;
 
         // prepare the buffer only once
         if visible_nodes_buffer.len() < required_buffer_size {
@@ -141,7 +139,7 @@ pub fn prepare_visible_nodes_texture(
         let visible_nodes_texture = {
             // The size of the depth texture
             let size = Extent3d {
-                width: MAX_NODES_PER_OCTREE as u32, // max 2048 nodes per octree visible at the same time
+                width: MAX_NODES as u32, // max 2048 nodes per octree visible at the same time
                 height: octrees_count as u32,       // max 64 octrees visibles at the same time
                 depth_or_array_layers: 1,
             };
@@ -170,7 +168,7 @@ pub fn prepare_visible_nodes_texture(
 
             let node_mapping = &mut node_index[octree_index];
 
-            let base_offset = octree_index * MAX_NODES_PER_OCTREE;
+            let base_offset = octree_index * MAX_NODES;
 
             let Some(octree) = render_octrees.get(*asset_id) else {
                 warn!(
@@ -223,8 +221,8 @@ pub fn prepare_visible_nodes_texture(
                 .collect::<Vec<_>>();
 
             for (i, visible_node) in prepared_octree_nodes.iter().enumerate() {
-                if i >= MAX_NODES_PER_OCTREE {
-                    warn!("Too many nodes in octree, some will be ignored.");
+                if i >= MAX_NODES {
+                    // warn!("Too many nodes in octree, some will be ignored.");
                     break;
                 }
 
@@ -254,11 +252,11 @@ pub fn prepare_visible_nodes_texture(
             bytemuck::cast_slice(&visible_nodes_buffer),
             TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some((MAX_NODES_PER_OCTREE * 4) as u32), // 4 bytes par texel RGBA8Uint
+                bytes_per_row: Some((MAX_NODES * 4) as u32), // 4 bytes par texel RGBA8Uint
                 rows_per_image: Some(octrees_count as u32),
             },
             Extent3d {
-                width: MAX_NODES_PER_OCTREE as u32,
+                width: MAX_NODES as u32,
                 height: octrees_count as u32,
                 depth_or_array_layers: 1,
             },
@@ -290,7 +288,7 @@ pub struct VisibleNodesTextureLayout {
 }
 
 const BUFFER_SIZE: usize = 65536;
-const MAX_NODES: usize = 2048;
+const MAX_NODES: usize = 4096;
 
 #[derive(Resource)]
 pub struct OctreeNodesMappingBindGroups {
@@ -601,7 +599,8 @@ impl<P: PhaseItem + PointCloudOctree3dPhase, const I: usize> RenderCommand<P>
 
         // get the node's index
         let Some(node_index) = visible_nodes.node_index[octree_index].get(&node_id) else {
-            warn!("Missing node index when render");
+            // warn!("Missing node index when render");
+            // it happens when there is more than 2048 nodes to render
             return RenderCommandResult::Skip;
         };
 
