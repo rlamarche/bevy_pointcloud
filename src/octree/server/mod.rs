@@ -3,97 +3,73 @@ pub mod resources;
 mod task;
 
 use super::asset::Octree;
-use super::hierarchy::{
-    HierarchyNode, HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode,
-};
-use super::loader::{LoadedHierarchyNode, OctreeLoader};
+use super::hierarchy::{HierarchyNode, HierarchyNodeStatus, HierarchyOctreeNode};
+use super::loader::{ErasedOctreeLoader, OctreeLoader};
 use super::node::{NodeData, NodeStatus};
 use super::visibility::check_octree_nodes_visibility;
+use crate::octree::server::task::spawn_async_task;
 use crate::octree::storage::NodeId;
 use bevy_app::prelude::*;
-use bevy_asset::prelude::*;
 use bevy_asset::{AssetHandleProvider, AssetId, Assets, Handle};
 use bevy_ecs::prelude::*;
-use bevy_ecs::system::SystemParam;
 use bevy_log::prelude::*;
 use bevy_platform::collections::HashMap;
+use bevy_tasks::IoTaskPool;
 use crossbeam::channel::{Receiver, Sender};
 use process::process_octree_load_tasks;
 use resources::OctreeLoadTasks;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use bevy_tasks::IoTaskPool;
 use thiserror::Error;
-use crate::octree::server::task::spawn_async_task;
 
-pub struct OctreeServerPlugin<L, T, C, A>(PhantomData<fn() -> (L, T, C, A)>);
+pub struct OctreeServerPlugin<T, C, A>(PhantomData<fn() -> (T, C, A)>);
 
-impl<L, T, C, A> Default for OctreeServerPlugin<L, T, C, A> {
+impl<T, C, A> Default for OctreeServerPlugin<T, C, A> {
     fn default() -> Self {
         OctreeServerPlugin(PhantomData)
     }
 }
-impl<L, T, C, A> Plugin for OctreeServerPlugin<L, T, C, A>
+impl<T, C, A> Plugin for OctreeServerPlugin<T, C, A>
 where
-    L: OctreeLoader<T> + 'static,
     T: NodeData,
     C: Component,
     for<'a> &'a C: Into<AssetId<Octree<T>>>,
     A: Send + Sync + 'static,
 {
     fn build(&self, app: &mut App) {
-        app.init_resource::<OctreeServer<L, T>>().add_systems(
+        app.init_resource::<OctreeServer<T>>().add_systems(
             PreUpdate,
             (
-                handle_internal_octree_events::<L, T>,
-                process_octree_load_tasks::<L, T>
-                    .after(check_octree_nodes_visibility::<T, C, A>),
+                handle_internal_octree_events::<T>,
+                process_octree_load_tasks::<T>.after(check_octree_nodes_visibility::<T, C, A>),
             ),
         );
     }
 }
 
 #[derive(Resource)]
-pub struct OctreeServer<L, T>
+pub struct OctreeServer<T>
 where
-    L: OctreeLoader<T> + 'static,
     T: NodeData,
 {
-    pub(crate) data: Arc<OctreeServerData<L, T>>,
-    pub(crate) loaders: HashMap<AssetId<Octree<T>>, Arc<L>>,
+    pub(crate) data: Arc<OctreeServerData<T>>,
+    pub(crate) loaders: HashMap<AssetId<Octree<T>>, Arc<dyn ErasedOctreeLoader<T>>>,
 }
 
-// Manually implement clone to prevent adding bounds
-// impl<L, H, T> Clone for OctreeServer<L, H, T>
-// where
-//     L: OctreeLoader<H> + 'static,
-//     H: Send + Sync + TypePath,
-//     T: NodeData,
-// {
-//     fn clone(&self) -> Self {
-//         Self {
-//             data: self.data.clone(),
-//             loaders: self.loaders.clone(),
-//         }
-//     }
-// }
-
-pub struct OctreeServerData<L, T>
+pub struct OctreeServerData<T>
 where
-    L: OctreeLoader<T>,
     T: NodeData,
 {
     pub(crate) handle_provider: AssetHandleProvider,
-    pub(crate) octree_event_sender: Sender<InternalOctreeEvent<L, T>>,
-    pub(crate) octree_event_receiver: Receiver<InternalOctreeEvent<L, T>>,
+    pub(crate) octree_event_sender: Sender<InternalOctreeEvent<T>>,
+    pub(crate) octree_event_receiver: Receiver<InternalOctreeEvent<T>>,
 }
 
-impl<L, T> OctreeServerData<L, T>
+impl<T> OctreeServerData<T>
 where
-    L: OctreeLoader<T> + 'static,
     T: NodeData,
 {
-    async fn load_internal(
+    async fn load_internal<L: OctreeLoader<T>>(
         &self,
         url: &str,
         handle: Handle<Octree<T>>,
@@ -131,21 +107,12 @@ where
     async fn load_sub_hierarchy_internal(
         &self,
         id: AssetId<Octree<T>>,
-        loader: Arc<L>,
+        loader: Arc<dyn ErasedOctreeLoader<T>>,
         hierarchy_node: &HierarchyOctreeNode,
     ) -> Result<(), BevyError> {
-        let Ok(loaded_hierarchy) = hierarchy_node.data.clone().downcast::<LoadedHierarchyNode<L::Hierarchy>>() else {
-            return Err("Unable to downcast LoadedHierarchyNode".into());
-        };
-        let loaded_hierarchy_nodes = loader
-            .load_hierarchy(&loaded_hierarchy)
-            .await
-            .map_err(|error| error.into())?;
+        let loaded_hierarchy_nodes = loader.load_hierarchy(hierarchy_node).await?;
 
-
-        let hierarchy_nodes = loaded_hierarchy_nodes.into_iter()
-            .map(Into::into)
-            .collect();
+        let hierarchy_nodes = loaded_hierarchy_nodes.into_iter().map(Into::into).collect();
 
         self.octree_event_sender
             .send(InternalOctreeEvent::SubHierarchyLoaded {
@@ -161,17 +128,10 @@ where
     async fn load_node_data_internal(
         &self,
         id: AssetId<Octree<T>>,
-        loader: Arc<L>,
+        loader: Arc<dyn ErasedOctreeLoader<T>>,
         hierarchy_node: &HierarchyOctreeNode,
     ) -> Result<(), BevyError> {
-        let Ok(loaded_hierarchy) = hierarchy_node.data.clone().downcast::<LoadedHierarchyNode<L::Hierarchy>>() else {
-            return Err("Unable to downcast LoadedHierarchyNode".into());
-        };
-
-        let node_data = loader
-            .load_node_data(&loaded_hierarchy)
-            .await
-            .map_err(|error| error.into())?;
+        let node_data = loader.load_node_data(hierarchy_node).await?;
 
         self.octree_event_sender
             .send(InternalOctreeEvent::NodeDataLoaded {
@@ -186,15 +146,14 @@ where
 }
 
 /// Internal events for asset load results
-pub(crate) enum InternalOctreeEvent<L, T>
+pub(crate) enum InternalOctreeEvent<T>
 where
-    L: OctreeLoader<T>,
     T: NodeData,
 {
     Loaded {
         id: AssetId<Octree<T>>,
         loaded_asset: Octree<T>,
-        loader: Arc<L>,
+        loader: Arc<dyn ErasedOctreeLoader<T>>,
     },
     SubHierarchyLoaded {
         id: AssetId<Octree<T>>,
@@ -208,9 +167,8 @@ where
     },
 }
 
-impl<L, T> FromWorld for OctreeServer<L, T>
+impl<T> FromWorld for OctreeServer<T>
 where
-    L: OctreeLoader<T>,
     T: NodeData,
 {
     fn from_world(world: &mut World) -> Self {
@@ -230,19 +188,18 @@ where
     }
 }
 
-impl<L, T> OctreeServer<L, T>
+impl<T> OctreeServer<T>
 where
-    L: OctreeLoader<T> + 'static,
     T: NodeData,
 {
     /// Load an octree lazily (octree content will be loaded on the fly when needed)
-    pub fn load_octree(&self, url: String) -> Handle<Octree<T>> {
+    pub fn load_octree<L: OctreeLoader<T>>(&self, url: String) -> Handle<Octree<T>> {
         let handle = self.data.handle_provider.reserve_handle().typed();
         let owned_handle = handle.clone();
 
         let data = self.data.clone();
         let task = IoTaskPool::get().spawn(async move {
-            if let Err(err) = data.load_internal(&url, owned_handle).await {
+            if let Err(err) = data.load_internal::<L>(&url, owned_handle).await {
                 error!("{}", err);
             }
         });
@@ -281,7 +238,10 @@ where
             }
         });
 
-        #[cfg(any(all(target_arch = "wasm32", not(feature = "wasm_worker")), not(feature = "multi_threaded")))]
+        #[cfg(any(
+            all(target_arch = "wasm32", not(feature = "wasm_worker")),
+            not(feature = "multi_threaded")
+        ))]
         task.detach();
 
         Ok(())
@@ -315,7 +275,10 @@ where
             }
         });
 
-        #[cfg(any(all(target_arch = "wasm32", not(feature = "wasm_worker")), not(feature = "multi_threaded")))]
+        #[cfg(any(
+            all(target_arch = "wasm32", not(feature = "wasm_worker")),
+            not(feature = "multi_threaded")
+        ))]
         task.detach();
 
         Ok(())
@@ -323,12 +286,11 @@ where
 }
 
 /// A system that manages internal [`OctreeServer`] events, such as finalizing asset loads.
-pub fn handle_internal_octree_events<L, T>(
-    mut server: ResMut<OctreeServer<L, T>>,
+pub fn handle_internal_octree_events<T>(
+    mut server: ResMut<OctreeServer<T>>,
     mut assets: ResMut<Assets<Octree<T>>>,
     mut load_tasks: ResMut<OctreeLoadTasks<T>>,
 ) where
-    L: OctreeLoader<T> + 'static,
     T: NodeData,
 {
     // clone `server.data` because we need to borrow server as mutable in the loop
@@ -435,61 +397,4 @@ pub enum OctreeServerError {
     LoaderNotFound,
     #[error("Hierarchy node not found")]
     HierarchyNodeNotFound,
-}
-
-#[derive(SystemParam)]
-pub struct OctreeServerHelper<'w, L, T>
-where
-    L: OctreeLoader<T>,
-    T: NodeData,
-{
-    pub(crate) assets: ResMut<'w, Assets<Octree<T>>>,
-    server: Res<'w, OctreeServer<L, T>>,
-}
-
-impl<'w, L, T> OctreeServerHelper<'w, L, T>
-where
-    L: OctreeLoader<T>,
-    T: NodeData,
-{
-    pub fn load_octree(&self, url: String) -> Handle<Octree<T>> {
-        self.server.load_octree(url)
-    }
-
-    pub fn load_sub_hierarchy(
-        &mut self,
-        asset_id: impl Into<AssetId<Octree<T>>>,
-        node_id: NodeId,
-    ) -> Result<(), OctreeServerError> {
-        let asset_id = asset_id.into();
-        let Some(asset) = self.assets.get_mut(asset_id) else {
-            return Err(OctreeServerError::AssetNotFound);
-        };
-        let hierarchy_octree_node_mut = asset
-            .hierarchy_node_mut(node_id)
-            .ok_or(OctreeServerError::HierarchyNodeNotFound)?;
-
-        hierarchy_octree_node_mut.status = HierarchyNodeStatus::Loading;
-
-        let hierarchy_octree_node = hierarchy_octree_node_mut.clone();
-
-        let Some(loader) = self.server.loaders.get(&asset_id).cloned() else {
-            return Err(OctreeServerError::LoaderNotFound);
-        };
-        let data = self.server.data.clone();
-
-        let task = spawn_async_task(async move {
-            if let Err(err) = data
-                .load_sub_hierarchy_internal(asset_id, loader, &hierarchy_octree_node)
-                .await
-            {
-                error!("{}", err);
-            }
-        });
-
-        #[cfg(any(all(target_arch = "wasm32", not(feature = "wasm_worker")), not(feature = "multi_threaded")))]
-        task.detach();
-
-        Ok(())
-    }
 }

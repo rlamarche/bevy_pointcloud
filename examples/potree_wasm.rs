@@ -7,13 +7,11 @@ use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pointcloud::PointCloudPlugin;
 use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
 use bevy_pointcloud::pointcloud_octree::component::PointCloudOctree3d;
-use bevy_pointcloud::pointcloud_octree::{
-    PointCloudOctreePlugin, PointCloudOctreeVisibilityPlugin,
-};
-use bevy_pointcloud::potree::{PotreeServer, PotreeServerPlugin};
+use bevy_pointcloud::pointcloud_octree::{PointCloudOctreePlugin, PointCloudOctreeServer, PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin};
 use bevy_pointcloud::render::PointCloudRenderMode;
 use bevy_render::view::NoIndirectDrawing;
 use std::ops::Mul;
+use bevy_pointcloud::potree::loader::PotreeLoader;
 
 fn main() {
     let mut app = App::new();
@@ -22,7 +20,7 @@ fn main() {
         PanOrbitCameraPlugin,
         PointCloudPlugin,
         PointCloudOctreePlugin,
-        PotreeServerPlugin::default(),
+        PointCloudOctreeServerPlugin::default(),
     ));
 
     app.add_systems(Startup, (setup_ui, setup, load_pointcloud))
@@ -97,7 +95,7 @@ pub struct MyMaterial(Handle<PointCloudMaterial>);
 fn load_pointcloud(
     mut commands: Commands,
     mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
-    octree_server: Res<PotreeServer>,
+    octree_server: Res<PointCloudOctreeServer>,
 ) {
     let my_material = point_cloud_materials.add(PointCloudMaterial {
         point_size: 30.0,
@@ -107,7 +105,7 @@ fn load_pointcloud(
     });
     commands.spawn(MyMaterial(my_material.clone()));
 
-    let octree_handle = octree_server.load_octree("https://pub-e2043f8abc6f45d983f8f77641ea772e.r2.dev/potree/heidentor".to_string());
+    let octree_handle = octree_server.load_octree::<PotreeLoader>("https://pub-e2043f8abc6f45d983f8f77641ea772e.r2.dev/potree/heidentor".to_string());
 
     commands.spawn((
         PointCloudOctree3d(octree_handle),

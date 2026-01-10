@@ -1,11 +1,13 @@
-use crate::octree::hierarchy::{HierarchyNode, HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode};
+use crate::octree::hierarchy::{
+    HierarchyNode, HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode,
+};
 use crate::octree::node::NodeData;
 use async_trait::async_trait;
+use bevy_camera::primitives::Aabb;
 use bevy_ecs::error::BevyError;
 use bevy_ecs::prelude::*;
 use bevy_reflect::TypePath;
 use std::fmt::Display;
-use bevy_camera::primitives::Aabb;
 
 #[derive(Debug, Clone)]
 pub struct LoadedHierarchyNode<H>
@@ -19,9 +21,8 @@ where
     pub data: H,
 }
 
-
 #[async_trait]
-pub trait OctreeLoader<T>: Send + Sync + Sized + TypePath
+pub trait OctreeLoader<T: NodeData>: Send + Sync + Sized + TypePath
 where
     T: NodeData,
 {
@@ -36,7 +37,9 @@ where
     /// The return value is a vector, the first item is the root,
     /// then all children are referenced in the parent with their indice in the vec.
     /// Every child should also reference its parent through its indice too.
-    async fn load_initial_hierarchy(&self) -> Result<Vec<LoadedHierarchyNode<Self::Hierarchy>>, Self::Error>;
+    async fn load_initial_hierarchy(
+        &self,
+    ) -> Result<Vec<LoadedHierarchyNode<Self::Hierarchy>>, Self::Error>;
 
     /// This method must load the provided node sub hierarchy.
     /// The return format is the same as described in [`OctreeLoader::load_initial_hierarchy`].
@@ -47,5 +50,79 @@ where
         node: &LoadedHierarchyNode<Self::Hierarchy>,
     ) -> Result<Vec<LoadedHierarchyNode<Self::Hierarchy>>, Self::Error>;
 
-    async fn load_node_data(&self, node: &LoadedHierarchyNode<Self::Hierarchy>) -> Result<T, Self::Error>;
+    async fn load_node_data(
+        &self,
+        node: &LoadedHierarchyNode<Self::Hierarchy>,
+    ) -> Result<T, Self::Error>;
+}
+
+#[async_trait]
+pub trait ErasedOctreeLoader<T: NodeData>: Send + Sync + 'static {
+    /// This method must load the initial octree hierarchy in a flat structure.
+    /// The return value is a vector, the first item is the root,
+    /// then all children are referenced in the parent with their indice in the vec.
+    /// Every child should also reference its parent through its indice too.
+    async fn load_initial_hierarchy(&self) -> Result<Vec<HierarchyNode>, BevyError>;
+
+    /// This method must load the provided node sub hierarchy.
+    /// The return format is the same as described in [`OctreeLoader::load_initial_hierarchy`].
+    /// So, the provided node is expected to be the first in the returned vector.
+    /// The provided node **must** be in [`HierarchyNodeStatus::Proxy`] state, or an error might be thrown.
+    async fn load_hierarchy(
+        &self,
+        node: &HierarchyOctreeNode,
+    ) -> Result<Vec<HierarchyNode>, BevyError>;
+
+    async fn load_node_data(&self, node: &HierarchyOctreeNode) -> Result<T, BevyError>;
+}
+
+#[async_trait]
+impl<T: NodeData, L: OctreeLoader<T>> ErasedOctreeLoader<T> for L {
+    async fn load_initial_hierarchy(&self) -> Result<Vec<HierarchyNode>, BevyError> {
+        let initial_hierarchy = <Self as OctreeLoader<T>>::load_initial_hierarchy(self)
+            .await
+            .map_err(|err| err.into())?;
+
+        Ok(initial_hierarchy
+            .into_iter()
+            .map(|node| HierarchyNode::from(node))
+            .collect())
+    }
+
+    async fn load_hierarchy(
+        &self,
+        node: &HierarchyOctreeNode,
+    ) -> Result<Vec<HierarchyNode>, BevyError> {
+        let Ok(loaded_hierarchy) = node
+            .data
+            .clone()
+            .downcast::<LoadedHierarchyNode<L::Hierarchy>>()
+        else {
+            return Err("Unable to downcast LoadedHierarchyNode".into());
+        };
+
+        let loaded_nodes = self
+            .load_hierarchy(&loaded_hierarchy)
+            .await
+            .map_err(|err| err.into())?;
+
+        Ok(loaded_nodes
+            .into_iter()
+            .map(|node| HierarchyNode::from(node))
+            .collect())
+    }
+
+    async fn load_node_data(&self, node: &HierarchyOctreeNode) -> Result<T, BevyError> {
+        let Ok(loaded_hierarchy) = node
+            .data
+            .clone()
+            .downcast::<LoadedHierarchyNode<L::Hierarchy>>()
+        else {
+            return Err("Unable to downcast LoadedHierarchyNode".into());
+        };
+
+        self.load_node_data(&loaded_hierarchy)
+            .await
+            .map_err(|err| err.into())
+    }
 }

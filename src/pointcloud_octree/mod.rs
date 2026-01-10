@@ -1,18 +1,19 @@
 pub mod asset;
+pub mod component;
 pub mod extract;
 pub mod render;
-pub mod component;
 
-use crate::octree::extract::ExtractVisibleOctreeNodesPlugin;
-use crate::octree::visibility::OctreeVisiblityPlugin;
 use crate::octree::OctreeAssetPlugin;
+use crate::octree::extract::ExtractVisibleOctreeNodesPlugin;
+use crate::octree::server::{OctreeServer, OctreeServerPlugin};
+use crate::octree::visibility::OctreeVisiblityPlugin;
 use crate::pointcloud_octree::asset::data::PointCloudNodeData;
 use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
-use component::PointCloudOctree3d;
 use asset::extract::{PointCloudOctreeExtraction, PointCloudOctreeNodeUniformLayout};
 use bevy_app::{App, Plugin};
 use bevy_ecs::prelude::*;
 use bevy_render::RenderApp;
+use component::PointCloudOctree3d;
 use render::RenderPointCloudOctreePlugin;
 
 pub type PointCloudOctreeAssetPlugin = OctreeAssetPlugin<PointCloudNodeData>;
@@ -42,3 +43,8 @@ impl Plugin for PointCloudOctreePlugin {
         render_app.init_resource::<PointCloudOctreeNodeUniformLayout>();
     }
 }
+
+pub type PointCloudOctreeServer = OctreeServer<PointCloudNodeData>;
+
+pub type PointCloudOctreeServerPlugin =
+    OctreeServerPlugin<PointCloudNodeData, PointCloudOctree3d, RenderPointCloudNodeData>;
