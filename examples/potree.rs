@@ -1,22 +1,26 @@
 #[path = "helpers/camera_controller.rs"]
 mod camera_controller;
 
+use bevy::DefaultPlugins;
+use bevy_app::prelude::*;
+use bevy_app::Plugin;
+use bevy_asset::{Assets, Handle};
+use bevy_camera::Camera3d;
 #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
-use bevy::dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig};
-use bevy::prelude::*;
-#[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
-use bevy::text::FontSmoothing;
-#[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
-use bevy::window::PresentMode;
 use bevy_color::palettes::basic::{GREEN, RED};
+use bevy_color::Color;
+#[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
+use bevy_dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig};
 use bevy_diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
+use bevy_ecs::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
+use bevy_gizmos::prelude::*;
+use bevy_math::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
-use bevy_pointcloud::PointCloudPlugin;
 use bevy_pointcloud::octree::visibility::components::OctreesVisibility;
 use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
-use bevy_pointcloud::pointcloud_octree::asset::PointCloudOctree;
 use bevy_pointcloud::pointcloud_octree::asset::data::PointCloudNodeData;
+use bevy_pointcloud::pointcloud_octree::asset::PointCloudOctree;
 use bevy_pointcloud::pointcloud_octree::component::PointCloudOctree3d;
 use bevy_pointcloud::pointcloud_octree::{
     PointCloudOctreePlugin, PointCloudOctreeServer, PointCloudOctreeServerPlugin,
@@ -24,7 +28,13 @@ use bevy_pointcloud::pointcloud_octree::{
 };
 use bevy_pointcloud::potree::loader::PotreeLoader;
 use bevy_pointcloud::render::PointCloudRenderMode;
+use bevy_pointcloud::PointCloudPlugin;
+use bevy_render::prelude::*;
 use bevy_render::view::NoIndirectDrawing;
+use bevy_text::{FontSmoothing, TextFont};
+use bevy_transform::prelude::*;
+use bevy_utils::default;
+use bevy_window::{PresentMode, Window};
 use std::ops::Mul;
 
 fn main() {
@@ -84,7 +94,7 @@ fn setup_window(mut windows: Query<&mut Window>) {
 
     #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
     {
-        window.present_mode = PresentMode::Mailbox;
+        window.present_mode = PresentMode::Fifo;
     }
 }
 

@@ -1,22 +1,40 @@
 #[path = "helpers/camera_controller.rs"]
 mod camera_controller;
 
-use bevy::color::palettes::basic::GREEN;
-use bevy::dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin};
-use bevy::light::NotShadowCaster;
-use bevy::text::FontSmoothing;
-use bevy::{prelude::*, render::view::NoIndirectDrawing};
+use bevy::DefaultPlugins;
+use bevy_app::prelude::*;
+use bevy_asset::{AssetServer, Assets, Handle};
 use bevy_camera::primitives::Aabb;
-use bevy_color::palettes::basic::{RED, SILVER};
+use bevy_camera::{Camera3d, PerspectiveProjection, Projection};
+use bevy_color::palettes::basic::SILVER;
+#[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
+use bevy_color::palettes::basic::{GREEN, RED};
+use bevy_color::Color;
+#[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
+use bevy_dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin};
+use bevy_ecs::prelude::*;
+use bevy_gizmos::prelude::*;
+use bevy_input::prelude::*;
+use bevy_input::ButtonInput;
+use bevy_light::{NotShadowCaster, PointLight};
+use bevy_math::prelude::*;
+use bevy_mesh::{Mesh, Mesh3d, Meshable};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
-use bevy_pointcloud::PointCloudPlugin;
+use bevy_pbr::{MeshMaterial3d, StandardMaterial};
 use bevy_pointcloud::loader::las::LasLoaderPlugin;
 use bevy_pointcloud::point_cloud::{PointCloud, PointCloud3d};
 use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
 use bevy_pointcloud::render::PointCloudRenderMode;
-use std::ops::Neg;
+use bevy_pointcloud::PointCloudPlugin;
+use bevy_render::prelude::*;
+use bevy_render::view::NoIndirectDrawing;
+use bevy_text::{FontSmoothing, TextFont};
+use bevy_transform::prelude::*;
+use bevy_utils::default;
+use bevy_window::{PresentMode, Window};
+use std::ops::{Mul, Neg};
+
 #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
-use bevy::window::PresentMode;
 
 /// This example uses a shader source file from the assets subdirectory
 

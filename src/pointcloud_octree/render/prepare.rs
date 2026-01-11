@@ -288,7 +288,7 @@ pub struct VisibleNodesTextureLayout {
 }
 
 const BUFFER_SIZE: usize = 65536;
-const MAX_NODES: usize = 4096;
+const MAX_NODES: usize = 2048;
 
 #[derive(Resource)]
 pub struct OctreeNodesMappingBindGroups {

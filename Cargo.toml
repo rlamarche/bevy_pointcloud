@@ -68,16 +68,79 @@ crossbeam = { version = "0.8", features = [
 async-trait = "0.1"
 ordered-float = "5.1.0"
 
-wasm-bindgen = { version = "=0.2.100", optional = true }
-wasm-bindgen-futures = { version = "=0.4.50", optional = true }
+wasm-bindgen = { version = "=0.2.106", optional = true }
+wasm-bindgen-futures = { version = "=0.4.56", optional = true }
 wasm_thread = { version = "0.3.3", optional = true }
 
 [dev-dependencies]
-bevy = { version = "0.17", features = ["bevy_dev_tools"] }
+bevy_dev_tools = { version = "0.17" }
 rand = "0.9"
 bevy_panorbit_camera = { version = "0.33.1", features = ["bevy_egui"] }
 egui = { version = "0.33.0", default-features = false }
 bevy_egui = "0.38.0"
+bevy_input = { version = "0.17" }
+bevy_window = { version = "0.17" }
+bevy_text = { version = "0.17" }
+bevy_light = { version = "0.17" }
+bevy_pbr = { version = "0.17" }
+
+[dependencies.bevy]
+version = "0.17"
+default-features = false
+features = [
+    "std",
+    "async_executor",
+#    "android-game-activity",
+#    "android_shared_stdcxx",
+#    "animation",
+    "bevy_asset",
+#    "bevy_audio",
+    "bevy_color",
+    "bevy_core_pipeline",
+    "bevy_post_process",
+    "bevy_anti_alias",
+    "bevy_gilrs",
+    "bevy_gizmos",
+#    "bevy_gltf",
+    "bevy_input_focus",
+    "bevy_log",
+    "bevy_mesh_picking_backend",
+    "bevy_pbr",
+    "bevy_picking",
+    "bevy_render",
+    "bevy_scene",
+    "bevy_image",
+    "bevy_mesh",
+    "bevy_camera",
+    "bevy_light",
+    "bevy_shader",
+    "bevy_sprite",
+    "bevy_sprite_picking_backend",
+    "bevy_sprite_render",
+    "bevy_state",
+    "bevy_text",
+    "bevy_ui",
+    "bevy_ui_picking_backend",
+    "bevy_ui_render",
+    "bevy_window",
+    "bevy_winit",
+#    "custom_cursor",
+    "default_font",
+#    "hdr",
+#    "ktx2",
+    "multi_threaded",
+#    "png",
+#    "reflect_auto_register",
+#    "smaa_luts",
+#    "sysinfo_plugin",
+#    "tonemapping_luts",
+#    "vorbis",
+    "webgl2",
+    "x11",
+    "wayland",
+    "debug",
+    "zstd_rust",
+]
 
 [features]
 default = ["las", "ply"]

@@ -25,3 +25,4 @@ RUSTFLAGS="-C target-feature=+atomics,+bulk-memory,+mutable-globals \
 
 
 wasm-bindgen --target web  --out-dir ./wasm --out-name "bevy_pointcloud"  ./target/wasm32-unknown-unknown/wasm-release/examples/potree_wasm.wasm
+wasm-opt -O -ol 100 -s 100 -o wasm/bevy_pointcloud_bg.wasm wasm/bevy_pointcloud_bg.wasm

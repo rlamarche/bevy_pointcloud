@@ -24,3 +24,4 @@ RUSTFLAGS="-C target-feature=+atomics,+bulk-memory,+mutable-globals \
   cargo +nightly build --features "webgl potree_wasm_worker" --example potree_wasm_worker --target wasm32-unknown-unknown -Z build-std=std,panic_abort --profile wasm-release
 
 wasm-bindgen --target web  --out-dir ./wasm --out-name "bevy_pointcloud"  ./target/wasm32-unknown-unknown/wasm-release/examples/potree_wasm_worker.wasm
+wasm-opt -O -ol 100 -s 100 -o wasm/bevy_pointcloud_bg.wasm wasm/bevy_pointcloud_bg.wasm
