@@ -5,6 +5,7 @@ pub mod render;
 pub mod visibility;
 
 use crate::octree::OctreeAssetPlugin;
+use crate::octree::eviction::OctreeEvictionPlugin;
 use crate::octree::extract::ExtractVisibleOctreeNodesPlugin;
 use crate::octree::server::{OctreeServer, OctreeServerPlugin};
 use crate::octree::visibility::OctreeVisiblityPlugin;
@@ -39,11 +40,15 @@ pub type PointCloudOctreeVisibilitySettings = OctreeVisibilitySettings<
     PointCloudOctreePointBudget,
 >;
 
+pub type PointCloudOctreeEvictionPlugin =
+    OctreeEvictionPlugin<PointCloudNodeData, PointCloudOctree3d>;
+
 impl Plugin for PointCloudOctreePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
             PointCloudOctreeAssetPlugin::default(),
             PointCloudOctreeVisibilityPlugin::default(),
+            PointCloudOctreeEvictionPlugin::default(),
             ExtractVisiblePointCloudOctreeNodesPlugin::default(),
             RenderPointCloudOctreePlugin,
         ));

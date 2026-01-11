@@ -2,22 +2,23 @@ pub mod budget;
 pub mod components;
 pub mod filter;
 mod heap_guard;
+pub mod resources;
 pub mod stack;
 
 use super::asset::Octree;
 use super::hierarchy::HierarchyNodeStatus;
-use super::node::{NodeData, NodeStatus, OctreeNode};
+use super::node::{NodeData, NodeStatus};
 use super::server::resources::{LoadRequestType, OctreeLoadTasks};
-use crate::octree::storage::NodeId;
 use crate::octree::visibility::heap_guard::HeapGuard;
+use crate::octree::visibility::resources::GlobalVisibleOctreeNodes;
 use bevy_app::{App, Plugin, PostUpdate};
 use bevy_asset::{AssetId, Assets};
 use bevy_camera::primitives::{Aabb, Frustum};
 use bevy_camera::visibility::VisibilitySystems::CheckVisibility;
-use bevy_camera::visibility::{add_visibility_class, Visibility, VisibilityClass, VisibleEntities};
+use bevy_camera::visibility::{Visibility, VisibilityClass, VisibleEntities, add_visibility_class};
 use bevy_camera::{Camera, Projection};
 use bevy_diagnostic::{
-    Diagnostic, DiagnosticPath, Diagnostics, RegisterDiagnostic, DEFAULT_MAX_HISTORY_LENGTH,
+    DEFAULT_MAX_HISTORY_LENGTH, Diagnostic, DiagnosticPath, Diagnostics, RegisterDiagnostic,
 };
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
@@ -78,8 +79,9 @@ where
 
         app.register_required_components::<C, Visibility>()
             .register_required_components::<C, VisibilityClass>()
-            .register_required_components::<Camera, OctreesVisibility<T, C>>()
+            .register_required_components::<Camera, ViewVisibleOctreeNodes<T, C>>()
             .init_resource::<OctreeLoadTasks<T>>()
+            .init_resource::<GlobalVisibleOctreeNodes<T, C>>()
             .add_systems(
                 PostUpdate,
                 check_octree_nodes_visibility::<T, C, F, B>.in_set(CheckOctreeNodesVisibility),
@@ -107,11 +109,12 @@ pub fn check_octree_nodes_visibility<T, C, F, B>(
         &GlobalTransform,
         &Projection,
         Option<&OctreeVisibilitySettings<T, F, B>>,
-        &mut OctreesVisibility<T, C>,
+        &mut ViewVisibleOctreeNodes<T, C>,
     )>,
     octrees: Res<Assets<Octree<T>>>,
     mut octree_load_tasks: ResMut<OctreeLoadTasks<T>>,
     mut priority_stack: Local<BinaryHeap<StackedOctreeNode<T>>>,
+    mut global_visible_octree_nodes: ResMut<GlobalVisibleOctreeNodes<T, C>>,
 ) where
     T: NodeData,
     C: Component,
@@ -122,6 +125,9 @@ pub fn check_octree_nodes_visibility<T, C, F, B>(
     let start = Instant::now();
     octree_load_tasks.hierarchy_heap.clear();
     octree_load_tasks.node_heap.clear();
+
+    // Clear previous iteration visible octree nodes
+    global_visible_octree_nodes.clear();
 
     // for each view
     for (
@@ -235,6 +241,7 @@ pub fn check_octree_nodes_visibility<T, C, F, B>(
             &mut budget,
             &mut priority_stack,
             &mut visible_octree_nodes,
+            &mut global_visible_octree_nodes,
             &entities_transform,
             &mut octree_load_tasks,
         );
@@ -279,6 +286,10 @@ fn compute_screen_pixel_radius(
             let slope = (perspective_projection.fov / 2.0).atan();
             let proj_factor = (0.5 * physical_target_size.y as f32) / (slope * distance);
 
+            if distance < radius {
+                return Some(f32::MAX);
+            }
+
             Some(radius * proj_factor)
         }
         Projection::Orthographic(orthographic_projection) => {
@@ -293,7 +304,8 @@ fn compute_visible_nodes_stack<'a, T, C, F, B>(
     filter: &F,
     budget: &mut Option<B>,
     stack: &mut BinaryHeap<StackedOctreeNode<T>>,
-    visible_octree_nodes: &mut OctreesVisibility<T, C>,
+    view_visible_octree_nodes: &mut ViewVisibleOctreeNodes<T, C>,
+    global_visible_octree_nodes: &mut GlobalVisibleOctreeNodes<T, C>,
     entities_transform: &HashMap<Entity, &GlobalTransform>,
     load_tasks: &mut OctreeLoadTasks<T>,
 ) where
@@ -317,7 +329,7 @@ fn compute_visible_nodes_stack<'a, T, C, F, B>(
             break;
         };
 
-        let (_, visible_nodes) = visible_octree_nodes.get_mut(entity);
+        let (_, visible_nodes) = view_visible_octree_nodes.get_mut(entity);
         let Some(transform) = entities_transform.get(&entity) else {
             warn!("Missing transform for entity {}, skip", entity);
             continue;
@@ -426,6 +438,7 @@ fn compute_visible_nodes_stack<'a, T, C, F, B>(
                     // add the current node because it is visible or partially visible
                     let child_index = node.hierarchy.child_index;
                     visible_nodes.push(node.into());
+                    global_visible_octree_nodes.add_visible_octree_node(asset_id, node);
 
                     // if there is a parent, add it to the visible children array
                     if let Some(parent_index) = parent_index {

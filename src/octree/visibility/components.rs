@@ -18,7 +18,7 @@ pub struct OctreeVisibilitySettings<T: NodeData, F: OctreeNodesFilter<T>, B: Oct
 
 /// This component stores the visible nodes for each octree at view level (camera) in "main world".
 #[derive(Debug, Component)]
-pub struct OctreesVisibility<T, C>
+pub struct ViewVisibleOctreeNodes<T, C>
 where
     T: NodeData,
     C: Component,
@@ -27,7 +27,7 @@ where
     _phantom_data: PhantomData<fn() -> (T, C)>,
 }
 
-impl<T, C> Default for OctreesVisibility<T, C>
+impl<T, C> Default for ViewVisibleOctreeNodes<T, C>
 where
     T: NodeData,
     C: Component,
@@ -40,7 +40,7 @@ where
     }
 }
 
-impl<T, C> OctreesVisibility<T, C>
+impl<T, C> ViewVisibleOctreeNodes<T, C>
 where
     T: NodeData,
     C: Component,

@@ -9,7 +9,7 @@ use super::hierarchy::HierarchyNodeData;
 use super::node::{NodeData, OctreeNode};
 use crate::octree::extract::render_asset::RenderOctreeNodeData;
 pub(crate) use crate::octree::visibility::components::{
-    OctreesVisibility, VisibleOctreeNode,
+    ViewVisibleOctreeNodes, VisibleOctreeNode,
 };
 use bevy_app::prelude::*;
 use bevy_asset::{AssetId, Assets};
@@ -192,7 +192,7 @@ impl<C: Component> RenderOctreeIndex<C> {
 pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction>(
     mut commands: Commands,
     query: Extract<
-        Query<(RenderEntity, &OctreesVisibility<E::NodeData, E::Component>), With<Camera>>,
+        Query<(RenderEntity, &ViewVisibleOctreeNodes<E::NodeData, E::Component>), With<Camera>>,
     >,
     mapper: Extract<Query<&RenderEntity>>,
     mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,
@@ -308,7 +308,7 @@ pub trait ExtractOctreeNode: NodeData + Sized + TypePath {
 /// This system extract visible octree nodes using the provided trait implementation for `T`: [`ExtractOctreeNode`].
 /// It extracts only visible octree nodes previously computed.
 pub fn extract_render_octree_nodes<E: OctreeNodeExtraction, A>(
-    views: Extract<Query<(Entity, &OctreesVisibility<E::NodeData, E::Component>), With<Camera>>>,
+    views: Extract<Query<(Entity, &ViewVisibleOctreeNodes<E::NodeData, E::Component>), With<Camera>>>,
     query: Extract<Query<(&ViewVisibility, &E::Component, E::QueryData), E::QueryFilter>>,
     octrees: Extract<Res<Assets<Octree<E::NodeData>>>>,
     mut render_octrees: ResMut<RenderOctrees<A>>,

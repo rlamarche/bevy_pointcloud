@@ -72,6 +72,8 @@ wasm-bindgen = { version = "=0.2.106", optional = true }
 wasm-bindgen-futures = { version = "=0.4.56", optional = true }
 wasm_thread = { version = "0.3.3", optional = true }
 
+priority-queue = "2.7.0"
+
 [dev-dependencies]
 bevy_dev_tools = { version = "0.17" }
 rand = "0.9"
@@ -133,7 +135,7 @@ features = [
 #    "reflect_auto_register",
 #    "smaa_luts",
 #    "sysinfo_plugin",
-#    "tonemapping_luts",
+    "tonemapping_luts",
 #    "vorbis",
     "webgl2",
     "x11",

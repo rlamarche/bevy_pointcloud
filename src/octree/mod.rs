@@ -7,6 +7,7 @@ pub mod server;
 pub mod visibility;
 pub mod extract;
 pub mod storage;
+pub mod eviction;
 
 use asset::Octree;
 
