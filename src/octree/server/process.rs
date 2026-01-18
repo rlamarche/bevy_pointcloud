@@ -1,9 +1,10 @@
 use super::super::asset::Octree;
 use super::super::hierarchy::HierarchyNodeStatus;
-use super::super::loader::OctreeLoader;
 use super::super::node::{NodeData, NodeStatus};
 use super::resources::{OctreeLoadTasks, WeightedOctreeNodeLoadTask};
 use super::OctreeServer;
+use crate::octree::eviction::resources::OctreeNodeEvictionSettings;
+use crate::octree::OctreeTotalSize;
 use bevy_asset::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
@@ -12,6 +13,8 @@ pub fn process_octree_load_tasks<T>(
     mut load_tasks: ResMut<OctreeLoadTasks<T>>,
     mut octree_assets: ResMut<Assets<Octree<T>>>,
     mut server: ResMut<OctreeServer<T>>,
+    octree_total_size: Res<OctreeTotalSize<T>>,
+    octree_eviction_settings: Res<OctreeNodeEvictionSettings<T>>,
 ) where
     T: NodeData,
 {
@@ -32,6 +35,8 @@ pub fn process_octree_load_tasks<T>(
         &mut octree_assets,
         &mut server,
         MAX_CONCURRENT_NODES,
+        &octree_total_size,
+        &octree_eviction_settings,
     );
 }
 
@@ -61,7 +66,7 @@ fn process_hierarchy_loads<T>(
             continue;
         };
 
-        let Some(node) = octree.hierarchy_node_mut(task.node_id) else {
+        let Some(node) = octree.hierarchy_node(task.node_id) else {
             warn!("Node not found in octree: {:?}", task.node_id);
             continue;
         };
@@ -72,9 +77,6 @@ fn process_hierarchy_loads<T>(
         if !should_load {
             continue;
         }
-
-        // Set loading status of the node
-        node.status = HierarchyNodeStatus::Loading;
 
         // Spawn load sub hierarchy task
         if let Err(error) = server.load_sub_hierarchy(task.asset_id, octree, task.node_id) {
@@ -92,9 +94,17 @@ fn process_node_data_loads<T>(
     octree_assets: &mut Assets<Octree<T>>,
     server: &mut ResMut<OctreeServer<T>>,
     max_concurrent: usize,
+    octree_total_size: &OctreeTotalSize<T>,
+    // TODO fallback if plugin not enabled ?
+    octree_eviction_settings: &OctreeNodeEvictionSettings<T>,
 ) where
     T: NodeData,
 {
+    // do not try to load nodes if max memory is reached
+    if octree_total_size.total_size > octree_eviction_settings.max_size {
+        return;
+    }
+
     while load_tasks.node_in_flight.len() < max_concurrent {
         // Pop highest weight task
         let Some(WeightedOctreeNodeLoadTask(task, ..)) = load_tasks.node_heap.pop() else {
@@ -113,7 +123,7 @@ fn process_node_data_loads<T>(
             continue;
         };
 
-        let Some(node) = octree.node_mut(task.node_id) else {
+        let Some(node) = octree.node(task.node_id) else {
             warn!("Node not found in octree: {:?}", task.node_id);
             continue;
         };
@@ -124,9 +134,6 @@ fn process_node_data_loads<T>(
         if !should_load {
             continue;
         }
-
-        // Set loading status of the node
-        node.status = NodeStatus::Loading;
 
         // Spawn load sub hierarchy task
         if let Err(error) = server.load_node_data(task.asset_id, octree, task.node_id) {

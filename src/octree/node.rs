@@ -3,11 +3,12 @@ use crate::octree::hierarchy::HierarchyOctreeNode;
 use crate::octree::storage::NodeId;
 use bevy_asset::AssetId;
 use bevy_reflect::TypePath;
+use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 
-pub trait NodeData: Send + Sync + TypePath {}
-
-impl<T: Send + Sync + TypePath> NodeData for T {}
+pub trait NodeData: Send + Sync + TypePath {
+    fn size(&self) -> usize;
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum NodeStatus {
@@ -25,10 +26,18 @@ pub struct OctreeNode<T: NodeData> {
     pub data: Option<T>,
 }
 
-#[derive(Debug)]
 pub struct OctreeNodeKey<T: NodeData> {
     pub octree_id: AssetId<Octree<T>>,
     pub node_id: NodeId,
+}
+
+impl<T: NodeData> Debug for OctreeNodeKey<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OctreeNodeKey")
+            .field("octree_id", &self.octree_id)
+            .field("node_id", &self.node_id)
+            .finish()
+    }
 }
 
 impl<T: NodeData> Clone for OctreeNodeKey<T> {

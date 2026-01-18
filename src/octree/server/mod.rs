@@ -218,13 +218,14 @@ where
         asset: &mut Octree<T>,
         node_id: NodeId,
     ) -> Result<(), OctreeServerError> {
-        let hierarchy_octree_node_mut = asset
-            .hierarchy_node_mut(node_id)
-            .ok_or(OctreeServerError::HierarchyNodeNotFound)?;
+        asset
+            .set_node_hierarchy_loading(node_id)
+            .map_err(|_err| OctreeServerError::HierarchyNodeNotFound)?;
 
-        hierarchy_octree_node_mut.status = HierarchyNodeStatus::Loading;
-
-        let hierarchy_octree_node = hierarchy_octree_node_mut.clone();
+        let hierarchy_octree_node = asset
+            .hierarchy_node(node_id)
+            .ok_or(OctreeServerError::HierarchyNodeNotFound)?
+            .clone();
 
         let Some(loader) = self.loaders.get(&asset_id).cloned() else {
             return Err(OctreeServerError::LoaderNotFound);
@@ -256,13 +257,14 @@ where
         asset: &mut Octree<T>,
         node_id: NodeId,
     ) -> Result<(), OctreeServerError> {
-        let node_mut = asset
-            .node_mut(node_id)
-            .ok_or(OctreeServerError::HierarchyNodeNotFound)?;
+        asset
+            .set_node_data_loading(node_id)
+            .map_err(|_err| OctreeServerError::HierarchyNodeNotFound)?;
 
-        node_mut.status = NodeStatus::Loading;
-
-        let hierarchy_octree_node = node_mut.hierarchy.clone();
+        let hierarchy_octree_node = asset
+            .hierarchy_node(node_id)
+            .ok_or(OctreeServerError::HierarchyNodeNotFound)?
+            .clone();
 
         let Some(loader) = self.loaders.get(&asset_id).cloned() else {
             return Err(OctreeServerError::LoaderNotFound);
@@ -379,15 +381,13 @@ pub fn handle_internal_octree_events<T>(
                     continue;
                 };
 
-                let Some(node) = octree.node_mut(node_id) else {
+                if let Err(error) = octree.insert_node_data(node_id, node_data) {
                     warn!(
-                        "No node found for asset {:?} and node id {:?}, unable to store node data.",
-                        id, node_id,
+                        "An error occured when adding node data to node {}/{:?}: {:#}",
+                        id, node_id, error
                     );
                     continue;
-                };
-                node.data = Some(node_data);
-                node.status = NodeStatus::Loaded;
+                }
             }
         }
     }

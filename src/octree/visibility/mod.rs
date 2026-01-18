@@ -81,7 +81,7 @@ where
             .register_required_components::<C, VisibilityClass>()
             .register_required_components::<Camera, ViewVisibleOctreeNodes<T, C>>()
             .init_resource::<OctreeLoadTasks<T>>()
-            .init_resource::<GlobalVisibleOctreeNodes<T, C>>()
+            .init_resource::<GlobalVisibleOctreeNodes<T>>()
             .add_systems(
                 PostUpdate,
                 check_octree_nodes_visibility::<T, C, F, B>.in_set(CheckOctreeNodesVisibility),
@@ -117,7 +117,7 @@ pub fn check_octree_nodes_visibility<T, C, F, B>(
     octrees: Res<Assets<Octree<T>>>,
     mut octree_load_tasks: ResMut<OctreeLoadTasks<T>>,
     mut priority_stack: Local<BinaryHeap<StackedOctreeNode<T>>>,
-    mut global_visible_octree_nodes: ResMut<GlobalVisibleOctreeNodes<T, C>>,
+    mut global_visible_octree_nodes: ResMut<GlobalVisibleOctreeNodes<T>>,
 ) where
     T: NodeData,
     C: Component,
@@ -316,7 +316,7 @@ fn compute_visible_nodes_stack<'a, T, C, F, B>(
     budget: &mut Option<B>,
     stack: &mut BinaryHeap<StackedOctreeNode<T>>,
     view_visible_octree_nodes: &mut ViewVisibleOctreeNodes<T, C>,
-    global_visible_octree_nodes: &mut GlobalVisibleOctreeNodes<T, C>,
+    global_visible_octree_nodes: &mut GlobalVisibleOctreeNodes<T>,
     entities_transform: &HashMap<Entity, &GlobalTransform>,
     load_tasks: &mut OctreeLoadTasks<T>,
 ) where

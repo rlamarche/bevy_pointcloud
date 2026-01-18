@@ -5,15 +5,16 @@ use bevy::prelude::*;
 use bevy_diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
+use bevy_pointcloud::PointCloudPlugin;
 use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
 use bevy_pointcloud::pointcloud_octree::component::PointCloudOctree3d;
 use bevy_pointcloud::pointcloud_octree::{
-    PointCloudOctreePlugin, PointCloudOctreeServer, PointCloudOctreeServerPlugin,
-    PointCloudOctreeVisibilityPlugin, PointCloudOctreeVisibilitySettings,
+    PointCloudOctreeEvictionPlugin, PointCloudOctreePlugin, PointCloudOctreeServer,
+    PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin,
+    PointCloudOctreeVisibilitySettings,
 };
 use bevy_pointcloud::potree::loader::PotreeLoader;
 use bevy_pointcloud::render::PointCloudRenderMode;
-use bevy_pointcloud::PointCloudPlugin;
 use bevy_render::view::NoIndirectDrawing;
 
 fn main() {
@@ -23,7 +24,9 @@ fn main() {
         EguiPlugin::default(),
         PanOrbitCameraPlugin,
         PointCloudPlugin,
-        PointCloudOctreePlugin,
+        PointCloudOctreePlugin.set(PointCloudOctreeEvictionPlugin::with_max_size(
+            512 * 1024 * 1024,
+        )),
         PointCloudOctreeServerPlugin::default(),
     ));
 

@@ -318,13 +318,13 @@ pub fn extract_render_octree_nodes<E: OctreeNodeExtraction, A>(
 
             let render_octree = render_octree_nodes.get_or_create_mut(octree_component);
 
-            let removed_nodes = Vec::new();
+            let removed_nodes = octree.removed_nodes_data.clone();
             let mut modified_nodes = Vec::new();
             let mut added_nodes = Vec::new();
 
             // for each visible node
             // TODO do not iterate all nodes, but just nodes just loaded or modified (visible children)
-            for VisibleOctreeNode { id: node_id, .. } in visible_octree_nodes {
+            for node_id in &octree.added_nodes_data {
                 // check if the node is already prepared
                 if prepared_octree.nodes.contains_key(node_id) {
                     continue;

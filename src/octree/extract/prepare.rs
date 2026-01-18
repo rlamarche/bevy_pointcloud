@@ -1,8 +1,9 @@
-use super::super::node::{NodeData};
+use super::super::node::NodeData;
 use super::limiter::RenderOctreeNodesBytesPerFrameLimiter;
 use super::{ExtractedOctreeNodes, OctreeNodeExtraction};
 use crate::octree::asset::Octree;
 use crate::octree::extract::render_asset::RenderOctreeNodeData;
+use crate::octree::storage::NodeId;
 use bevy_asset::AssetId;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::{StaticSystemParam, SystemParam, SystemParamItem};
@@ -56,14 +57,15 @@ pub trait RenderOctreeNode: Send + Sync + Sized + 'static {
         param: &mut SystemParamItem<Self::Param>,
     ) -> Result<Self, PrepareOctreeNodeError<Self::ExtractedOctreeNode>>;
 
-    /// Called whenever the [`RenderAsset::SourceAsset`] has been removed.
+    /// Called whenever the [`RenderOctreeNode::SourceOctreeNode`] has been removed.
     ///
     /// You can implement this method if you need to access ECS data (via
     /// `_param`) in order to perform cleanup tasks when the asset is removed.
     ///
     /// The default implementation does nothing.
-    fn unload_asset(
+    fn unload_octree_node(
         _source_asset: AssetId<Octree<Self::SourceOctreeNode>>,
+        _node_id: NodeId,
         _param: &mut SystemParamItem<Self::Param>,
     ) {
     }
@@ -79,13 +81,14 @@ pub fn prepare_assets<E, A>(
     bpf: Res<RenderOctreeNodesBytesPerFrameLimiter>,
 ) where
     E: OctreeNodeExtraction,
-    A: RenderOctreeNode<
-            SourceOctreeNode = E::NodeData,
-            ExtractedOctreeNode = E::ExtractedNodeData,
-        >,
+    A: RenderOctreeNode<SourceOctreeNode = E::NodeData, ExtractedOctreeNode = E::ExtractedNodeData>,
 {
     #[cfg(feature = "trace")]
-    let _span = info_span!("extract_render_octree_nodes", name = "extract_render_octree_nodes").entered();
+    let _span = info_span!(
+        "extract_render_octree_nodes",
+        name = "extract_render_octree_nodes"
+    )
+    .entered();
     let mut wrote_asset_count = 0;
 
     let mut param = param.into_inner();
@@ -165,11 +168,14 @@ pub fn prepare_assets<E, A>(
         }
     }
 
-    // TODO cleanup
-    // for removed in extracted_assets.removed_assets.drain() {
-    //     render_assets.remove(removed);
-    //     A::unload_asset(removed, &mut param);
-    // }
+    // remove removed nodes from gpu
+    for (octree_id, node_ids) in extracted_assets.removed_nodes.drain() {
+        let render_octree = render_assets.get_or_insert_mut(octree_id);
+        for node_id in node_ids {
+            render_octree.nodes.remove(&node_id);
+            A::unload_octree_node(octree_id, node_id, &mut param);
+        }
+    }
 
     let mut prepared_octree_nodes = HashMap::new();
 

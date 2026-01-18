@@ -1,11 +1,8 @@
-use bevy_ecs::prelude::*;
 use bevy_math::Vec3;
 use bevy_reflect::TypePath;
-use bevy_render::render_resource::binding_types::uniform_buffer;
 use bevy_render::render_resource::{
-    BindGroup, BindGroupLayout, BindGroupLayoutEntries, Buffer, PreparedBindGroup, ShaderStages, ShaderType, UniformBuffer,
+    BindGroup, Buffer, PreparedBindGroup, ShaderType, UniformBuffer,
 };
-use bevy_render::renderer::RenderDevice;
 use bytemuck::{Pod, Zeroable};
 
 #[derive(ShaderType, Pod, Zeroable, Clone, Copy)]
@@ -26,27 +23,6 @@ pub struct RenderPointCloudNodeData {
     pub uniform_buffer: UniformBuffer<PointCloudNodeDataUniform>,
     pub num_points: usize,
     pub offset: f32,
-}
-
-#[derive(Resource)]
-pub struct PointCloudOctreeNodeUniformLayout {
-    pub layout: BindGroupLayout,
-}
-
-impl FromWorld for PointCloudOctreeNodeUniformLayout {
-    fn from_world(world: &mut World) -> Self {
-        let render_device = world.resource::<RenderDevice>();
-
-        Self {
-            layout: render_device.create_bind_group_layout(
-                "pcl_octree_node_data",
-                &BindGroupLayoutEntries::single(
-                    ShaderStages::VERTEX,
-                    uniform_buffer::<PointCloudNodeDataUniform>(false),
-                ),
-            ),
-        }
-    }
 }
 
 #[derive(TypePath)]
