@@ -3,7 +3,6 @@ mod camera_controller;
 
 use bevy::DefaultPlugins;
 use bevy_app::prelude::*;
-use bevy_app::Plugin;
 use bevy_asset::{Assets, Handle};
 use bevy_camera::Camera3d;
 #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
@@ -17,7 +16,9 @@ use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_gizmos::prelude::*;
 use bevy_math::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
-use bevy_pointcloud::octree::visibility::components::OctreesVisibility;
+use bevy_pointcloud::octree::visibility::components::{
+    SkipOctreeVisibility, ViewVisibleOctreeNodes,
+};
 use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
 use bevy_pointcloud::pointcloud_octree::asset::data::PointCloudNodeData;
 use bevy_pointcloud::pointcloud_octree::asset::PointCloudOctree;
@@ -42,6 +43,7 @@ fn main() {
     app.add_plugins((
         DefaultPlugins,
         EguiPlugin::default(),
+        // WorldInspectorPlugin::default(),
         PanOrbitCameraPlugin,
         PointCloudPlugin,
         PointCloudOctreePlugin,
@@ -94,7 +96,7 @@ fn setup_window(mut windows: Query<&mut Window>) {
 
     #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
     {
-        window.present_mode = PresentMode::Fifo;
+        window.present_mode = PresentMode::Mailbox;
     }
 }
 
@@ -139,7 +141,8 @@ fn load_pointcloud(
     });
     commands.spawn(MyMaterial(my_material.clone()));
 
-    let octree_handle = octree_server.load_octree::<PotreeLoader>("assets/potree/heidentor");
+    let octree_handle =
+        octree_server.load_octree::<PotreeLoader>("assets/potree/heidentor");
 
     commands.spawn((
         PointCloudOctree3d(octree_handle),
@@ -151,7 +154,7 @@ fn load_pointcloud(
 fn draw_gizmos(
     octrees: Res<Assets<PointCloudOctree>>,
     entities: Query<&GlobalTransform, With<PointCloudOctree3d>>,
-    octrees_vibility: Query<&OctreesVisibility<PointCloudNodeData, PointCloudOctree3d>>,
+    octrees_vibility: Query<&ViewVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>>,
     mut gizmos: Gizmos,
 ) {
     for octree_visibility in octrees_vibility {
@@ -183,14 +186,17 @@ fn draw_gizmos(
 }
 
 fn ui_settings(
+    mut commands: Commands,
     mut contexts: EguiContexts,
     mut point_cloud_settings: Query<(
+        Entity,
         &mut PointCloudOctreeVisibilitySettings,
         &mut PointCloudRenderMode,
+        Option<&SkipOctreeVisibility>,
     )>,
     diagnostic: Res<DiagnosticsStore>,
 ) -> Result {
-    let (mut point_cloud_settings, mut point_cloud_render_mode) =
+    let (view_entity, mut point_cloud_settings, mut point_cloud_render_mode, skip_visibility_check) =
         point_cloud_settings.single_mut().unwrap();
 
     let mut use_edl = point_cloud_render_mode.use_edl;
@@ -199,6 +205,8 @@ fn ui_settings(
     let mut edl_neighbour_count = point_cloud_render_mode.edl_neighbour_count;
     let mut min_node_size: f32 = point_cloud_settings.filter.unwrap_or(0.0);
     let mut point_budget: usize = point_cloud_settings.budget.unwrap_or(0);
+
+    let mut has_skip_visibility_check = skip_visibility_check.is_some();
 
     let visibility_time = diagnostic
         .get(&PointCloudOctreeVisibilityPlugin::VISIBILITY_CHECK_TIME)
@@ -217,6 +225,7 @@ fn ui_settings(
         .show(contexts.ctx_mut()?, |ui| {
             ui.vertical(|ui| {
                 ui.label("Render Settings");
+                ui.checkbox(&mut has_skip_visibility_check, "Skip Visibility Check");
                 ui.checkbox(&mut use_edl, "Eye Dome Lightning");
                 ui.add(
                     egui::Slider::new(&mut edl_radius, 0.0..=10.0)
@@ -284,6 +293,19 @@ fn ui_settings(
 
     point_cloud_settings.filter = Some(min_node_size);
     point_cloud_settings.budget = Some(point_budget);
+
+    if has_skip_visibility_check != skip_visibility_check.is_some() {
+        match has_skip_visibility_check {
+            true => {
+                commands.entity(view_entity).insert(SkipOctreeVisibility);
+            }
+            false => {
+                commands
+                    .entity(view_entity)
+                    .remove::<SkipOctreeVisibility>();
+            }
+        }
+    }
 
     Ok(())
 }

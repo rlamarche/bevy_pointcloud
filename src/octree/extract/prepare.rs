@@ -84,6 +84,8 @@ pub fn prepare_assets<E, A>(
             ExtractedOctreeNode = E::ExtractedNodeData,
         >,
 {
+    #[cfg(feature = "trace")]
+    let _span = info_span!("extract_render_octree_nodes", name = "extract_render_octree_nodes").entered();
     let mut wrote_asset_count = 0;
 
     let mut param = param.into_inner();

@@ -1,27 +1,24 @@
 use super::attribute_pass::phase::PointCloudOctree3dAttributePhase;
 use super::depth_pass::phase::PointCloudOctree3dDepthPhase;
-use super::phase::PointCloudOctree3dPhase;
-use crate::octree::extract::{
-    RenderOctreeIndex, RenderOctrees, RenderVisibleOctreeNodes,
-};
+use super::phase::{PointCloudOctree3dPhase, ViewOctreeNodesRenderPhases};
+use crate::octree::extract::{RenderOctreeIndex, RenderOctrees, RenderVisibleOctreeNodes};
 use crate::octree::storage::NodeId;
-use crate::pointcloud_octree::component::PointCloudOctree3d;
+use crate::octree::visibility::iter_one_bits;
 use crate::pointcloud_octree::asset::data::PointCloudNodeData;
+use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
 use bevy_color::LinearRgba;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::ROQueryItem;
-use bevy_ecs::system::SystemParamItem;
 use bevy_ecs::system::lifetimeless::{Read, SRes};
+use bevy_ecs::system::SystemParamItem;
 use bevy_log::warn;
 use bevy_platform::collections::HashMap;
 use bevy_render::camera::ExtractedCamera;
 use bevy_render::prelude::*;
-use bevy_render::render_phase::{
-    PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass, ViewBinnedRenderPhases,
-};
-use bevy_render::render_resource::TextureFormat::Rgba8Uint;
+use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
 use bevy_render::render_resource::binding_types::{texture_2d, uniform_buffer};
+use bevy_render::render_resource::TextureFormat::Rgba8Uint;
 use bevy_render::render_resource::{
     BindGroup, BindGroupEntries, BindGroupEntry, BindGroupLayout, BindGroupLayoutEntries,
     BindGroupLayoutEntry, BindingResource, BindingType, BufferBinding, BufferBindingType,
@@ -33,7 +30,6 @@ use bevy_render::texture::{ColorAttachment, TextureCache};
 use bevy_render::view::ExtractedView;
 use bytemuck::{Pod, Zeroable};
 use std::cmp::Ordering;
-use crate::octree::visibility::iter_one_bits;
 
 #[derive(ShaderType)]
 pub struct PointCloudVisibleNodeUniform {
@@ -90,9 +86,11 @@ pub fn prepare_visible_nodes_texture(
     render_queue: Res<RenderQueue>,
     render_octree_index: Res<RenderOctreeIndex<PointCloudOctree3d>>,
     point_cloud_octree_3d_attribute_phases: Res<
-        ViewBinnedRenderPhases<PointCloudOctree3dAttributePhase>,
+        ViewOctreeNodesRenderPhases<PointCloudOctree3dAttributePhase>,
     >,
-    point_cloud_octree_3d_depth_phases: Res<ViewBinnedRenderPhases<PointCloudOctree3dDepthPhase>>,
+    point_cloud_octree_3d_depth_phases: Res<
+        ViewOctreeNodesRenderPhases<PointCloudOctree3dDepthPhase>,
+    >,
     views_3d: Query<(
         Entity,
         &ExtractedCamera,
@@ -140,7 +138,7 @@ pub fn prepare_visible_nodes_texture(
             // The size of the depth texture
             let size = Extent3d {
                 width: MAX_NODES as u32, // max 2048 nodes per octree visible at the same time
-                height: octrees_count as u32,       // max 64 octrees visibles at the same time
+                height: octrees_count as u32, // max 64 octrees visibles at the same time
                 depth_or_array_layers: 1,
             };
 
@@ -288,7 +286,7 @@ pub struct VisibleNodesTextureLayout {
 }
 
 const BUFFER_SIZE: usize = 65536;
-const MAX_NODES: usize = 2048;
+pub const MAX_NODES: usize = 2048;
 
 #[derive(Resource)]
 pub struct OctreeNodesMappingBindGroups {
@@ -338,7 +336,8 @@ impl FromWorld for OctreeNodesMappingBindGroups {
             .wgpu_device()
             .limits()
             .min_uniform_buffer_offset_alignment
-            as usize * 2; // for android compat we multiply by 2
+            as usize
+            * 2; // for android compat we multiply by 2
         // TODO: create a special case ?
         let max_nodes_per_buffer = BUFFER_SIZE / min_uniform_buffer_offset_alignment;
         let nb_buffers = MAX_NODES / max_nodes_per_buffer;

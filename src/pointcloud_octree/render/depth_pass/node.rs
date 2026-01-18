@@ -1,7 +1,9 @@
+use super::phase::PointCloudOctree3dDepthPhase;
+use crate::pointcloud_octree::render::phase::ViewOctreeNodesRenderPhases;
 use crate::render::depth_pass::texture::ViewDepthPrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::prelude::*;
-use bevy_render::render_phase::{TrackedRenderPass, ViewBinnedRenderPhases};
+use bevy_render::render_phase::TrackedRenderPass;
 use bevy_render::render_resource::{CommandEncoderDescriptor, StoreOp};
 use bevy_render::view::ViewDepthTexture;
 use bevy_render::{
@@ -11,7 +13,6 @@ use bevy_render::{
     renderer::RenderContext,
     view::ExtractedView,
 };
-use super::phase::PointCloudOctree3dDepthPhase;
 
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DepthPassOctreeLabel;
@@ -39,7 +40,7 @@ impl ViewNode for DepthPassOctreeNode {
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource
         let Some(point_cloud_3d_phases) =
-            world.get_resource::<ViewBinnedRenderPhases<PointCloudOctree3dDepthPhase>>()
+            world.get_resource::<ViewOctreeNodesRenderPhases<PointCloudOctree3dDepthPhase>>()
         else {
             info!("no pointcloud octree phases");
             return Ok(());
@@ -64,6 +65,9 @@ impl ViewNode for DepthPassOctreeNode {
         let depth_stencil_attachment = Some(view_depth_texture.get_attachment(StoreOp::Store));
 
         render_context.add_command_buffer_generation_task(move |render_device| {
+            #[cfg(feature = "trace")]
+            let _span = info_span!("depth_pass_octree_node").entered();
+
             // Command encoder setup
             let mut command_encoder =
                 render_device.create_command_encoder(&CommandEncoderDescriptor {
@@ -92,7 +96,7 @@ impl ViewNode for DepthPassOctreeNode {
             }
 
             drop(render_pass);
-            
+
             command_encoder.finish()
         });
 

@@ -48,6 +48,8 @@ bevy_color = { version = "0.17" }
 bevy_diagnostic = { version = "0.17" }
 bevy_time = { version = "0.17" }
 
+smallvec = { version = "1", default-features = false }
+
 bytemuck = "1"
 thiserror = "2.0"
 serde = { version = "1", features = ["derive"] }
@@ -85,8 +87,9 @@ bevy_window = { version = "0.17" }
 bevy_text = { version = "0.17" }
 bevy_light = { version = "0.17" }
 bevy_pbr = { version = "0.17" }
+bevy-inspector-egui = "0.35.0"
 
-[dependencies.bevy]
+[dev-dependencies.bevy]
 version = "0.17"
 default-features = false
 features = [
@@ -146,6 +149,8 @@ features = [
 
 [features]
 default = ["las", "ply"]
+trace = []
+trace_tracy = ["trace", "bevy/trace_tracy"]
 multi_threaded = []
 webgl = [
     "bevy_core_pipeline/webgl",

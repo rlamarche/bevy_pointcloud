@@ -171,15 +171,8 @@ fn get_max_relative_depth(position: vec3<f32>) -> f32 {
 @vertex
 fn vertex(vertex: Vertex) -> VertexOutput {
     let center = vertex.i_pos_size.xyz;
-    var point_size = material.point_size;
-
-    if (point_size < 0.0) {
-        point_size = vertex.i_pos_size.w;
-    }
 
     let viewport = view_bindings::view.viewport;
-
-
 
     // Compute world & view position of the point instance (applying the world_from_local matrix)
     let world_position = mesh_position_local_to_world(world_from_local, vec4<f32>(vertex.i_pos_size.xyz, 1.0));
@@ -212,6 +205,8 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 
 	radius = radius / proj_factor;
 #else
+    let point_size = select(material.point_size, vertex.i_pos_size.w, material.point_size <= 0.0);
+
     // Compute radius to size the point correctly with viewport size
     let radius = point_size / min(viewport[2], viewport[3]);
 #endif

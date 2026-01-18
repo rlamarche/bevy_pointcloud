@@ -13,11 +13,18 @@ use bevy_render::renderer::RenderDevice;
 pub struct PointCloudOctree3dUniform {
     #[uniform(0)]
     pub world_from_local: Mat4,
+    // TODO add this when removing mesh bind view
+    // #[uniform(0)]
+    // pub view_from_world: Mat4,
+    // #[uniform(0)]
+    // pub clip_from_view: Mat4,
+    // #[uniform(0)]
+    // pub viewport: Vec4,
 }
 
 #[derive(Component)]
 pub struct PreparedPointCloudOctree3dUniform {
-    prepared: PreparedBindGroup,
+    pub prepared: PreparedBindGroup,
 }
 #[derive(Resource)]
 pub struct PointCloudOctree3dUniformLayout {

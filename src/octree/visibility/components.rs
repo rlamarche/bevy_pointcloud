@@ -70,6 +70,10 @@ where
     _phantom_data: PhantomData<fn() -> (T, C)>,
 }
 
+/// This component stores the visible nodes for each octree at view level (camera) in "main world".
+#[derive(Component)]
+pub struct SkipOctreeVisibility;
+
 /// Contains useful informations about a visible node
 #[derive(Clone, Debug)]
 pub struct VisibleOctreeNode {
@@ -81,16 +85,6 @@ pub struct VisibleOctreeNode {
     pub children: [usize; 8],
     pub children_mask: u8,
 }
-
-// pub struct VisibleHierarchyNode<H>
-// where
-//     H: HierarchyNodeData,
-// {
-//     pub index: usize,
-//     pub children: [usize; 8],
-//     pub children_mask: u8,
-//     pub node: HierarchyOctreeNode<H>,
-// }
 
 impl<T: NodeData> From<&OctreeNode<T>> for VisibleOctreeNode {
     fn from(value: &OctreeNode<T>) -> Self {

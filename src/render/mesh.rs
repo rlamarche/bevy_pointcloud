@@ -11,13 +11,21 @@ static VERTICES: [Vertex; 4] = [
     Vertex::new(vec3(-0.5, 0.5, 0.0)),
 ];
 
-pub const QUAD_POSITIONS: &[[f32; 4]] = &[
-    [-0.5, -0.5, 0.0, 1.0],
-    [0.5, -0.5, 0.0, 1.0],
-    [0.5, 0.5, 0.0, 1.0],
-    [-0.5, 0.5, 0.0, 1.0],
+// pub const QUAD_POSITIONS: &[[f32; 4]] = &[
+//     [-0.5, -0.5, 0.0, 1.0],
+//     [0.5, -0.5, 0.0, 1.0],
+//     [0.5, 0.5, 0.0, 1.0],
+//     [-0.5, 0.5, 0.0, 1.0],
+// ];
+// pub const QUAD_INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
+
+pub const TRI_POSITIONS: &[[f32; 4]] = &[
+    [-1.0, -0.577, 0.0, 1.0],
+    [1.0, -0.577, 0.0, 1.0],
+    [0.0, 1.155, 0.0, 1.0],
 ];
-pub const QUAD_INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
+
+pub const TRI_INDICES: &[u32] = &[0, 1, 2];
 
 #[derive(Resource)]
 pub struct PointCloudMesh {
@@ -43,7 +51,6 @@ impl FromWorld for PointCloudMesh {
         let render_device = world.resource::<RenderDevice>();
         let render_queue = world.resource::<RenderQueue>();
 
-
         // Create the vertex and index buffers.
         let mut vbo = RawBufferVec::new(BufferUsages::VERTEX);
         let mut ibo = RawBufferVec::new(BufferUsages::INDEX);
@@ -51,7 +58,7 @@ impl FromWorld for PointCloudMesh {
         for vertex in &VERTICES {
             vbo.push(*vertex);
         }
-        for index in QUAD_INDICES {
+        for index in TRI_INDICES {
             ibo.push(*index);
         }
 
@@ -61,13 +68,13 @@ impl FromWorld for PointCloudMesh {
 
         let vertex_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
             label: Some("pcl_octree_mesh_vertex_buffer"),
-            contents: bytemuck::cast_slice(QUAD_POSITIONS),
+            contents: bytemuck::cast_slice(TRI_POSITIONS),
             usage: BufferUsages::VERTEX,
         });
 
         let index_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
             label: Some("pcl_octree_mesh_index_buffer"),
-            contents: bytemuck::cast_slice(QUAD_INDICES),
+            contents: bytemuck::cast_slice(TRI_INDICES),
             usage: BufferUsages::INDEX,
         });
 
@@ -78,7 +85,7 @@ impl FromWorld for PointCloudMesh {
             indices: ibo,
             vertex_buffer,
             index_buffer,
-            index_count: QUAD_INDICES.len() as u32,
+            index_count: TRI_INDICES.len() as u32,
         }
     }
 }

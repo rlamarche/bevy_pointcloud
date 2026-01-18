@@ -197,6 +197,8 @@ pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction>(
     mapper: Extract<Query<&RenderEntity>>,
     mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,
 ) {
+    #[cfg(feature = "trace")]
+    let _span = info_span!("extract_visible_octree_nodes", name = "extract_visible_octree_nodes").entered();
     for (render_entity, visible_point_cloud_octree_3d_nodes) in query.iter() {
         let render_visible_point_cloud_octree_3d_nodes =
             RenderVisibleOctreeNodes::<E::NodeData, E::Component> {
@@ -236,43 +238,6 @@ where
     pub octrees: HashMap<Entity, (AssetId<Octree<T>>, Vec<VisibleOctreeNode>)>,
     _phantom_data: PhantomData<C>,
 }
-
-// impl<H, T, C> ExtractComponent for OctreesVisibility<H, T, C>
-// where
-//     H: HierarchyNodeData,
-//     T: NodeData,
-//     C: Component,
-// {
-//     type QueryData = &'static Self;
-//     type QueryFilter = With<Camera>;
-//     type Out = RenderVisibleOctreeNodes<H, T, C>;
-//
-//     fn extract_component(
-//         visible_octree_nodes: QueryItem<'_, '_, Self::QueryData>,
-//     ) -> Option<Self::Out> {
-//         Some(RenderVisibleOctreeNodes::<H, T, C> {
-//             octrees: visible_octree_nodes.octrees.clone(),
-//             _phantom_data: PhantomData,
-//         })
-//     }
-// }
-
-// fn iter_one_bits(mask: u8) -> impl Iterator<Item = usize> {
-//     (0..8).filter(move |&i| (mask & (1 << i)) != 0)
-// }
-//
-// #[cfg(test)]
-// mod tests {
-//     // Note this useful idiom: importing names from outer (for mod tests) scope.
-//     use super::*;
-//
-//     #[test]
-//     fn test_iter_one_bits() {
-//         let mask: u8 = 0b01010101;
-//         let indexes = iter_one_bits(mask).collect::<Vec<_>>();
-//         assert_eq!(indexes, vec![0, 2, 4, 6]);
-//     }
-// }
 
 /// Describes how an octree node gets extracted and prepared for rendering.
 pub trait ExtractOctreeNode: NodeData + Sized + TypePath {
@@ -317,6 +282,8 @@ pub fn extract_render_octree_nodes<E: OctreeNodeExtraction, A>(
     for<'a> &'a E::Component: Into<AssetId<Octree<E::NodeData>>>,
     A: RenderOctreeNode<ExtractedOctreeNode = E::ExtractedNodeData, SourceOctreeNode = E::NodeData>,
 {
+    #[cfg(feature = "trace")]
+    let _span = info_span!("extract_render_octree_nodes", name = "extract_render_octree_nodes").entered();
     // clear previously computed data
     render_octree_nodes.clear_all();
 

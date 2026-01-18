@@ -102,15 +102,18 @@ pub fn check_octree_nodes_visibility<T, C, F, B>(
     _time: Res<Time<Real>>,
     entities: Query<(&C, &GlobalTransform)>,
     // TODO add a way to disable checking of a camera
-    mut views: Query<(
-        &VisibleEntities,
-        &Camera,
-        &Frustum,
-        &GlobalTransform,
-        &Projection,
-        Option<&OctreeVisibilitySettings<T, F, B>>,
-        &mut ViewVisibleOctreeNodes<T, C>,
-    )>,
+    mut views: Query<
+        (
+            &VisibleEntities,
+            &Camera,
+            &Frustum,
+            &GlobalTransform,
+            &Projection,
+            Option<&OctreeVisibilitySettings<T, F, B>>,
+            &mut ViewVisibleOctreeNodes<T, C>,
+        ),
+        Without<SkipOctreeVisibility>,
+    >,
     octrees: Res<Assets<Octree<T>>>,
     mut octree_load_tasks: ResMut<OctreeLoadTasks<T>>,
     mut priority_stack: Local<BinaryHeap<StackedOctreeNode<T>>>,
@@ -122,6 +125,12 @@ pub fn check_octree_nodes_visibility<T, C, F, B>(
     F: OctreeNodesFilter<T> + 'static,
     B: OctreeNodesBudget<T> + 'static,
 {
+    #[cfg(feature = "trace")]
+    let _span = info_span!(
+        "check_octree_nodes_visibility",
+        name = "check_octree_nodes_visibility"
+    )
+    .entered();
     let start = Instant::now();
     octree_load_tasks.hierarchy_heap.clear();
     octree_load_tasks.node_heap.clear();
@@ -271,6 +280,8 @@ fn compute_screen_pixel_radius(
     transform: &GlobalTransform,
     camera_view: &CameraView,
 ) -> Option<f32> {
+    #[cfg(feature = "trace")]
+    let _span = info_span!("compute_screen_pixel_radius").entered();
     let radius = (aabb.max() - aabb.min()).length() / 2.0;
 
     match &camera_view.projection {
@@ -314,6 +325,8 @@ fn compute_visible_nodes_stack<'a, T, C, F, B>(
     F: OctreeNodesFilter<T>,
     B: OctreeNodesBudget<T>,
 {
+    #[cfg(feature = "trace")]
+    let _span = info_span!("compute_visible_nodes_stack", name = "main").entered();
     loop {
         let Some(StackedOctreeNode {
             entity,
@@ -340,12 +353,24 @@ fn compute_visible_nodes_stack<'a, T, C, F, B>(
         // get the current node future index
         let current_index = visible_nodes.len();
 
+        #[cfg(feature = "trace")]
+        let filter_span = info_span!("compute_visible_nodes_stack", name = "filter").entered();
+
         // check node visibility
         if !filter.filter(node, transform, camera_view, screen_pixel_radius) {
             continue;
         }
 
+        #[cfg(feature = "trace")]
+        drop(filter_span);
+
         if !completely_visible {
+            #[cfg(feature = "trace")]
+            let _span = info_span!(
+                "compute_visible_nodes_stack",
+                name = "check_node_visibility"
+            )
+            .entered();
             // check if the node aabb against the frustum
             let model_sphere = bevy_camera::primitives::Sphere {
                 center: world_from_local.transform_point3a(node.hierarchy.bounding_box.center),
@@ -381,6 +406,9 @@ fn compute_visible_nodes_stack<'a, T, C, F, B>(
 
         match node.status {
             NodeStatus::HierarchyOnly => {
+                #[cfg(feature = "trace")]
+                let _span =
+                    info_span!("compute_visible_nodes_stack", name = "hierarchy_only").entered();
                 match node.hierarchy.status {
                     HierarchyNodeStatus::Proxy => {
                         load_tasks.queue_load_request(
@@ -407,7 +435,12 @@ fn compute_visible_nodes_stack<'a, T, C, F, B>(
                 // the node data is already loading, nothing to do
             }
             NodeStatus::Loaded => {
+                #[cfg(feature = "trace")]
+                let _span = info_span!("compute_visible_nodes_stack", name = "loaded").entered();
                 if budget.add_node(node) {
+                    #[cfg(feature = "trace")]
+                    let span_iter_children =
+                        info_span!("compute_visible_nodes_stack", name = "iter_children").entered();
                     // we have to process child nodes, sending flag `completely_visible` to prevent useless visibility checks
                     for i in iter_one_bits(node.hierarchy.children_mask) {
                         let child_id = &node.hierarchy.children[i as usize];
@@ -423,6 +456,10 @@ fn compute_visible_nodes_stack<'a, T, C, F, B>(
                         );
                         let weight = child_screen_pixel_radius.unwrap_or(f32::MAX);
 
+                        #[cfg(feature = "trace")]
+                        let span_append_stack =
+                            info_span!("compute_visible_nodes_stack", name = "append_stack")
+                                .entered();
                         stack.push(StackedOctreeNode {
                             entity,
                             asset_id,
@@ -433,7 +470,11 @@ fn compute_visible_nodes_stack<'a, T, C, F, B>(
                             completely_visible,
                             parent_index: Some(current_index),
                         });
+                        #[cfg(feature = "trace")]
+                        drop(span_append_stack)
                     }
+                    #[cfg(feature = "trace")]
+                    drop(span_iter_children);
 
                     // add the current node because it is visible or partially visible
                     let child_index = node.hierarchy.child_index;

@@ -50,11 +50,12 @@ impl<P: PhaseItem + PointCloudOctree3dPhase> RenderCommand<P> for DrawPointCloud
         };
 
         pass.set_vertex_buffer(0, point_cloud_mesh.vertex_buffer.slice(..));
-        pass.set_index_buffer(
-            point_cloud_mesh.index_buffer.slice(..),
-            0,
-            IndexFormat::Uint32,
-        );
+        // not needed is using a single triangle
+        // pass.set_index_buffer(
+        //     point_cloud_mesh.index_buffer.slice(..),
+        //     0,
+        //     IndexFormat::Uint32,
+        // );
 
         let Some(points) = &node.data.points else {
             return RenderCommandResult::Skip;
@@ -62,9 +63,15 @@ impl<P: PhaseItem + PointCloudOctree3dPhase> RenderCommand<P> for DrawPointCloud
 
         pass.set_vertex_buffer(1, points.slice(..));
 
-        pass.draw_indexed(
+        // not needed is using a single triangle
+        // pass.draw_indexed(
+        //     0..point_cloud_mesh.index_count,
+        //     0,
+        //     0..node.data.num_points as u32,
+        // );
+
+        pass.draw(
             0..point_cloud_mesh.index_count,
-            0,
             0..node.data.num_points as u32,
         );
 
