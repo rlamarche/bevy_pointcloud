@@ -284,6 +284,15 @@ fn compute_screen_pixel_radius(
     let _span = info_span!("compute_screen_pixel_radius").entered();
     let radius = (aabb.max() - aabb.min()).length() / 2.0;
 
+    // Account for entity scale (uniform or non-uniform) so the filter size stays relative to the
+    // transformed point cloud.
+    let matrix = transform.affine().matrix3;
+    let scale_x = matrix.x_axis.length();
+    let scale_y = matrix.y_axis.length();
+    let scale_z = matrix.z_axis.length();
+    let max_scale = scale_x.max(scale_y).max(scale_z);
+    let scaled_radius = radius * max_scale;
+
     match &camera_view.projection {
         Projection::Perspective(perspective_projection) => {
             let Some(physical_target_size) = &camera_view.physical_target_size else {
@@ -297,14 +306,14 @@ fn compute_screen_pixel_radius(
             let slope = (perspective_projection.fov / 2.0).atan();
             let proj_factor = (0.5 * physical_target_size.y as f32) / (slope * distance);
 
-            if distance < radius {
+            if distance < scaled_radius {
                 return Some(f32::MAX);
             }
 
-            Some(radius * proj_factor)
+            Some(scaled_radius * proj_factor)
         }
         Projection::Orthographic(orthographic_projection) => {
-            Some(radius * orthographic_projection.scale)
+            Some(scaled_radius * orthographic_projection.scale)
         }
         Projection::Custom(_) => None,
     }

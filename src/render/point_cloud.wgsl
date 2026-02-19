@@ -87,6 +87,16 @@ fn srgb_to_rgb_simple(color: vec3<f32>) -> vec3<f32> {
     return pow(color, vec3<f32>(2.2));
 }
 
+// Extract an approximate uniform scale factor from a transform matrix.
+// We take the largest axis scale to keep point sizing stable under non-uniform scaling.
+fn extract_max_scale(matrix: mat4x4<f32>) -> f32 {
+    let scale_x = length(matrix[0].xyz);
+    let scale_y = length(matrix[1].xyz);
+    let scale_z = length(matrix[2].xyz);
+
+    return max(scale_x, max(scale_y, scale_z));
+}
+
 
 #ifdef IS_OCTREE
 
@@ -129,7 +139,7 @@ fn get_max_relative_depth(position: vec3<f32>) -> f32 {
 
         let first_child_index = current_node.b | (current_node.a << 8u);  // u16 reconstruit à partir de B et A
 
-        // Determiner in whoch octant is the position
+        // Determiner in which octant is the position
         let relative_position = position - center;
 
         // index3d contains 0 or 1 for each axe
@@ -174,6 +184,8 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 
     let viewport = view_bindings::view.viewport;
 
+    let transform_scale = extract_max_scale(world_from_local);
+
     // Compute world & view position of the point instance (applying the world_from_local matrix)
     let world_position = mesh_position_local_to_world(world_from_local, vec4<f32>(vertex.i_pos_size.xyz, 1.0));
     var view_position = position_world_to_view(world_position.xyz);
@@ -188,24 +200,28 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     // TODO precalculate it on cpu
     let model_view = view_bindings::view.view_from_world * world_from_local;
 
-	let scale = length(
-		model_view * vec4(0, 0, 0, 1) -
-		model_view * vec4(octree_node.spacing, 0, 0, 1)
-	) / octree_node.spacing;
-	proj_factor = proj_factor * scale;
+    let scale = length(
+      model_view * vec4(0, 0, 0, 1) -
+      model_view * vec4(octree_node.spacing, 0, 0, 1)
+    ) / octree_node.spacing;
+    proj_factor = proj_factor * scale;
 
     let max_relative_depth = get_max_relative_depth(vertex.i_pos_size.xyz);
     let attenuation = pow(2.0, max_relative_depth);
 
-    var radius = octree_node.spacing * 1.7 / attenuation;
-    radius = radius * proj_factor;
+    // Base screen-space radius driven by spacing and LOD attenuation
+    var radius_screen = octree_node.spacing * 1.7 / attenuation;
+    radius_screen = radius_screen * proj_factor;
 
-	radius = max(material.min_point_size, radius);
-	radius = min(material.max_point_size, radius);
+    let scaled_min_point_size = material.min_point_size * transform_scale;
+    let scaled_max_point_size = material.max_point_size * transform_scale;
 
-	radius = radius / proj_factor;
+    radius_screen = max(scaled_min_point_size, radius_screen);
+    radius_screen = min(scaled_max_point_size, radius_screen);
+
+    let radius = radius_screen / proj_factor;
 #else
-    let point_size = select(material.point_size, vertex.i_pos_size.w, material.point_size <= 0.0);
+    let point_size = select(material.point_size, vertex.i_pos_size.w, material.point_size <= 0.0) * transform_scale;
 
     // Compute radius to size the point correctly with viewport size
     let radius = point_size / min(viewport[2], viewport[3]);
