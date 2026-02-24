@@ -82,15 +82,41 @@ where
         let initial_hierarchy = loader
             .load_initial_hierarchy()
             .await
-            .map_err(|error| error.into())?;
+            .map_err(|error| error.into())?
+            .into_iter()
+            .map(Into::into)
+            .collect::<Vec<HierarchyNode>>();
 
-        let mut parents = Vec::with_capacity(initial_hierarchy.len());
-        for node in initial_hierarchy {
-            let mut parent_id = None;
-            if let Some(parent) = node.parent_id {
-                parent_id = Some(parents[parent]);
+        let (children, roots) = build_hierarchy_children(&initial_hierarchy);
+
+        let Some(&root_idx) = roots.first() else {
+            return Err(BevyError::from(
+                "Loaded octree hierarchy is empty or missing a root node",
+            ));
+        };
+
+        if roots.len() > 1 {
+            warn!(
+                "Loaded octree hierarchy contains {} root nodes; using the first one",
+                roots.len()
+            );
+        }
+
+        let mut inserted_nodes: Vec<Option<NodeId>> = vec![None; initial_hierarchy.len()];
+        let mut stack = vec![(root_idx, None)];
+
+        while let Some((idx, parent_id)) = stack.pop() {
+            if inserted_nodes[idx].is_some() {
+                continue;
             }
-            parents.push(octree.insert_hierarchy_node(parent_id, node.into())?);
+
+            let node_id =
+                octree.insert_hierarchy_node(parent_id, initial_hierarchy[idx].clone())?;
+            inserted_nodes[idx] = Some(node_id);
+
+            for &child_idx in children[idx].iter().rev() {
+                stack.push((child_idx, Some(node_id)));
+            }
         }
 
         self.octree_event_sender
@@ -165,6 +191,31 @@ where
         node_id: NodeId,
         node_data: T,
     },
+}
+
+/// Build a child adjacency list and collect root indices for hierarchy vectors.
+fn build_hierarchy_children(nodes: &[HierarchyNode]) -> (Vec<Vec<usize>>, Vec<usize>) {
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
+    let mut roots = Vec::new();
+
+    for (idx, node) in nodes.iter().enumerate() {
+        if let Some(parent) = node.parent_id {
+            if parent < nodes.len() {
+                children[parent].push(idx);
+            } else {
+                warn!(
+                    "Hierarchy node {} references parent {} but only {} nodes exist",
+                    idx,
+                    parent,
+                    nodes.len()
+                );
+            }
+        } else {
+            roots.push(idx);
+        }
+    }
+
+    (children, roots)
 }
 
 impl<T> FromWorld for OctreeServer<T>
@@ -335,36 +386,71 @@ pub fn handle_internal_octree_events<T>(
                     continue;
                 };
 
-                // this vec will store each inserted nodes
-                let mut parents = Vec::with_capacity(hierarchy_nodes.len());
+                if hierarchy_nodes.is_empty() {
+                    warn!(
+                        "Loaded empty hierarchy for {:?}/{:?}, skipping update.",
+                        id, node_id
+                    );
+                    continue;
+                }
 
-                // insert each new hierarchy node in the asset
-                for node in hierarchy_nodes {
-                    if let Some(parent) = node.parent_id {
-                        // get the corresponding parent's node id from the indexed vec
-                        let parent_id = Some(parents[parent]);
+                let (children, roots) = build_hierarchy_children(&hierarchy_nodes);
 
-                        match octree.insert_hierarchy_node(parent_id, node) {
-                            Ok(node_id) => parents.push(node_id),
-                            Err(error) => {
-                                warn!("Unable to insert hierarchy node: {:#}", error);
-                                break;
-                            }
-                        };
-                    } else {
-                        // this is the first node, it exists already, just update it
-                        match octree.update_hierarchy_node(node_id, node) {
-                            Ok(_) => {
-                                parents.push(node_id);
-                            }
-                            Err(error) => {
-                                warn!("Unable to update hierarchy node: {:#}", error);
-                                break;
-                            }
-                        }
+                let Some(root_idx) = roots.first().copied() else {
+                    warn!(
+                        "Loaded hierarchy for {:?}/{:?} is missing a root node.",
+                        id, node_id
+                    );
+                    continue;
+                };
+
+                if roots.len() > 1 {
+                    warn!(
+                        "Loaded hierarchy for {:?}/{:?} contains {} root nodes; using the first one",
+                        id,
+                        node_id,
+                        roots.len()
+                    );
+                }
+
+                let mut inserted_nodes: Vec<Option<NodeId>> = vec![None; hierarchy_nodes.len()];
+
+                match octree.update_hierarchy_node(node_id, hierarchy_nodes[root_idx].clone()) {
+                    Ok(_) => {
+                        inserted_nodes[root_idx] = Some(node_id);
+                    }
+                    Err(error) => {
+                        warn!("Unable to update hierarchy node: {:#}", error);
+                        continue;
                     }
                 }
-                // info!("Loaded {} new hierarchy nodes", parents.len());
+
+                let mut stack: Vec<(usize, NodeId)> = children[root_idx]
+                    .iter()
+                    .rev()
+                    .map(|&child_idx| (child_idx, node_id))
+                    .collect();
+
+                while let Some((idx, parent)) = stack.pop() {
+                    if inserted_nodes[idx].is_some() {
+                        continue;
+                    }
+
+                    let new_id = match octree
+                        .insert_hierarchy_node(Some(parent), hierarchy_nodes[idx].clone())
+                    {
+                        Ok(node_id) => node_id,
+                        Err(error) => {
+                            warn!("Unable to insert hierarchy node: {:#}", error);
+                            continue;
+                        }
+                    };
+                    inserted_nodes[idx] = Some(new_id);
+
+                    for &child_idx in children[idx].iter().rev() {
+                        stack.push((child_idx, new_id));
+                    }
+                }
             }
             InternalOctreeEvent::NodeDataLoaded {
                 id,
