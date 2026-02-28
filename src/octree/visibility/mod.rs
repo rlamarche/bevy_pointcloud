@@ -38,11 +38,11 @@ use std::marker::PhantomData;
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CheckOctreeNodesVisibility;
 
-pub struct OctreeVisiblityPlugin<T, C, F = ScreenPixelRadiusFilter, B = ()>(
+pub struct OctreeVisibilityPlugin<T, C, F = ScreenPixelRadiusFilter, B = ()>(
     PhantomData<fn() -> (T, C, F, B)>,
 );
 
-impl<T, C, F, B> OctreeVisiblityPlugin<T, C, F, B> {
+impl<T, C, F, B> OctreeVisibilityPlugin<T, C, F, B> {
     /// Visibility check diagnostic
     pub const VISIBILITY_CHECK_TIME: DiagnosticPath =
         DiagnosticPath::const_new("pcl_octree_visibility_check");
@@ -51,12 +51,12 @@ impl<T, C, F, B> OctreeVisiblityPlugin<T, C, F, B> {
     pub const BUDGET: DiagnosticPath = DiagnosticPath::const_new("pcl_octree_budget");
 }
 
-impl<T, C, F, B> Default for OctreeVisiblityPlugin<T, C, F, B> {
+impl<T, C, F, B> Default for OctreeVisibilityPlugin<T, C, F, B> {
     fn default() -> Self {
-        OctreeVisiblityPlugin(PhantomData)
+        OctreeVisibilityPlugin(PhantomData)
     }
 }
-impl<T, C, F, B> Plugin for OctreeVisiblityPlugin<T, C, F, B>
+impl<T, C, F, B> Plugin for OctreeVisibilityPlugin<T, C, F, B>
 where
     T: NodeData,
     C: Component,
@@ -153,8 +153,11 @@ pub fn check_octree_nodes_visibility<T, C, F, B>(
             continue;
         }
 
-        // Reset previously computed visibility
+        // Reset previously computed visibility, and remove entries for despawned entities
         visible_octree_nodes.clear_all();
+        visible_octree_nodes
+            .octrees
+            .retain(|entity, _| entities.get(*entity).is_ok());
 
         let camera_view = CameraView {
             global_transform: camera_global_transform,
@@ -255,14 +258,14 @@ pub fn check_octree_nodes_visibility<T, C, F, B>(
             &mut octree_load_tasks,
         );
 
-        diagnostics.add_measurement(&OctreeVisiblityPlugin::<T, C, B>::BUDGET, || budget.value());
+        diagnostics.add_measurement(&OctreeVisibilityPlugin::<T, C, B>::BUDGET, || budget.value());
     }
 
     let duration = start.elapsed();
     let msecs = duration.as_secs_f64() * 1000.0;
 
     diagnostics.add_measurement(
-        &OctreeVisiblityPlugin::<T, C, B>::VISIBILITY_CHECK_TIME,
+        &OctreeVisibilityPlugin::<T, C, B>::VISIBILITY_CHECK_TIME,
         || msecs,
     );
 }
@@ -383,7 +386,7 @@ fn compute_visible_nodes_stack<'a, T, C, F, B>(
                 continue;
             }
 
-            // Check if the aabb is completly inside the frustum
+            // Check if the aabb is completely inside the frustum
             if camera_view
                 .frustum
                 .contains_aabb(&node.hierarchy.bounding_box, &world_from_local)

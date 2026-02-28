@@ -9,7 +9,7 @@ use crate::octree::extract::ExtractVisibleOctreeNodesPlugin;
 use crate::octree::server::{OctreeServer, OctreeServerPlugin};
 use crate::octree::visibility::components::OctreeVisibilitySettings;
 use crate::octree::visibility::filter::ScreenPixelRadiusFilter;
-use crate::octree::visibility::OctreeVisiblityPlugin;
+use crate::octree::visibility::OctreeVisibilityPlugin;
 use crate::octree::OctreeAssetPlugin;
 use crate::pointcloud_octree::asset::data::PointCloudNodeData;
 use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
@@ -20,7 +20,7 @@ use component::PointCloudOctree3d;
 
 pub type PointCloudOctreeAssetPlugin = OctreeAssetPlugin<PointCloudNodeData>;
 
-pub type PointCloudOctreeVisibilityPlugin = OctreeVisiblityPlugin<
+pub type PointCloudOctreeVisibilityPlugin = OctreeVisibilityPlugin<
     PointCloudNodeData,
     PointCloudOctree3d,
     ScreenPixelRadiusFilter,

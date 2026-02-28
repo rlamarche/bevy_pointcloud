@@ -120,7 +120,12 @@ pub fn prepare_visible_nodes_texture(
             continue;
         }
 
-        let required_buffer_size = octrees_count * MAX_NODES;
+        // Use slab capacity (not len) for sizing: after entity removal, surviving entities
+        // retain their original slab indices (e.g. index 1 stays 1 even if index 0 was freed),
+        // so buffers and textures must accommodate the full allocated slot range.
+        let slot_count = render_octree_index.octrees_slab.capacity();
+
+        let required_buffer_size = slot_count * MAX_NODES;
 
         // prepare the buffer only once
         if visible_nodes_buffer.len() < required_buffer_size {
@@ -138,7 +143,7 @@ pub fn prepare_visible_nodes_texture(
             // The size of the depth texture
             let size = Extent3d {
                 width: MAX_NODES as u32, // max 2048 nodes per octree visible at the same time
-                height: octrees_count as u32, // max 64 octrees visibles at the same time
+                height: slot_count as u32, // one row per allocated octree slot
                 depth_or_array_layers: 1,
             };
 
@@ -157,7 +162,7 @@ pub fn prepare_visible_nodes_texture(
         };
 
         let mut node_index =
-            vec![HashMap::<NodeId, u32>::default(); render_octree_index.octrees_slab.len()];
+            vec![HashMap::<NodeId, u32>::default(); slot_count];
 
         'main_loop: for (entity, (asset_id, octree_nodes)) in &visible_nodes.octrees {
             let octree_index = render_octree_index
@@ -247,15 +252,15 @@ pub fn prepare_visible_nodes_texture(
 
         render_queue.write_texture(
             visible_nodes_texture.texture.as_image_copy(),
-            bytemuck::cast_slice(&visible_nodes_buffer),
+            bytemuck::cast_slice(&visible_nodes_buffer[..slot_count * MAX_NODES]),
             TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some((MAX_NODES * 4) as u32), // 4 bytes par texel RGBA8Uint
-                rows_per_image: Some(octrees_count as u32),
+                rows_per_image: Some(slot_count as u32),
             },
             Extent3d {
                 width: MAX_NODES as u32,
-                height: octrees_count as u32,
+                height: slot_count as u32,
                 depth_or_array_layers: 1,
             },
         );

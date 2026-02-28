@@ -221,7 +221,7 @@ where
             &VisibleNodesTextureBindGroup,
         )>()
         else {
-            warn!("Unable to get view components");
+            // VisibleNodesTextureBindGroup is absent during startup or when no octrees are active
             return Ok(());
         };
 

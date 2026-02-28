@@ -62,7 +62,7 @@ fn process_hierarchy_loads<T>(
         }
 
         let Some(octree) = octree_assets.get_mut(task.asset_id) else {
-            warn!("Octree asset not found: {:?}", task.asset_id);
+            debug!("Octree asset not found: {:?}, skipping (likely evicted)", task.asset_id);
             continue;
         };
 
@@ -80,7 +80,7 @@ fn process_hierarchy_loads<T>(
 
         // Spawn load sub hierarchy task
         if let Err(error) = server.load_sub_hierarchy(task.asset_id, octree, task.node_id) {
-            warn!("An error occured loading node hierarchy: {:#} ", error);
+            warn!("An error occurred loading node hierarchy: {:#} ", error);
             continue;
         }
 
@@ -119,7 +119,7 @@ fn process_node_data_loads<T>(
         }
 
         let Some(octree) = octree_assets.get_mut(task.asset_id) else {
-            warn!("Octree asset not found: {:?}", task.asset_id);
+            debug!("Octree asset not found: {:?}, skipping (likely evicted)", task.asset_id);
             continue;
         };
 
@@ -137,7 +137,7 @@ fn process_node_data_loads<T>(
 
         // Spawn load sub hierarchy task
         if let Err(error) = server.load_node_data(task.asset_id, octree, task.node_id) {
-            warn!("An error occured loading node data: {:#} ", error);
+            warn!("An error occurred loading node data: {:#} ", error);
             continue;
         }
 

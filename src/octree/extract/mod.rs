@@ -119,6 +119,7 @@ where
             .add_systems(
                 ExtractSchedule,
                 (
+                    cleanup_render_octree_index::<E>.before(extract_visible_octree_nodes::<E>),
                     extract_visible_octree_nodes::<E>.after(extract_cameras),
                     extract_render_octree_nodes::<E, A>.after(extract_visible_octree_nodes::<E>),
                 ),
@@ -166,7 +167,6 @@ impl<C: Component> FromWorld for RenderOctreeIndex<C> {
 impl<C: Component> RenderOctreeIndex<C> {
     /// Add octree entity to index, if it already exists, does nothing.
     pub fn add_octree(&mut self, entity: Entity) -> usize {
-        // TODO cleanup old octrees from the slab (if removed ?)
         *self
             .octrees_index
             .entry(entity)
@@ -186,6 +186,29 @@ impl<C: Component> RenderOctreeIndex<C> {
     pub fn get_octree_index(&self, entity: Entity) -> Option<usize> {
         self.octrees_index.get(&entity).copied()
     }
+}
+
+/// This system removes despawned octree entities from [`RenderOctreeIndex`].
+/// It runs before [`extract_visible_octree_nodes`] to ensure the slab indices stay consistent
+/// with the number of currently active octrees, preventing out-of-bounds buffer accesses.
+pub fn cleanup_render_octree_index<E: OctreeNodeExtraction>(
+    mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,
+    active_entities: Query<Entity, With<E::Component>>,
+) {
+    let RenderOctreeIndex {
+        octrees_index,
+        octrees_slab,
+        ..
+    } = &mut *render_octree_index;
+
+    octrees_index.retain(|&entity, &mut index| {
+        if active_entities.get(entity).is_ok() {
+            true
+        } else {
+            octrees_slab.remove(index);
+            false
+        }
+    });
 }
 
 /// This system extracts computed visible octree nodes and add them in the render world, for each view (camera)

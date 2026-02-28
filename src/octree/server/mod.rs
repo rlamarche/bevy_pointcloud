@@ -379,8 +379,11 @@ pub fn handle_internal_octree_events<T>(
                 load_tasks.hierarchy_in_flight.remove(&key);
 
                 let Some(octree) = assets.get_mut(id) else {
-                    warn!(
-                        "No asset found for {:?}, unable to append loaded hierarchy nodes.",
+                    // Asset was evicted or despawned; clean up loader so no further
+                    // tasks are scheduled for this dead asset.
+                    server.loaders.remove(&id);
+                    debug!(
+                        "No asset found for {:?}, discarding loaded hierarchy nodes (likely asset evicted).",
                         id
                     );
                     continue;
@@ -463,13 +466,15 @@ pub fn handle_internal_octree_events<T>(
                 load_tasks.node_in_flight.remove(&key);
 
                 let Some(octree) = assets.get_mut(id) else {
-                    warn!("No asset found for {:?}, unable to store node data.", id);
+                    // Asset was evicted or despawned; clean up loader.
+                    server.loaders.remove(&id);
+                    debug!("No asset found for {:?}, discarding node data (likely asset evicted).", id);
                     continue;
                 };
 
                 if let Err(error) = octree.insert_node_data(node_id, node_data) {
                     warn!(
-                        "An error occured when adding node data to node {}/{:?}: {:#}",
+                        "An error occurred when adding node data to node {}/{:?}: {:#}",
                         id, node_id, error
                     );
                     continue;
