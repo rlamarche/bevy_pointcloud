@@ -204,20 +204,17 @@ fn vertex(vertex: Vertex) -> VertexOutput {
       model_view * vec4(0, 0, 0, 1) -
       model_view * vec4(octree_node.spacing, 0, 0, 1)
     ) / octree_node.spacing;
-    proj_factor = proj_factor * scale;
 
     let max_relative_depth = get_max_relative_depth(vertex.i_pos_size.xyz);
     let attenuation = pow(2.0, max_relative_depth);
 
     // Base screen-space radius driven by spacing and LOD attenuation
     var radius_screen = octree_node.spacing * 1.7 / attenuation;
-    radius_screen = radius_screen * proj_factor;
+    radius_screen = radius_screen * proj_factor * transform_scale;
 
-    let scaled_min_point_size = material.min_point_size * transform_scale;
-    let scaled_max_point_size = material.max_point_size * transform_scale;
+    radius_screen = max(material.min_point_size, radius_screen);
+    radius_screen = min(material.max_point_size, radius_screen);
 
-    radius_screen = max(scaled_min_point_size, radius_screen);
-    radius_screen = min(scaled_max_point_size, radius_screen);
 
     let radius = radius_screen / proj_factor;
 #else
