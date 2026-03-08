@@ -13,13 +13,6 @@ use bevy_render::renderer::RenderDevice;
 pub struct PointCloudOctree3dUniform {
     #[uniform(0)]
     pub world_from_local: Mat4,
-    // TODO add this when removing mesh bind view
-    // #[uniform(0)]
-    // pub view_from_world: Mat4,
-    // #[uniform(0)]
-    // pub clip_from_view: Mat4,
-    // #[uniform(0)]
-    // pub viewport: Vec4,
 }
 
 #[derive(Component)]
@@ -62,7 +55,7 @@ pub fn prepare_point_cloud_octree_3d_uniform<'w>(
                 &mut material,
             )
             .expect("Unable to build bind group from PointCloudUniform.");
-        
+
         commands
             .entity(entity)
             .insert(PreparedPointCloudOctree3dUniform { prepared });

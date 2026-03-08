@@ -1,18 +1,17 @@
 pub mod node;
-pub mod phase;
 
 use super::attribute_pass::node::AttributePassOctreeLabel;
-use super::data::SetPointCloudOctree3dUniformGroup;
 use super::depth_pass::node::DepthPassOctreeLabel;
-use super::draw::{DrawPointCloudOctreeNode, SetPointCloudOctreeNodeUniformGroup};
-use super::phase::{PointCloudOctree3dBinKey, ViewOctreeNodesRenderPhases};
-use super::prepare::{SetVisibleNodesTexture, SetVisibleOctreeUniformGroup};
+use super::draw::DrawPointCloudOctreeNode;
+use super::phase::PointCloudOctree3dBinKey;
 use crate::octree::extract::{RenderVisibleOctreeNodes, VisibleOctreeNode};
 use crate::pointcloud_octree::asset::data::PointCloudNodeData;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
+use crate::pointcloud_octree::render::phase::{
+    PointCloudOctree3dNodePhase, ViewOctreeNodesRenderAttributePhases,
+};
 use crate::render::attribute_pass::pipeline::{AttributePassPipeline, AttributePipelineKey};
 use crate::render::attribute_pass::texture::prepare_attribute_pass_bind_groups;
-use crate::render::material::SetPointCloudMaterialGroup;
 use crate::render::normalize_pass::node::NormalizePassLabel;
 use crate::render::phase::PointCloud3dBatchSetKey;
 use bevy_app::prelude::*;
@@ -25,17 +24,15 @@ use bevy_pbr::MeshPipelineKey;
 use bevy_platform::collections::HashSet;
 use bevy_render::batching::gpu_preprocessing::GpuPreprocessingSupport;
 use bevy_render::render_graph::{RenderGraphExt, ViewNodeRunner};
-use bevy_render::render_phase::PhaseItemExtraIndex;
 use bevy_render::render_resource::{PipelineCache, SpecializedRenderPipelines};
 use bevy_render::sync_world::MainEntity;
 use bevy_render::view::ExtractedView;
 use bevy_render::{
-    prelude::*, render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline}, view::RetainedViewEntity, Extract, ExtractSchedule,
-    Render,
-    RenderApp,
-    RenderSystems,
+    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
+    prelude::*,
+    render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline},
+    view::RetainedViewEntity,
 };
-use phase::PointCloudOctree3dAttributePhase;
 
 pub struct AttributePassPlugin;
 impl Plugin for AttributePassPlugin {
@@ -45,9 +42,9 @@ impl Plugin for AttributePassPlugin {
             return;
         };
         render_app
-            .init_resource::<DrawFunctions<PointCloudOctree3dAttributePhase>>()
-            .init_resource::<ViewOctreeNodesRenderPhases<PointCloudOctree3dAttributePhase>>()
-            .add_render_command::<PointCloudOctree3dAttributePhase, DrawAttributePass>()
+            .init_resource::<DrawFunctions<PointCloudOctree3dNodePhase>>()
+            .init_resource::<ViewOctreeNodesRenderAttributePhases<PointCloudOctree3dNodePhase>>()
+            .add_render_command::<PointCloudOctree3dNodePhase, DrawAttributePass>()
             .add_systems(ExtractSchedule, extract_camera_phases)
             .add_systems(
                 Render,
@@ -70,19 +67,21 @@ impl Plugin for AttributePassPlugin {
 // We will reuse render commands already defined by bevy to draw a 3d mesh
 type DrawAttributePass = (
     SetItemPipeline,
-    SetPointCloudOctree3dUniformGroup<1>,
-    SetPointCloudMaterialGroup<2>,
-    SetPointCloudOctreeNodeUniformGroup<3>,
-    SetVisibleNodesTexture<4>,
-    SetVisibleOctreeUniformGroup<5>,
+    // SetPointCloudOctree3dUniformGroup<1>,
+    // SetPointCloudMaterialGroup<2>,
+    // SetVisibleNodesTexture<3>,
+    // SetPointCloudOctreeNodeUniformGroup<4>,
+    // SetVisibleOctreeUniformGroup<5>,
     DrawPointCloudOctreeNode,
 );
 
 fn extract_camera_phases(
-    mut pointcloud3d_phases: ResMut<ViewOctreeNodesRenderPhases<PointCloudOctree3dAttributePhase>>,
+    mut pointcloud3d_phases: ResMut<
+        ViewOctreeNodesRenderAttributePhases<PointCloudOctree3dNodePhase>,
+    >,
     cameras: Extract<Query<(Entity, &Camera), With<Camera3d>>>,
     mut live_entities: Local<HashSet<RetainedViewEntity>>,
-    gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
+    _gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
 ) {
     #[cfg(feature = "trace")]
     let _span = info_span!("extract_camera_phases", name = "attribute").entered();
@@ -105,12 +104,14 @@ fn extract_camera_phases(
 }
 
 fn queue_attribute_pass(
-    custom_draw_functions: Res<DrawFunctions<PointCloudOctree3dAttributePhase>>,
+    custom_draw_functions: Res<DrawFunctions<PointCloudOctree3dNodePhase>>,
     mut pipelines: ResMut<SpecializedRenderPipelines<AttributePassPipeline>>,
     pipeline_cache: Res<PipelineCache>,
     custom_draw_pipeline: Res<AttributePassPipeline>,
     point_cloud_octrees_3d: Query<&PointCloudOctree3d>,
-    mut custom_render_phases: ResMut<ViewOctreeNodesRenderPhases<PointCloudOctree3dAttributePhase>>,
+    mut custom_render_phases: ResMut<
+        ViewOctreeNodesRenderAttributePhases<PointCloudOctree3dNodePhase>,
+    >,
     mut views: Query<(
         &ExtractedView,
         &RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>,
@@ -156,19 +157,17 @@ fn queue_attribute_pass(
             for VisibleOctreeNode { id: node_id, .. } in visible_octree_nodes {
                 // At this point we have all the data we need to create a phase item and add it to our
                 // phase
-                custom_phase.phases.push(PointCloudOctree3dAttributePhase {
-                    batch_set_key: PointCloud3dBatchSetKey {
+                custom_phase.add(
+                    PointCloud3dBatchSetKey {
                         pipeline: pipeline_id,
                         draw_function: draw_custom,
                     },
-                    bin_key: PointCloudOctree3dBinKey {
+                    PointCloudOctree3dBinKey {
                         asset_id: point_cloud_octree_3d.0.id(),
-                        node_id: *node_id,
                     },
-                    representative_entity: (*render_entity, *main_entity),
-                    batch_range: 0..1,
-                    extra_index: PhaseItemExtraIndex::None,
-                });
+                    (*render_entity, *main_entity),
+                    *node_id,
+                );
             }
         }
     }

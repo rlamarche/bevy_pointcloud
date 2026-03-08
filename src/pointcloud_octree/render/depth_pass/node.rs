@@ -1,5 +1,6 @@
-use super::phase::PointCloudOctree3dDepthPhase;
-use crate::pointcloud_octree::render::phase::ViewOctreeNodesRenderPhases;
+use crate::pointcloud_octree::render::phase::{
+    PointCloudOctree3dNodePhase, ViewOctreeNodesRenderDepthPhases,
+};
 use crate::render::depth_pass::texture::ViewDepthPrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::prelude::*;
@@ -40,7 +41,7 @@ impl ViewNode for DepthPassOctreeNode {
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource
         let Some(point_cloud_3d_phases) =
-            world.get_resource::<ViewOctreeNodesRenderPhases<PointCloudOctree3dDepthPhase>>()
+            world.get_resource::<ViewOctreeNodesRenderDepthPhases<PointCloudOctree3dNodePhase>>()
         else {
             info!("no pointcloud octree phases");
             return Ok(());

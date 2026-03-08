@@ -49,6 +49,7 @@ bevy_diagnostic = { version = "0.17" }
 bevy_time = { version = "0.17" }
 
 smallvec = { version = "1", default-features = false }
+indexmap = { version = "2.5.0", default-features = false }
 
 bytemuck = "1"
 thiserror = "2.0"

@@ -1,7 +1,7 @@
 pub mod data;
 pub mod draw;
-pub mod prepare;
 pub mod phase;
+pub mod prepare;
 
 pub mod attribute_pass;
 pub mod depth_pass;
@@ -10,10 +10,10 @@ use crate::pointcloud_octree::asset::extract::PointCloudOctreeNodeUniformLayout;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_render::{Render, RenderApp, RenderSystems};
-use data::{prepare_point_cloud_octree_3d_uniform, PointCloudOctree3dUniformLayout};
+use data::{PointCloudOctree3dUniformLayout, prepare_point_cloud_octree_3d_uniform};
 use prepare::{
-    prepare_octree_nodes_mapping_buffers, prepare_visible_nodes_texture, prepare_visible_nodes_texture_bind_group,
-    OctreeNodesMappingBindGroups, VisibleNodesTextureLayout,
+    OctreeNodesMappingBindGroups, VisibleNodesTextureLayout, prepare_visible_nodes_texture,
+    prepare_visible_nodes_texture_bind_group,
 };
 
 #[derive(Default)]
@@ -29,7 +29,7 @@ impl Plugin for RenderPointCloudOctreePlugin {
             Render,
             (
                 prepare_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
-                prepare_octree_nodes_mapping_buffers.in_set(RenderSystems::PrepareBindGroups),
+                // prepare_octree_nodes_mapping_buffers.in_set(RenderSystems::PrepareBindGroups),
                 prepare_visible_nodes_texture_bind_group.in_set(RenderSystems::PrepareBindGroups),
                 prepare_point_cloud_octree_3d_uniform.in_set(RenderSystems::PrepareResources),
             ),

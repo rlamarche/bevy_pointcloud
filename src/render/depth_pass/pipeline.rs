@@ -29,8 +29,8 @@ pub struct DepthPipeline {
     shader_handle: Handle<Shader>,
     point_cloud_layout: BindGroupLayout,
     point_cloud_material_layout: BindGroupLayout,
-    point_cloud_octree_node_data_layout: BindGroupLayout,
     point_cloud_octree_visible_nodes_layout: BindGroupLayout,
+    point_cloud_octree_node_data_layout: BindGroupLayout,
     point_cloud_octree_visible_node_layout: BindGroupLayout,
 }
 impl FromWorld for DepthPipeline {
@@ -49,18 +49,18 @@ impl FromWorld for DepthPipeline {
                     uniform_buffer::<PointCloudMaterial>(false),
                 ),
             ),
-            point_cloud_octree_node_data_layout: render_device.create_bind_group_layout(
-                "pcl_octree_node_data",
-                &BindGroupLayoutEntries::single(
-                    ShaderStages::VERTEX,
-                    uniform_buffer::<PointCloudNodeDataUniform>(false),
-                ),
-            ),
             point_cloud_octree_visible_nodes_layout: render_device.create_bind_group_layout(
                 "pcl_octree_visible_nodes_layout",
                 &BindGroupLayoutEntries::single(
                     ShaderStages::VERTEX,
                     texture_2d(TextureSampleType::Uint),
+                ),
+            ),
+            point_cloud_octree_node_data_layout: render_device.create_bind_group_layout(
+                "pcl_octree_node_data",
+                &BindGroupLayoutEntries::single(
+                    ShaderStages::VERTEX,
+                    uniform_buffer::<PointCloudNodeDataUniform>(false),
                 ),
             ),
             point_cloud_octree_visible_node_layout: render_device.create_bind_group_layout(
@@ -141,9 +141,9 @@ impl SpecializedRenderPipeline for DepthPipeline {
         ];
 
         if key.is_octree {
-            layout.push(self.point_cloud_octree_node_data_layout.clone());
             layout.push(self.point_cloud_octree_visible_nodes_layout.clone());
-            layout.push(self.point_cloud_octree_visible_node_layout.clone());
+            layout.push(self.point_cloud_octree_node_data_layout.clone());
+            // layout.push(self.point_cloud_octree_visible_node_layout.clone());
         }
 
         RenderPipelineDescriptor {

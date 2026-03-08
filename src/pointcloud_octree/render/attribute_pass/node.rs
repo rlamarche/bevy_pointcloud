@@ -1,5 +1,5 @@
-use super::phase::PointCloudOctree3dAttributePhase;
-use crate::pointcloud_octree::render::phase::ViewOctreeNodesRenderPhases;
+use crate::pointcloud_octree::render::phase::PointCloudOctree3dNodePhase;
+use crate::pointcloud_octree::render::phase::ViewOctreeNodesRenderAttributePhases;
 use crate::render::attribute_pass::texture::ViewAttributePrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::error;
@@ -37,7 +37,7 @@ impl ViewNode for AttributePassOctreeNode {
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource
         let Some(point_cloud_3d_phases) =
-            world.get_resource::<ViewOctreeNodesRenderPhases<PointCloudOctree3dAttributePhase>>()
+            world.get_resource::<ViewOctreeNodesRenderAttributePhases<PointCloudOctree3dNodePhase>>()
         else {
             info!("no pointcloud octree phases");
             return Ok(());

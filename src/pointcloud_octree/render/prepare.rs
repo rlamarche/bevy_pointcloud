@@ -1,24 +1,26 @@
-use super::attribute_pass::phase::PointCloudOctree3dAttributePhase;
-use super::depth_pass::phase::PointCloudOctree3dDepthPhase;
-use super::phase::{PointCloudOctree3dPhase, ViewOctreeNodesRenderPhases};
+use super::phase::PointCloudOctreeBinnedPhaseItem;
 use crate::octree::extract::{RenderOctreeIndex, RenderOctrees, RenderVisibleOctreeNodes};
 use crate::octree::storage::NodeId;
 use crate::octree::visibility::iter_one_bits;
 use crate::pointcloud_octree::asset::data::PointCloudNodeData;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
+use crate::pointcloud_octree::render::phase::{
+    PointCloudOctree3dNodePhase, ViewOctreeNodesRenderAttributePhases,
+    ViewOctreeNodesRenderDepthPhases,
+};
 use bevy_color::LinearRgba;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::ROQueryItem;
-use bevy_ecs::system::lifetimeless::{Read, SRes};
 use bevy_ecs::system::SystemParamItem;
+use bevy_ecs::system::lifetimeless::{Read, SRes};
 use bevy_log::warn;
 use bevy_platform::collections::HashMap;
 use bevy_render::camera::ExtractedCamera;
 use bevy_render::prelude::*;
 use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
-use bevy_render::render_resource::binding_types::{texture_2d, uniform_buffer};
 use bevy_render::render_resource::TextureFormat::Rgba8Uint;
+use bevy_render::render_resource::binding_types::{texture_2d, uniform_buffer};
 use bevy_render::render_resource::{
     BindGroup, BindGroupEntries, BindGroupEntry, BindGroupLayout, BindGroupLayoutEntries,
     BindGroupLayoutEntry, BindingResource, BindingType, BufferBinding, BufferBindingType,
@@ -85,11 +87,11 @@ pub fn prepare_visible_nodes_texture(
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
     render_octree_index: Res<RenderOctreeIndex<PointCloudOctree3d>>,
-    point_cloud_octree_3d_attribute_phases: Res<
-        ViewOctreeNodesRenderPhases<PointCloudOctree3dAttributePhase>,
+    point_cloud_octree_3d_node_depth_phases: Res<
+        ViewOctreeNodesRenderAttributePhases<PointCloudOctree3dNodePhase>,
     >,
-    point_cloud_octree_3d_depth_phases: Res<
-        ViewOctreeNodesRenderPhases<PointCloudOctree3dDepthPhase>,
+    point_cloud_octree_3d_node_attribute_phases: Res<
+        ViewOctreeNodesRenderDepthPhases<PointCloudOctree3dNodePhase>,
     >,
     views_3d: Query<(
         Entity,
@@ -102,9 +104,9 @@ pub fn prepare_visible_nodes_texture(
     render_octrees: Res<RenderOctrees<RenderPointCloudNodeData>>,
 ) {
     for (entity, camera, extracted_view, _msaa, visible_nodes) in &views_3d {
-        if !point_cloud_octree_3d_attribute_phases
+        if !point_cloud_octree_3d_node_depth_phases
             .contains_key(&extracted_view.retained_view_entity)
-            || !point_cloud_octree_3d_depth_phases
+            || !point_cloud_octree_3d_node_attribute_phases
                 .contains_key(&extracted_view.retained_view_entity)
         {
             continue;
@@ -159,7 +161,7 @@ pub fn prepare_visible_nodes_texture(
         let mut node_index =
             vec![HashMap::<NodeId, u32>::default(); render_octree_index.octrees_slab.len()];
 
-        'main_loop: for (entity, (asset_id, octree_nodes)) in &visible_nodes.octrees {
+        for (entity, (asset_id, octree_nodes)) in &visible_nodes.octrees {
             let octree_index = render_octree_index
                 .get_octree_index(*entity)
                 .expect("octree index out of bounds");
@@ -550,7 +552,7 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetVisibleNodesTexture<I
 }
 
 pub struct SetVisibleOctreeUniformGroup<const I: usize>;
-impl<P: PhaseItem + PointCloudOctree3dPhase, const I: usize> RenderCommand<P>
+impl<P: PointCloudOctreeBinnedPhaseItem, const I: usize> RenderCommand<P>
     for SetVisibleOctreeUniformGroup<I>
 {
     type Param = (
