@@ -111,6 +111,7 @@ impl RenderOctreeNode for RenderPointCloudNodeData {
 
         Ok(RenderPointCloudNodeData {
             points: buffer,
+            // points: None,
             uniform,
             uniform_buffer,
             num_points: source_node.data.num_points,

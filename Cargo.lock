@@ -1152,6 +1152,7 @@ dependencies = [
  "getrandom 0.3.4",
  "indexmap",
  "las",
+ "offset-allocator",
  "ordered-float 5.1.0",
  "ply-rs",
  "potree",

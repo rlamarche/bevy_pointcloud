@@ -1,4 +1,6 @@
-use crate::pointcloud_octree::render::phase::PointCloudOctree3dNodePhase;
+use std::marker::PhantomData;
+
+use crate::pointcloud_octree::render::phase::PointCloudOctreeBinnedPhaseItem;
 use crate::pointcloud_octree::render::phase::ViewOctreeNodesRenderAttributePhases;
 use crate::render::attribute_pass::texture::ViewAttributePrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
@@ -18,9 +20,15 @@ use bevy_render::{
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct AttributePassOctreeLabel;
 
-#[derive(Default)]
-pub struct AttributePassOctreeNode;
-impl ViewNode for AttributePassOctreeNode {
+pub struct AttributePassOctreeNode<BPI: PointCloudOctreeBinnedPhaseItem>(PhantomData<BPI>);
+
+impl<BPI: PointCloudOctreeBinnedPhaseItem> Default for AttributePassOctreeNode<BPI> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<BPI: PointCloudOctreeBinnedPhaseItem> ViewNode for AttributePassOctreeNode<BPI> {
     type ViewQuery = (
         &'static ExtractedCamera,
         &'static ExtractedView,
@@ -37,7 +45,7 @@ impl ViewNode for AttributePassOctreeNode {
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource
         let Some(point_cloud_3d_phases) =
-            world.get_resource::<ViewOctreeNodesRenderAttributePhases<PointCloudOctree3dNodePhase>>()
+            world.get_resource::<ViewOctreeNodesRenderAttributePhases<BPI>>()
         else {
             info!("no pointcloud octree phases");
             return Ok(());

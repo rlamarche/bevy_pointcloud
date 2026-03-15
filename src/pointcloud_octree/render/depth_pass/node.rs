@@ -1,5 +1,7 @@
+use std::marker::PhantomData;
+
 use crate::pointcloud_octree::render::phase::{
-    PointCloudOctree3dNodePhase, ViewOctreeNodesRenderDepthPhases,
+    PointCloudOctree3dNodePhase, PointCloudOctreeBinnedPhaseItem, ViewOctreeNodesRenderDepthPhases
 };
 use crate::render::depth_pass::texture::ViewDepthPrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
@@ -18,9 +20,15 @@ use bevy_render::{
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DepthPassOctreeLabel;
 
-#[derive(Default)]
-pub struct DepthPassOctreeNode;
-impl ViewNode for DepthPassOctreeNode {
+pub struct DepthPassOctreeNode<BPI: PointCloudOctreeBinnedPhaseItem>(PhantomData<BPI>);
+
+impl<BPI: PointCloudOctreeBinnedPhaseItem> Default for DepthPassOctreeNode<BPI> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<BPI: PointCloudOctreeBinnedPhaseItem> ViewNode for DepthPassOctreeNode<BPI> {
     type ViewQuery = (
         &'static ExtractedCamera,
         &'static ExtractedView,

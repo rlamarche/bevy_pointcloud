@@ -18,6 +18,7 @@ where
     A: RenderOctreeNode,
 {
     pub(crate) nodes: HashMap<NodeId, RenderOctreeNodeData<A>>,
+    #[allow(unused)]
     pub(crate) root_id: Option<NodeId>,
 }
 

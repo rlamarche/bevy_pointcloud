@@ -1,15 +1,18 @@
 pub mod node;
 
-use super::draw::DrawPointCloudOctreeNode;
 use super::phase::PointCloudOctree3dBinKey;
 use crate::octree::extract::{RenderVisibleOctreeNodes, VisibleOctreeNode};
 use crate::pointcloud_octree::asset::data::PointCloudNodeData;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
+use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
+use crate::pointcloud_octree::render::draw::{DrawPointCloudOctree, DrawPointCloudOctreeNode, SetPointCloudOctreeNodeUniformGroup};
 use crate::pointcloud_octree::render::phase::{
     PointCloudOctree3dNodePhase, ViewOctreeNodesRenderDepthPhases,
 };
+use crate::pointcloud_octree::render::prepare::SetVisibleNodesTexture;
 use crate::render::depth_pass::pipeline::{DepthPipeline, DepthPipelineKey};
 use crate::render::depth_pass::texture::prepare_depth_pass_textures;
+use crate::render::material::SetPointCloudMaterialGroup;
 use crate::render::phase::PointCloud3dBatchSetKey;
 use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
 use bevy_app::prelude::*;
@@ -18,7 +21,7 @@ use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy_ecs::component::Tick;
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
-use bevy_pbr::MeshPipelineKey;
+use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
 use bevy_platform::collections::HashSet;
 use bevy_render::batching::gpu_preprocessing::GpuPreprocessingSupport;
 use bevy_render::render_graph::RenderGraphExt;
@@ -56,7 +59,7 @@ impl Plugin for DepthPassPlugin {
             );
 
         render_app
-            .add_render_graph_node::<ViewNodeRunner<node::DepthPassOctreeNode>>(
+            .add_render_graph_node::<ViewNodeRunner<node::DepthPassOctreeNode::<PointCloudOctree3dNodePhase>>>(
                 Core3d,
                 DepthPassOctreeLabel,
             )
@@ -68,12 +71,14 @@ impl Plugin for DepthPassPlugin {
 // We will reuse render commands already defined by bevy to draw a 3d mesh
 type DrawDepthPass = (
     SetItemPipeline,
-    // SetPointCloudOctree3dUniformGroup<1>,
-    // SetPointCloudMaterialGroup<2>,
-    // SetVisibleNodesTexture<3>,
-    // SetPointCloudOctreeNodeUniformGroup<4>,
+    SetMeshViewBindGroup<0>,
+    SetPointCloudOctree3dUniformGroup<1>,
+    SetPointCloudMaterialGroup<2>,
+    SetVisibleNodesTexture<3>,
+    SetPointCloudOctreeNodeUniformGroup<4>,
     // SetVisibleOctreeUniformGroup<5>,
-    DrawPointCloudOctreeNode,
+    // DrawPointCloudOctreeNode,
+    DrawPointCloudOctree,
 );
 
 fn extract_camera_phases(
@@ -152,21 +157,24 @@ fn queue_depth_pass(
             let this_tick = next_tick.get() + 1;
             next_tick.set(this_tick);
 
-            for VisibleOctreeNode { id: node_id, .. } in visible_octree_nodes {
-                // At this point we have all the data we need to create a phase item and add it to our
-                // phase
-                custom_phase.add(
-                    PointCloud3dBatchSetKey {
-                        pipeline: pipeline_id,
-                        draw_function: draw_custom,
-                    },
-                    PointCloudOctree3dBinKey {
-                        asset_id: point_cloud_octree_3d.0.id(),
-                    },
-                    (*render_entity, *main_entity),
-                    *node_id,
-                );
-            }
+            // Collect all visible node ids
+            let node_ids = visible_octree_nodes
+                .iter()
+                .map(|VisibleOctreeNode { id: node_id, .. }| *node_id)
+                .collect::<Vec<_>>();
+
+            // Add the render phase
+            custom_phase.add(
+                PointCloud3dBatchSetKey {
+                    pipeline: pipeline_id,
+                    draw_function: draw_custom,
+                },
+                PointCloudOctree3dBinKey {
+                    asset_id: point_cloud_octree_3d.0.id(),
+                },
+                (*render_entity, *main_entity),
+                node_ids,
+            );
         }
     }
 }

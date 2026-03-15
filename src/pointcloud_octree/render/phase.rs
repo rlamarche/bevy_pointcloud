@@ -1,37 +1,22 @@
 use std::hash::Hash;
 use std::ops::Range;
 
-use crate::octree::extract::RenderOctrees;
 use crate::octree::storage::NodeId;
-use crate::point_cloud_material::PointCloudMaterial3d;
 use crate::pointcloud_octree::asset::PointCloudOctree;
-use crate::pointcloud_octree::component::PointCloudOctree3d;
-use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
-use crate::pointcloud_octree::render::data::PreparedPointCloudOctree3dUniform;
-use crate::pointcloud_octree::render::prepare::VisibleNodesTextureBindGroup;
-use crate::render::material::RenderPointCloudMaterial;
 use crate::render::phase::PointCloud3dBatchSetKey;
 use bevy_asset::AssetId;
-use bevy_core_pipeline::oit::OrderIndependentTransparencySettingsOffset;
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
-use bevy_log::warn;
-use bevy_pbr::{
-    MeshViewBindGroup, ViewEnvironmentMapUniformOffset, ViewFogUniformOffset,
-    ViewLightProbesUniformOffset, ViewLightsUniformOffset, ViewScreenSpaceReflectionsUniformOffset,
-};
 use bevy_platform::collections::HashMap;
 use bevy_platform::collections::hash_map::Entry;
-use bevy_render::render_asset::RenderAssets;
 use bevy_render::render_phase::{
     CachedRenderPipelinePhaseItem, DrawError, DrawFunctionId, DrawFunctions, PhaseItem,
     PhaseItemBatchSetKey, PhaseItemExtraIndex, TrackedRenderPass,
 };
 use bevy_render::render_resource::CachedRenderPipelineId;
 use bevy_render::sync_world::MainEntity;
-use bevy_render::view::{RetainedViewEntity, ViewUniformOffset};
+use bevy_render::view::RetainedViewEntity;
 use indexmap::IndexMap;
-use smallvec::{SmallVec, smallvec};
 
 /// Data that must be identical in order to *batch* phase items together.
 ///
@@ -135,7 +120,7 @@ where
         bin_key: BPI::BinKey,
         (entity, main_entity): (Entity, MainEntity),
         // input_uniform_index: InputUniformIndex,
-        node_id: NodeId,
+        node_ids: Vec<NodeId>,
     ) {
         let phase_item = BPI::new(
             batch_set_key.clone(),
@@ -143,7 +128,7 @@ where
             (entity, main_entity),
             0..1,
             PhaseItemExtraIndex::None,
-            node_id,
+            node_ids,
         );
 
         match self.phases.entry((batch_set_key, bin_key).clone()) {
@@ -172,8 +157,6 @@ where
             // locks.
         }
 
-        self.bind_view_data(render_pass, world, view)?;
-
         {
             let draw_functions = world.resource::<DrawFunctions<BPI>>();
             let mut draw_functions = draw_functions.write();
@@ -186,148 +169,11 @@ where
                     continue;
                 };
 
-                // bind common item data
-                self.bind_item_data(render_pass, world, phase_item.entity(), view)?;
-
-                // bind first octree node for bounds
-                self.bind_octree_node(render_pass, world, phase_item.entity(), phase_item.node_id())?;
-
                 for phase_item in phase_items {
                     draw_function.draw(world, render_pass, view, &phase_item)?;
                 }
             }
         }
-
-        Ok(())
-    }
-
-    /// Binds octree node as in draw function [`crate::pointcloud_octree::render::draw::SetPointCloudOctreeNodeUniformGroup`]
-    #[allow(unused)]
-    fn bind_octree_node<'w>(
-        &self,
-        render_pass: &mut TrackedRenderPass<'w>,
-        world: &'w World,
-        item: Entity,
-        node_id: NodeId,
-    ) -> Result<(), DrawError> {
-        let render_octrees = world.resource::<RenderOctrees<RenderPointCloudNodeData>>();
-
-        let Some(point_cloud_octree_3d) =
-            world.entity(item).get_components::<&PointCloudOctree3d>()
-        else {
-            warn!("Unable to get item components");
-            return Ok(());
-        };
-
-        let Some(octree) = render_octrees.get(point_cloud_octree_3d) else {
-            warn!("Missing octree when render");
-            return Ok(());
-        };
-
-        let Some(node) = octree.nodes.get(&node_id) else {
-            warn!("Missing node when render");
-            return Ok(());
-        };
-
-        render_pass.set_bind_group(4, &node.data.uniform, &[]);
-
-        Ok(())
-    }
-
-    /// Binds item data as in draw function [`crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup`]
-    /// and [`crate::render::material::SetPointCloudMaterialGroup`]
-    #[allow(unused)]
-    fn bind_item_data<'w>(
-        &self,
-        render_pass: &mut TrackedRenderPass<'w>,
-        world: &'w World,
-        item: Entity,
-        view: Entity,
-    ) -> Result<(), DrawError> {
-        let render_point_cloud_materials =
-            world.resource::<RenderAssets<RenderPointCloudMaterial>>();
-
-        let Some((prepared_point_cloud_octree_3d_uniform, point_cloud_material_3d)) = world
-            .entity(item)
-            .get_components::<(&PreparedPointCloudOctree3dUniform, &PointCloudMaterial3d)>()
-        else {
-            warn!("Unable to get item components");
-            return Ok(());
-        };
-
-        render_pass.set_bind_group(
-            1,
-            &prepared_point_cloud_octree_3d_uniform.prepared.bind_group,
-            &[],
-        );
-
-        let Some(render_point_cloud_material) =
-            render_point_cloud_materials.get(point_cloud_material_3d)
-        else {
-            warn!("Unable to get item material");
-            return Ok(());
-        };
-
-        render_pass.set_bind_group(2, &render_point_cloud_material.uniform, &[]);
-
-        let Some(visible_nodes_texture_bind_group) = world
-            .entity(view)
-            .get_components::<&VisibleNodesTextureBindGroup>(
-        ) else {
-            warn!("Unable to get item components");
-            return Ok(());
-        };
-
-        render_pass.set_bind_group(3, &visible_nodes_texture_bind_group.texture, &[]);
-
-        Ok(())
-    }
-
-    fn bind_view_data<'w>(
-        &self,
-        render_pass: &mut TrackedRenderPass<'w>,
-        world: &'w World,
-        view: Entity,
-    ) -> Result<(), DrawError> {
-        let Some((
-            view_uniform,
-            view_lights,
-            view_fog,
-            view_light_probes,
-            view_ssr,
-            view_environment_map,
-            mesh_view_bind_group,
-            maybe_oit_layers_count_offset,
-            visible_nodes_texture,
-        )) = world.entity(view).get_components::<(
-            &ViewUniformOffset,
-            &ViewLightsUniformOffset,
-            &ViewFogUniformOffset,
-            &ViewLightProbesUniformOffset,
-            &ViewScreenSpaceReflectionsUniformOffset,
-            &ViewEnvironmentMapUniformOffset,
-            &MeshViewBindGroup,
-            Option<&OrderIndependentTransparencySettingsOffset>,
-            &VisibleNodesTextureBindGroup,
-        )>()
-        else {
-            warn!("Unable to get view components");
-            return Ok(());
-        };
-
-        let mut offsets: SmallVec<[u32; 8]> = smallvec![
-            view_uniform.offset,
-            view_lights.offset,
-            view_fog.offset,
-            **view_light_probes,
-            **view_ssr,
-            **view_environment_map,
-        ];
-        if let Some(layers_count_offset) = maybe_oit_layers_count_offset {
-            offsets.push(layers_count_offset.offset);
-        }
-        render_pass.set_bind_group(0, &mesh_view_bind_group.main, &offsets);
-        render_pass.set_bind_group(4, &visible_nodes_texture.texture, &[]);
 
         Ok(())
     }
@@ -340,7 +186,7 @@ where
 ///
 /// An example of a binned phase item is `Opaque3d`, for which the rendering
 /// order isn't critical.
-pub trait PointCloudOctreeBinnedPhaseItem: PhaseItem {
+pub trait PointCloudOctreeBinnedPhaseItem: CachedRenderPipelinePhaseItem + 'static {
     /// The key used for binning [`PhaseItem`]s into bins. Order the members of
     /// [`BinnedPhaseItem::BinKey`] by the order of binding for best
     /// performance. For example, pipeline id, draw function id, mesh asset id,
@@ -366,10 +212,10 @@ pub trait PointCloudOctreeBinnedPhaseItem: PhaseItem {
         representative_entity: (Entity, MainEntity),
         batch_range: Range<u32>,
         extra_index: PhaseItemExtraIndex,
-        node_id: NodeId,
+        node_ids: Vec<NodeId>,
     ) -> Self;
 
-    fn node_id(&self) -> NodeId;
+    fn node_ids(&self) -> &[NodeId];
 }
 
 pub struct PointCloudOctree3dNodePhase {
@@ -389,7 +235,7 @@ pub struct PointCloudOctree3dNodePhase {
     /// indirect parameters list.
     pub extra_index: PhaseItemExtraIndex,
     /// The node id in the octree
-    pub node_id: NodeId,
+    pub node_ids: Vec<NodeId>,
 }
 
 impl PhaseItem for PointCloudOctree3dNodePhase {
@@ -438,7 +284,7 @@ impl PointCloudOctreeBinnedPhaseItem for PointCloudOctree3dNodePhase {
         representative_entity: (Entity, MainEntity),
         batch_range: Range<u32>,
         extra_index: PhaseItemExtraIndex,
-        node_id: NodeId,
+        node_ids: Vec<NodeId>,
     ) -> Self {
         PointCloudOctree3dNodePhase {
             batch_set_key,
@@ -446,12 +292,12 @@ impl PointCloudOctreeBinnedPhaseItem for PointCloudOctree3dNodePhase {
             representative_entity,
             batch_range,
             extra_index,
-            node_id,
+            node_ids,
         }
     }
 
-    fn node_id(&self) -> NodeId {
-        self.node_id
+    fn node_ids(&self) -> &[NodeId] {
+        &self.node_ids
     }
 }
 

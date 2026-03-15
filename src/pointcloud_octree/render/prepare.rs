@@ -1,4 +1,3 @@
-use super::phase::PointCloudOctreeBinnedPhaseItem;
 use crate::octree::extract::{RenderOctreeIndex, RenderOctrees, RenderVisibleOctreeNodes};
 use crate::octree::storage::NodeId;
 use crate::octree::visibility::iter_one_bits;
@@ -13,34 +12,22 @@ use bevy_color::LinearRgba;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::system::SystemParamItem;
-use bevy_ecs::system::lifetimeless::{Read, SRes};
 use bevy_log::warn;
 use bevy_platform::collections::HashMap;
 use bevy_render::camera::ExtractedCamera;
 use bevy_render::prelude::*;
 use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
 use bevy_render::render_resource::TextureFormat::Rgba8Uint;
-use bevy_render::render_resource::binding_types::{texture_2d, uniform_buffer};
+use bevy_render::render_resource::binding_types::texture_2d;
 use bevy_render::render_resource::{
-    BindGroup, BindGroupEntries, BindGroupEntry, BindGroupLayout, BindGroupLayoutEntries,
-    BindGroupLayoutEntry, BindingResource, BindingType, BufferBinding, BufferBindingType,
-    BufferInitDescriptor, BufferSize, BufferUsages, Extent3d, ShaderStages, ShaderType,
-    TexelCopyBufferLayout, TextureDescriptor, TextureDimension, TextureSampleType, TextureUsages,
+    BindGroup, BindGroupEntries, BindGroupLayout, Extent3d, ShaderStages, TexelCopyBufferLayout,
+    TextureDescriptor, TextureDimension, TextureSampleType, TextureUsages,
 };
 use bevy_render::renderer::{RenderDevice, RenderQueue};
 use bevy_render::texture::{ColorAttachment, TextureCache};
 use bevy_render::view::ExtractedView;
 use bytemuck::{Pod, Zeroable};
 use std::cmp::Ordering;
-
-#[derive(ShaderType)]
-pub struct PointCloudVisibleNodeUniform {
-    pub index: u32,
-    #[cfg(all(feature = "webgl", target_arch = "wasm32", not(feature = "webgpu")))]
-    pub _padding_1: bevy_math::Vec3,
-    #[cfg(all(feature = "webgl", target_arch = "wasm32", not(feature = "webgpu")))]
-    pub _padding_2: bevy_math::Vec4,
-}
 
 /// Stores visible nodes and mapping textures for each view
 #[derive(Component)]
@@ -178,7 +165,7 @@ pub fn prepare_visible_nodes_texture(
                 continue;
             };
 
-            // sort nodes in order or depth, then child index ordering
+            // sort nodes in order of depth, then child index ordering
             let mut sorted_octree_nodes = octree_nodes.clone();
             sorted_octree_nodes.sort_by(|a, b| {
                 if a.depth < b.depth {
@@ -227,14 +214,13 @@ pub fn prepare_visible_nodes_texture(
                 }
 
                 let Some(node) = octree.nodes.get(&visible_node.id) else {
-                    warn!(
+                    bevy_log::debug!(
                         "Render Point Cloud Octree node {:?} not found in RenderOctrees, skip.",
                         visible_node.id
                     );
                     continue;
                 };
 
-                // let offset = ((node.data.offset + 10.0) * 10.0) as u8;
                 let offset = ((node.data.offset + 10.0) * 10.0).min(255.0) as u8;
 
                 visible_nodes_buffer[base_offset + i] = VisibleOctreeNodeUniform {
@@ -284,168 +270,10 @@ pub struct VisibleNodesTextureBindGroup {
 #[derive(Resource)]
 pub struct VisibleNodesTextureLayout {
     pub layout: BindGroupLayout,
-    pub uniform_layout: BindGroupLayout,
+    // pub uniform_layout: BindGroupLayout,
 }
 
-const BUFFER_SIZE: usize = 65536;
 pub const MAX_NODES: usize = 2048;
-
-#[derive(Resource)]
-pub struct OctreeNodesMappingBindGroups {
-    pub layout: BindGroupLayout,
-    // bind groups for each octree indexes
-    pub bind_groups: Vec<Vec<BindGroup>>,
-    pub min_uniform_buffer_offset_alignment: usize,
-    pub max_nodes_per_buffer: usize,
-    pub nb_buffers: usize,
-}
-
-impl FromWorld for OctreeNodesMappingBindGroups {
-    fn from_world(world: &mut World) -> Self {
-        let render_device = world.resource::<RenderDevice>();
-        let layout = render_device.create_bind_group_layout(
-            Some("layout_node_mapping"),
-            &[BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::VERTEX,
-                ty: BindingType::Buffer {
-                    ty: BufferBindingType::Uniform,
-                    has_dynamic_offset: true,
-                    min_binding_size: BufferSize::new(64),
-                },
-                count: None,
-            }],
-        );
-
-        // let array: [u32; 2048] = core::array::from_fn(|i| (i + 1) as u32);
-        // let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-        //     label: Some("node_mapping_buffer"),
-        //     contents: bytemuck::cast_slice(&array),
-        //     usage: BufferUsages::UNIFORM,
-        // });
-        //
-        //
-        // let bind_group = render_device.create_bind_group(
-        //     "bind_group_node_mapping",
-        //     &layout,
-        //     &[BindGroupEntry {
-        //         binding: 0,
-        //         resource: buffer.as_entire_binding(),
-        //     }],
-        // );
-
-        let min_uniform_buffer_offset_alignment = render_device
-            .wgpu_device()
-            .limits()
-            .min_uniform_buffer_offset_alignment
-            as usize
-            * 2; // for android compat we multiply by 2
-        // TODO: create a special case ?
-        let max_nodes_per_buffer = BUFFER_SIZE / min_uniform_buffer_offset_alignment;
-        let nb_buffers = MAX_NODES / max_nodes_per_buffer;
-
-        Self {
-            layout,
-            bind_groups: Vec::new(),
-            min_uniform_buffer_offset_alignment,
-            max_nodes_per_buffer,
-            nb_buffers,
-        }
-    }
-}
-
-/// The octree node mapping uniform layout
-#[derive(Clone, Debug, Copy, Pod, Zeroable)]
-#[repr(C)]
-pub struct OctreeNodeMapping {
-    pub octree_index: u32,
-    pub node_index: u32,
-    pub _padding: [u8; 56],
-}
-
-pub fn prepare_octree_nodes_mapping_buffers(
-    render_octree_index: Res<RenderOctreeIndex<PointCloudOctree3d>>,
-    mut mappings: ResMut<OctreeNodesMappingBindGroups>,
-    render_device: Res<RenderDevice>,
-) {
-    // add missing octree buffers
-    for i in mappings.bind_groups.len()..render_octree_index.octrees_slab.len() {
-        let mut buffer_data: Vec<u8> = Vec::with_capacity(BUFFER_SIZE * mappings.nb_buffers);
-
-        for node_idx in 0..MAX_NODES {
-            let data = [i as u32, node_idx as u32];
-
-            buffer_data.extend_from_slice(bytemuck::cast_slice(&data));
-            buffer_data.resize(
-                buffer_data.len() + (mappings.min_uniform_buffer_offset_alignment - 8),
-                0,
-            );
-        }
-
-        let mut bind_groups = Vec::with_capacity(mappings.nb_buffers);
-        for j in 0..mappings.nb_buffers {
-            let buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
-                label: Some("node_mapping_buffer"),
-                contents: &buffer_data[j * BUFFER_SIZE..(j + 1) * BUFFER_SIZE],
-                usage: BufferUsages::UNIFORM,
-            });
-            let bind_group = render_device.create_bind_group(
-                "bind_group_node_mapping",
-                &mappings.layout,
-                &[BindGroupEntry {
-                    binding: 0,
-                    resource: BindingResource::Buffer(BufferBinding {
-                        buffer: &buffer,
-                        offset: 0,
-                        size: BufferSize::new(mappings.min_uniform_buffer_offset_alignment as u64),
-                    }),
-                }],
-            );
-
-            bind_groups.push(bind_group);
-        }
-
-        // let buffer_1 = render_device.create_buffer_with_data(&BufferInitDescriptor {
-        //     label: Some("node_mapping_buffer"),
-        //     contents: bytemuck::cast_slice(&array[0..1024]),
-        //     usage: BufferUsages::UNIFORM,
-        // });
-        // let buffer_2 = render_device.create_buffer_with_data(&BufferInitDescriptor {
-        //     label: Some("node_mapping_buffer"),
-        //     contents: bytemuck::cast_slice(&array[1024..2048]),
-        //     usage: BufferUsages::UNIFORM,
-        // });
-        // println!("Buffer 1 size: {}", buffer_1.size());
-        // println!("Buffer 2 size: {}", buffer_2.size());
-
-        // let bind_group_1 = render_device.create_bind_group(
-        //     "bind_group_node_mapping",
-        //     &mappings.layout,
-        //     &[BindGroupEntry {
-        //         binding: 0,
-        //         resource: BindingResource::Buffer(BufferBinding {
-        //             buffer: &buffer_1,
-        //             offset: 0,
-        //             size: BufferSize::new(64),
-        //         }),
-        //     }],
-        // );
-        // let bind_group_2 = render_device.create_bind_group(
-        //     "bind_group_node_mapping",
-        //     &mappings.layout,
-        //     &[BindGroupEntry {
-        //         binding: 0,
-        //         resource: BindingResource::Buffer(BufferBinding {
-        //             buffer: &buffer_2,
-        //             offset: 0,
-        //             size: BufferSize::new(64),
-        //         }),
-        //     }],
-        // );
-
-        mappings.bind_groups.push(bind_groups);
-    }
-}
 
 impl FromWorld for VisibleNodesTextureLayout {
     fn from_world(world: &mut World) -> Self {
@@ -455,13 +283,6 @@ impl FromWorld for VisibleNodesTextureLayout {
             layout: render_device.create_bind_group_layout(
                 "pcl_attribute_layout",
                 &vec![texture_2d(TextureSampleType::Uint).build(0, ShaderStages::VERTEX)],
-            ),
-            uniform_layout: render_device.create_bind_group_layout(
-                "pcl_octree_node_data",
-                &BindGroupLayoutEntries::single(
-                    ShaderStages::VERTEX,
-                    uniform_buffer::<PointCloudVisibleNodeUniform>(false),
-                ),
             ),
         }
     }
@@ -482,43 +303,6 @@ pub fn prepare_visible_nodes_texture_bind_group(
 
         let texture_view = texture.texture.default_view.clone();
 
-        // let mut octree_mappings: HashMap<Entity, HashMap<NodeId, BindGroup>> = HashMap::new();
-        // for (entity, node_mapping) in &prepass_textures.octree_mapping {
-        //     let bind_group_node_mapping = octree_mappings.entry(*entity).or_default();
-        //
-        //     let mut a = HashMap::new();
-        //     for (node_id, index) in node_mapping {
-        //         a.insert(*node_id, *index);
-        //
-        //         let mut buffer = UniformBuffer::from(PointCloudVisibleNodeUniform {
-        //             index: *index as u32,
-        //             #[cfg(all(
-        //                 feature = "webgl",
-        //                 target_arch = "wasm32",
-        //                 not(feature = "webgpu")
-        //             ))]
-        //             _padding_1: Default::default(),
-        //             #[cfg(all(
-        //                 feature = "webgl",
-        //                 target_arch = "wasm32",
-        //                 not(feature = "webgpu")
-        //             ))]
-        //             _padding_2: Default::default(),
-        //         });
-        //         buffer.write_buffer(&render_device, &render_queue);
-        //
-        //         let bind_group = render_device.create_bind_group(
-        //             "pcl_pointcloud_octree_node_data",
-        //             &visible_nodes_texture_layout.uniform_layout,
-        //             &BindGroupEntries::single(buffer.binding().unwrap()),
-        //         );
-        //
-        //         bind_group_node_mapping.insert(*node_id, bind_group);
-        //     }
-        //
-        //     // println!("{:#?}", a);
-        // }
-
         commands
             .entity(entity)
             .insert(VisibleNodesTextureBindGroup {
@@ -527,7 +311,6 @@ pub fn prepare_visible_nodes_texture_bind_group(
                     &visible_nodes_texture_layout.layout,
                     &BindGroupEntries::single(&texture_view),
                 ),
-                // octree_mappings,
             });
     }
 }
@@ -546,101 +329,6 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetVisibleNodesTexture<I
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         pass.set_bind_group(I, &attribute_pass_view_bind_group.texture, &[]);
-
-        RenderCommandResult::Success
-    }
-}
-
-pub struct SetVisibleOctreeUniformGroup<const I: usize>;
-impl<P: PointCloudOctreeBinnedPhaseItem, const I: usize> RenderCommand<P>
-    for SetVisibleOctreeUniformGroup<I>
-{
-    type Param = (
-        SRes<RenderOctreeIndex<PointCloudOctree3d>>,
-        SRes<RenderOctrees<RenderPointCloudNodeData>>,
-        SRes<OctreeNodesMappingBindGroups>,
-    );
-    type ViewQuery = Read<VisibleNodesTexture>;
-    type ItemQuery = Read<PointCloudOctree3d>;
-
-    fn render<'w>(
-        item: &P,
-        visible_nodes: ROQueryItem<'w, '_, Self::ViewQuery>,
-        point_cloud_octree_3d: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
-        (render_octree_index, render_octrees, octree_nodes_mapping_bind_groups): SystemParamItem<
-            'w,
-            '_,
-            Self::Param,
-        >,
-        pass: &mut TrackedRenderPass<'w>,
-    ) -> RenderCommandResult {
-        let render_octree_index = render_octree_index.into_inner();
-        let render_octrees = render_octrees.into_inner();
-        let octree_nodes_mapping_bind_groups = octree_nodes_mapping_bind_groups.into_inner();
-
-        let Some(point_cloud_octree_3d) = point_cloud_octree_3d else {
-            warn!("Missing point cloud octree 3d item");
-            return RenderCommandResult::Skip;
-        };
-
-        let Some(_octree) = render_octrees.get(point_cloud_octree_3d) else {
-            warn!("Missing octree when render");
-            return RenderCommandResult::Skip;
-        };
-
-        let Some(octree_index) = render_octree_index.get_octree_index(item.entity()) else {
-            warn!("Missing octree when render");
-            return RenderCommandResult::Skip;
-        };
-
-        // get the octree's bind group
-        let bind_group = &octree_nodes_mapping_bind_groups.bind_groups[octree_index];
-
-        let node_id = item.node_id();
-
-        // get the node's index
-        let Some(node_index) = visible_nodes.node_index[octree_index].get(&node_id) else {
-            // warn!("Missing node index when render");
-            // it happens when there is more than 2048 nodes to render
-            return RenderCommandResult::Skip;
-        };
-
-        // we are ready to bind the correct bind group with the correct dynamic offset
-
-        let buffer_index =
-            *node_index as usize / octree_nodes_mapping_bind_groups.max_nodes_per_buffer;
-        let remapped_node_index =
-            *node_index % octree_nodes_mapping_bind_groups.max_nodes_per_buffer as u32;
-
-        let min_uniform_buffer_offset_alignment =
-            octree_nodes_mapping_bind_groups.min_uniform_buffer_offset_alignment as u32;
-
-        pass.set_bind_group(
-            I,
-            &bind_group[buffer_index],
-            &[remapped_node_index * min_uniform_buffer_offset_alignment],
-        );
-
-        // match node_index {
-        //     0..1024 => {
-        //         pass.set_bind_group(
-        //             I,
-        //             &bind_group[0],
-        //             &[node_index * min_uniform_buffer_offset_alignment],
-        //         );
-        //     }
-        //     1024..2048 => {
-        //         pass.set_bind_group(
-        //             I,
-        //             &bind_group[1],
-        //             &[(node_index * min_uniform_buffer_offset_alignment) - 1024],
-        //         );
-        //     }
-        //     _ => {
-        //         warn!("Node index out of bounds: {}, skip", node_index);
-        //         return RenderCommandResult::Skip;
-        //     }
-        // }
 
         RenderCommandResult::Success
     }

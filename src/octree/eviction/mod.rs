@@ -35,7 +35,7 @@ impl<T> OctreeEvictionPlugin<T> {
 impl<T> Default for OctreeEvictionPlugin<T> {
     fn default() -> Self {
         OctreeEvictionPlugin {
-            max_size: 1024 * 1024 * 1024, // 1GB memory
+            max_size: 32 * 10 * 1024 * 1024, // 10 millions points max
             phantom: PhantomData,
         }
     }

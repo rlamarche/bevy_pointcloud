@@ -59,6 +59,7 @@ ply-rs = { version = "0.1.3", optional = true }
 
 # Added for octree
 slab = "0.4"
+offset-allocator = "0.2.0"
 
 # Added for potree
 bevy_gizmos = { version = "0.17" }
@@ -196,7 +197,10 @@ inherits = "release"
 # Optimize with size in mind (also try "z", sometimes it is better).
 # Slightly slows compile times, great improvements to file size and runtime performance.
 opt-level = "s"
-lto = true
+
+# toggle to reduce wasm size (at the cost of longer build)
+# lto = true
+
 # Strip all debugging information from the binary to slightly reduce file size.
 strip = "debuginfo"
 
