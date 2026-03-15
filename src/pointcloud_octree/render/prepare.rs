@@ -1,4 +1,5 @@
-use crate::octree::extract::{RenderOctreeIndex, RenderOctrees, RenderVisibleOctreeNodes};
+use crate::octree::extract::render::components::RenderVisibleOctreeNodes;
+use crate::octree::extract::render::resources::{RenderOctreeIndex, RenderOctrees};
 use crate::octree::storage::NodeId;
 use crate::octree::visibility::iter_one_bits;
 use crate::pointcloud_octree::asset::data::PointCloudNodeData;
@@ -33,7 +34,6 @@ use std::cmp::Ordering;
 #[derive(Component)]
 pub struct VisibleNodesTexture {
     pub visible_nodes: Option<ColorAttachment>,
-    pub size: Extent3d,
     /// contains node index per octree index (see [`RenderOctreeIndex`])
     pub node_index: Vec<HashMap<NodeId, u32>>,
 }
@@ -82,7 +82,6 @@ pub fn prepare_visible_nodes_texture(
     >,
     views_3d: Query<(
         Entity,
-        &ExtractedCamera,
         &ExtractedView,
         &Msaa,
         &RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>,
@@ -90,16 +89,14 @@ pub fn prepare_visible_nodes_texture(
     mut visible_nodes_buffer: Local<Vec<VisibleOctreeNodeUniform>>,
     render_octrees: Res<RenderOctrees<RenderPointCloudNodeData>>,
 ) {
-    for (entity, camera, extracted_view, _msaa, visible_nodes) in &views_3d {
+    // for each camera
+    for (entity, extracted_view, _msaa, visible_nodes) in &views_3d {
+        // skip if no phases
         if !point_cloud_octree_3d_node_depth_phases
             .contains_key(&extracted_view.retained_view_entity)
             || !point_cloud_octree_3d_node_attribute_phases
                 .contains_key(&extracted_view.retained_view_entity)
         {
-            continue;
-        };
-
-        let Some(physical_target_size) = camera.physical_target_size else {
             continue;
         };
 
@@ -116,18 +113,12 @@ pub fn prepare_visible_nodes_texture(
             visible_nodes_buffer.resize(required_buffer_size, VisibleOctreeNodeUniform::default());
         }
 
-        let size = Extent3d {
-            depth_or_array_layers: 1,
-            width: physical_target_size.x,
-            height: physical_target_size.y,
-        };
-
         // Get the texture for containing visible nodes data
         let visible_nodes_texture = {
             // The size of the depth texture
             let size = Extent3d {
                 width: MAX_NODES as u32, // max 2048 nodes per octree visible at the same time
-                height: octrees_count as u32, // max 64 octrees visibles at the same time
+                height: octrees_count as u32,
                 depth_or_array_layers: 1,
             };
 
@@ -157,7 +148,7 @@ pub fn prepare_visible_nodes_texture(
 
             let base_offset = octree_index * MAX_NODES;
 
-            let Some(octree) = render_octrees.get(*asset_id) else {
+            let Some(render_octree) = render_octrees.get(*asset_id) else {
                 warn!(
                     "Render Point Cloud octree {} not found in RenderOctrees, skip",
                     entity
@@ -165,8 +156,10 @@ pub fn prepare_visible_nodes_texture(
                 continue;
             };
 
-            // sort nodes in order of depth, then child index ordering
             let mut sorted_octree_nodes = octree_nodes.clone();
+            // remove the missing nodes
+            sorted_octree_nodes.retain(|node| render_octree.nodes.contains_key(&node.id));
+            // sort nodes in order of depth, then child index ordering
             sorted_octree_nodes.sort_by(|a, b| {
                 if a.depth < b.depth {
                     return Ordering::Less;
@@ -177,6 +170,19 @@ pub fn prepare_visible_nodes_texture(
 
                 a.name.cmp(&b.name)
             });
+
+            // recompute children mask
+            for node in &mut sorted_octree_nodes {
+                for child_index in iter_one_bits(node.children_mask) {
+                    let index = node.children[child_index as usize];
+                    let child_node_id = octree_nodes[index].id;
+
+                    // if the node is missing in the render octree, patch the children mask
+                    if !render_octree.nodes.contains_key(&child_node_id) {
+                        node.children_mask &= !(1u8 << child_index);
+                    }
+                }
+            }
 
             // create an index of child indexes for each parent
             let index = sorted_octree_nodes
@@ -213,8 +219,8 @@ pub fn prepare_visible_nodes_texture(
                     break;
                 }
 
-                let Some(node) = octree.nodes.get(&visible_node.id) else {
-                    bevy_log::debug!(
+                let Some(node) = render_octree.nodes.get(&visible_node.id) else {
+                    bevy_log::warn!(
                         "Render Point Cloud Octree node {:?} not found in RenderOctrees, skip.",
                         visible_node.id
                     );
@@ -254,7 +260,6 @@ pub fn prepare_visible_nodes_texture(
                 None,
                 Some(LinearRgba::NONE),
             )),
-            size,
             // octree_mapping,
             // octree_index,
             node_index,

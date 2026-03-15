@@ -1,10 +1,10 @@
 use super::super::asset::Octree;
 use super::super::hierarchy::HierarchyNodeStatus;
 use super::super::node::{NodeData, NodeStatus};
-use super::resources::{OctreeLoadTasks, WeightedOctreeNodeLoadTask};
 use super::OctreeServer;
-use crate::octree::eviction::resources::OctreeNodeEvictionSettings;
+use super::resources::{OctreeLoadTasks, WeightedOctreeNodeLoadTask};
 use crate::octree::OctreeTotalSize;
+use crate::octree::server::resources::OctreeServerSettings;
 use bevy_asset::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
@@ -14,7 +14,7 @@ pub fn process_octree_load_tasks<T>(
     mut octree_assets: ResMut<Assets<Octree<T>>>,
     mut server: ResMut<OctreeServer<T>>,
     octree_total_size: Res<OctreeTotalSize<T>>,
-    octree_eviction_settings: Res<OctreeNodeEvictionSettings<T>>,
+    settings: Res<OctreeServerSettings<T>>,
 ) where
     T: NodeData,
 {
@@ -36,7 +36,7 @@ pub fn process_octree_load_tasks<T>(
         &mut server,
         MAX_CONCURRENT_NODES,
         &octree_total_size,
-        &octree_eviction_settings,
+        &settings,
     );
 }
 
@@ -96,12 +96,12 @@ fn process_node_data_loads<T>(
     max_concurrent: usize,
     octree_total_size: &OctreeTotalSize<T>,
     // TODO fallback if plugin not enabled ?
-    octree_eviction_settings: &OctreeNodeEvictionSettings<T>,
+    settings: &OctreeServerSettings<T>,
 ) where
     T: NodeData,
 {
     // do not try to load nodes if max memory is reached
-    if octree_total_size.total_size > octree_eviction_settings.max_size {
+    if octree_total_size.total_size > settings.max_size {
         return;
     }
 

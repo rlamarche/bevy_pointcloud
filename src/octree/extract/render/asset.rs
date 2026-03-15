@@ -1,4 +1,4 @@
-use super::prepare::RenderOctreeNode;
+use super::node::RenderOctreeNode;
 use crate::octree::storage::NodeId;
 use bevy_camera::primitives::Aabb;
 use bevy_platform::collections::HashMap;
@@ -45,6 +45,12 @@ where
 }
 
 #[derive(Clone, Debug)]
+pub struct RenderOctreeNodeAllocation {
+    pub start: u32,
+    pub end: u32,
+}
+
+#[derive(Clone, Debug)]
 pub struct RenderOctreeNodeData<T>
 where
     T: Send + Sync,
@@ -57,4 +63,5 @@ where
     pub bounding_box: Aabb,
     pub depth: u32,
     pub data: T,
+    pub allocation: RenderOctreeNodeAllocation,
 }

@@ -1,122 +1,97 @@
-use super::prepare::RenderOctreeNode;
-use super::render_asset::{RenderOctree, RenderOctreeNodeData};
-use super::OctreeNodeExtraction;
-use crate::octree::asset::Octree;
-use crate::octree::storage::NodeId;
-use bevy_asset::AssetId;
-use bevy_ecs::prelude::*;
-use bevy_platform::collections::{HashMap, HashSet};
+use std::{cmp::Reverse, marker::PhantomData};
 
-/// All assets that should be prepared next frame.
+use bevy_ecs::{resource::Resource, world::FromWorld};
+use bevy_platform::collections::HashMap;
+use offset_allocator::{Allocation, Allocator};
+use ordered_float::OrderedFloat;
+use priority_queue::PriorityQueue;
+
+use crate::octree::{
+    extract::{OctreeNodeExtraction, render::buffer::RenderNodeData},
+    node::{NodeData, OctreeNodeKey},
+};
+
 #[derive(Resource)]
-pub struct PrepareNextFrameOctreeNodes<A: RenderOctreeNode> {
-    pub(crate) assets: Vec<(
-        AssetId<Octree<A::SourceOctreeNode>>,
-        RenderOctreeNodeData<A::ExtractedOctreeNode>,
-    )>,
+pub struct OctreeBufferSettings<E: OctreeNodeExtraction> {
+    pub(crate) max_size: usize,
+    pub(crate) _phantom: PhantomData<fn() -> E>,
 }
 
-impl<A: RenderOctreeNode> Default for PrepareNextFrameOctreeNodes<A> {
-    fn default() -> Self {
+pub struct NodeAllocation<T: NodeData> {
+    pub octree_node_key: OctreeNodeKey<T>,
+    pub(crate) allocation: Allocation,
+    pub start: u32,
+    pub end: u32,
+}
+
+impl<T: NodeData> Clone for NodeAllocation<T> {
+    fn clone(&self) -> Self {
         Self {
-            assets: Default::default(),
+            octree_node_key: self.octree_node_key.clone(),
+            allocation: self.allocation.clone(),
+            start: self.start.clone(),
+            end: self.end.clone(),
         }
     }
 }
 
-/// Stores all GPU representations ([`RenderAsset`])
-/// of [`RenderAsset::SourceAsset`] as long as they exist.
 #[derive(Resource)]
-pub struct RenderOctrees<A: RenderOctreeNode>(
-    HashMap<AssetId<Octree<A::SourceOctreeNode>>, RenderOctree<A>>,
-);
-
-impl<A: RenderOctreeNode> Default for RenderOctrees<A> {
-    fn default() -> Self {
-        Self(HashMap::new())
-    }
+pub struct OctreeNodeAllocations<E: OctreeNodeExtraction> {
+    pub(crate) allocator: Allocator,
+    pub(crate) max_instances: u32,
+    pub(crate) allocations: HashMap<OctreeNodeKey<E::NodeData>, NodeAllocation<E::NodeData>>,
+    pub(crate) freed_nodes_this_frame: Vec<NodeAllocation<E::NodeData>>,
+    pub(crate) allocated_nodes_this_frame: Vec<NodeAllocation<E::NodeData>>,
+    _phantom: PhantomData<fn() -> E>,
 }
 
-impl<A: RenderOctreeNode> RenderOctrees<A> {
-    pub fn get(
-        &self,
-        id: impl Into<AssetId<Octree<A::SourceOctreeNode>>>,
-    ) -> Option<&RenderOctree<A>> {
-        self.0.get(&id.into())
-    }
+impl<E: OctreeNodeExtraction> FromWorld for OctreeNodeAllocations<E> {
+    fn from_world(world: &mut bevy_ecs::world::World) -> Self {
+        let settings = world.resource::<OctreeBufferSettings<E>>();
 
-    pub fn get_or_insert_mut(
-        &mut self,
-        id: impl Into<AssetId<Octree<A::SourceOctreeNode>>>,
-    ) -> &mut RenderOctree<A> {
-        self.0.entry(id.into()).or_default()
-    }
+        // compute the maximum number of instances
+        let max_instances = (settings.max_size
+            / std::mem::size_of::<<E::ExtractedNodeData as RenderNodeData>::InstanceData>())
+            as u32;
 
-    pub fn remove(
-        &mut self,
-        id: impl Into<AssetId<Octree<A::SourceOctreeNode>>>,
-    ) -> Option<RenderOctree<A>> {
-        self.0.remove(&id.into())
-    }
-}
-
-/// Contains all extracted octree nodes for preparing
-#[derive(Resource)]
-pub struct ExtractedOctreeNodes<E: OctreeNodeExtraction> {
-    pub octrees: HashMap<
-        AssetId<Octree<E::NodeData>>,
-        HashMap<NodeId, RenderOctreeNodeData<E::ExtractedNodeData>>,
-    >,
-
-    /// contains all already prepared octree nodes living in render world
-    pub prepared_octrees: HashMap<AssetId<Octree<E::NodeData>>, HashSet<NodeId>>,
-
-    /// IDs of the assets that were removed this frame.
-    ///
-    /// These assets will not be present in [`ExtractedAssets::extracted`].
-    // removed_assets: HashSet<AssetId<Octree<E::NodeHierarchy, E::NodeData>>>,
-    pub removed_nodes: HashMap<AssetId<Octree<E::NodeData>>, Vec<NodeId>>,
-
-    /// IDs of the assets that were modified this frame.
-    // modified_assets: HashSet<AssetId<Octree<E::NodeHierarchy, E::NodeData>>>,
-    pub modified_nodes: HashMap<AssetId<Octree<E::NodeData>>, Vec<NodeId>>,
-
-    /// IDs of the assets that were added this frame.
-    // added_assets: HashSet<AssetId<Octree<E::NodeHierarchy, E::NodeData>>>,
-    pub added_nodes: HashMap<AssetId<Octree<E::NodeData>>, Vec<NodeId>>,
-}
-
-impl<E: OctreeNodeExtraction> Default for ExtractedOctreeNodes<E> {
-    fn default() -> Self {
         Self {
-            octrees: HashMap::new(),
-            prepared_octrees: HashMap::new(),
-            // removed_assets: Default::default(),
-            removed_nodes: Default::default(),
-            // modified_assets: Default::default(),
-            modified_nodes: Default::default(),
-            // added_assets: Default::default(),
-            added_nodes: Default::default(),
+            allocator: Allocator::new(max_instances),
+            max_instances: max_instances,
+            allocations: HashMap::new(),
+            freed_nodes_this_frame: Vec::new(),
+            allocated_nodes_this_frame: Vec::new(),
+            _phantom: PhantomData,
         }
     }
 }
 
-impl<E: OctreeNodeExtraction> ExtractedOctreeNodes<E> {
-    pub fn clear_all(&mut self) {
-        // self.added_assets.clear();
-        self.added_nodes.clear();
-        // self.modified_assets.clear();
-        self.modified_nodes.clear();
-        // self.removed_assets.clear();
-        self.removed_nodes.clear();
-    }
+/// This resource contains a priority queue to determine which nodes to evict first.
+/// Nodes that are seen less recently are first in this queue.
+#[derive(Resource)]
+pub struct ExtractOctreeNodeEvictionQueue<E: OctreeNodeExtraction> {
+    pub eviction_queue: PriorityQueue<OctreeNodeKey<E::NodeData>, Reverse<OctreeNodeEvictionPriority>>,
+}
 
-    pub fn get_or_create_mut(
-        &mut self,
-        id: impl Into<AssetId<Octree<E::NodeData>>>,
-    ) -> &mut HashMap<NodeId, RenderOctreeNodeData<E::ExtractedNodeData>> {
-        self.octrees
-            .entry(id.into())
-            .or_insert_with(Default::default)
+impl<E: OctreeNodeExtraction> Default for ExtractOctreeNodeEvictionQueue<E> {
+    fn default() -> Self {
+        Self {
+            eviction_queue: PriorityQueue::new(),
+        }
     }
 }
+
+#[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
+pub struct OctreeNodeEvictionPriority {
+    pub elapsed: u128,
+    pub weight: OrderedFloat<f32>,
+}
+
+// impl PartialOrd for OctreeNodeEvictionPriority {
+//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+//         match self.timestamp.partial_cmp(&other.timestamp) {
+//             Some(core::cmp::Ordering::Equal) => {}
+//             ord => return ord,
+//         }
+//         self.weight.partial_cmp(&other.weight)
+//     }
+// }

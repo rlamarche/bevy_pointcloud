@@ -1,90 +1,21 @@
-use super::super::node::NodeData;
-use super::limiter::RenderOctreeNodesBytesPerFrameLimiter;
-use super::{ExtractedOctreeNodes, OctreeNodeExtraction};
-use crate::octree::asset::Octree;
-use crate::octree::extract::buffer::RenderNodeData;
-use crate::octree::extract::render_asset::RenderOctreeNodeData;
-use crate::octree::storage::NodeId;
-use bevy_asset::AssetId;
+use super::super::limiter::RenderOctreeNodesBytesPerFrameLimiter;
+use super::super::{ExtractedOctreeNodes, OctreeNodeExtraction};
+use super::asset::RenderOctreeNodeData;
+use super::node::{PrepareOctreeNodeError, RenderOctreeNode};
+use super::resources::RenderOctrees;
 use bevy_ecs::prelude::*;
-use bevy_ecs::system::{StaticSystemParam, SystemParam, SystemParamItem};
+use bevy_ecs::system::StaticSystemParam;
 use bevy_log::prelude::*;
 use bevy_platform::collections::HashMap;
-use bevy_render::render_resource::AsBindGroupError;
 use bevy_render::renderer::{RenderDevice, RenderQueue};
-use thiserror::Error;
-
-const MAX_POINTS: u32 = 20 * 1024 * 1024; // 20 millions points
-
-#[derive(Debug, Error)]
-pub enum PrepareOctreeNodeError<T: Send + Sync> {
-    #[error("Failed to prepare asset")]
-    RetryNextUpdate(RenderOctreeNodeData<T>),
-    #[error("Failed to build bind group: {0}")]
-    AsBindGroupError(AsBindGroupError),
-}
-
-/// Describes how an octree node gets extracted and prepared for rendering.
-///
-/// In the [`ExtractSchedule`] step the [`RenderOctreeNode::SourceOctreeNode`] is transferred
-/// from the "main world" into the "render world".
-///
-/// After that in the [`RenderSystems::PrepareAssets`] step the extracted octree nodes
-/// are transformed into their GPU-representation of type [`RenderOctreeNode`].
-pub trait RenderOctreeNode: Send + Sync + Sized + 'static {
-    type SourceOctreeNode: NodeData;
-
-    type ExtractedOctreeNode: RenderNodeData;
-
-    /// Specifies all ECS data required by [`RenderAsset::prepare_asset`].
-    ///
-    /// For convenience use the [`lifetimeless`](bevy_ecs::system::lifetimeless) [`SystemParam`].
-    type Param: SystemParam;
-
-    /// Size of the data the asset will upload to the gpu. Specifying a return value
-    /// will allow the asset to be throttled via [`RenderOctreeNodesBytesPerFrame`].
-    #[inline]
-    #[expect(
-        unused_variables,
-        reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
-    )]
-    fn byte_len(source_node: &RenderOctreeNodeData<Self::ExtractedOctreeNode>) -> Option<usize> {
-        None
-    }
-
-    /// Prepares the [`RenderAsset::SourceAsset`] for the GPU by transforming it into a [`RenderAsset`].
-    ///
-    /// ECS data may be accessed via `param`.
-    fn prepare_octree_node(
-        source_node: RenderOctreeNodeData<Self::ExtractedOctreeNode>,
-        asset_id: AssetId<Octree<Self::SourceOctreeNode>>,
-        param: &mut SystemParamItem<Self::Param>,
-    ) -> Result<Self, PrepareOctreeNodeError<Self::ExtractedOctreeNode>>;
-
-    /// Called whenever the [`RenderOctreeNode::SourceOctreeNode`] has been removed.
-    ///
-    /// You can implement this method if you need to access ECS data (via
-    /// `_param`) in order to perform cleanup tasks when the asset is removed.
-    ///
-    /// The default implementation does nothing.
-    #[expect(
-        unused_variables,
-        reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
-    )]
-    fn unload_octree_node(
-        source_asset: AssetId<Octree<Self::SourceOctreeNode>>,
-        node_id: NodeId,
-        param: &mut SystemParamItem<Self::Param>,
-    ) {
-    }
-}
 
 /// This system prepares all assets of the corresponding [`RenderAsset::SourceAsset`] type
 /// which where extracted this frame for the GPU.
+#[cfg_attr(feature = "trace", tracing::instrument(skip_all))]
 pub fn prepare_assets<E, A>(
-    mut extracted_assets: ResMut<ExtractedOctreeNodes<E>>,
-    mut render_octrees: ResMut<super::resources::RenderOctrees<A>>,
-    mut render_buffer: ResMut<super::buffer::RenderOctreesBuffer<A>>,
+    mut extracted_octree_nodes: ResMut<ExtractedOctreeNodes<E>>,
+    mut render_octrees: ResMut<RenderOctrees<A>>,
+    mut render_octrees_buffers: ResMut<super::buffer::RenderOctreesBuffers<A>>,
     mut prepare_next_frame: ResMut<super::resources::PrepareNextFrameOctreeNodes<A>>,
     param: StaticSystemParam<<A as RenderOctreeNode>::Param>,
     bpf: Res<RenderOctreeNodesBytesPerFrameLimiter>,
@@ -94,19 +25,24 @@ pub fn prepare_assets<E, A>(
     E: OctreeNodeExtraction,
     A: RenderOctreeNode<SourceOctreeNode = E::NodeData, ExtractedOctreeNode = E::ExtractedNodeData>,
 {
-    #[cfg(feature = "trace")]
-    let _span = info_span!("prepare_assets", name = "prepare_assets").entered();
+    // one single buffer for all octrees, make max_points customizable
+    let octrees_buffer = render_octrees_buffers.get_or_insert_mut(
+        0,
+        &render_device,
+        extracted_octree_nodes.max_instances,
+    );
+
     let mut wrote_asset_count = 0;
 
     let mut param = param.into_inner();
     let queued_assets = core::mem::take(&mut prepare_next_frame.assets);
     for (asset_id, extracted_octree_node) in queued_assets {
-        if extracted_assets
+        if extracted_octree_nodes
             .removed_nodes
             .get(&asset_id)
             .map(|nodes| nodes.contains(&extracted_octree_node.id))
             .unwrap_or(false)
-            || extracted_assets
+            || extracted_octree_nodes
                 .added_nodes
                 .get(&asset_id)
                 .map(|nodes| nodes.contains(&extracted_octree_node.id))
@@ -134,9 +70,6 @@ pub fn prepare_assets<E, A>(
 
         let render_asset = render_octrees.get_or_insert_mut(asset_id);
 
-        // TODO: one single buffer for all octrees, make max_points customizable
-        let octree_buffer = render_buffer.get_or_insert_mut(asset_id, &render_device, MAX_POINTS);
-
         // clone node metadata
         let cloned_node = RenderOctreeNodeData::<()> {
             id: extracted_octree_node.id,
@@ -147,16 +80,22 @@ pub fn prepare_assets<E, A>(
             depth: extracted_octree_node.depth,
             bounding_box: extracted_octree_node.bounding_box.clone(),
             data: (),
+            allocation: extracted_octree_node.allocation.clone(),
         };
 
         // write node data into buffer
-        if let Err(error) = octree_buffer.write_node(
+        if let Err(error) = octrees_buffer.write(
             &render_queue,
-            extracted_octree_node.id,
             &extracted_octree_node.data,
+            &extracted_octree_node.allocation,
         ) {
-            bevy_log::warn!("An error occured when write node data, try next frame: {:#}", error);
-            prepare_next_frame.assets.push((asset_id, extracted_octree_node));
+            bevy_log::warn!(
+                "An error occured when write node data, try next frame: {:#}",
+                error
+            );
+            prepare_next_frame
+                .assets
+                .push((asset_id, extracted_octree_node));
             continue;
         };
 
@@ -171,6 +110,7 @@ pub fn prepare_assets<E, A>(
                     depth: cloned_node.depth,
                     bounding_box: cloned_node.bounding_box,
                     data: prepared_octree_node,
+                    allocation: cloned_node.allocation,
                 };
 
                 render_asset.insert(cloned_node.id, render_octree_node);
@@ -179,9 +119,6 @@ pub fn prepare_assets<E, A>(
                 wrote_asset_count += 1;
             }
             Err(PrepareOctreeNodeError::RetryNextUpdate(extracted_data)) => {
-                // we free the node just allocated
-                octree_buffer.free_node(&cloned_node.id);
-
                 // try again next frame
                 prepare_next_frame.assets.push((asset_id, extracted_data));
             }
@@ -190,35 +127,26 @@ pub fn prepare_assets<E, A>(
                     "{} Bind group construction failed: {e}",
                     core::any::type_name::<A>()
                 );
-                // we free the node just allocated
-                octree_buffer.free_node(&cloned_node.id);
+                // TODO notify main world through a channel ?
             }
         }
     }
 
     // remove removed nodes from gpu
-    for (asset_id, node_ids) in extracted_assets.removed_nodes.drain() {
+    for (asset_id, node_ids) in extracted_octree_nodes.removed_nodes.drain() {
         let render_octree = render_octrees.get_or_insert_mut(asset_id);
-
-        // TODO: one single buffer for all octrees, make max_points customizable
-        let octree_buffer = render_buffer.get_or_insert_mut(asset_id, &render_device, MAX_POINTS);
 
         for node_id in node_ids {
             render_octree.nodes.remove(&node_id);
             A::unload_octree_node(asset_id, node_id, &mut param);
-            octree_buffer.free_node(&node_id);
         }
     }
 
     let mut prepared_octree_nodes = HashMap::new();
 
-    for (asset_id, extracted_octree_nodes) in extracted_assets.octrees.drain() {
+    for (asset_id, extracted_octree_nodes) in extracted_octree_nodes.octrees.drain() {
         let mut prepared_nodes = Vec::new();
-
         let render_asset = render_octrees.get_or_insert_mut(asset_id);
-
-        // TODO: one single buffer for all octrees, make max_points customizable
-        let octree_buffer = render_buffer.get_or_insert_mut(asset_id, &render_device, MAX_POINTS);
 
         for (node_id, extracted_octree_node) in extracted_octree_nodes {
             let write_bytes = if let Some(size) = A::byte_len(&extracted_octree_node) {
@@ -243,16 +171,22 @@ pub fn prepare_assets<E, A>(
                 depth: extracted_octree_node.depth,
                 bounding_box: extracted_octree_node.bounding_box.clone(),
                 data: (),
+                allocation: extracted_octree_node.allocation.clone(),
             };
 
             // write node data into buffer
-            if let Err(error) = octree_buffer.write_node(
+            if let Err(error) = octrees_buffer.write(
                 &render_queue,
-                extracted_octree_node.id,
                 &extracted_octree_node.data,
+                &extracted_octree_node.allocation,
             ) {
-                bevy_log::warn!("An error occured when write node data, try next frame: {:#}", error);
-                prepare_next_frame.assets.push((asset_id, extracted_octree_node));
+                bevy_log::warn!(
+                    "An error occured when write node data, try next frame: {:#}",
+                    error
+                );
+                prepare_next_frame
+                    .assets
+                    .push((asset_id, extracted_octree_node));
                 continue;
             };
 
@@ -267,6 +201,7 @@ pub fn prepare_assets<E, A>(
                         depth: cloned_node.depth,
                         bounding_box: cloned_node.bounding_box,
                         data: prepared_octree_node,
+                        allocation: cloned_node.allocation,
                     };
                     render_asset.insert(cloned_node.id, render_octree_node);
 
@@ -276,9 +211,6 @@ pub fn prepare_assets<E, A>(
                     prepared_nodes.push(node_id);
                 }
                 Err(PrepareOctreeNodeError::RetryNextUpdate(extracted_data)) => {
-                    // we free the node just allocated
-                    octree_buffer.free_node(&cloned_node.id);
-
                     prepare_next_frame.assets.push((asset_id, extracted_data));
                 }
                 Err(PrepareOctreeNodeError::AsBindGroupError(e)) => {
@@ -286,8 +218,7 @@ pub fn prepare_assets<E, A>(
                         "{} Bind group construction failed: {e}",
                         core::any::type_name::<A>()
                     );
-                    // we free the node just allocated
-                    octree_buffer.free_node(&cloned_node.id);
+                    // TODO notify main world ?
                 }
             }
         }

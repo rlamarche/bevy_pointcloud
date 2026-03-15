@@ -1,14 +1,13 @@
 use crate::octree::extract::OctreeNodeExtraction;
-use crate::octree::extract::prepare::{PrepareOctreeNodeError, RenderOctreeNode};
+use crate::octree::extract::render::node::{PrepareOctreeNodeError, RenderOctreeNode};
 use crate::octree::node::OctreeNode;
 use crate::pointcloud_octree::asset::data::{PointCloudNodeData, PointData};
 use crate::pointcloud_octree::extract::{PointCloudNodeDataUniform, RenderPointCloudNodeData};
 
 use crate::octree::asset::Octree;
-use crate::octree::extract::render_asset::RenderOctreeNodeData;
+use crate::octree::extract::render::asset::RenderOctreeNodeData;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
 use bevy_asset::AssetId;
-use bevy_ecs::query::QueryItem;
 use bevy_ecs::{
     prelude::*,
     system::{SystemParamItem, lifetimeless::SRes},
@@ -16,8 +15,7 @@ use bevy_ecs::{
 use bevy_reflect::TypePath;
 use bevy_render::render_resource::binding_types::uniform_buffer;
 use bevy_render::render_resource::{
-    BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, BufferInitDescriptor,
-    BufferUsages, ShaderStages, UniformBuffer,
+    BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, ShaderStages, UniformBuffer,
 };
 use bevy_render::renderer::{RenderDevice, RenderQueue};
 
@@ -25,16 +23,11 @@ use bevy_render::renderer::{RenderDevice, RenderQueue};
 pub struct PointCloudOctreeExtraction;
 
 impl OctreeNodeExtraction for PointCloudOctreeExtraction {
-    type QueryData = ();
-    type QueryFilter = ();
     type NodeData = PointCloudNodeData;
     type Component = PointCloudOctree3d;
     type ExtractedNodeData = PointCloudNodeData;
 
-    fn extract_octree_node(
-        node: &OctreeNode<Self::NodeData>,
-        _item: &QueryItem<'_, '_, Self::QueryData>,
-    ) -> Option<Self::ExtractedNodeData> {
+    fn extract_octree_node(node: &OctreeNode<Self::NodeData>) -> Option<Self::ExtractedNodeData> {
         node.data.clone()
     }
 }
@@ -80,17 +73,17 @@ impl RenderOctreeNode for RenderPointCloudNodeData {
             Self::Param,
         >,
     ) -> Result<Self, PrepareOctreeNodeError<Self::ExtractedOctreeNode>> {
-        let buffer = if source_node.data.points.len() > 0 {
-            Some(
-                render_device.create_buffer_with_data(&BufferInitDescriptor {
-                    label: Some("PointCloud data buffer"),
-                    contents: bytemuck::cast_slice(source_node.data.points.as_slice()),
-                    usage: BufferUsages::VERTEX,
-                }),
-            )
-        } else {
-            None
-        };
+        // let buffer = if source_node.data.points.len() > 0 {
+        //     Some(
+        //         render_device.create_buffer_with_data(&BufferInitDescriptor {
+        //             label: Some("PointCloud data buffer"),
+        //             contents: bytemuck::cast_slice(source_node.data.points.as_slice()),
+        //             usage: BufferUsages::VERTEX,
+        //         }),
+        //     )
+        // } else {
+        //     None
+        // };
 
         let mut uniform_buffer = UniformBuffer::from(PointCloudNodeDataUniform {
             spacing: source_node.data.spacing,
@@ -110,8 +103,8 @@ impl RenderOctreeNode for RenderPointCloudNodeData {
         );
 
         Ok(RenderPointCloudNodeData {
-            points: buffer,
-            // points: None,
+            // points: buffer,
+            points: None,
             uniform,
             uniform_buffer,
             num_points: source_node.data.num_points,

@@ -9,7 +9,7 @@ use bevy_pointcloud::PointCloudPlugin;
 use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
 use bevy_pointcloud::pointcloud_octree::component::PointCloudOctree3d;
 use bevy_pointcloud::pointcloud_octree::{
-    PointCloudOctreeEvictionPlugin, PointCloudOctreePlugin, PointCloudOctreeServer,
+    ExtractVisiblePointCloudOctreeNodesPlugin, PointCloudOctreePlugin, PointCloudOctreeServer,
     PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin,
     PointCloudOctreeVisibilitySettings,
 };
@@ -24,10 +24,14 @@ fn main() {
         EguiPlugin::default(),
         PanOrbitCameraPlugin,
         PointCloudPlugin,
-        PointCloudOctreePlugin.set(PointCloudOctreeEvictionPlugin::with_max_size(
-            512 * 1024 * 1024,
+        PointCloudOctreePlugin.set(ExtractVisiblePointCloudOctreeNodesPlugin::with_max_size(
+            // limit to 256 mb of gpu memory
+            256 * 1024 * 1024,
         )),
-        PointCloudOctreeServerPlugin::default(),
+        PointCloudOctreeServerPlugin::with_max_size(
+            // limit to 512 mb of cpu memory
+            512 * 1024 * 1024,
+        ),
     ));
 
     app.add_systems(Startup, (setup, load_pointcloud))
@@ -76,9 +80,11 @@ fn load_pointcloud(
     });
     commands.spawn(MyMaterial(my_material.clone()));
 
-    let octree_handle = octree_server.load_octree::<PotreeLoader>(
-        "https://pub-e2043f8abc6f45d983f8f77641ea772e.r2.dev/potree/heidentor",
-    );
+    // let octree_handle = octree_server.load_octree::<PotreeLoader>(
+    //     "https://pub-e2043f8abc6f45d983f8f77641ea772e.r2.dev/potree/heidentor",
+    // );
+
+    let octree_handle = octree_server.load_octree::<PotreeLoader>("assets/potree/heidentor");
 
     commands.spawn((
         PointCloudOctree3d(octree_handle),

@@ -1,5 +1,5 @@
 use crate::{
-    octree::extract::buffer::RenderNodeData,
+    octree::extract::render::buffer::RenderNodeData,
     pointcloud_octree::asset::data::{PointCloudNodeData, PointData},
 };
 

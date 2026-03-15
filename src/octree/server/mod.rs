@@ -1,13 +1,16 @@
 pub mod process;
 pub mod resources;
+pub mod systems;
 mod task;
 
 use super::asset::Octree;
-use super::hierarchy::{HierarchyNode, HierarchyNodeStatus, HierarchyOctreeNode};
+use super::hierarchy::{HierarchyNode, HierarchyOctreeNode};
 use super::loader::{ErasedOctreeLoader, OctreeLoader};
-use super::node::{NodeData, NodeStatus};
+use super::node::NodeData;
 use super::visibility::CheckOctreeNodesVisibility;
-use crate::octree::server::task::spawn_async_task;
+use crate::octree::server::systems::{
+    evict_octree_nodes, update_octree_server_node_eviction_queue,
+};
 use crate::octree::storage::NodeId;
 use bevy_app::prelude::*;
 use bevy_asset::{AssetHandleProvider, AssetId, Assets, Handle};
@@ -18,30 +21,54 @@ use bevy_tasks::IoTaskPool;
 use crossbeam::channel::{Receiver, Sender};
 use process::process_octree_load_tasks;
 use resources::OctreeLoadTasks;
+use resources::{OctreeServerEvictionQueue, OctreeServerSettings};
 use std::marker::PhantomData;
 use std::sync::Arc;
+use task::spawn_async_task;
 use thiserror::Error;
 
-pub struct OctreeServerPlugin<T, C, A>(PhantomData<fn() -> (T, C, A)>);
+pub struct OctreeServerPlugin<T> {
+    pub max_size: usize,
+    _phantom: PhantomData<fn() -> T>,
+}
 
-impl<T, C, A> Default for OctreeServerPlugin<T, C, A> {
+impl<T> Default for OctreeServerPlugin<T> {
     fn default() -> Self {
-        OctreeServerPlugin(PhantomData)
+        OctreeServerPlugin {
+            max_size: 1024 * 1024 * 1024, // 1024 mb
+            _phantom: PhantomData,
+        }
     }
 }
-impl<T, C, A> Plugin for OctreeServerPlugin<T, C, A>
+
+impl<T> OctreeServerPlugin<T> {
+    /// Construct with specific max memory size for CPU
+    pub fn with_max_size(max_size: usize) -> Self {
+        Self {
+            max_size,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<T> Plugin for OctreeServerPlugin<T>
 where
     T: NodeData,
-    C: Component,
-    for<'a> &'a C: Into<AssetId<Octree<T>>>,
-    A: Send + Sync + 'static,
 {
     fn build(&self, app: &mut App) {
-        app.init_resource::<OctreeServer<T>>().add_systems(
+        app.insert_resource(OctreeServerSettings::<T> {
+            max_size: self.max_size,
+            _phantom: PhantomData,
+        })
+        .init_resource::<OctreeServer<T>>()
+        .init_resource::<OctreeServerEvictionQueue<T>>()
+        .add_systems(
             PostUpdate,
             (
                 handle_internal_octree_events::<T>,
                 process_octree_load_tasks::<T>.after(CheckOctreeNodesVisibility),
+                update_octree_server_node_eviction_queue::<T>.after(CheckOctreeNodesVisibility),
+                evict_octree_nodes::<T>.after(update_octree_server_node_eviction_queue::<T>),
             ),
         );
     }

@@ -1,6 +1,5 @@
 pub mod asset;
 
-pub mod eviction;
 pub mod extract;
 pub mod hierarchy;
 pub mod loader;
@@ -53,11 +52,9 @@ pub fn reset_octree_nodes_tracking<T: NodeData>(
     }
 }
 
-/// This resource contains a priority queue to determine which nodes to evict first.
-/// Nodes that are seen less recently are first in this queue.
 #[derive(Resource)]
 pub struct OctreeTotalSize<T: NodeData> {
-    pub total_size: usize,
+    pub(crate) total_size: usize,
     phantom: PhantomData<fn() -> T>,
 }
 

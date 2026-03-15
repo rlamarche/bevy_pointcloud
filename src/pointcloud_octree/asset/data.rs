@@ -29,4 +29,8 @@ impl NodeData for PointCloudNodeData {
     fn size(&self) -> usize {
         self.num_points * size_of::<PointData>()
     }
+
+    fn instance_count(&self) -> usize {
+        self.num_points
+    }
 }

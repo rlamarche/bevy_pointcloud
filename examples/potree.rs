@@ -5,9 +5,9 @@ use bevy::DefaultPlugins;
 use bevy_app::prelude::*;
 use bevy_asset::{Assets, Handle};
 use bevy_camera::Camera3d;
+use bevy_color::Color;
 #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
 use bevy_color::palettes::basic::{GREEN, RED};
-use bevy_color::Color;
 #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
 use bevy_dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig};
 use bevy_diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
@@ -16,20 +16,21 @@ use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_gizmos::prelude::*;
 use bevy_math::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
+use bevy_pointcloud::PointCloudPlugin;
 use bevy_pointcloud::octree::visibility::components::{
     SkipOctreeVisibility, ViewVisibleOctreeNodes,
 };
 use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
-use bevy_pointcloud::pointcloud_octree::asset::data::PointCloudNodeData;
 use bevy_pointcloud::pointcloud_octree::asset::PointCloudOctree;
+use bevy_pointcloud::pointcloud_octree::asset::data::PointCloudNodeData;
 use bevy_pointcloud::pointcloud_octree::component::PointCloudOctree3d;
 use bevy_pointcloud::pointcloud_octree::{
-    PointCloudOctreePlugin, PointCloudOctreeServer, PointCloudOctreeServerPlugin,
-    PointCloudOctreeVisibilityPlugin, PointCloudOctreeVisibilitySettings,
+    ExtractVisiblePointCloudOctreeNodesPlugin, PointCloudOctreePlugin, PointCloudOctreeServer,
+    PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin,
+    PointCloudOctreeVisibilitySettings,
 };
 use bevy_pointcloud::potree::loader::PotreeLoader;
 use bevy_pointcloud::render::PointCloudRenderMode;
-use bevy_pointcloud::PointCloudPlugin;
 use bevy_render::prelude::*;
 use bevy_render::view::NoIndirectDrawing;
 use bevy_text::{FontSmoothing, TextFont};
@@ -46,8 +47,14 @@ fn main() {
         // WorldInspectorPlugin::default(),
         PanOrbitCameraPlugin,
         PointCloudPlugin,
-        PointCloudOctreePlugin,
-        PointCloudOctreeServerPlugin::default(),
+        PointCloudOctreePlugin.set(ExtractVisiblePointCloudOctreeNodesPlugin::with_max_size(
+            // limit to 1 mb of gpu memory
+            512 * 1024 * 1024,
+        )),
+        PointCloudOctreeServerPlugin::with_max_size(
+            // limit to 512 mb of cpu memory
+            512 * 1024 * 1024,
+        ),
     ));
 
     #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
@@ -104,7 +111,7 @@ fn setup(mut commands: Commands) {
     // camera
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(5.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(18.0, 8.0, -3.0).looking_at(Vec3::new(0.0, 8.0, -3.0), Vec3::Y),
         // We need this component because we use `draw_indexed` and `draw`
         // instead of `draw_indirect_indexed` and `draw_indirect` in
         // `DrawMeshInstanced::render`.
@@ -119,7 +126,7 @@ fn setup(mut commands: Commands) {
             ..Default::default()
         },
         PointCloudOctreeVisibilitySettings {
-            filter: Some(150.0),
+            filter: Some(30.0),
             budget: Some(1_000_000),
         },
     ));
@@ -141,8 +148,7 @@ fn load_pointcloud(
     });
     commands.spawn(MyMaterial(my_material.clone()));
 
-    let octree_handle =
-        octree_server.load_octree::<PotreeLoader>("assets/potree/heidentor");
+    let octree_handle = octree_server.load_octree::<PotreeLoader>("assets/potree/heidentor");
 
     commands.spawn((
         PointCloudOctree3d(octree_handle),
@@ -248,7 +254,7 @@ fn ui_settings(
 
                 ui.label("Budget Settings");
                 ui.add(
-                    egui::Slider::new(&mut min_node_size, 50.0..=1000.0)
+                    egui::Slider::new(&mut min_node_size, 30.0..=1000.0)
                         .text("Min node size")
                         .step_by(10.0)
                         .drag_value_speed(10.0),

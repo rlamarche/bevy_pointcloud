@@ -2,18 +2,19 @@ use crate::point_cloud::{PointCloud, PointCloud3d};
 use crate::point_cloud_material::PointCloudMaterial;
 use bevy_app::prelude::*;
 use bevy_asset::AssetApp;
-use bevy_camera::visibility::{add_visibility_class, Visibility, VisibilityClass};
+use bevy_camera::visibility::{Visibility, VisibilityClass, add_visibility_class};
 use bevy_ecs::prelude::*;
 
+pub mod bevy;
 pub mod loader;
 pub mod octree;
 pub mod point_cloud;
 pub mod point_cloud_material;
 pub mod pointcloud_octree;
-pub mod prelude;
-pub mod render;
 #[cfg(feature = "potree")]
 pub mod potree;
+pub mod prelude;
+pub mod render;
 
 pub struct PointCloudPlugin;
 

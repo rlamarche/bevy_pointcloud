@@ -9,8 +9,6 @@ use super::asset::Octree;
 use super::hierarchy::HierarchyNodeStatus;
 use super::node::{NodeData, NodeStatus};
 use super::server::resources::{LoadRequestType, OctreeLoadTasks};
-use crate::octree::visibility::heap_guard::HeapGuard;
-use crate::octree::visibility::resources::GlobalVisibleOctreeNodes;
 use bevy_app::{App, Plugin, PostUpdate};
 use bevy_asset::{AssetId, Assets};
 use bevy_camera::primitives::{Aabb, Frustum};
@@ -30,9 +28,11 @@ use bevy_transform::prelude::*;
 use budget::OctreeNodesBudget;
 use components::*;
 use filter::*;
+use heap_guard::HeapGuard;
+use resources::GlobalVisibleOctreeNodes;
 use stack::*;
 use std::any::TypeId;
-use std::collections::{BinaryHeap, VecDeque};
+use std::collections::BinaryHeap;
 use std::marker::PhantomData;
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
@@ -200,7 +200,7 @@ pub fn check_octree_nodes_visibility<T, C, F, B>(
             // update the asset id
             *asset_id = component.into();
 
-            let Some(root_id) = asset.root_id() else {
+            let Some(_) = asset.root_id() else {
                 warn!("Octree node has not yet hierarchy root loaded.");
                 continue;
             };
@@ -488,7 +488,7 @@ fn compute_visible_nodes_stack<'a, T, C, F, B>(
                     // add the current node because it is visible or partially visible
                     let child_index = node.hierarchy.child_index;
                     visible_nodes.push(node.into());
-                    global_visible_octree_nodes.add_visible_octree_node(asset_id, node);
+                    global_visible_octree_nodes.add_visible_octree_node(asset_id, node, weight);
 
                     // if there is a parent, add it to the visible children array
                     if let Some(parent_index) = parent_index {

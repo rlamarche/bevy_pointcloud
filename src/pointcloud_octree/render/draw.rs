@@ -1,5 +1,5 @@
-use crate::octree::extract::buffer::{AllocationInfo, RenderOctreesBuffer};
-use crate::octree::extract::resources::RenderOctrees;
+use crate::octree::extract::render::buffer::RenderOctreesBuffers;
+use crate::octree::extract::render::resources::RenderOctrees;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
 use crate::pointcloud_octree::render::phase::PointCloudOctreeBinnedPhaseItem;
@@ -85,7 +85,8 @@ pub struct DrawPointCloudOctree;
 impl<P: PointCloudOctreeBinnedPhaseItem> RenderCommand<P> for DrawPointCloudOctree {
     type Param = (
         SRes<PointCloudMesh>,
-        SRes<RenderOctreesBuffer<RenderPointCloudNodeData>>,
+        SRes<RenderOctrees<RenderPointCloudNodeData>>,
+        SRes<RenderOctreesBuffers<RenderPointCloudNodeData>>,
     );
     type ViewQuery = ();
     type ItemQuery = Read<PointCloudOctree3d>;
@@ -95,19 +96,29 @@ impl<P: PointCloudOctreeBinnedPhaseItem> RenderCommand<P> for DrawPointCloudOctr
         item: &P,
         _view: (),
         point_cloud_octree_3d: Option<&PointCloudOctree3d>,
-        (point_cloud_mesh, render_octrees): SystemParamItem<'w, '_, Self::Param>,
+        (point_cloud_mesh, render_octrees, render_octrees_buffers): SystemParamItem<
+            'w,
+            '_,
+            Self::Param,
+        >,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         // A borrow check workaround.
         let point_cloud_mesh = point_cloud_mesh.into_inner();
         let render_octrees = render_octrees.into_inner();
+        let render_octrees_buffers = render_octrees_buffers.into_inner();
 
         let Some(point_cloud_octree_3d) = point_cloud_octree_3d else {
             warn!("Missing point cloud octree 3d item");
             return RenderCommandResult::Skip;
         };
 
-        let Some(octree) = render_octrees.get(point_cloud_octree_3d) else {
+        let Some(octrees_buffer) = render_octrees_buffers.get(0) else {
+            warn!("Missing octrees buffer when render");
+            return RenderCommandResult::Skip;
+        };
+
+        let Some(render_octree) = render_octrees.get(point_cloud_octree_3d) else {
             warn!("Missing octree when render");
             return RenderCommandResult::Skip;
         };
@@ -120,7 +131,7 @@ impl<P: PointCloudOctreeBinnedPhaseItem> RenderCommand<P> for DrawPointCloudOctr
         //     IndexFormat::Uint32,
         // );
 
-        pass.set_vertex_buffer(1, octree.buffer.slice(..));
+        pass.set_vertex_buffer(1, octrees_buffer.buffer.slice(..));
 
         // not needed is using a single triangle
         // pass.draw_indexed(
@@ -130,9 +141,18 @@ impl<P: PointCloudOctreeBinnedPhaseItem> RenderCommand<P> for DrawPointCloudOctr
         // );
 
         for node_id in item.node_ids() {
-            if let Some(AllocationInfo { start, end, .. }) = octree.allocation_index.get(node_id) {
-                pass.draw(0..point_cloud_mesh.index_count, *start..*end);
+            if let Some(render_octree_node_data) = render_octree.nodes.get(node_id) {
+                pass.draw(
+                    0..point_cloud_mesh.index_count,
+                    render_octree_node_data.allocation.start
+                        ..render_octree_node_data.allocation.end,
+                );
             }
+            // if let Some(AllocationInfo { start, end, .. }) =
+            //     octrees_buffer.allocation_index.get(node_id)
+            // {
+            //     pass.draw(0..point_cloud_mesh.index_count, *start..*end);
+            // }
         }
 
         RenderCommandResult::Success

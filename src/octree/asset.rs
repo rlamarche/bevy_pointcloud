@@ -170,6 +170,10 @@ impl<T: NodeData> Octree<T> {
         self.hierarchy.get(node_id)
     }
 
+    pub fn node_mut(&mut self, node_id: NodeId) -> Option<&mut OctreeNode<T>> {
+        self.hierarchy.get_mut(node_id)
+    }
+
     pub fn node_root(&self) -> Option<&OctreeNode<T>> {
         self.root_id.and_then(|root_id| self.node(root_id))
     }

@@ -7,6 +7,7 @@ use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 
 pub trait NodeData: Send + Sync + TypePath {
+    fn instance_count(&self) -> usize;
     fn size(&self) -> usize;
 }
 

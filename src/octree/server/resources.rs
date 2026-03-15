@@ -1,14 +1,22 @@
 use crate::octree::asset::Octree;
-use crate::octree::node::NodeData;
+use crate::octree::node::{NodeData, OctreeNodeKey};
 use crate::octree::storage::NodeId;
 use bevy_asset::AssetId;
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashSet;
 use ordered_float::OrderedFloat;
-use std::cmp::Ordering;
+use priority_queue::PriorityQueue;
+use std::cmp::{Ordering, Reverse};
 use std::collections::BinaryHeap;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
+
+
+#[derive(Resource)]
+pub struct OctreeServerSettings<T> {
+    pub(crate) max_size: usize,
+    pub(crate) _phantom: PhantomData<fn() -> T>,
+}
 
 #[derive(Resource)]
 pub struct OctreeLoadTasks<T: NodeData> {
@@ -107,5 +115,21 @@ impl<T: NodeData> PartialOrd<Self> for WeightedOctreeNodeLoadTask<T> {
 impl<T: NodeData> Ord for WeightedOctreeNodeLoadTask<T> {
     fn cmp(&self, other: &Self) -> Ordering {
         self.1.cmp(&other.1)
+    }
+}
+
+
+/// This resource contains a priority queue to determine which nodes to evict first.
+/// Nodes that are seen less recently are first in this queue.
+#[derive(Resource)]
+pub struct OctreeServerEvictionQueue<T: NodeData> {
+    pub eviction_queue: PriorityQueue<OctreeNodeKey<T>, Reverse<u128>>,
+}
+
+impl<T: NodeData> Default for OctreeServerEvictionQueue<T> {
+    fn default() -> Self {
+        Self {
+            eviction_queue: PriorityQueue::new(),
+        }
     }
 }

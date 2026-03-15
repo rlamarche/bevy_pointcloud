@@ -3,11 +3,14 @@ pub mod node;
 use super::attribute_pass::node::AttributePassOctreeLabel;
 use super::depth_pass::node::DepthPassOctreeLabel;
 use super::phase::PointCloudOctree3dBinKey;
-use crate::octree::extract::{RenderVisibleOctreeNodes, VisibleOctreeNode};
+use crate::octree::extract::render::components::RenderVisibleOctreeNodes;
+use crate::octree::visibility::components::VisibleOctreeNode;
 use crate::pointcloud_octree::asset::data::PointCloudNodeData;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
-use crate::pointcloud_octree::render::draw::{DrawPointCloudOctree, DrawPointCloudOctreeNode, SetPointCloudOctreeNodeUniformGroup};
+use crate::pointcloud_octree::render::draw::{
+    DrawPointCloudOctree, SetPointCloudOctreeNodeUniformGroup,
+};
 use crate::pointcloud_octree::render::phase::{
     PointCloudOctree3dNodePhase, ViewOctreeNodesRenderAttributePhases,
 };
