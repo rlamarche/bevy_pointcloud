@@ -8,8 +8,15 @@ pub mod render_node;
 pub mod attribute_pass;
 pub mod depth_pass;
 
+#[cfg(not(feature = "webgl"))]
+pub mod indirect;
+
+#[cfg(not(feature = "webgl"))]
+use indirect::{RenderVisibleNodesIndirectBuffers, prepare_indirect_buffer};
+
 use super::asset::extract::PointCloudOctreeNodeUniformLayout;
 use bevy_app::prelude::*;
+use bevy_camera::Camera3d;
 use bevy_ecs::prelude::*;
 use bevy_render::{Render, RenderApp, RenderSystems};
 use data::{PointCloudOctree3dUniformLayout, prepare_point_cloud_octree_3d_uniform};
@@ -27,9 +34,16 @@ impl Plugin for RenderPointCloudOctreePlugin {
             return;
         };
 
+        #[cfg(not(feature = "webgl"))]
+        render_app
+            .world_mut()
+            .register_required_components::<Camera3d, RenderVisibleNodesIndirectBuffers>();
+
         render_app.add_systems(
             Render,
             (
+                #[cfg(not(feature = "webgl"))]
+                prepare_indirect_buffer.in_set(RenderSystems::PrepareResources),
                 prepare_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
                 // nodes_mapping::prepare_octree_nodes_mapping_buffers.in_set(RenderSystems::PrepareBindGroups),
                 prepare_visible_nodes_texture_bind_group.in_set(RenderSystems::PrepareBindGroups),

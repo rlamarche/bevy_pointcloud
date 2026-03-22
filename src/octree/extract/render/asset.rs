@@ -47,7 +47,7 @@ where
 #[derive(Clone, Debug)]
 pub struct RenderOctreeNodeAllocation {
     pub start: u32,
-    pub end: u32,
+    pub count: u32,
 }
 
 #[derive(Clone, Debug)]

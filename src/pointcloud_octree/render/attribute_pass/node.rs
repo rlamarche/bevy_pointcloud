@@ -1,11 +1,11 @@
 use std::marker::PhantomData;
 
-use crate::pointcloud_octree::render::phase::PointCloudOctreeBinnedPhaseItem;
 use crate::pointcloud_octree::render::phase::ViewOctreeNodesRenderAttributePhases;
 use crate::render::attribute_pass::texture::ViewAttributePrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::error;
 use bevy_log::prelude::*;
+use bevy_render::render_phase::BinnedPhaseItem;
 use bevy_render::render_phase::TrackedRenderPass;
 use bevy_render::render_resource::{CommandEncoderDescriptor, StoreOp};
 use bevy_render::view::ViewDepthTexture;
@@ -20,15 +20,15 @@ use bevy_render::{
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct AttributePassOctreeLabel;
 
-pub struct AttributePassOctreeNode<BPI: PointCloudOctreeBinnedPhaseItem>(PhantomData<BPI>);
+pub struct AttributePassOctreeNode<BPI: BinnedPhaseItem>(PhantomData<BPI>);
 
-impl<BPI: PointCloudOctreeBinnedPhaseItem> Default for AttributePassOctreeNode<BPI> {
+impl<BPI: BinnedPhaseItem> Default for AttributePassOctreeNode<BPI> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<BPI: PointCloudOctreeBinnedPhaseItem> ViewNode for AttributePassOctreeNode<BPI> {
+impl<BPI: BinnedPhaseItem> ViewNode for AttributePassOctreeNode<BPI> {
     type ViewQuery = (
         &'static ExtractedCamera,
         &'static ExtractedView,

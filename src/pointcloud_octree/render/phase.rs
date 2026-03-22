@@ -1,7 +1,6 @@
 use std::hash::Hash;
 use std::ops::Range;
 
-use crate::octree::storage::NodeId;
 use crate::pointcloud_octree::asset::PointCloudOctree;
 use crate::render::phase::PointCloud3dBatchSetKey;
 use bevy_asset::AssetId;
@@ -10,8 +9,8 @@ use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashMap;
 use bevy_platform::collections::hash_map::Entry;
 use bevy_render::render_phase::{
-    CachedRenderPipelinePhaseItem, DrawError, DrawFunctionId, DrawFunctions, PhaseItem,
-    PhaseItemBatchSetKey, PhaseItemExtraIndex, TrackedRenderPass,
+    BinnedPhaseItem, CachedRenderPipelinePhaseItem, DrawError, DrawFunctionId, DrawFunctions,
+    PhaseItem, PhaseItemExtraIndex, TrackedRenderPass,
 };
 use bevy_render::render_resource::CachedRenderPipelineId;
 use bevy_render::sync_world::MainEntity;
@@ -33,11 +32,11 @@ pub struct PointCloudOctree3dBinKey {
 #[derive(Resource, Deref, DerefMut)]
 pub struct ViewOctreeNodesRenderDepthPhases<BPI>(ViewOctreeNodesRenderPhases<BPI>)
 where
-    BPI: PointCloudOctreeBinnedPhaseItem;
+    BPI: BinnedPhaseItem;
 
 impl<BPI> Default for ViewOctreeNodesRenderDepthPhases<BPI>
 where
-    BPI: PointCloudOctreeBinnedPhaseItem,
+    BPI: BinnedPhaseItem,
 {
     fn default() -> Self {
         Self(Default::default())
@@ -47,11 +46,11 @@ where
 #[derive(Resource, Deref, DerefMut)]
 pub struct ViewOctreeNodesRenderAttributePhases<BPI>(ViewOctreeNodesRenderPhases<BPI>)
 where
-    BPI: PointCloudOctreeBinnedPhaseItem;
+    BPI: BinnedPhaseItem;
 
 impl<BPI> Default for ViewOctreeNodesRenderAttributePhases<BPI>
 where
-    BPI: PointCloudOctreeBinnedPhaseItem,
+    BPI: BinnedPhaseItem,
 {
     fn default() -> Self {
         Self(Default::default())
@@ -63,11 +62,11 @@ pub struct ViewOctreeNodesRenderPhases<BPI>(
     pub HashMap<RetainedViewEntity, OctreeNodeRenderPhase<BPI>>,
 )
 where
-    BPI: PointCloudOctreeBinnedPhaseItem;
+    BPI: BinnedPhaseItem;
 
 impl<BPI> Default for ViewOctreeNodesRenderPhases<BPI>
 where
-    BPI: PointCloudOctreeBinnedPhaseItem,
+    BPI: BinnedPhaseItem,
 {
     fn default() -> Self {
         Self(HashMap::default())
@@ -76,7 +75,7 @@ where
 
 impl<BPI> ViewOctreeNodesRenderPhases<BPI>
 where
-    BPI: PointCloudOctreeBinnedPhaseItem,
+    BPI: BinnedPhaseItem,
 {
     pub fn prepare_for_new_frame(&mut self, retained_view_entity: RetainedViewEntity) {
         match self.entry(retained_view_entity) {
@@ -90,14 +89,14 @@ where
 
 pub struct OctreeNodeRenderPhase<BPI>
 where
-    BPI: PointCloudOctreeBinnedPhaseItem,
+    BPI: BinnedPhaseItem,
 {
     pub phases: IndexMap<(BPI::BatchSetKey, BPI::BinKey), Vec<BPI>>,
 }
 
 impl<BPI> OctreeNodeRenderPhase<BPI>
 where
-    BPI: PointCloudOctreeBinnedPhaseItem,
+    BPI: BinnedPhaseItem,
 {
     fn new() -> Self {
         Self {
@@ -119,8 +118,6 @@ where
         batch_set_key: BPI::BatchSetKey,
         bin_key: BPI::BinKey,
         (entity, main_entity): (Entity, MainEntity),
-        // input_uniform_index: InputUniformIndex,
-        node_ids: Vec<NodeId>,
     ) {
         let phase_item = BPI::new(
             batch_set_key.clone(),
@@ -128,7 +125,6 @@ where
             (entity, main_entity),
             0..1,
             PhaseItemExtraIndex::None,
-            node_ids,
         );
 
         match self.phases.entry((batch_set_key, bin_key).clone()) {
@@ -179,44 +175,44 @@ where
     }
 }
 
-/// Represents phase items that are placed into bins. The `BinKey` specifies
-/// which bin they're to be placed in. Bin keys are sorted, and items within the
-/// same bin are eligible to be batched together. The elements within the bins
-/// aren't themselves sorted.
-///
-/// An example of a binned phase item is `Opaque3d`, for which the rendering
-/// order isn't critical.
-pub trait PointCloudOctreeBinnedPhaseItem: CachedRenderPipelinePhaseItem + 'static {
-    /// The key used for binning [`PhaseItem`]s into bins. Order the members of
-    /// [`BinnedPhaseItem::BinKey`] by the order of binding for best
-    /// performance. For example, pipeline id, draw function id, mesh asset id,
-    /// lowest variable bind group id such as the material bind group id, and
-    /// its dynamic offsets if any, next bind group and offsets, etc. This
-    /// reduces the need for rebinding between bins and improves performance.
-    type BinKey: Clone + Send + Sync + PartialEq + Eq + Ord + Hash;
+// /// Represents phase items that are placed into bins. The `BinKey` specifies
+// /// which bin they're to be placed in. Bin keys are sorted, and items within the
+// /// same bin are eligible to be batched together. The elements within the bins
+// /// aren't themselves sorted.
+// ///
+// /// An example of a binned phase item is `Opaque3d`, for which the rendering
+// /// order isn't critical.
+// pub trait PointCloudOctreeBinnedPhaseItem: CachedRenderPipelinePhaseItem + 'static {
+//     /// The key used for binning [`PhaseItem`]s into bins. Order the members of
+//     /// [`BinnedPhaseItem::BinKey`] by the order of binding for best
+//     /// performance. For example, pipeline id, draw function id, mesh asset id,
+//     /// lowest variable bind group id such as the material bind group id, and
+//     /// its dynamic offsets if any, next bind group and offsets, etc. This
+//     /// reduces the need for rebinding between bins and improves performance.
+//     type BinKey: Clone + Send + Sync + PartialEq + Eq + Ord + Hash;
 
-    /// The key used to combine batches into batch sets.
-    ///
-    /// A *batch set* is a set of meshes that can potentially be multi-drawn
-    /// together.
-    type BatchSetKey: PhaseItemBatchSetKey;
+//     /// The key used to combine batches into batch sets.
+//     ///
+//     /// A *batch set* is a set of meshes that can potentially be multi-drawn
+//     /// together.
+//     type BatchSetKey: PhaseItemBatchSetKey;
 
-    /// Creates a new binned phase item from the key and per-entity data.
-    ///
-    /// Unlike [`SortedPhaseItem`]s, this is generally called "just in time"
-    /// before rendering. The resulting phase item isn't stored in any data
-    /// structures, resulting in significant memory savings.
-    fn new(
-        batch_set_key: Self::BatchSetKey,
-        bin_key: Self::BinKey,
-        representative_entity: (Entity, MainEntity),
-        batch_range: Range<u32>,
-        extra_index: PhaseItemExtraIndex,
-        node_ids: Vec<NodeId>,
-    ) -> Self;
+//     /// Creates a new binned phase item from the key and per-entity data.
+//     ///
+//     /// Unlike [`SortedPhaseItem`]s, this is generally called "just in time"
+//     /// before rendering. The resulting phase item isn't stored in any data
+//     /// structures, resulting in significant memory savings.
+//     fn new(
+//         batch_set_key: Self::BatchSetKey,
+//         bin_key: Self::BinKey,
+//         representative_entity: (Entity, MainEntity),
+//         batch_range: Range<u32>,
+//         extra_index: PhaseItemExtraIndex,
+//         node_ids: Vec<NodeId>,
+//     ) -> Self;
 
-    fn node_ids(&self) -> &[NodeId];
-}
+//     fn node_ids(&self) -> &[NodeId];
+// }
 
 pub struct PointCloudOctree3dNodePhase {
     /// Determines which objects can be placed into a *batch set*.
@@ -234,8 +230,6 @@ pub struct PointCloudOctree3dNodePhase {
     /// An extra index, which is either a dynamic offset or an index in the
     /// indirect parameters list.
     pub extra_index: PhaseItemExtraIndex,
-    /// The node id in the octree
-    pub node_ids: Vec<NodeId>,
 }
 
 impl PhaseItem for PointCloudOctree3dNodePhase {
@@ -273,18 +267,16 @@ impl PhaseItem for PointCloudOctree3dNodePhase {
     }
 }
 
-impl PointCloudOctreeBinnedPhaseItem for PointCloudOctree3dNodePhase {
+impl BinnedPhaseItem for PointCloudOctree3dNodePhase {
     type BinKey = PointCloudOctree3dBinKey;
     type BatchSetKey = PointCloud3dBatchSetKey;
 
-    #[inline]
     fn new(
         batch_set_key: Self::BatchSetKey,
         bin_key: Self::BinKey,
         representative_entity: (Entity, MainEntity),
         batch_range: Range<u32>,
         extra_index: PhaseItemExtraIndex,
-        node_ids: Vec<NodeId>,
     ) -> Self {
         PointCloudOctree3dNodePhase {
             batch_set_key,
@@ -292,14 +284,37 @@ impl PointCloudOctreeBinnedPhaseItem for PointCloudOctree3dNodePhase {
             representative_entity,
             batch_range,
             extra_index,
-            node_ids,
         }
     }
-
-    fn node_ids(&self) -> &[NodeId] {
-        &self.node_ids
-    }
 }
+
+// impl PointCloudOctreeBinnedPhaseItem for PointCloudOctree3dNodePhase {
+//     type BinKey = PointCloudOctree3dBinKey;
+//     type BatchSetKey = PointCloud3dBatchSetKey;
+
+//     #[inline]
+//     fn new(
+//         batch_set_key: Self::BatchSetKey,
+//         bin_key: Self::BinKey,
+//         representative_entity: (Entity, MainEntity),
+//         batch_range: Range<u32>,
+//         extra_index: PhaseItemExtraIndex,
+//         node_ids: Vec<NodeId>,
+//     ) -> Self {
+//         PointCloudOctree3dNodePhase {
+//             batch_set_key,
+//             bin_key,
+//             representative_entity,
+//             batch_range,
+//             extra_index,
+//             node_ids,
+//         }
+//     }
+
+//     fn node_ids(&self) -> &[NodeId] {
+//         &self.node_ids
+//     }
+// }
 
 impl CachedRenderPipelinePhaseItem for PointCloudOctree3dNodePhase {
     #[inline]

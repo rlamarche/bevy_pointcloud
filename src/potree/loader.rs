@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::octree::hierarchy::HierarchyNodeStatus;
 use crate::octree::loader::{LoadedHierarchyNode, OctreeLoader};
 use crate::pointcloud_octree::asset::data::PointCloudNodeData;
@@ -66,7 +68,7 @@ impl OctreeLoader<PointCloudNodeData> for PotreeLoader {
             level: node.data.0.level,
             offset,
             num_points: node.data.0.num_points as usize,
-            points: points.into_iter().map(Into::into).collect(),
+            points: Arc::new(points.into_iter().map(Into::into).collect()),
         })
     }
 }
@@ -99,7 +101,7 @@ impl From<(&PotreeOctreeNode, Points)> for PointCloudNodeData {
             level: node.level,
             offset,
             num_points: node.num_points as usize,
-            points: points.into_iter().map(Into::into).collect(),
+            points: Arc::new(points.into_iter().map(Into::into).collect()),
         }
     }
 }

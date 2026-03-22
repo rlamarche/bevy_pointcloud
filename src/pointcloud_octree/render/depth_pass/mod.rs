@@ -2,13 +2,14 @@ pub mod node;
 
 use super::phase::PointCloudOctree3dBinKey;
 use crate::octree::extract::render::components::RenderVisibleOctreeNodes;
-use crate::octree::visibility::components::VisibleOctreeNode;
 use crate::pointcloud_octree::asset::data::PointCloudNodeData;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
-use crate::pointcloud_octree::render::draw::{
-    DrawPointCloudOctree, SetPointCloudOctreeNodeUniformGroup,
-};
+#[cfg(not(feature = "webgl"))]
+use crate::pointcloud_octree::render::draw::DrawPointCloudOctreeIndirect;
+#[cfg(feature = "webgl")]
+use crate::pointcloud_octree::render::draw::DrawPointCloudOctree;
+use crate::pointcloud_octree::render::draw::SetPointCloudOctreeNodeUniformGroup;
 use crate::pointcloud_octree::render::phase::{
     PointCloudOctree3dNodePhase, ViewOctreeNodesRenderDepthPhases,
 };
@@ -72,6 +73,7 @@ impl Plugin for DepthPassPlugin {
 }
 
 // We will reuse render commands already defined by bevy to draw a 3d mesh
+#[cfg(not(feature = "webgl"))]
 type DrawDepthPass = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
@@ -81,6 +83,18 @@ type DrawDepthPass = (
     SetPointCloudOctreeNodeUniformGroup<4>,
     // SetVisibleOctreeUniformGroup<5>,
     // DrawPointCloudOctreeNode,
+    // DrawPointCloudOctree,
+    DrawPointCloudOctreeIndirect,
+);
+
+#[cfg(feature = "webgl")]
+type DrawDepthPass = (
+    SetItemPipeline,
+    SetMeshViewBindGroup<0>,
+    SetPointCloudOctree3dUniformGroup<1>,
+    SetPointCloudMaterialGroup<2>,
+    SetVisibleNodesTexture<3>,
+    SetPointCloudOctreeNodeUniformGroup<4>,
     DrawPointCloudOctree,
 );
 
@@ -146,7 +160,7 @@ fn queue_depth_pass(
         let pipeline_id = pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, depth_key);
 
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
-        for (render_entity, (_asset_id, visible_octree_nodes)) in &visible_entities.octrees {
+        for (render_entity, _) in &visible_entities.octrees {
             let Ok(main_entity) = main_entities.get(*render_entity) else {
                 warn!("Render entity not found, skipping.");
                 continue;
@@ -160,12 +174,6 @@ fn queue_depth_pass(
             let this_tick = next_tick.get() + 1;
             next_tick.set(this_tick);
 
-            // Collect all visible node ids
-            let node_ids = visible_octree_nodes
-                .iter()
-                .map(|VisibleOctreeNode { id: node_id, .. }| *node_id)
-                .collect::<Vec<_>>();
-
             // Add the render phase
             custom_phase.add(
                 PointCloud3dBatchSetKey {
@@ -176,7 +184,6 @@ fn queue_depth_pass(
                     asset_id: point_cloud_octree_3d.0.id(),
                 },
                 (*render_entity, *main_entity),
-                node_ids,
             );
         }
     }

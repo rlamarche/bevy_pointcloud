@@ -1,7 +1,7 @@
 use bevy_math::Vec3;
 use bevy_reflect::TypePath;
 use bevy_render::render_resource::{
-    BindGroup, Buffer, PreparedBindGroup, ShaderType, UniformBuffer,
+    BindGroup, Buffer, ShaderType, UniformBuffer,
 };
 use bytemuck::{Pod, Zeroable};
 
@@ -23,9 +23,4 @@ pub struct RenderPointCloudNodeData {
     pub uniform_buffer: UniformBuffer<PointCloudNodeDataUniform>,
     pub num_points: usize,
     pub offset: f32,
-}
-
-#[derive(TypePath)]
-pub struct RenderPointCloudNodeUniform {
-    pub prepared: PreparedBindGroup,
 }

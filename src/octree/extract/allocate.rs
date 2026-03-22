@@ -113,13 +113,12 @@ pub fn allocate_visible_octree_nodes<E: OctreeNodeExtraction>(
         if let Some(allocation) = allocation {
             debug!("Allocated node {}", node.hierarchy.name);
             let start = allocation.offset;
-            let end = start + instance_count as u32;
 
             let node_allocation = NodeAllocation {
                 octree_node_key: octree_node_key.clone(),
                 allocation,
                 start,
-                end,
+                count: instance_count as u32,
             };
 
             // store the allocation infos

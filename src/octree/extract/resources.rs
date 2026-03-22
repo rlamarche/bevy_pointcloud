@@ -21,7 +21,7 @@ pub struct NodeAllocation<T: NodeData> {
     pub octree_node_key: OctreeNodeKey<T>,
     pub(crate) allocation: Allocation,
     pub start: u32,
-    pub end: u32,
+    pub count: u32,
 }
 
 impl<T: NodeData> Clone for NodeAllocation<T> {
@@ -30,7 +30,7 @@ impl<T: NodeData> Clone for NodeAllocation<T> {
             octree_node_key: self.octree_node_key.clone(),
             allocation: self.allocation.clone(),
             start: self.start.clone(),
-            end: self.end.clone(),
+            count: self.count.clone(),
         }
     }
 }

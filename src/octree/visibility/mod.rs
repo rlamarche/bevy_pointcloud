@@ -111,8 +111,8 @@ pub fn check_octree_nodes_visibility<T, C, F, B>(
             &Projection,
             Option<&OctreeVisibilitySettings<T, F, B>>,
             &mut ViewVisibleOctreeNodes<T, C>,
+            Option<&SkipOctreeVisibility>,
         ),
-        Without<SkipOctreeVisibility>,
     >,
     octrees: Res<Assets<Octree<T>>>,
     mut octree_load_tasks: ResMut<OctreeLoadTasks<T>>,
@@ -147,14 +147,23 @@ pub fn check_octree_nodes_visibility<T, C, F, B>(
         camera_projection,
         visibility_settings,
         mut visible_octree_nodes,
+        skip_octree_visibility,
     ) in &mut views
     {
         if !camera.is_active {
             continue;
         }
 
+        if skip_octree_visibility.is_some() {
+            visible_octree_nodes.changed_this_frame = false;
+            continue;
+        }
+
         // Reset previously computed visibility
         visible_octree_nodes.clear_all();
+
+        // mark as changed
+        visible_octree_nodes.changed_this_frame = true;
 
         let camera_view = CameraView {
             global_transform: camera_global_transform,

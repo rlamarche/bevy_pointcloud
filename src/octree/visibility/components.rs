@@ -24,6 +24,7 @@ where
     C: Component,
 {
     pub octrees: HashMap<Entity, (AssetId<Octree<T>>, Vec<VisibleOctreeNode>)>,
+    pub changed_this_frame: bool,
     _phantom_data: PhantomData<fn() -> (T, C)>,
 }
 
@@ -35,6 +36,7 @@ where
     fn default() -> Self {
         Self {
             octrees: HashMap::default(),
+            changed_this_frame: false,
             _phantom_data: PhantomData,
         }
     }

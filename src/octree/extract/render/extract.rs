@@ -13,14 +13,12 @@ use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
 use bevy_render::Extract;
 use bevy_render::sync_world::RenderEntity;
-
-use std::marker::PhantomData;
+use bevy_render::view::ExtractedView;
 
 /// This system extracts computed visible octree nodes and add them in the render world, for each view (camera)
 #[cfg_attr(feature = "trace", tracing::instrument(skip_all))]
 pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction, A: RenderOctreeNode>(
-    mut commands: Commands,
-    query: Extract<
+    views: Extract<
         Query<
             (
                 RenderEntity,
@@ -29,36 +27,45 @@ pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction, A: RenderOctreeNode
             With<Camera>,
         >,
     >,
+    mut extracted_views: Query<
+        &mut RenderVisibleOctreeNodes<E::NodeData, E::Component>,
+        With<ExtractedView>,
+    >,
     mapper: Extract<Query<&RenderEntity>>,
     mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,
 ) where
     A: RenderOctreeNode<SourceOctreeNode = E::NodeData>,
 {
-    for (render_entity, visible_point_cloud_octree_3d_nodes) in query.iter() {
-        let render_visible_point_cloud_octree_3d_nodes =
-            RenderVisibleOctreeNodes::<E::NodeData, E::Component> {
-                octrees: visible_point_cloud_octree_3d_nodes
-                    .octrees
-                    .clone()
-                    .into_iter()
-                    // for each visible octree, extract visible nodes, and store them using the render entity reference
-                    .filter_map(|(entity, data)| {
-                        let Ok(render_entity) = mapper.get(entity) else {
-                            warn!("Render entity for PointCloudOctree3d not found");
-                            return None;
-                        };
+    for (render_entity, visible_point_cloud_octree_3d_nodes) in views.iter() {
+        let Ok(mut render_visible_octree_nodes) = extracted_views.get_mut(render_entity) else {
+            warn!(
+                "Missing RenderVisibleOctreeNodes::<E::NodeData, E::Component> for extracted view"
+            );
+            continue;
+        };
 
-                        // makes sure an index exists for this entity
-                        render_octree_index.add_octree(render_entity.id());
+        // skip extraction if it has not changed
+        if !visible_point_cloud_octree_3d_nodes.changed_this_frame {
+            render_visible_octree_nodes.changed_this_frame = false;
+            continue;
+        }
 
-                        Some((render_entity.id(), data))
-                    })
-                    .collect(),
-                _phantom_data: PhantomData,
+        render_visible_octree_nodes.changed_this_frame = true;
+        render_visible_octree_nodes.octrees.clear();
+
+        for (entity, data) in &visible_point_cloud_octree_3d_nodes.octrees {
+            let Ok(render_entity) = mapper.get(*entity) else {
+                warn!("Render entity for PointCloudOctree3d not found");
+                continue;
             };
-        commands
-            .entity(render_entity)
-            .insert(render_visible_point_cloud_octree_3d_nodes);
+
+            // makes sure an index exists for this entity
+            render_octree_index.add_octree(render_entity.id());
+
+            render_visible_octree_nodes
+                .octrees
+                .insert(render_entity.id(), data.clone());
+        }
     }
 }
 
@@ -140,7 +147,7 @@ pub fn extract_octree_node_allocations<E: OctreeNodeExtraction>(
                     data,
                     allocation: RenderOctreeNodeAllocation {
                         start: allocated_node.start,
-                        end: allocated_node.end,
+                        count: allocated_node.count,
                     },
                 },
             );

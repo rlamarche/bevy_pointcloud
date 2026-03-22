@@ -15,7 +15,6 @@ use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::system::SystemParamItem;
 use bevy_log::warn;
 use bevy_platform::collections::HashMap;
-use bevy_render::camera::ExtractedCamera;
 use bevy_render::prelude::*;
 use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
 use bevy_render::render_resource::TextureFormat::Rgba8Uint;

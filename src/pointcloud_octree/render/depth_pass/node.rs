@@ -1,12 +1,12 @@
 use std::marker::PhantomData;
 
 use crate::pointcloud_octree::render::phase::{
-    PointCloudOctree3dNodePhase, PointCloudOctreeBinnedPhaseItem, ViewOctreeNodesRenderDepthPhases
+    PointCloudOctree3dNodePhase, ViewOctreeNodesRenderDepthPhases,
 };
 use crate::render::depth_pass::texture::ViewDepthPrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::prelude::*;
-use bevy_render::render_phase::TrackedRenderPass;
+use bevy_render::render_phase::{BinnedPhaseItem, TrackedRenderPass};
 use bevy_render::render_resource::{CommandEncoderDescriptor, StoreOp};
 use bevy_render::view::ViewDepthTexture;
 use bevy_render::{
@@ -20,15 +20,15 @@ use bevy_render::{
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DepthPassOctreeLabel;
 
-pub struct DepthPassOctreeNode<BPI: PointCloudOctreeBinnedPhaseItem>(PhantomData<BPI>);
+pub struct DepthPassOctreeNode<BPI: BinnedPhaseItem>(PhantomData<BPI>);
 
-impl<BPI: PointCloudOctreeBinnedPhaseItem> Default for DepthPassOctreeNode<BPI> {
+impl<BPI: BinnedPhaseItem> Default for DepthPassOctreeNode<BPI> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<BPI: PointCloudOctreeBinnedPhaseItem> ViewNode for DepthPassOctreeNode<BPI> {
+impl<BPI: BinnedPhaseItem> ViewNode for DepthPassOctreeNode<BPI> {
     type ViewQuery = (
         &'static ExtractedCamera,
         &'static ExtractedView,

@@ -1,29 +1,35 @@
 use crate::octree::extract::render::buffer::RenderOctreesBuffers;
+use crate::octree::extract::render::components::RenderVisibleOctreeNodes;
 use crate::octree::extract::render::resources::RenderOctrees;
+use crate::octree::visibility::components::VisibleOctreeNode;
+use crate::pointcloud_octree::asset::data::PointCloudNodeData;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
-use crate::pointcloud_octree::render::phase::PointCloudOctreeBinnedPhaseItem;
+#[cfg(not(feature = "webgl"))]
+use crate::pointcloud_octree::render::indirect::RenderVisibleNodesIndirectBuffers;
 use crate::render::mesh::PointCloudMesh;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::system::{SystemParamItem, lifetimeless::*};
 use bevy_log::prelude::*;
-use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
+use bevy_render::render_phase::{
+    BinnedPhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass,
+};
 use bevy_render::renderer::RenderQueue;
 
 pub struct DrawPointCloudOctreeNode;
 
-impl<P: PointCloudOctreeBinnedPhaseItem> RenderCommand<P> for DrawPointCloudOctreeNode {
+impl<P: BinnedPhaseItem> RenderCommand<P> for DrawPointCloudOctreeNode {
     type Param = (
         SRes<PointCloudMesh>,
         SRes<RenderOctrees<RenderPointCloudNodeData>>,
     );
-    type ViewQuery = ();
+    type ViewQuery = Read<RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>>;
     type ItemQuery = Read<PointCloudOctree3d>;
 
     #[inline]
     fn render<'w>(
         item: &P,
-        _view: (),
+        visible_octree_nodes: &RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>,
         point_cloud_octree_3d: Option<&PointCloudOctree3d>,
         (point_cloud_mesh, render_octrees): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
@@ -42,10 +48,14 @@ impl<P: PointCloudOctreeBinnedPhaseItem> RenderCommand<P> for DrawPointCloudOctr
             return RenderCommandResult::Skip;
         };
 
-        let node_ids = item.node_ids();
+        let Some((_, visible_octree_nodes)) = visible_octree_nodes.octrees.get(&item.entity())
+        else {
+            warn!("Missing visible octree data");
+            return RenderCommandResult::Skip;
+        };
 
-        for node_id in node_ids {
-            let Some(node) = octree.nodes.get(node_id) else {
+        for node in visible_octree_nodes {
+            let Some(node) = octree.nodes.get(&node.id) else {
                 warn!("Missing node when render");
                 return RenderCommandResult::Skip;
             };
@@ -82,19 +92,19 @@ impl<P: PointCloudOctreeBinnedPhaseItem> RenderCommand<P> for DrawPointCloudOctr
 
 pub struct DrawPointCloudOctree;
 
-impl<P: PointCloudOctreeBinnedPhaseItem> RenderCommand<P> for DrawPointCloudOctree {
+impl<P: BinnedPhaseItem> RenderCommand<P> for DrawPointCloudOctree {
     type Param = (
         SRes<PointCloudMesh>,
         SRes<RenderOctrees<RenderPointCloudNodeData>>,
         SRes<RenderOctreesBuffers<RenderPointCloudNodeData>>,
     );
-    type ViewQuery = ();
+    type ViewQuery = Read<RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>>;
     type ItemQuery = Read<PointCloudOctree3d>;
 
     #[inline]
     fn render<'w>(
         item: &P,
-        _view: (),
+        visible_octree_nodes: &RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>,
         point_cloud_octree_3d: Option<&PointCloudOctree3d>,
         (point_cloud_mesh, render_octrees, render_octrees_buffers): SystemParamItem<
             'w,
@@ -123,6 +133,12 @@ impl<P: PointCloudOctreeBinnedPhaseItem> RenderCommand<P> for DrawPointCloudOctr
             return RenderCommandResult::Skip;
         };
 
+        let Some((_, visible_octree_nodes)) = visible_octree_nodes.octrees.get(&item.entity())
+        else {
+            warn!("Missing visible octree data");
+            return RenderCommandResult::Skip;
+        };
+
         pass.set_vertex_buffer(0, point_cloud_mesh.vertex_buffer.slice(..));
         // not needed is using a single triangle
         // pass.set_index_buffer(
@@ -133,46 +149,105 @@ impl<P: PointCloudOctreeBinnedPhaseItem> RenderCommand<P> for DrawPointCloudOctr
 
         pass.set_vertex_buffer(1, octrees_buffer.buffer.slice(..));
 
-        // not needed is using a single triangle
+        // not needed if using a single triangle
         // pass.draw_indexed(
         //     0..point_cloud_mesh.index_count,
         //     0,
         //     0..node.data.num_points as u32,
         // );
 
-        for node_id in item.node_ids() {
+        for VisibleOctreeNode { id: node_id, .. } in visible_octree_nodes {
             if let Some(render_octree_node_data) = render_octree.nodes.get(node_id) {
                 pass.draw(
                     0..point_cloud_mesh.index_count,
                     render_octree_node_data.allocation.start
-                        ..render_octree_node_data.allocation.end,
+                        ..(render_octree_node_data.allocation.start
+                            + render_octree_node_data.allocation.count),
                 );
             }
-            // if let Some(AllocationInfo { start, end, .. }) =
-            //     octrees_buffer.allocation_index.get(node_id)
-            // {
-            //     pass.draw(0..point_cloud_mesh.index_count, *start..*end);
-            // }
         }
 
         RenderCommandResult::Success
     }
 }
 
+#[cfg(not(feature = "webgl"))]
+pub struct DrawPointCloudOctreeIndirect;
+
+#[cfg(not(feature = "webgl"))]
+impl<P: BinnedPhaseItem> RenderCommand<P> for DrawPointCloudOctreeIndirect {
+    type Param = (
+        SRes<PointCloudMesh>,
+        SRes<RenderOctreesBuffers<RenderPointCloudNodeData>>,
+    );
+    type ViewQuery = Read<RenderVisibleNodesIndirectBuffers>;
+    type ItemQuery = ();
+
+    #[inline]
+    fn render<'w>(
+        item: &P,
+        render_visible_nodes_indirect_buffers: ROQueryItem<'w, '_, Self::ViewQuery>,
+        _: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
+        (point_cloud_mesh, render_octrees_buffers): SystemParamItem<'w, '_, Self::Param>,
+        pass: &mut TrackedRenderPass<'w>,
+    ) -> RenderCommandResult {
+        // A borrow check workaround.
+        let point_cloud_mesh = point_cloud_mesh.into_inner();
+        let render_octrees_buffers = render_octrees_buffers.into_inner();
+
+        let Some(octrees_buffer) = render_octrees_buffers.get(0) else {
+            warn!("Missing octrees buffer when render");
+            return RenderCommandResult::Skip;
+        };
+
+        let Some(indirect_buffer) = render_visible_nodes_indirect_buffers.get(&item.entity())
+        else {
+            warn!("Missing visible octree data");
+            return RenderCommandResult::Skip;
+        };
+
+        let Some(buffer) = indirect_buffer.buffer() else {
+            warn!("Missing indirect buffer");
+            return RenderCommandResult::Skip;
+        };
+
+        pass.set_vertex_buffer(0, point_cloud_mesh.vertex_buffer.slice(..));
+        // not needed is using a single triangle
+        // pass.set_index_buffer(
+        //     point_cloud_mesh.index_buffer.slice(..),
+        //     0,
+        //     IndexFormat::Uint32,
+        // );
+
+        pass.set_vertex_buffer(1, octrees_buffer.buffer.slice(..));
+
+        // not needed if using a single triangle
+        // pass.draw_indexed(
+        //     0..point_cloud_mesh.index_count,
+        //     0,
+        //     0..node.data.num_points as u32,
+        // );
+
+        pass.multi_draw_indirect(buffer, 0, indirect_buffer.len() as u32);
+
+        RenderCommandResult::Success
+    }
+}
+
 pub struct SetPointCloudOctreeNodeUniformGroup<const I: usize>;
-impl<P: PhaseItem + PointCloudOctreeBinnedPhaseItem, const I: usize> RenderCommand<P>
+impl<P: BinnedPhaseItem, const I: usize> RenderCommand<P>
     for SetPointCloudOctreeNodeUniformGroup<I>
 {
     type Param = (
         SRes<RenderOctrees<RenderPointCloudNodeData>>,
         SRes<RenderQueue>,
     );
-    type ViewQuery = ();
+    type ViewQuery = Read<RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>>;
     type ItemQuery = Read<PointCloudOctree3d>;
 
     fn render<'w>(
         item: &P,
-        _: ROQueryItem<'w, '_, Self::ViewQuery>,
+        visible_octree_nodes: &RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>,
         point_cloud_octree_3d: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         (render_octrees, _render_queue): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
@@ -189,13 +264,16 @@ impl<P: PhaseItem + PointCloudOctreeBinnedPhaseItem, const I: usize> RenderComma
             return RenderCommandResult::Skip;
         };
 
-        // Bind root node
-        let node_ids = item.node_ids();
+        let Some((_, visible_octree_nodes)) = visible_octree_nodes.octrees.get(&item.entity())
+        else {
+            warn!("Missing visible octree data");
+            return RenderCommandResult::Skip;
+        };
 
-        if node_ids.len() > 0 {
-            let node_id = item.node_ids()[0];
+        if visible_octree_nodes.len() > 0 {
+            let root_node = &visible_octree_nodes[0];
 
-            let Some(node) = octree.nodes.get(&node_id) else {
+            let Some(node) = octree.nodes.get(&root_node.id) else {
                 warn!("Missing node when render");
                 return RenderCommandResult::Skip;
             };

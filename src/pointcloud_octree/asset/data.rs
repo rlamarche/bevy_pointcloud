@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use bevy_math::prelude::*;
 use bevy_reflect::TypePath;
 use bevy_render::render_resource::AsBindGroup;
@@ -14,7 +16,7 @@ pub struct PointCloudNodeData {
     #[uniform(2)]
     pub offset: f32,
     pub num_points: usize,
-    pub points: Vec<PointData>,
+    pub points: Arc<Vec<PointData>>,
 }
 
 #[derive(Default, Debug, Clone, Copy, Pod, Zeroable, TypePath)]

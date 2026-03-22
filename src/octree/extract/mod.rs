@@ -6,6 +6,7 @@ pub mod resources;
 
 use super::asset::Octree;
 use super::node::{NodeData, OctreeNode};
+use crate::octree::extract::render::components::RenderVisibleOctreeNodes;
 use crate::octree::visibility::CheckOctreeNodesVisibility;
 use allocate::allocate_visible_octree_nodes;
 use bevy_app::prelude::*;
@@ -16,6 +17,7 @@ use bevy_ecs::system::ScheduleSystem;
 use bevy_reflect::TypePath;
 use bevy_render::camera::extract_cameras;
 use bevy_render::extract_component::{ExtractComponent, ExtractComponentPlugin};
+use bevy_render::view::ExtractedView;
 use bevy_render::{ExtractSchedule, Render, RenderApp, RenderSystems};
 use eviction::update_extract_octree_node_eviction_queue;
 use limiter::{
@@ -120,6 +122,10 @@ where
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
+
+        render_app
+            .world_mut()
+            .register_required_components::<ExtractedView, RenderVisibleOctreeNodes::<E::NodeData, E::Component>>();
 
         render_app
             .init_resource::<RenderOctreeNodesBytesPerFrameLimiter>()

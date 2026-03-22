@@ -201,13 +201,14 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     // TODO precalculate it on cpu
     let model_view = view_bindings::view.view_from_world * world_from_local;
 
-    let scale = length(
-      model_view * vec4(0, 0, 0, 1) -
-      model_view * vec4(octree_node.spacing, 0, 0, 1)
-    ) / octree_node.spacing;
+    // let scale = length(
+    //   model_view * vec4(0, 0, 0, 1) -
+    //   model_view * vec4(octree_node.spacing, 0, 0, 1)
+    // ) / octree_node.spacing;
 
     let max_relative_depth = get_max_relative_depth(vertex.i_pos_size.xyz);
-    let attenuation = pow(2.0, max_relative_depth);
+    let attenuation = exp2(max_relative_depth);
+    //let attenuation = pow(2.0, max_relative_depth);
 
     // Base screen-space radius driven by spacing and LOD attenuation
     var radius_screen = octree_node.spacing * 1.7 / attenuation;
