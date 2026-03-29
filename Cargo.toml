@@ -9,7 +9,7 @@ resolver = "2"
 
 [[example]]
 name = "potree"
-required-features = ["potree", "potree_fs", "potree_ehttp"]
+required-features = ["potree", "potree_fs"]
 
 [[example]]
 path = "examples/potree_wasm.rs"

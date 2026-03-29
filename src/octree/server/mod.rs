@@ -98,10 +98,10 @@ where
 {
     async fn load_internal<L: OctreeLoader<T>>(
         &self,
-        url: &str,
+        source: L::Source,
         handle: Handle<Octree<T>>,
     ) -> Result<(), BevyError> {
-        let loader = L::from_url(url).await.map_err(|error| error.into())?;
+        let loader = L::from_source(source).await.map_err(|error| error.into())?;
         let asset_id = handle.id();
 
         let mut octree = Octree::<T>::new();
@@ -306,15 +306,15 @@ where
     T: NodeData,
 {
     /// Load an octree lazily (octree content will be loaded on the fly when needed)
-    pub fn load_octree<L: OctreeLoader<T>>(&self, url: &str) -> Handle<Octree<T>> {
-        let url = url.to_string();
+    pub fn load_octree<L: OctreeLoader<T>>(&self, source: L::Source) -> Handle<Octree<T>> {
         let handle = self.data.handle_provider.reserve_handle().typed();
         let owned_handle = handle.clone();
 
         let data = self.data.clone();
+
         #[allow(unused)]
         let task = IoTaskPool::get().spawn(async move {
-            if let Err(err) = data.load_internal::<L>(&url, owned_handle).await {
+            if let Err(err) = data.load_internal::<L>(source, owned_handle).await {
                 error!("{}", err);
             }
         });

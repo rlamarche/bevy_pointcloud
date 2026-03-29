@@ -37,6 +37,7 @@ use bevy_text::{FontSmoothing, TextFont};
 use bevy_transform::prelude::*;
 use bevy_utils::default;
 use bevy_window::{PresentMode, Window};
+use potree::asset::fs::PotreeFsAsset;
 use std::ops::Mul;
 
 fn main() {
@@ -148,7 +149,8 @@ fn load_pointcloud(
     });
     commands.spawn(MyMaterial(my_material.clone()));
 
-    let octree_handle = octree_server.load_octree::<PotreeLoader>("assets/potree/heidentor");
+    let octree_handle = octree_server
+        .load_octree::<PotreeLoader<_>>(PotreeFsAsset::from_path("assets/potree/heidentor"));
 
     commands.spawn((
         PointCloudOctree3d(octree_handle),
@@ -157,6 +159,7 @@ fn load_pointcloud(
     ));
 }
 
+#[allow(unused)]
 fn draw_gizmos(
     octrees: Res<Assets<PointCloudOctree>>,
     entities: Query<&GlobalTransform, With<PointCloudOctree3d>>,

@@ -16,6 +16,7 @@ use bevy_pointcloud::pointcloud_octree::{
 use bevy_pointcloud::potree::loader::PotreeLoader;
 use bevy_pointcloud::render::PointCloudRenderMode;
 use bevy_render::view::NoIndirectDrawing;
+use potree::prelude::PotreeHttpAsset;
 
 fn main() {
     let mut app = App::new();
@@ -65,7 +66,7 @@ fn setup(mut commands: Commands) {
 }
 
 #[derive(Component)]
-pub struct MyMaterial(Handle<PointCloudMaterial>);
+pub struct MyMaterial(#[allow(unused)] Handle<PointCloudMaterial>);
 
 fn load_pointcloud(
     mut commands: Commands,
@@ -80,9 +81,9 @@ fn load_pointcloud(
     });
     commands.spawn(MyMaterial(my_material.clone()));
 
-    let octree_handle = octree_server.load_octree::<PotreeLoader>(
+    let octree_handle = octree_server.load_octree::<PotreeLoader<_>>(PotreeHttpAsset::from_url(
         "https://pub-e2043f8abc6f45d983f8f77641ea772e.r2.dev/potree/heidentor",
-    );
+    ));
 
     // let octree_handle = octree_server.load_octree::<PotreeLoader>("assets/potree/heidentor");
 

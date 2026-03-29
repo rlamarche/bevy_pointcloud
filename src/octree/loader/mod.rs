@@ -6,7 +6,6 @@ use async_trait::async_trait;
 use bevy_camera::primitives::Aabb;
 use bevy_ecs::error::BevyError;
 use bevy_ecs::prelude::*;
-use bevy_reflect::TypePath;
 use std::fmt::Display;
 
 #[derive(Debug, Clone)]
@@ -22,16 +21,17 @@ where
 }
 
 #[async_trait]
-pub trait OctreeLoader<T: NodeData>: Send + Sync + Sized + TypePath
+pub trait OctreeLoader<T: NodeData>: Send + Sync + Sized + 'static
 where
     T: NodeData,
 {
+    type Source: Send + Sync + 'static;
     type Hierarchy: HierarchyNodeData;
 
     type Error: Into<BevyError> + Send + Sync + Display;
 
     /// Instantiate a new hierarchy from a provided url
-    async fn from_url(url: &str) -> Result<Self, Self::Error>;
+    async fn from_source(source: Self::Source) -> Result<Self, Self::Error>;
 
     /// This method must load the initial octree hierarchy in a flat structure.
     /// The return value is a vector, the first item is the root,
