@@ -44,7 +44,7 @@ impl<P: BinnedPhaseItem> RenderCommand<P> for DrawPointCloudOctreeNode {
         };
 
         let Some(octree) = render_octrees.get(point_cloud_octree_3d) else {
-            warn!("Missing octree when render");
+            debug!("Missing octree when render");
             return RenderCommandResult::Skip;
         };
 
@@ -129,7 +129,7 @@ impl<P: BinnedPhaseItem> RenderCommand<P> for DrawPointCloudOctree {
         };
 
         let Some(render_octree) = render_octrees.get(point_cloud_octree_3d) else {
-            warn!("Missing octree when render");
+            debug!("Missing octree when render");
             return RenderCommandResult::Skip;
         };
 
@@ -260,7 +260,7 @@ impl<P: BinnedPhaseItem, const I: usize> RenderCommand<P>
         };
 
         let Some(octree) = render_octrees.get(point_cloud_octree_3d) else {
-            warn!("Missing octree when render");
+            debug!("Missing octree when render");
             return RenderCommandResult::Skip;
         };
 

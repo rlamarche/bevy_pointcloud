@@ -13,7 +13,7 @@ use bevy_color::LinearRgba;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::system::SystemParamItem;
-use bevy_log::warn;
+use bevy_log::prelude::*;
 use bevy_platform::collections::HashMap;
 use bevy_render::prelude::*;
 use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
@@ -148,7 +148,7 @@ pub fn prepare_visible_nodes_texture(
             let base_offset = octree_index * MAX_NODES;
 
             let Some(render_octree) = render_octrees.get(*asset_id) else {
-                warn!(
+                debug!(
                     "Render Point Cloud octree {} not found in RenderOctrees, skip",
                     entity
                 );
@@ -219,7 +219,7 @@ pub fn prepare_visible_nodes_texture(
                 }
 
                 let Some(node) = render_octree.nodes.get(&visible_node.id) else {
-                    bevy_log::warn!(
+                    debug!(
                         "Render Point Cloud Octree node {:?} not found in RenderOctrees, skip.",
                         visible_node.id
                     );

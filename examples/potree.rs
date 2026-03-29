@@ -133,7 +133,7 @@ fn setup(mut commands: Commands) {
 }
 
 #[derive(Component)]
-pub struct MyMaterial(Handle<PointCloudMaterial>);
+pub struct MyMaterial(#[allow(unused)] Handle<PointCloudMaterial>);
 
 fn load_pointcloud(
     mut commands: Commands,

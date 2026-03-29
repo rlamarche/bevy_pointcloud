@@ -166,12 +166,12 @@ impl<P: PointCloudOctreeBinnedPhaseItem, const I: usize> RenderCommand<P>
         };
 
         let Some(_octree) = render_octrees.get(point_cloud_octree_3d) else {
-            warn!("Missing octree when render");
+            debug!("Missing octree when render");
             return RenderCommandResult::Skip;
         };
 
         let Some(octree_index) = render_octree_index.get_octree_index(item.entity()) else {
-            warn!("Missing octree when render");
+            debug!("Missing octree when render");
             return RenderCommandResult::Skip;
         };
 

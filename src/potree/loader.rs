@@ -7,14 +7,15 @@ use async_trait::async_trait;
 use bevy_camera::primitives::Aabb;
 use bevy_ecs::error::BevyError;
 use bevy_reflect::TypePath;
+use potree::asset::url::PotreeUrlAsset;
+use potree::hierarchy::HierarchyAsync;
 use potree::metadata::Points;
 use potree::octree::node::{NodeType, OctreeNode as PotreeOctreeNode};
 use potree::prelude::Hierarchy;
-use potree::resource::ResourceLoader;
 
 #[derive(TypePath)]
 pub struct PotreeLoader {
-    pub(crate) hierarchy: Hierarchy,
+    pub(crate) hierarchy: Hierarchy<PotreeUrlAsset>,
 }
 
 #[derive(Clone, TypePath)]
@@ -25,8 +26,8 @@ impl OctreeLoader<PointCloudNodeData> for PotreeLoader {
     type Hierarchy = PotreeHierarchy;
     type Error = BevyError;
 
-    async fn from_url(url: &str) -> Result<Self, Self::Error> {
-        let hierarchy = Hierarchy::from_url(url, ResourceLoader::new()).await?;
+    async fn from_url(url: &str) -> Result<Self, <Self as OctreeLoader<PointCloudNodeData>>::Error> {
+        let hierarchy = Hierarchy::from_url(url).await?;
 
         Ok(PotreeLoader { hierarchy })
     }

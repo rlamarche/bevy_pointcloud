@@ -200,10 +200,23 @@ impl<T: NodeData> Octree<T> {
         Ok(())
     }
 
+    pub fn unset_node_hierarchy_loading(&mut self, node_id: NodeId) -> Result<(), UpdateNodeError> {
+        let node = self.hierarchy.get_mut(node_id).ok_or(UpdateNodeError::NodeNotFound)?;
+        node.hierarchy.status = HierarchyNodeStatus::Proxy;
+
+        Ok(())
+    }
 
     pub fn set_node_data_loading(&mut self, node_id: NodeId) -> Result<(), UpdateNodeError> {
         let node = self.hierarchy.get_mut(node_id).ok_or(UpdateNodeError::NodeNotFound)?;
         node.status = NodeStatus::Loading;
+
+        Ok(())
+    }
+
+    pub fn unset_node_data_loading(&mut self, node_id: NodeId) -> Result<(), UpdateNodeError> {
+        let node = self.hierarchy.get_mut(node_id).ok_or(UpdateNodeError::NodeNotFound)?;
+        node.status = NodeStatus::HierarchyOnly;
 
         Ok(())
     }

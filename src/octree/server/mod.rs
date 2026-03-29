@@ -163,17 +163,29 @@ where
         loader: Arc<dyn ErasedOctreeLoader<T>>,
         hierarchy_node: &HierarchyOctreeNode,
     ) -> Result<(), BevyError> {
-        let loaded_hierarchy_nodes = loader.load_hierarchy(hierarchy_node).await?;
+        match loader.load_hierarchy(hierarchy_node).await {
+            Ok(loaded_hierarchy_nodes) => {
+                let hierarchy_nodes = loaded_hierarchy_nodes.into_iter().map(Into::into).collect();
 
-        let hierarchy_nodes = loaded_hierarchy_nodes.into_iter().map(Into::into).collect();
-
-        self.octree_event_sender
-            .send(InternalOctreeEvent::SubHierarchyLoaded {
-                id,
-                node_id: hierarchy_node.id,
-                hierarchy_nodes,
-            })
-            .expect("Failed to send internal octree event");
+                self.octree_event_sender
+                    .send(InternalOctreeEvent::SubHierarchyLoaded {
+                        id,
+                        node_id: hierarchy_node.id,
+                        hierarchy_nodes,
+                    })
+                    .expect("Failed to send internal octree event");
+            }
+            Err(err) => {
+                error!("Error loading sub hierarchy: {}", err);
+                self.octree_event_sender
+                    .send(InternalOctreeEvent::SubHierarchyLoadFailed {
+                        id,
+                        node_id: hierarchy_node.id,
+                        error: err.to_string(),
+                    })
+                    .expect("Failed to send internal octree event");
+            }
+        };
 
         Ok(())
     }
@@ -184,15 +196,26 @@ where
         loader: Arc<dyn ErasedOctreeLoader<T>>,
         hierarchy_node: &HierarchyOctreeNode,
     ) -> Result<(), BevyError> {
-        let node_data = loader.load_node_data(hierarchy_node).await?;
-
-        self.octree_event_sender
-            .send(InternalOctreeEvent::NodeDataLoaded {
-                id,
-                node_id: hierarchy_node.id,
-                node_data,
-            })
-            .expect("Failed to send internal octree event");
+        match loader.load_node_data(hierarchy_node).await {
+            Ok(node_data) => self
+                .octree_event_sender
+                .send(InternalOctreeEvent::NodeDataLoaded {
+                    id,
+                    node_id: hierarchy_node.id,
+                    node_data,
+                })
+                .expect("Failed to send internal octree event"),
+            Err(err) => {
+                error!("Error loading node data: {}", err);
+                self.octree_event_sender
+                    .send(InternalOctreeEvent::NodeDataLoadFailed {
+                        id,
+                        node_id: hierarchy_node.id,
+                        error: err.to_string(),
+                    })
+                    .expect("Failed to send internal octree event");
+            }
+        }
 
         Ok(())
     }
@@ -213,10 +236,22 @@ where
         node_id: NodeId,
         hierarchy_nodes: Vec<HierarchyNode>,
     },
+    SubHierarchyLoadFailed {
+        id: AssetId<Octree<T>>,
+        node_id: NodeId,
+        #[allow(unused)]
+        error: String,
+    },
     NodeDataLoaded {
         id: AssetId<Octree<T>>,
         node_id: NodeId,
         node_data: T,
+    },
+    NodeDataLoadFailed {
+        id: AssetId<Octree<T>>,
+        node_id: NodeId,
+        #[allow(unused)]
+        error: String,
     },
 }
 
@@ -355,7 +390,7 @@ where
                 .load_node_data_internal(asset_id, loader, &hierarchy_octree_node)
                 .await
             {
-                error!("{}", err);
+                error!("An error occured in async task: {}", err);
             }
         });
 
@@ -479,6 +514,26 @@ pub fn handle_internal_octree_events<T>(
                     }
                 }
             }
+            InternalOctreeEvent::SubHierarchyLoadFailed {
+                id,
+                node_id,
+                error: _,
+            } => {
+                let key = (id, node_id);
+
+                // update in flight hashset
+                load_tasks.hierarchy_in_flight.remove(&key);
+
+                let Some(octree) = assets.get_mut(id) else {
+                    warn!(
+                        "No asset found for {:?}, unable to append loaded hierarchy nodes.",
+                        id
+                    );
+                    continue;
+                };
+
+                let _ = octree.unset_node_hierarchy_loading(node_id);
+            }
             InternalOctreeEvent::NodeDataLoaded {
                 id,
                 node_id,
@@ -501,6 +556,26 @@ pub fn handle_internal_octree_events<T>(
                     );
                     continue;
                 }
+            }
+            InternalOctreeEvent::NodeDataLoadFailed {
+                id,
+                node_id,
+                error: _,
+            } => {
+                let key = (id, node_id);
+
+                // update in flight hashset
+                load_tasks.node_in_flight.remove(&key);
+
+                let Some(octree) = assets.get_mut(id) else {
+                    warn!(
+                        "No asset found for {:?}, unable to append loaded hierarchy nodes.",
+                        id
+                    );
+                    continue;
+                };
+
+                let _ = octree.unset_node_data_loading(node_id);
             }
         }
     }

@@ -79,7 +79,7 @@ pub fn prepare_indirect_buffer(
 
         for (entity, (asset_id, visible_nodes)) in &visible_octree_nodes.octrees {
             let Some(render_octree) = render_octrees.get(*asset_id) else {
-                warn!("Missing octree when preparing indirect buffer");
+                debug!("Missing octree when preparing indirect buffer");
                 continue;
             };
 
