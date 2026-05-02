@@ -4,6 +4,7 @@ use bevy_asset::io::Reader;
 use bevy_asset::{AssetApp, AssetLoader, LoadContext};
 use bevy_log::info;
 use bevy_math::Vec3;
+use bevy_reflect::TypePath;
 use serde::{Deserialize, Serialize};
 use std::io::{Cursor, Error};
 use thiserror::Error;
@@ -31,6 +32,7 @@ pub enum LasLoaderError {
 #[derive(Default, Serialize, Deserialize)]
 pub struct LasLoaderSettings {}
 
+#[derive(TypePath)]
 pub struct LasLoader {}
 
 impl AssetLoader for LasLoader {
@@ -41,8 +43,8 @@ impl AssetLoader for LasLoader {
     async fn load(
         &self,
         reader: &mut dyn Reader,
-        settings: &Self::Settings,
-        load_context: &mut LoadContext<'_>,
+        _settings: &Self::Settings,
+        _load_context: &mut LoadContext<'_>,
     ) -> Result<PointCloud, Self::Error> {
         // reader.read_to_end()
         let mut las_data = Vec::new();

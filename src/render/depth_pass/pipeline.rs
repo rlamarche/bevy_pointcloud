@@ -10,10 +10,10 @@ use bevy_mesh::{PrimitiveTopology, VertexBufferLayout, VertexFormat};
 use bevy_pbr::{MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey};
 use bevy_render::render_resource::binding_types::{texture_2d, uniform_buffer};
 use bevy_render::render_resource::{
-    AsBindGroup, BindGroupLayout, BindGroupLayoutEntries, BindGroupLayoutEntry, BindingType,
-    BufferBindingType, BufferSize, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
-    DepthStencilState, ShaderStages, SpecializedRenderPipeline, StencilState, TextureFormat,
-    TextureSampleType, VertexAttribute, VertexStepMode,
+    AsBindGroup, BindGroupLayoutDescriptor, BindGroupLayoutEntries, BindGroupLayoutEntry,
+    BindingType, BufferBindingType, BufferSize, ColorTargetState, ColorWrites, CompareFunction,
+    DepthBiasState, DepthStencilState, ShaderStages, SpecializedRenderPipeline, StencilState,
+    TextureFormat, TextureSampleType, VertexAttribute, VertexStepMode,
 };
 use bevy_render::render_resource::{
     Face, FragmentState, FrontFace, MultisampleState, PolygonMode, PrimitiveState,
@@ -27,11 +27,11 @@ use bevy_utils::default;
 pub struct DepthPipeline {
     mesh_pipeline: MeshPipeline,
     shader_handle: Handle<Shader>,
-    point_cloud_layout: BindGroupLayout,
-    point_cloud_material_layout: BindGroupLayout,
-    point_cloud_octree_visible_nodes_layout: BindGroupLayout,
-    point_cloud_octree_node_data_layout: BindGroupLayout,
-    point_cloud_octree_visible_node_layout: BindGroupLayout,
+    point_cloud_layout: BindGroupLayoutDescriptor,
+    point_cloud_material_layout: BindGroupLayoutDescriptor,
+    point_cloud_octree_visible_nodes_layout: BindGroupLayoutDescriptor,
+    point_cloud_octree_node_data_layout: BindGroupLayoutDescriptor,
+    point_cloud_octree_visible_node_layout: BindGroupLayoutDescriptor,
 }
 impl FromWorld for DepthPipeline {
     fn from_world(world: &mut World) -> Self {
@@ -41,31 +41,34 @@ impl FromWorld for DepthPipeline {
         Self {
             mesh_pipeline: mesh_pipeline.clone(),
             shader_handle: POINTCLOUD_SHADER_HANDLE,
-            point_cloud_layout: PointCloudUniform::bind_group_layout(render_device),
-            point_cloud_material_layout: render_device.create_bind_group_layout(
-                "pcl_material",
-                &BindGroupLayoutEntries::single(
+            point_cloud_layout: PointCloudUniform::bind_group_layout_descriptor(render_device),
+            point_cloud_material_layout: BindGroupLayoutDescriptor {
+                label: "pcl_material".into(),
+                entries: BindGroupLayoutEntries::single(
                     ShaderStages::VERTEX,
                     uniform_buffer::<PointCloudMaterial>(false),
-                ),
-            ),
-            point_cloud_octree_visible_nodes_layout: render_device.create_bind_group_layout(
-                "pcl_octree_visible_nodes_layout",
-                &BindGroupLayoutEntries::single(
+                )
+                .to_vec(),
+            },
+            point_cloud_octree_visible_nodes_layout: BindGroupLayoutDescriptor {
+                label: "pcl_octree_visible_nodes_layout".into(),
+                entries: BindGroupLayoutEntries::single(
                     ShaderStages::VERTEX,
                     texture_2d(TextureSampleType::Uint),
-                ),
-            ),
-            point_cloud_octree_node_data_layout: render_device.create_bind_group_layout(
-                "pcl_octree_node_data",
-                &BindGroupLayoutEntries::single(
+                )
+                .to_vec(),
+            },
+            point_cloud_octree_node_data_layout: BindGroupLayoutDescriptor {
+                label: "pcl_octree_node_data".into(),
+                entries: BindGroupLayoutEntries::single(
                     ShaderStages::VERTEX,
                     uniform_buffer::<PointCloudNodeDataUniform>(false),
-                ),
-            ),
-            point_cloud_octree_visible_node_layout: render_device.create_bind_group_layout(
-                Some("layout_node_mapping"),
-                &[BindGroupLayoutEntry {
+                )
+                .to_vec(),
+            },
+            point_cloud_octree_visible_node_layout: BindGroupLayoutDescriptor {
+                label: "layout_node_mapping".into(),
+                entries: vec![BindGroupLayoutEntry {
                     binding: 0,
                     visibility: ShaderStages::VERTEX,
                     ty: BindingType::Buffer {
@@ -75,7 +78,7 @@ impl FromWorld for DepthPipeline {
                     },
                     count: None,
                 }],
-            ),
+            },
         }
     }
 }

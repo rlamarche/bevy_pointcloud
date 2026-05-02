@@ -6,7 +6,7 @@ pub mod texture;
 use crate::point_cloud::PointCloud3d;
 use crate::render::attribute_pass::pipeline::{AttributePassPipeline, AttributePipelineKey};
 use crate::render::attribute_pass::texture::{
-    prepare_attribute_pass_bind_groups, AttributePassLayout,
+    AttributePassLayout, prepare_attribute_pass_bind_groups,
 };
 use crate::render::depth_pass::node::DepthPassLabel;
 use crate::render::draw::DrawPointCloud;
@@ -16,7 +16,7 @@ use crate::render::point_cloud_uniform::SetPointCloudUniformGroup;
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::Core3d;
-use bevy_ecs::component::Tick;
+use bevy_ecs::change_detection::Tick;
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
 use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
@@ -27,15 +27,13 @@ use bevy_render::render_phase::{BinnedRenderPhaseType, InputUniformIndex, ViewBi
 use bevy_render::render_resource::SpecializedRenderPipelines;
 use bevy_render::view::NoIndirectDrawing;
 use bevy_render::{
-    prelude::*, render_graph::ViewNodeRunner, render_phase::{
-        AddRenderCommand, DrawFunctions, SetItemPipeline,
-    }, render_resource::PipelineCache, sync_world::MainEntity,
+    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
+    prelude::*,
+    render_graph::ViewNodeRunner,
+    render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline},
+    render_resource::PipelineCache,
+    sync_world::MainEntity,
     view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity},
-    Extract,
-    ExtractSchedule,
-    Render,
-    RenderApp,
-    RenderSystems,
 };
 use node::{AttributePassLabel, AttributePassNode};
 use phase::PointCloud3dAttributePhase;
@@ -157,7 +155,7 @@ fn queue_attribute_pass(
             pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, attribute_key);
 
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
-        for (render_entity, visible_entity) in visible_entities.iter::<PointCloud3d>() {
+        for (render_entity, _visible_entity) in visible_entities.iter::<PointCloud3d>() {
             let Ok(main_entity) = main_entities.get(*render_entity) else {
                 warn!("Render entity not found, skipping.");
                 continue;

@@ -96,6 +96,7 @@ pub fn prepare_attribute_pass_textures(
                 attribute: Some(ColorAttachment::new(
                     cached_texture,
                     None,
+                    None,
                     Some(LinearRgba::NONE),
                 )),
                 size,

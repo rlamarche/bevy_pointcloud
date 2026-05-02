@@ -8,7 +8,6 @@ use bevy_camera::primitives::Aabb;
 use bevy_ecs::error::BevyError;
 use bevy_reflect::TypePath;
 use potree::asset::PotreeAsset;
-use potree::asset::url::PotreeUrlAsset;
 use potree::hierarchy::HierarchyAsync;
 use potree::metadata::Points;
 use potree::octree::node::{NodeType, OctreeNode as PotreeOctreeNode};

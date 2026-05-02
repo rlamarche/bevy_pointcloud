@@ -2,26 +2,23 @@ use crate::render::PointCloudRenderMode;
 use bevy_camera::Camera;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
-use bevy_math::{URect, Vec4};
+use bevy_math::Vec4;
 use bevy_platform::collections::HashMap;
 use bevy_platform::collections::hash_map::{Entry, VacantEntry};
 use bevy_platform::hash::FixedHasher;
 use bevy_render::Extract;
 use bevy_render::render_resource::binding_types::uniform_buffer;
 use bevy_render::render_resource::{
-    BindGroupLayout, BindGroupLayoutEntries, ShaderStages, ShaderType,
+    BindGroupLayoutDescriptor, BindGroupLayoutEntries, ShaderStages, ShaderType,
 };
-use bevy_render::renderer::RenderDevice;
 use bevy_render::sync_world::RenderEntity;
-use std::marker::PhantomData;
 
 #[derive(Resource, Default)]
-pub struct NeighboursCache<'w> {
+pub struct NeighboursCache {
     mesh_layout_cache: HashMap<u32, [Vec4; 4]>,
-    _marker: PhantomData<&'w ()>,
 }
 
-impl<'w> NeighboursCache<'w> {
+impl NeighboursCache {
     #[inline]
     pub fn get_neighbours(&mut self, neighbours_count: u32) -> &[Vec4; 4] {
         return match self.mesh_layout_cache.entry(neighbours_count) {
@@ -59,20 +56,19 @@ pub struct EyeDomeLightingUniform {
 
 #[derive(Resource)]
 pub struct EyeDomeLightingUniformBindgroupLayout {
-    pub layout: BindGroupLayout,
+    pub layout: BindGroupLayoutDescriptor,
 }
 
 impl FromWorld for EyeDomeLightingUniformBindgroupLayout {
-    fn from_world(world: &mut World) -> Self {
-        let render_device = world.resource::<RenderDevice>();
-
-        let layout = render_device.create_bind_group_layout(
-            "EyeDomeLighting layout",
-            &BindGroupLayoutEntries::single(
+    fn from_world(_world: &mut World) -> Self {
+        let layout = BindGroupLayoutDescriptor {
+            label: "EyeDomeLighting layout".into(),
+            entries: BindGroupLayoutEntries::single(
                 ShaderStages::FRAGMENT,
                 uniform_buffer::<EyeDomeLightingUniform>(false),
-            ),
-        );
+            )
+            .to_vec(),
+        };
         Self { layout }
     }
 }
@@ -80,25 +76,17 @@ impl FromWorld for EyeDomeLightingUniformBindgroupLayout {
 pub fn extract_cameras_render_mode(
     mut commands: Commands,
     query: Extract<Query<(Entity, &Camera, &PointCloudRenderMode)>>,
-    mut neighbours_cache: ResMut<NeighboursCache<'static>>,
+    mut neighbours_cache: ResMut<NeighboursCache>,
     mapper: Extract<Query<&RenderEntity>>,
 ) {
     for (main_entity, camera, render_mode) in query.iter() {
         let result = mapper.get(main_entity);
 
-        let (
-            Some(URect {
-                min: viewport_origin,
-                ..
-            }),
-            Some(viewport_size),
-            Some(target_size),
-        ) = (
+        let (Some(_), Some(_), Some(target_size)) = (
             camera.physical_viewport_rect(),
             camera.physical_viewport_size(),
             camera.physical_target_size(),
-        )
-        else {
+        ) else {
             continue;
         };
 

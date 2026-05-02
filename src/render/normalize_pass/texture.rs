@@ -3,7 +3,7 @@ use crate::render::depth_pass::texture::ViewDepthPrepassTextures;
 use crate::render::normalize_pass::pipeline::NormalizePassPipeline;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
-use bevy_render::render_resource::{BindGroup, BindGroupEntry, IntoBinding};
+use bevy_render::render_resource::{BindGroup, BindGroupEntry, IntoBinding, PipelineCache};
 use bevy_render::renderer::RenderDevice;
 use bevy_render::view::Msaa;
 
@@ -16,6 +16,7 @@ pub fn prepare_normalize_pass_bind_groups(
     mut commands: Commands,
     pipeline: Res<NormalizePassPipeline>,
     render_device: Res<RenderDevice>,
+    pipeline_cache: Res<PipelineCache>,
     views: Query<(
         Entity,
         &ViewDepthPrepassTextures,
@@ -36,15 +37,17 @@ pub fn prepare_normalize_pass_bind_groups(
         let depth_view = depth_texture.texture.default_view.clone();
         let attribute_view = attribute_texture.texture.default_view.clone();
 
-        let layout = match msaa.samples() {
-            1 => vec![&pipeline.layout],
-            _ => vec![&pipeline.layout_msaa],
+        let layout_descriptor = match msaa.samples() {
+            1 => &pipeline.layout,
+            _ => &pipeline.layout_msaa,
         };
+
+        let layout = pipeline_cache.get_bind_group_layout(&layout_descriptor);
 
         commands.entity(entity).insert(NormalizePassBindGroup {
             value: render_device.create_bind_group(
                 "pcl_normalize_pass_view_bind_group",
-                layout[0],
+                &layout,
                 &vec![
                     BindGroupEntry {
                         binding: 0,

@@ -32,7 +32,6 @@ use bevy_pointcloud::pointcloud_octree::{
 use bevy_pointcloud::potree::loader::PotreeLoader;
 use bevy_pointcloud::render::PointCloudRenderMode;
 use bevy_render::prelude::*;
-use bevy_render::view::NoIndirectDrawing;
 use bevy_text::{FontSmoothing, TextFont};
 use bevy_transform::prelude::*;
 use bevy_utils::default;
@@ -113,10 +112,6 @@ fn setup(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(18.0, 8.0, -3.0).looking_at(Vec3::new(0.0, 8.0, -3.0), Vec3::Y),
-        // We need this component because we use `draw_indexed` and `draw`
-        // instead of `draw_indirect_indexed` and `draw_indirect` in
-        // `DrawMeshInstanced::render`.
-        NoIndirectDrawing,
         PanOrbitCamera::default(),
         Msaa::Off,
         PointCloudRenderMode {
@@ -188,7 +183,7 @@ fn draw_gizmos(
 
                 let world_transform = global_transform.mul_transform(local_transform);
 
-                gizmos.cuboid(world_transform, RED);
+                gizmos.cube(world_transform, RED);
             }
         }
     }

@@ -5,6 +5,7 @@ use bevy_math::Vec3;
 use bevy_asset::io::Reader;
 use bevy_asset::{AssetApp, AssetLoader, LoadContext};
 use bevy_log;
+use bevy_reflect::TypePath;
 use std::io::BufReader;
 use thiserror::Error;
 
@@ -15,6 +16,7 @@ use ply_rs::{
 use serde::{Deserialize, Serialize};
 use std::io::{Cursor, Error};
 
+#[derive(TypePath)]
 pub struct PlyLoaderPlugin;
 
 impl Plugin for PlyLoaderPlugin {
@@ -61,6 +63,7 @@ pub enum PlyLoaderError {
 #[derive(Default, Serialize, Deserialize)]
 pub struct PlyLoaderSettings {}
 
+#[derive(TypePath)]
 pub struct PlyLoader {}
 
 impl AssetLoader for PlyLoader {

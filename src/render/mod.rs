@@ -1,6 +1,7 @@
 mod aabb;
 pub mod attribute_pass;
 pub mod depth_pass;
+mod draw;
 mod extract;
 mod eye_dome_lighting;
 pub mod material;
@@ -9,7 +10,6 @@ pub mod normalize_pass;
 pub mod phase;
 pub mod point_cloud;
 pub mod point_cloud_uniform;
-mod draw;
 
 use crate::point_cloud::PointCloud3d;
 use crate::render::eye_dome_lighting::{
@@ -27,10 +27,10 @@ use bevy_camera::visibility::calculate_bounds;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::{SystemParamItem, lifetimeless::*};
 use bevy_pbr::RenderMeshInstances;
+use bevy_render::RenderSystems;
 use bevy_render::camera::extract_cameras;
 use bevy_render::extract_component::UniformComponentPlugin;
 use bevy_render::render_asset::RenderAssetPlugin;
-use bevy_render::RenderSystems;
 use bevy_render::{
     Render, RenderApp,
     extract_component::ExtractComponentPlugin,
@@ -91,8 +91,6 @@ impl Plugin for RenderPipelinePlugin {
                 ExtractSchedule,
                 extract_cameras_render_mode.after(extract_cameras),
             );
-
-
 
         // let render_app = app.sub_app_mut(RenderApp);
 
@@ -175,7 +173,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawMeshInstanced {
                     return RenderCommandResult::Skip;
                 };
 
-                pass.set_index_buffer(index_buffer_slice.buffer.slice(..), 0, *index_format);
+                pass.set_index_buffer(index_buffer_slice.buffer.slice(..), *index_format);
                 pass.draw_indexed(
                     index_buffer_slice.range.start..(index_buffer_slice.range.start + count),
                     vertex_buffer_slice.range.start as i32,

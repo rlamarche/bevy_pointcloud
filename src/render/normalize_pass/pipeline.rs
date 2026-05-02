@@ -4,10 +4,7 @@ use bevy_core_pipeline::FullscreenShader;
 use bevy_ecs::prelude::*;
 use bevy_image::BevyDefault;
 use bevy_render::render_resource::binding_types::texture_2d_multisampled;
-use bevy_render::{
-    render_resource::{binding_types::texture_2d, *},
-    renderer::RenderDevice,
-};
+use bevy_render::render_resource::{binding_types::texture_2d, *};
 use bevy_shader::ShaderDefVal;
 
 #[derive(PartialEq, Eq, Hash, Clone)]
@@ -22,18 +19,17 @@ pub struct NormalizePassPipelineId(pub CachedRenderPipelineId);
 
 #[derive(Resource)]
 pub struct NormalizePassPipeline {
-    pub layout: BindGroupLayout,
-    pub layout_msaa: BindGroupLayout,
-    pub edl_layout: BindGroupLayout,
+    pub layout: BindGroupLayoutDescriptor,
+    pub layout_msaa: BindGroupLayoutDescriptor,
+    pub edl_layout: BindGroupLayoutDescriptor,
     fullscreen_shader: FullscreenShader,
 }
 
 impl FromWorld for NormalizePassPipeline {
     fn from_world(world: &mut World) -> Self {
-        let render_device = world.resource::<RenderDevice>();
-        let layout = render_device.create_bind_group_layout(
-            "pcl_normalize_pass_bind_group_layout",
-            &BindGroupLayoutEntries::sequential(
+        let layout = BindGroupLayoutDescriptor {
+            label: "pcl_normalize_pass_bind_group_layout".into(),
+            entries: BindGroupLayoutEntries::sequential(
                 ShaderStages::FRAGMENT,
                 (
                     // The texture containing the depth
@@ -42,11 +38,12 @@ impl FromWorld for NormalizePassPipeline {
                     // The texture containing the rendered point cloud (rgb = weighted sum, a = sum of weights)
                     texture_2d(TextureSampleType::Float { filterable: false }),
                 ),
-            ),
-        );
-        let layout_msaa = render_device.create_bind_group_layout(
-            "pcl_normalize_pass_bind_group_layout_msaa",
-            &BindGroupLayoutEntries::sequential(
+            )
+            .to_vec(),
+        };
+        let layout_msaa = BindGroupLayoutDescriptor {
+            label: "pcl_normalize_pass_bind_group_layout_msaa".into(),
+            entries: BindGroupLayoutEntries::sequential(
                 ShaderStages::FRAGMENT,
                 (
                     // The texture containing the mask
@@ -56,8 +53,9 @@ impl FromWorld for NormalizePassPipeline {
                     // The texture containing the rendered point cloud (rgb = weighted sum, a = sum of weights)
                     texture_2d_multisampled(TextureSampleType::Float { filterable: false }),
                 ),
-            ),
-        );
+            )
+            .to_vec(),
+        };
         let edl_layout = world
             .resource::<EyeDomeLightingUniformBindgroupLayout>()
             .layout

@@ -4,9 +4,7 @@ use crate::render::eye_dome_lighting::{
 };
 use bevy_ecs::prelude::*;
 use bevy_render::extract_component::{ComponentUniforms, DynamicUniformIndex};
-use bevy_render::render_resource::{
-    BindGroup, BindGroupEntries,
-};
+use bevy_render::render_resource::{BindGroup, BindGroupEntries, PipelineCache};
 use bevy_render::renderer::RenderDevice;
 use bevy_render::view::Msaa;
 
@@ -18,6 +16,7 @@ pub struct NormalizePassEdlBindgroup {
 pub fn prepare_normalize_pass_edl_bind_groups(
     mut commands: Commands,
     render_device: Res<RenderDevice>,
+    pipeline_cache: Res<PipelineCache>,
     edl_layout: Res<EyeDomeLightingUniformBindgroupLayout>,
     edl_uniforms: Res<ComponentUniforms<EyeDomeLightingUniform>>,
     views: Query<(
@@ -27,14 +26,12 @@ pub fn prepare_normalize_pass_edl_bind_groups(
         &DynamicUniformIndex<EyeDomeLightingUniform>,
     )>,
 ) {
-    for (entity, msaa, point_cloud_render_mode, edl_index) in &views {
+    for (entity, _msaa, _point_cloud_render_mode, _edl_index) in &views {
         if let Some(edl_uniforms_binding) = edl_uniforms.uniforms().binding() {
             let value = render_device.create_bind_group(
                 "pcl_normalize_pass_edl_bind_group",
-                &edl_layout.layout,
-                &BindGroupEntries::single(
-                    edl_uniforms_binding,
-                ),
+                &pipeline_cache.get_bind_group_layout(&edl_layout.layout),
+                &BindGroupEntries::single(edl_uniforms_binding),
             );
 
             commands

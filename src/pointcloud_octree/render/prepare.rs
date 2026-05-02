@@ -257,6 +257,7 @@ pub fn prepare_visible_nodes_texture(
             visible_nodes: Some(ColorAttachment::new(
                 visible_nodes_texture,
                 None,
+                None,
                 Some(LinearRgba::NONE),
             )),
             // octree_mapping,

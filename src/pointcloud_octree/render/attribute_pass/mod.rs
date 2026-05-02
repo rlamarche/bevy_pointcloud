@@ -24,7 +24,7 @@ use crate::render::phase::PointCloud3dBatchSetKey;
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::Core3d;
-use bevy_ecs::component::Tick;
+use bevy_ecs::change_detection::Tick;
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
 use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};

@@ -27,26 +27,26 @@ crate-type = ["lib"]
 path = "src/lib.rs"
 
 [dependencies]
-bevy_app = { version = "0.17" }
-bevy_camera = { version = "0.17" }
-bevy_ecs = { version = "0.17" }
-bevy_pbr = { version = "0.17" }
-bevy_render = { version = "0.17" }
-bevy_core_pipeline = { version = "0.17" }
-bevy_asset = { version = "0.17" }
-bevy_log = { version = "0.17" }
-bevy_math = { version = "0.17" }
-bevy_mesh = { version = "0.17" }
-bevy_shader = { version = "0.17" }
-bevy_derive = { version = "0.17" }
-bevy_reflect = { version = "0.17" }
-bevy_transform = { version = "0.17" }
-bevy_platform = { version = "0.17" }
-bevy_utils = { version = "0.17" }
-bevy_image = { version = "0.17" }
-bevy_color = { version = "0.17" }
-bevy_diagnostic = { version = "0.17" }
-bevy_time = { version = "0.17" }
+bevy_app = { version = "0.18.1" }
+bevy_camera = { version = "0.18.1" }
+bevy_ecs = { version = "0.18.1" }
+bevy_pbr = { version = "0.18.1" }
+bevy_render = { version = "0.18.1" }
+bevy_core_pipeline = { version = "0.18.1" }
+bevy_asset = { version = "0.18.1" }
+bevy_log = { version = "0.18.1" }
+bevy_math = { version = "0.18.1" }
+bevy_mesh = { version = "0.18.1" }
+bevy_shader = { version = "0.18.1" }
+bevy_derive = { version = "0.18.1" }
+bevy_reflect = { version = "0.18.1" }
+bevy_transform = { version = "0.18.1" }
+bevy_platform = { version = "0.18.1" }
+bevy_utils = { version = "0.18.1" }
+bevy_image = { version = "0.18.1" }
+bevy_color = { version = "0.18.1" }
+bevy_diagnostic = { version = "0.18.1" }
+bevy_time = { version = "0.18.1" }
 
 smallvec = { version = "1", default-features = false }
 indexmap = { version = "2.5.0", default-features = false }
@@ -62,8 +62,9 @@ slab = "0.4"
 offset-allocator = "0.2.0"
 
 # Added for potree
-bevy_gizmos = { version = "0.17" }
-bevy_tasks = { version = "0.17" }
+bevy_gizmos = { version = "0.18.1" }
+bevy_gizmos_render = { version = "0.18.1" }
+bevy_tasks = { version = "0.18.1" }
 potree = { path = "../potree-rs", default-features = false, optional = true }
 crossbeam = { version = "0.8", features = [
     "crossbeam-channel",
@@ -79,27 +80,26 @@ wasm_thread = { version = "0.3.3", optional = true }
 priority-queue = "2.7.0"
 
 [dev-dependencies]
-bevy_dev_tools = { version = "0.17" }
+bevy_dev_tools = { version = "0.18.1" }
 rand = "0.9"
-bevy_panorbit_camera = { version = "0.33.1", features = ["bevy_egui"] }
+bevy_panorbit_camera = { version = "0.34.0", features = ["bevy_egui"] }
 egui = { version = "0.33.0", default-features = false }
-bevy_egui = "0.38.0"
-bevy_input = { version = "0.17" }
-bevy_window = { version = "0.17" }
-bevy_text = { version = "0.17" }
-bevy_light = { version = "0.17" }
-bevy_pbr = { version = "0.17" }
-bevy-inspector-egui = "0.35.0"
+bevy_egui = "0.39.1"
+bevy_input = { version = "0.18.1" }
+bevy_window = { version = "0.18.1" }
+bevy_text = { version = "0.18.1" }
+bevy_light = { version = "0.18.1" }
+bevy_pbr = { version = "0.18.1" }
 
 [dev-dependencies.bevy]
-version = "0.17"
+version = "0.18.1"
 default-features = false
 features = [
     "std",
     "async_executor",
 #    "android-game-activity",
 #    "android_shared_stdcxx",
-#    "animation",
+#    "gltf_animation",
     "bevy_asset",
 #    "bevy_audio",
     "bevy_color",
@@ -111,7 +111,7 @@ features = [
 #    "bevy_gltf",
     "bevy_input_focus",
     "bevy_log",
-    "bevy_mesh_picking_backend",
+    "mesh_picking",
     "bevy_pbr",
     "bevy_picking",
     "bevy_render",
@@ -122,12 +122,12 @@ features = [
     "bevy_light",
     "bevy_shader",
     "bevy_sprite",
-    "bevy_sprite_picking_backend",
+    "sprite_picking",
     "bevy_sprite_render",
     "bevy_state",
     "bevy_text",
     "bevy_ui",
-    "bevy_ui_picking_backend",
+    "ui_picking",
     "bevy_ui_render",
     "bevy_window",
     "bevy_winit",
@@ -158,7 +158,7 @@ webgl = [
     "bevy_core_pipeline/webgl",
     "bevy_pbr/webgl",
     "bevy_render/webgl",
-    "bevy_gizmos/webgl",
+    "bevy_gizmos_render/webgl",
 ]
 webgpu = []
 ply = ["dep:ply-rs"]

@@ -16,7 +16,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloud {
 
     #[inline]
     fn render<'w>(
-        item: &P,
+        _item: &P,
         _view: (),
         point_cloud_3d: Option<&'w PointCloud3d>,
         (point_cloud_mesh, render_point_clouds): SystemParamItem<'w, '_, Self::Param>,
@@ -58,7 +58,6 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloud {
         pass.set_vertex_buffer(0, point_cloud_mesh.vertex_buffer.slice(..));
         pass.set_index_buffer(
             point_cloud_mesh.index_buffer.slice(..),
-            0,
             IndexFormat::Uint32,
         );
 

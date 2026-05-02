@@ -106,6 +106,7 @@ pub fn prepare_depth_pass_textures(
             depth: Some(ColorAttachment::new(
                 cached_depth_texture,
                 None,
+                None,
                 Some(LinearRgba::WHITE),
             )),
             size,

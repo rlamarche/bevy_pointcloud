@@ -6,7 +6,7 @@ use bevy_math::prelude::*;
 use bevy_reflect::TypePath;
 use bevy_render::render_asset::RenderAssets;
 use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
-use bevy_render::render_resource::{AsBindGroup, BindGroupLayout, PreparedBindGroup};
+use bevy_render::render_resource::{AsBindGroup, BindGroupLayoutDescriptor, PipelineCache, PreparedBindGroup};
 use bevy_render::renderer::RenderDevice;
 
 #[derive(Component, TypePath, AsBindGroup, Clone, Debug)]
@@ -21,7 +21,7 @@ pub struct PreparedPointCloudOctree3dUniform {
 }
 #[derive(Resource)]
 pub struct PointCloudOctree3dUniformLayout {
-    pub layout: BindGroupLayout,
+    pub layout: BindGroupLayoutDescriptor,
 }
 
 impl FromWorld for PointCloudOctree3dUniformLayout {
@@ -29,7 +29,7 @@ impl FromWorld for PointCloudOctree3dUniformLayout {
         let render_device = world.resource::<RenderDevice>();
 
         Self {
-            layout: PointCloudOctree3dUniform::bind_group_layout(render_device),
+            layout: PointCloudOctree3dUniform::bind_group_layout_descriptor(render_device),
         }
     }
 }
@@ -39,6 +39,7 @@ pub fn prepare_point_cloud_octree_3d_uniform<'w>(
     point_cloud_octree_3d_uniform_layout: Res<PointCloudOctree3dUniformLayout>,
     query: Query<(Entity, &PointCloudOctree3dUniform)>,
     render_device: Res<RenderDevice>,
+    pipeline_cache: Res<PipelineCache>,
     mut material: (
         Res<'w, RenderAssets<bevy_render::texture::GpuImage>>,
         Res<'w, bevy_render::texture::FallbackImage>,
@@ -46,12 +47,14 @@ pub fn prepare_point_cloud_octree_3d_uniform<'w>(
     ),
 ) {
     let render_device = render_device.into_inner();
+    let pipeline_cache = pipeline_cache.into_inner();
 
     for (entity, custom_uniform) in &query {
         let prepared = custom_uniform
             .as_bind_group(
                 &point_cloud_octree_3d_uniform_layout.layout,
                 render_device,
+                pipeline_cache,
                 &mut material,
             )
             .expect("Unable to build bind group from PointCloudUniform.");

@@ -88,6 +88,7 @@ fn setup(mut commands: Commands) {
             near: 0.1,
             far: 1000.0,
             aspect_ratio: 1.0,
+            ..Default::default()
         }),
         Transform::from_xyz(5.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
         // We need this component because we use `draw_indexed` and `draw`

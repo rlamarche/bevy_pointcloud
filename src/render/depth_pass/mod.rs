@@ -15,7 +15,7 @@ use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
-use bevy_ecs::component::Tick;
+use bevy_ecs::change_detection::Tick;
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
 use bevy_pbr::{
@@ -163,7 +163,7 @@ fn queue_depth_pass(
 
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
         for (render_entity, main_entity) in visible_entities.iter::<PointCloud3d>() {
-            let Ok(point_cloud__3d) = point_clouds_3d.get(*render_entity) else {
+            let Ok(point_cloud_3d) = point_clouds_3d.get(*render_entity) else {
                 warn!("point_cloud_3d missing");
                 continue;
             };
@@ -180,7 +180,7 @@ fn queue_depth_pass(
                     draw_function: draw_custom,
                 },
                 PointCloud3dBinKey {
-                    asset_id: point_cloud__3d.0.id(),
+                    asset_id: point_cloud_3d.0.id(),
                 },
                 (*render_entity, *main_entity),
                 InputUniformIndex::default(),

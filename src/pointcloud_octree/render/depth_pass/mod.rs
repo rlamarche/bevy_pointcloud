@@ -5,10 +5,10 @@ use crate::octree::extract::render::components::RenderVisibleOctreeNodes;
 use crate::pointcloud_octree::asset::data::PointCloudNodeData;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
-#[cfg(not(feature = "webgl"))]
-use crate::pointcloud_octree::render::draw::DrawPointCloudOctreeIndirect;
 #[cfg(feature = "webgl")]
 use crate::pointcloud_octree::render::draw::DrawPointCloudOctree;
+#[cfg(not(feature = "webgl"))]
+use crate::pointcloud_octree::render::draw::DrawPointCloudOctreeIndirect;
 use crate::pointcloud_octree::render::draw::SetPointCloudOctreeNodeUniformGroup;
 use crate::pointcloud_octree::render::phase::{
     PointCloudOctree3dNodePhase, ViewOctreeNodesRenderDepthPhases,
@@ -22,7 +22,7 @@ use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
-use bevy_ecs::component::Tick;
+use bevy_ecs::change_detection::Tick;
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
 use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};

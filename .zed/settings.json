@@ -7,9 +7,9 @@
     "rust-analyzer": {
       "initialization_options": {
         "cargo": {
-          "features": ["potree", "potree_fs"]
-        }
-      }
-    }
-  }
+          "features": ["potree", "potree_fs", "potree_ehttp"],
+        },
+      },
+    },
+  },
 }

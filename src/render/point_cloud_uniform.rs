@@ -6,7 +6,9 @@ use bevy_math::Mat4;
 use bevy_reflect::TypePath;
 use bevy_render::render_asset::RenderAssets;
 use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
-use bevy_render::render_resource::{AsBindGroup, BindGroupLayout, PreparedBindGroup};
+use bevy_render::render_resource::{
+    AsBindGroup, BindGroupLayoutDescriptor, PipelineCache, PreparedBindGroup,
+};
 use bevy_render::renderer::RenderDevice;
 
 #[derive(Component, TypePath, AsBindGroup, Clone, Debug)]
@@ -21,7 +23,7 @@ pub struct PreparedPointCloudUniform {
 }
 #[derive(Resource)]
 pub struct PointCloudUniformLayout {
-    pub layout: BindGroupLayout,
+    pub layout: BindGroupLayoutDescriptor,
 }
 
 impl FromWorld for PointCloudUniformLayout {
@@ -29,7 +31,7 @@ impl FromWorld for PointCloudUniformLayout {
         let render_device = world.resource::<RenderDevice>();
 
         Self {
-            layout: PointCloudUniform::bind_group_layout(render_device),
+            layout: PointCloudUniform::bind_group_layout_descriptor(render_device),
         }
     }
 }
@@ -39,6 +41,7 @@ pub fn prepare_point_cloud_uniform<'w>(
     point_cloud_uniform_layout: Res<PointCloudUniformLayout>,
     query: Query<(Entity, &PointCloudUniform)>,
     render_device: Res<RenderDevice>,
+    pipeline_cache: Res<PipelineCache>,
     mut material: (
         Res<'w, RenderAssets<bevy_render::texture::GpuImage>>,
         Res<'w, bevy_render::texture::FallbackImage>,
@@ -46,12 +49,14 @@ pub fn prepare_point_cloud_uniform<'w>(
     ),
 ) {
     let render_device = render_device.into_inner();
+    let pipeline_cache = pipeline_cache.into_inner();
 
     for (entity, custom_uniform) in &query {
         let prepared = custom_uniform
             .as_bind_group(
                 &point_cloud_uniform_layout.layout,
                 render_device,
+                pipeline_cache,
                 &mut material,
             )
             .expect("Unable to build bind group from PointCloudUniform.");

@@ -10,8 +10,8 @@ use bevy_render::render_asset::{PrepareAssetError, RenderAsset, RenderAssets};
 use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
 use bevy_render::render_resource::binding_types::uniform_buffer;
 use bevy_render::render_resource::{
-    AsBindGroup, BindGroup, BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries,
-    PreparedBindGroup, ShaderStages, UniformBuffer,
+    BindGroup, BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, ShaderStages,
+    UniformBuffer,
 };
 use bevy_render::renderer::{RenderDevice, RenderQueue};
 
@@ -96,11 +96,7 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudMaterialGro
             return RenderCommandResult::Skip;
         };
 
-        pass.set_bind_group(
-            I,
-            &render_point_cloud_material.uniform,
-            &[],
-        );
+        pass.set_bind_group(I, &render_point_cloud_material.uniform, &[]);
 
         RenderCommandResult::Success
     }
