@@ -12,6 +12,10 @@ name = "potree"
 required-features = ["potree", "potree_fs"]
 
 [[example]]
+name = "copc"
+required-features = ["copc"]
+
+[[example]]
 path = "examples/potree_wasm.rs"
 name = "potree_wasm"
 required-features = ["potree_wasm"]
@@ -78,6 +82,9 @@ wasm-bindgen-futures = { version = "=0.4.56", optional = true }
 wasm_thread = { version = "0.3.3", optional = true }
 
 priority-queue = "2.7.0"
+
+# Added for copc
+copc-streaming = { version = "0.1.5", optional = true }
 
 [dev-dependencies]
 bevy_dev_tools = { version = "0.18.1" }
@@ -171,7 +178,7 @@ potree_ehttp_local = ["potree/ehttp_local"]
 potree_wasm = ["potree/wasm"]
 potree_wasm_worker = ["wasm_worker", "potree/wasm_worker", "dep:wasm-bindgen", "dep:wasm-bindgen-futures"]
 potree_fs = ["potree/fs"]
-potree_async_fs = ["potree/async-fs"]
+copc = ["dep:copc-streaming"]
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]

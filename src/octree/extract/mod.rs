@@ -7,6 +7,8 @@ pub mod resources;
 use super::asset::Octree;
 use super::node::{NodeData, OctreeNode};
 use crate::octree::extract::render::components::RenderVisibleOctreeNodes;
+use crate::octree::extract::render::prepare::prepare_octrees_uniforms;
+use crate::octree::extract::render::resources::AllocatedOctreeNodes;
 use crate::octree::visibility::CheckOctreeNodesVisibility;
 use allocate::allocate_visible_octree_nodes;
 use bevy_app::prelude::*;
@@ -136,6 +138,7 @@ where
                 reset_render_asset_bytes_per_frame.in_set(RenderSystems::Cleanup),
             )
             .init_resource::<ExtractedOctreeNodes<E>>()
+            .init_resource::<AllocatedOctreeNodes<E>>()
             .init_resource::<RenderOctrees<A>>()
             .init_resource::<RenderOctreesBuffers<A>>()
             .init_resource::<PrepareNextFrameOctreeNodes<A>>()
@@ -146,6 +149,10 @@ where
                     extract_visible_octree_nodes::<E, A>.after(extract_cameras),
                     extract_octree_node_allocations::<E>,
                 ),
+            )
+            .add_systems(
+                Render,
+                prepare_octrees_uniforms::<E>.in_set(RenderSystems::PrepareBindGroups),
             );
 
         AFTER::register_system(

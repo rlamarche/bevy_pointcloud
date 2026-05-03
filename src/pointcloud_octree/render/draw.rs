@@ -1,5 +1,5 @@
 use crate::octree::extract::render::buffer::RenderOctreesBuffers;
-use crate::octree::extract::render::components::RenderVisibleOctreeNodes;
+use crate::octree::extract::render::components::{RenderOctreeEntityUniform, RenderVisibleOctreeNodes};
 use crate::octree::extract::render::resources::RenderOctrees;
 use crate::octree::visibility::components::VisibleOctreeNode;
 use crate::pointcloud_octree::asset::data::PointCloudNodeData;
@@ -283,5 +283,29 @@ impl<P: BinnedPhaseItem, const I: usize> RenderCommand<P>
         } else {
             RenderCommandResult::Skip
         }
+    }
+}
+
+pub struct SetRenderOctreeUniformGroup<const I: usize>;
+impl<P: BinnedPhaseItem, const I: usize> RenderCommand<P> for SetRenderOctreeUniformGroup<I> {
+    type Param = ();
+    type ViewQuery = ();
+    type ItemQuery = Read<RenderOctreeEntityUniform<PointCloudNodeData, PointCloudOctree3d>>;
+
+    fn render<'w>(
+        _item: &P,
+        _: ROQueryItem<'w, '_, Self::ViewQuery>,
+        render_octree_uniform: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
+        _: SystemParamItem<'w, '_, Self::Param>,
+        pass: &mut TrackedRenderPass<'w>,
+    ) -> RenderCommandResult {
+        let Some(render_octree_uniform) = render_octree_uniform else {
+            warn!("Missing RenderOctreeUniform item");
+            return RenderCommandResult::Skip;
+        };
+
+        pass.set_bind_group(I, &render_octree_uniform.bind_group, &[]);
+
+        RenderCommandResult::Success
     }
 }

@@ -7,10 +7,18 @@ use bevy_camera::visibility::{Visibility, VisibilityClass, add_visibility_class}
 pub mod bevy;
 pub mod loader;
 pub mod octree;
+pub mod octree_loader;
 pub mod point_cloud;
 pub mod point_cloud_material;
 pub mod pointcloud_octree;
-#[cfg(feature = "potree")]
+#[cfg(any(
+    feature = "potree",
+    feature = "potree_wasm",
+    feature = "potree_reqwest",
+    feature = "potree_ehttp",
+    feature = "potree_ehttp_local",
+    feature = "potree_fs",
+))]
 pub mod potree;
 pub mod prelude;
 pub mod render;

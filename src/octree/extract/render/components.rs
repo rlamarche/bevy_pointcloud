@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use bevy_asset::AssetId;
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashMap;
+use bevy_render::render_resource::BindGroup;
 
 use crate::octree::{asset::Octree, node::NodeData, visibility::components::VisibleOctreeNode};
 
@@ -31,4 +32,10 @@ where
             _phantom_data: Default::default(),
         }
     }
+}
+
+#[derive(Component)]
+pub struct RenderOctreeEntityUniform<T, C> {
+    pub(crate) bind_group: BindGroup,
+    pub(crate) _phantom: PhantomData<fn() -> (T, C)>,
 }

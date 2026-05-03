@@ -41,7 +41,7 @@ struct PointCloudMaterial {
     max_point_size: f32,
 #ifdef SIXTEEN_BYTE_ALIGNMENT
     // WebGL2 structs must be 16 byte aligned.
-    _webgl2_padding: f32
+    _webgl2_padding: f32,
 #endif
 };
 
@@ -55,17 +55,13 @@ struct OctreeNode {
     level: u32,
     center: vec3<f32>,
     half_extents: vec3<f32>,
-    octree_index: u32,
-    node_index: u32,
 };
 
-struct VisibleNode {
+struct OctreeEntity {
     octree_index: u32,
-    node_index: u32,
 #ifdef SIXTEEN_BYTE_ALIGNMENT
     // WebGL2 structs must be 16 byte aligned.
-    _webgl2_padding_1: vec3<u32>,
-    _webgl2_padding_2: vec4<u32>,
+    _webgl2_padding: vec3<f32>,
 #endif
 };
 
@@ -75,8 +71,8 @@ var visible_nodes: texture_2d<u32>;
 @group(4) @binding(0)
 var<uniform> octree_node: OctreeNode;
 
-// @group(5) @binding(0)
-// var<uniform> visible_node: VisibleNode;
+@group(5) @binding(0)
+var<uniform> octree_entity: OctreeEntity;
 
 #endif
 
@@ -133,7 +129,7 @@ fn get_max_relative_depth(position: vec3<f32>) -> f32 {
     var half_extents = octree_node.half_extents;
 
     for (var i = 0; i <= 30; i ++) {
-        let current_node = textureLoad(visible_nodes, vec2<u32>(current_index, octree_node.octree_index), 0);
+        let current_node = textureLoad(visible_nodes, vec2<u32>(current_index, octree_entity.octree_index), 0);
 
         // Extract data
         let children_mask = current_node.r;  // u8 dans le canal R

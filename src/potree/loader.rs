@@ -93,18 +93,3 @@ impl From<PotreeOctreeNode> for LoadedHierarchyNode<PotreeHierarchy> {
         }
     }
 }
-
-impl From<(&PotreeOctreeNode, Points)> for PointCloudNodeData {
-    fn from((node, Points { points, density }): (&PotreeOctreeNode, Points)) -> Self {
-        // magic formula from Potree
-        let offset = (density as f32).log2() / 2.0 - 1.5;
-
-        PointCloudNodeData {
-            spacing: node.spacing as f32,
-            level: node.level,
-            offset,
-            num_points: node.num_points as usize,
-            points: Arc::new(points.into_iter().map(Into::into).collect()),
-        }
-    }
-}

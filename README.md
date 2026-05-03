@@ -7,32 +7,18 @@ A Bevy plugin to render point clouds.
 Roadmap :
 
 - [x] Render point cloud using a shader
-- [x] Compute AABB
-- [ ] Add helpers for importing las/laz files 
-- [ ] Add helpers for importing PLY files
-- [ ] Implement rendering described in https://www.cg.tuwien.ac.at/research/publications/2016/SCHUETZ-2016-POT/SCHUETZ-2016-POT-thesis.pdf 
-- [ ] Read Potree files in https://www.cg.tuwien.ac.at/research/publications/2016/SCHUETZ-2016-POT/SCHUETZ-2016-POT-thesis.pdf
-- [ ] Efficiently load/unload chunks based on camera location
-- [ ] ...
+- [x] Implement rendering described in https://www.cg.tuwien.ac.at/research/publications/2016/SCHUETZ-2016-POT/SCHUETZ-2016-POT-thesis.pdf 
+- [x] Read Potree files in https://www.cg.tuwien.ac.at/research/publications/2016/SCHUETZ-2016-POT/SCHUETZ-2016-POT-thesis.pdf
+- [x] Efficiently load/unload chunks based on camera location
+- [x] Support for COPC Laz point clouds
 
-Takanawa Lion with multi pass rendering pipeline inspired by Potree:
+Heidentor from Potree dataset:
 
-![Lion Takanawa](screenshots/lion_takanawa.copc.jpg)
+![Heidentor](screenshots/heidentor.jpg)
 
-Takanawa Lion with multi pass rendering pipeline + Eye Dome Lighting inspired by Potree:
+Marseille les Goudes from IGN LidarHD (COPC LAZ):
 
-![Lion Takanawa](screenshots/lion_takanawa.copc-edl.jpg)
-
-
-
-1 million random points:
-
-![1 million random points](screenshots/random_points.jpg)
-
-St. Anna Mountain, 33 millions points:
-
-![St. Anna Mountain, 33 millions points](screenshots/G_Sw_Anny.jpg)
-
+![COPC Point cloud](screenshots/copc_ign_lidarhd.jpg)
 
 ## Credits
 
@@ -47,6 +33,8 @@ St. Anna Mountain, 33 millions points:
 
 - The rendering pipeline implementation is based on Bevy's render pipelines  
   ([Bevy Engine](https://bevyengine.org), MIT or Apache-2.0).
+
+- COPC Parsing from https://github.com/360-geo/copc (`copc-streaming` crate)
 
 ## Acknowledgements
 

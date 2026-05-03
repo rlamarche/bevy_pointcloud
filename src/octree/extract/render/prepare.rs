@@ -1,3 +1,10 @@
+use std::marker::PhantomData;
+
+use crate::octree::extract::render::components::RenderOctreeEntityUniform;
+use crate::octree::extract::render::resources::{AllocatedOctreeNodes, RenderOctreeIndex};
+use crate::pointcloud_octree::extract::PointCloudOctreeUniform;
+use crate::render::attribute_pass::pipeline::AttributePassPipeline;
+
 use super::super::limiter::RenderOctreeNodesBytesPerFrameLimiter;
 use super::super::{ExtractedOctreeNodes, OctreeNodeExtraction};
 use super::asset::RenderOctreeNodeData;
@@ -7,13 +14,55 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::StaticSystemParam;
 use bevy_log::prelude::*;
 use bevy_platform::collections::HashMap;
+use bevy_render::render_resource::{BindGroupEntries, PipelineCache, UniformBuffer};
 use bevy_render::renderer::{RenderDevice, RenderQueue};
+
+pub fn prepare_octrees_uniforms<E: OctreeNodeExtraction>(
+    mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,
+    render_device: Res<RenderDevice>,
+    render_queue: Res<RenderQueue>,
+    pipeline_cache: Res<PipelineCache>,
+    attribute_pass_pipeline: Res<AttributePassPipeline>,
+    mut commands: Commands,
+) {
+    for entity in std::mem::take(&mut render_octree_index.removed_octrees) {
+        commands
+            .entity(entity)
+            .remove::<RenderOctreeEntityUniform<E::NodeData, E::Component>>();
+    }
+
+    for entity in std::mem::take(&mut render_octree_index.added_octrees) {
+        let mut octree_buffer = UniformBuffer::from(PointCloudOctreeUniform {
+            octree_index: *render_octree_index
+                .octrees_index
+                .get(&entity)
+                .expect("missing octree index") as u32,
+            ..Default::default()
+        });
+        octree_buffer.write_buffer(&render_device, &render_queue);
+
+        let bind_group = render_device.create_bind_group(
+            Some(format!("octree_entity_bind_group").as_str()),
+            &pipeline_cache
+                .get_bind_group_layout(&attribute_pass_pipeline.point_cloud_octree_data_layout),
+            &BindGroupEntries::single(&octree_buffer),
+        );
+
+        commands
+            .entity(entity)
+            .insert(RenderOctreeEntityUniform::<E::NodeData, E::Component> {
+                bind_group,
+                _phantom: PhantomData,
+            });
+    }
+}
 
 /// This system prepares all assets of the corresponding [`RenderAsset::SourceAsset`] type
 /// which where extracted this frame for the GPU.
 #[cfg_attr(feature = "trace", tracing::instrument(skip_all))]
 pub fn prepare_assets<E, A>(
     mut extracted_octree_nodes: ResMut<ExtractedOctreeNodes<E>>,
+    mut allocated_octree_nodes: ResMut<AllocatedOctreeNodes<E>>,
     mut render_octrees: ResMut<RenderOctrees<A>>,
     mut render_octrees_buffers: ResMut<super::buffer::RenderOctreesBuffers<A>>,
     mut prepare_next_frame: ResMut<super::resources::PrepareNextFrameOctreeNodes<A>>,
@@ -99,6 +148,10 @@ pub fn prepare_assets<E, A>(
             continue;
         };
 
+        // write allocation infos
+        let allocated_nodes = allocated_octree_nodes.get_or_create_mut(asset_id);
+        allocated_nodes.insert(cloned_node.id, extracted_octree_node.allocation.clone());
+
         match A::prepare_octree_node(extracted_octree_node, asset_id, &mut param) {
             Ok(prepared_octree_node) => {
                 let render_octree_node = RenderOctreeNodeData::<A> {
@@ -135,9 +188,12 @@ pub fn prepare_assets<E, A>(
     // remove removed nodes from gpu
     for (asset_id, node_ids) in extracted_octree_nodes.removed_nodes.drain() {
         let render_octree = render_octrees.get_or_insert_mut(asset_id);
+        let allocated_nodes = allocated_octree_nodes.get_or_create_mut(asset_id);
 
         for node_id in node_ids {
             render_octree.nodes.remove(&node_id);
+            allocated_nodes.remove(&node_id);
+
             A::unload_octree_node(asset_id, node_id, &mut param);
         }
     }
@@ -145,6 +201,8 @@ pub fn prepare_assets<E, A>(
     let mut prepared_octree_nodes = HashMap::new();
 
     for (asset_id, extracted_octree_nodes) in extracted_octree_nodes.octrees.drain() {
+        let allocated_nodes = allocated_octree_nodes.get_or_create_mut(asset_id);
+
         let mut prepared_nodes = Vec::new();
         let render_asset = render_octrees.get_or_insert_mut(asset_id);
 
@@ -189,6 +247,8 @@ pub fn prepare_assets<E, A>(
                     .push((asset_id, extracted_octree_node));
                 continue;
             };
+
+            allocated_nodes.insert(cloned_node.id, extracted_octree_node.allocation.clone());
 
             match A::prepare_octree_node(extracted_octree_node, asset_id, &mut param) {
                 Ok(prepared_octree_node) => {

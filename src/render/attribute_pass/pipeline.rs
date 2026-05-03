@@ -1,6 +1,6 @@
 use crate::point_cloud::PointCloudData;
 use crate::point_cloud_material::PointCloudMaterial;
-use crate::pointcloud_octree::extract::PointCloudNodeDataUniform;
+use crate::pointcloud_octree::extract::{PointCloudOctreeUniform, PointCloudNodeDataUniform};
 use crate::render::POINTCLOUD_SHADER_HANDLE;
 use crate::render::point_cloud_uniform::PointCloudUniform;
 use bevy_asset::prelude::*;
@@ -13,10 +13,9 @@ use bevy_render::render_resource::binding_types::{
 };
 use bevy_render::render_resource::{
     AsBindGroup, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntries,
-    BindGroupLayoutEntry, BindingType, BlendComponent, BlendFactor, BlendOperation, BlendState,
-    BufferBindingType, BufferSize, CompareFunction, DepthBiasState, DepthStencilState,
-    ShaderStages, SpecializedRenderPipeline, StencilState, TextureSampleType, VertexAttribute,
-    VertexStepMode,
+    BlendComponent, BlendFactor, BlendOperation, BlendState, CompareFunction, DepthBiasState,
+    DepthStencilState, ShaderStages, SpecializedRenderPipeline, StencilState, TextureSampleType,
+    VertexAttribute, VertexStepMode,
 };
 use bevy_render::render_resource::{
     ColorTargetState, ColorWrites, Face, FragmentState, FrontFace, MultisampleState, PolygonMode,
@@ -30,13 +29,13 @@ use bevy_utils::default;
 pub struct AttributePassPipeline {
     mesh_pipeline: MeshPipeline,
     shader_handle: Handle<Shader>,
-    pub layout: BindGroupLayout,
-    pub layout_msaa: BindGroupLayout,
-    point_cloud_layout: BindGroupLayoutDescriptor,
-    point_cloud_material_layout: BindGroupLayoutDescriptor,
-    point_cloud_octree_visible_nodes_layout: BindGroupLayoutDescriptor,
-    point_cloud_octree_node_data_layout: BindGroupLayoutDescriptor,
-    point_cloud_octree_visible_node_layout: BindGroupLayoutDescriptor,
+    pub(crate) layout: BindGroupLayout,
+    pub(crate) layout_msaa: BindGroupLayout,
+    pub(crate) point_cloud_layout: BindGroupLayoutDescriptor,
+    pub(crate) point_cloud_material_layout: BindGroupLayoutDescriptor,
+    pub(crate) point_cloud_octree_visible_nodes_layout: BindGroupLayoutDescriptor,
+    pub(crate) point_cloud_octree_node_data_layout: BindGroupLayoutDescriptor,
+    pub(crate) point_cloud_octree_data_layout: BindGroupLayoutDescriptor,
 }
 impl FromWorld for AttributePassPipeline {
     fn from_world(world: &mut World) -> Self {
@@ -89,18 +88,13 @@ impl FromWorld for AttributePassPipeline {
                 )
                 .to_vec(),
             },
-            point_cloud_octree_visible_node_layout: BindGroupLayoutDescriptor {
-                label: "layout_node_mapping".into(),
-                entries: vec![BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::VERTEX,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Uniform,
-                        has_dynamic_offset: true,
-                        min_binding_size: BufferSize::new(64),
-                    },
-                    count: None,
-                }],
+            point_cloud_octree_data_layout: BindGroupLayoutDescriptor {
+                label: "layout_pcl_octree_layout".into(),
+                entries: BindGroupLayoutEntries::single(
+                    ShaderStages::VERTEX,
+                    uniform_buffer::<PointCloudOctreeUniform>(false),
+                )
+                .to_vec(),
             },
         }
     }
@@ -166,7 +160,7 @@ impl SpecializedRenderPipeline for AttributePassPipeline {
         if key.is_octree {
             layout.push(self.point_cloud_octree_visible_nodes_layout.clone());
             layout.push(self.point_cloud_octree_node_data_layout.clone());
-            // layout.push(self.point_cloud_octree_visible_node_layout.clone());
+            layout.push(self.point_cloud_octree_data_layout.clone());
         }
 
         RenderPipelineDescriptor {

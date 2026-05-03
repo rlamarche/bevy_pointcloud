@@ -1,8 +1,11 @@
 use crate::octree::extract::render::components::RenderVisibleOctreeNodes;
-use crate::octree::extract::render::resources::{RenderOctreeIndex, RenderOctrees};
+use crate::octree::extract::render::resources::{
+    AllocatedOctreeNodes, RenderOctreeIndex, RenderOctrees,
+};
 use crate::octree::storage::NodeId;
 use crate::octree::visibility::iter_one_bits;
 use crate::pointcloud_octree::asset::data::PointCloudNodeData;
+use crate::pointcloud_octree::asset::extract::PointCloudOctreeExtraction;
 use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
 use crate::pointcloud_octree::render::phase::{
@@ -87,6 +90,7 @@ pub fn prepare_visible_nodes_texture(
     )>,
     mut visible_nodes_buffer: Local<Vec<VisibleOctreeNodeUniform>>,
     render_octrees: Res<RenderOctrees<RenderPointCloudNodeData>>,
+    allocated_octree_nodes: Res<AllocatedOctreeNodes<PointCloudOctreeExtraction>>,
 ) {
     // for each camera
     for (entity, extracted_view, _msaa, visible_nodes) in &views_3d {
@@ -155,9 +159,23 @@ pub fn prepare_visible_nodes_texture(
                 continue;
             };
 
+            let Some(octree_allocations) = allocated_octree_nodes.allocations.get(asset_id) else {
+                debug!(
+                    "Missing asset allocation {}",
+                    asset_id,
+                );
+                // no allocations means no visible nodes
+                continue;
+            };
+
             let mut sorted_octree_nodes = octree_nodes.clone();
-            // remove the missing nodes
-            sorted_octree_nodes.retain(|node| render_octree.nodes.contains_key(&node.id));
+
+            // remove the missing nodes or unallocated nodes
+            sorted_octree_nodes.retain(|node| {
+                render_octree.nodes.contains_key(&node.id)
+                    && octree_allocations.contains_key(&node.id)
+            });
+
             // sort nodes in order of depth, then child index ordering
             sorted_octree_nodes.sort_by(|a, b| {
                 if a.depth < b.depth {
@@ -176,8 +194,10 @@ pub fn prepare_visible_nodes_texture(
                     let index = node.children[child_index as usize];
                     let child_node_id = octree_nodes[index].id;
 
-                    // if the node is missing in the render octree, patch the children mask
-                    if !render_octree.nodes.contains_key(&child_node_id) {
+                    // if the node is missing in the render octree, or in the allocations, patch the children mask
+                    if !render_octree.nodes.contains_key(&child_node_id)
+                        || !octree_allocations.contains_key(&node.id)
+                    {
                         node.children_mask &= !(1u8 << child_index);
                     }
                 }

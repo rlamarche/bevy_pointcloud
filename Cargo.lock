@@ -1175,6 +1175,7 @@ dependencies = [
  "bevy_utils",
  "bevy_window",
  "bytemuck",
+ "copc-streaming",
  "crossbeam",
  "egui",
  "getrandom 0.3.4",
@@ -2034,6 +2035,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "633458d4ef8c78b72454de2d54fd6ab2e60f9e02be22f3c6104cdc8a4e0fceb9"
 dependencies = [
  "unicode-segmentation",
+]
+
+[[package]]
+name = "copc-streaming"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77dc2d974a4249167c4e42e5af2220d0f3ce907e117cec0f8747bcfe7fb154ac"
+dependencies = [
+ "byteorder",
+ "las",
+ "laz",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -4519,7 +4532,6 @@ dependencies = [
 name = "potree"
 version = "0.1.0"
 dependencies = [
- "async-fs",
  "async-trait",
  "binrw",
  "brotli-decompressor",

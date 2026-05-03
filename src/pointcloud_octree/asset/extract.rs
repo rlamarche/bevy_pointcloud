@@ -90,8 +90,6 @@ impl RenderOctreeNode for RenderPointCloudNodeData {
             level: source_node.data.level,
             center: source_node.bounding_box.center.into(),
             half_extents: source_node.bounding_box.half_extents.into(),
-            octree_index: 0,
-            node_index: 0,
         });
 
         uniform_buffer.write_buffer(render_device, render_queue);

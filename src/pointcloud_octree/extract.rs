@@ -12,8 +12,15 @@ pub struct PointCloudNodeDataUniform {
     pub level: u32,
     pub center: Vec3,
     pub half_extents: Vec3,
+}
+
+#[derive(ShaderType, Pod, Zeroable, Clone, Copy, Default)]
+#[repr(C)]
+pub struct PointCloudOctreeUniform {
     pub octree_index: u32,
-    pub node_index: u32,
+    // WebGL2 structs must be 16 byte aligned.
+    #[cfg(all(feature = "webgl", target_arch = "wasm32", not(feature = "webgpu")))]
+    pub _webgl2_padding: Vec3,
 }
 
 #[derive(TypePath)]

@@ -4,6 +4,7 @@ use super::asset::{RenderOctree, RenderOctreeNodeData};
 use super::node::RenderOctreeNode;
 use crate::octree::asset::Octree;
 use crate::octree::extract::OctreeNodeExtraction;
+use crate::octree::extract::render::asset::RenderOctreeNodeAllocation;
 use crate::octree::extract::resources::NodeAllocation;
 use crate::octree::storage::NodeId;
 use bevy_asset::AssetId;
@@ -19,7 +20,9 @@ where
 {
     pub(crate) octrees_slab: Slab<Entity>,
     pub(crate) octrees_index: HashMap<Entity, usize>,
-    _phantom_data: PhantomData<C>,
+    pub(crate) added_octrees: Vec<Entity>,
+    pub(crate) removed_octrees: Vec<Entity>,
+    pub(crate) _phantom_data: PhantomData<C>,
 }
 
 impl<C: Component> FromWorld for RenderOctreeIndex<C> {
@@ -27,6 +30,8 @@ impl<C: Component> FromWorld for RenderOctreeIndex<C> {
         RenderOctreeIndex {
             octrees_slab: Slab::new(),
             octrees_index: HashMap::new(),
+            added_octrees: Vec::new(),
+            removed_octrees: Vec::new(),
             _phantom_data: PhantomData,
         }
     }
@@ -35,17 +40,22 @@ impl<C: Component> FromWorld for RenderOctreeIndex<C> {
 impl<C: Component> RenderOctreeIndex<C> {
     /// Add octree entity to index, if it already exists, does nothing.
     pub fn add_octree(&mut self, entity: Entity) -> usize {
-        // TODO cleanup old octrees from the slab (if removed ?)
-        *self
+        let octree_index = *self
             .octrees_index
             .entry(entity)
-            .or_insert_with(|| self.octrees_slab.insert(entity))
+            .or_insert_with(|| self.octrees_slab.insert(entity));
+
+        self.added_octrees.push(entity);
+
+        octree_index
     }
 
     /// Removes an entity from the index.
+    /// TODO: call this function
     pub fn remove_octree(&mut self, entity: Entity) -> Option<usize> {
         if let Some(index) = self.octrees_index.remove(&entity) {
             self.octrees_slab.remove(index);
+            self.removed_octrees.push(entity);
             Some(index)
         } else {
             None
@@ -172,6 +182,32 @@ impl<E: OctreeNodeExtraction> ExtractedOctreeNodes<E> {
         id: impl Into<AssetId<Octree<E::NodeData>>>,
     ) -> &mut HashMap<NodeId, RenderOctreeNodeData<E::ExtractedNodeData>> {
         self.octrees
+            .entry(id.into())
+            .or_insert_with(Default::default)
+    }
+}
+
+/// Contains all allocated octree nodes ready for render
+#[derive(Resource)]
+pub struct AllocatedOctreeNodes<E: OctreeNodeExtraction> {
+    pub(crate) allocations:
+        HashMap<AssetId<Octree<E::NodeData>>, HashMap<NodeId, RenderOctreeNodeAllocation>>,
+}
+
+impl<E: OctreeNodeExtraction> Default for AllocatedOctreeNodes<E> {
+    fn default() -> Self {
+        Self {
+            allocations: HashMap::new(),
+        }
+    }
+}
+
+impl<E: OctreeNodeExtraction> AllocatedOctreeNodes<E> {
+    pub fn get_or_create_mut(
+        &mut self,
+        id: impl Into<AssetId<Octree<E::NodeData>>>,
+    ) -> &mut HashMap<NodeId, RenderOctreeNodeAllocation> {
+        self.allocations
             .entry(id.into())
             .or_insert_with(Default::default)
     }

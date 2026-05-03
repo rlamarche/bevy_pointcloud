@@ -9,6 +9,7 @@ use crate::pointcloud_octree::component::PointCloudOctree3d;
 use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
 #[cfg(not(feature = "webgl"))]
 use crate::pointcloud_octree::render::draw::DrawPointCloudOctreeIndirect;
+use crate::pointcloud_octree::render::draw::SetRenderOctreeUniformGroup;
 #[cfg(feature = "webgl")]
 use crate::pointcloud_octree::render::draw::DrawPointCloudOctree;
 use crate::pointcloud_octree::render::draw::SetPointCloudOctreeNodeUniformGroup;
@@ -82,9 +83,7 @@ type DrawAttributePass = (
     SetPointCloudMaterialGroup<2>,
     SetVisibleNodesTexture<3>,
     SetPointCloudOctreeNodeUniformGroup<4>,
-    // SetVisibleOctreeUniformGroup<5>,
-    // DrawPointCloudOctreeNode,
-    // DrawPointCloudOctree,
+    SetRenderOctreeUniformGroup<5>,
     DrawPointCloudOctreeIndirect,
 );
 
@@ -96,6 +95,7 @@ type DrawAttributePass = (
     SetPointCloudMaterialGroup<2>,
     SetVisibleNodesTexture<3>,
     SetPointCloudOctreeNodeUniformGroup<4>,
+    SetRenderOctreeUniformGroup<5>,
     DrawPointCloudOctree,
 );
 
