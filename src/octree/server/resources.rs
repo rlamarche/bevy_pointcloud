@@ -1,16 +1,19 @@
-use crate::octree::asset::Octree;
-use crate::octree::node::{NodeData, OctreeNodeKey};
-use crate::octree::storage::NodeId;
+use crate::octree::{
+    asset::Octree,
+    node::{NodeData, OctreeNodeKey},
+    storage::NodeId,
+};
 use bevy_asset::AssetId;
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashSet;
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
-use std::cmp::{Ordering, Reverse};
-use std::collections::BinaryHeap;
-use std::hash::{Hash, Hasher};
-use std::marker::PhantomData;
-
+use std::{
+    cmp::{Ordering, Reverse},
+    collections::BinaryHeap,
+    hash::{Hash, Hasher},
+    marker::PhantomData,
+};
 
 #[derive(Resource)]
 pub struct OctreeServerSettings<T> {
@@ -96,7 +99,10 @@ impl<T: NodeData> PartialEq<Self> for OctreeNodeLoadTask<T> {
 
 impl<T: NodeData> Eq for OctreeNodeLoadTask<T> {}
 
-pub struct WeightedOctreeNodeLoadTask<T: NodeData>(pub OctreeNodeLoadTask<T>, pub OrderedFloat<f32>);
+pub struct WeightedOctreeNodeLoadTask<T: NodeData>(
+    pub OctreeNodeLoadTask<T>,
+    pub OrderedFloat<f32>,
+);
 
 impl<T: NodeData> PartialEq<Self> for WeightedOctreeNodeLoadTask<T> {
     fn eq(&self, other: &Self) -> bool {
@@ -117,7 +123,6 @@ impl<T: NodeData> Ord for WeightedOctreeNodeLoadTask<T> {
         self.1.cmp(&other.1)
     }
 }
-
 
 /// This resource contains a priority queue to determine which nodes to evict first.
 /// Nodes that are seen less recently are first in this queue.

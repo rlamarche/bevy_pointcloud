@@ -1,8 +1,7 @@
-use std::fmt::{Display, Formatter};
 use bevy_reflect::Reflect;
 /// Generated using claude.ai
-
 use slab::Slab;
+use std::fmt::{Display, Formatter};
 
 /// A stable handle used to reference an entry inside a `GenerationalSlab`.
 #[derive(Copy, Clone, Default, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Reflect)]
@@ -21,8 +20,8 @@ impl Display for NodeId {
 /// This ensures that old `NodeId`s become invalid once a slot is reused.
 #[derive(Debug, Clone, Reflect)]
 pub struct GenerationalSlab<T> {
-    slab: Slab<(usize, T)>,     // (generation, value)
-    generations: Vec<usize>,    // current generation per index
+    slab: Slab<(usize, T)>,  // (generation, value)
+    generations: Vec<usize>, // current generation per index
 }
 
 impl<T> Default for GenerationalSlab<T> {
@@ -36,7 +35,6 @@ pub struct VacantEntry<'a, T> {
     vacant_entry: slab::VacantEntry<'a, (usize, T)>,
     key: NodeId,
 }
-
 
 impl<'a, T> VacantEntry<'a, T> {
     /// Insert a value in the entry, returning a mutable reference to the value.
@@ -115,16 +113,11 @@ impl<T> GenerationalSlab<T> {
         // Get the current generation for this index.
         let generation = self.generations[index];
 
-
         VacantEntry {
             vacant_entry,
-            key: NodeId {
-                index,
-                generation,
-            },
+            key: NodeId { index, generation },
         }
     }
-
 
     /// Inserts a new value into the slab.
     /// Returns a `NodeId` with the current generation for that slot.
@@ -144,10 +137,7 @@ impl<T> GenerationalSlab<T> {
         // Effectively insert the value in the slab
         vacant_entry.insert((generation, value));
 
-        NodeId {
-            index,
-            generation,
-        }
+        NodeId { index, generation }
     }
 
     /// Returns a reference to the value if the generation matches.
@@ -185,8 +175,7 @@ impl<T> GenerationalSlab<T> {
         if let Some((stored_generation, _)) = self.slab.get(id.index) {
             if *stored_generation == id.generation {
                 // Increment generation before reusing the slot later.
-                self.generations[id.index] =
-                    self.generations[id.index].wrapping_add(1);
+                self.generations[id.index] = self.generations[id.index].wrapping_add(1);
 
                 // Remove and return the stored value.
                 let (_old_generation, value) = self.slab.remove(id.index);
@@ -197,16 +186,18 @@ impl<T> GenerationalSlab<T> {
     }
 
     /// Returns an iterator over all valid entries.
-    pub fn iter(&self) -> impl Iterator<Item=(NodeId, &T)> {
-        self.slab.iter().map(move |(index, (generation_value, value))| {
-            (
-                NodeId {
-                    index,
-                    generation: *generation_value,
-                },
-                value,
-            )
-        })
+    pub fn iter(&self) -> impl Iterator<Item = (NodeId, &T)> {
+        self.slab
+            .iter()
+            .map(move |(index, (generation_value, value))| {
+                (
+                    NodeId {
+                        index,
+                        generation: *generation_value,
+                    },
+                    value,
+                )
+            })
     }
 
     /// Returns the number of active entries.

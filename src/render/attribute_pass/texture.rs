@@ -1,27 +1,27 @@
-use crate::render::attribute_pass::pipeline::AttributePassPipeline;
-use crate::render::depth_pass::texture::ViewDepthPrepassTextures;
+use crate::render::{
+    attribute_pass::pipeline::AttributePassPipeline, depth_pass::texture::ViewDepthPrepassTextures,
+};
 use bevy_color::LinearRgba;
 use bevy_core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transmissive3d, Transparent3d};
-use bevy_ecs::prelude::*;
-use bevy_ecs::query::ROQueryItem;
-use bevy_ecs::system::SystemParamItem;
+use bevy_ecs::{prelude::*, query::ROQueryItem, system::SystemParamItem};
 use bevy_log::warn;
 use bevy_platform::collections::HashMap;
-use bevy_render::camera::ExtractedCamera;
-use bevy_render::prelude::*;
-use bevy_render::render_phase::{
-    PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass, ViewBinnedRenderPhases,
-    ViewSortedRenderPhases,
+use bevy_render::{
+    camera::ExtractedCamera,
+    prelude::*,
+    render_phase::{
+        PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass, ViewBinnedRenderPhases,
+        ViewSortedRenderPhases,
+    },
+    render_resource::{
+        binding_types::texture_2d, BindGroup, BindGroupEntries, BindGroupLayout, Extent3d,
+        ShaderStages, TextureDescriptor, TextureDimension, TextureFormat::Rgba32Float,
+        TextureSampleType, TextureUsages, TextureView,
+    },
+    renderer::RenderDevice,
+    texture::{ColorAttachment, TextureCache},
+    view::ExtractedView,
 };
-use bevy_render::render_resource::TextureFormat::Rgba32Float;
-use bevy_render::render_resource::binding_types::texture_2d;
-use bevy_render::render_resource::{
-    BindGroup, BindGroupEntries, BindGroupLayout, Extent3d, ShaderStages, TextureDescriptor,
-    TextureDimension, TextureSampleType, TextureUsages, TextureView,
-};
-use bevy_render::renderer::RenderDevice;
-use bevy_render::texture::{ColorAttachment, TextureCache};
-use bevy_render::view::ExtractedView;
 
 #[derive(Component)]
 pub struct ViewAttributePrepassTextures {
@@ -121,10 +121,8 @@ impl FromWorld for AttributePassLayout {
         AttributePassLayout {
             layout: render_device.create_bind_group_layout(
                 "pcl_attribute_layout",
-                &vec![
-                    texture_2d(TextureSampleType::Float { filterable: true })
-                        .build(0, ShaderStages::FRAGMENT),
-                ],
+                &vec![texture_2d(TextureSampleType::Float { filterable: true })
+                    .build(0, ShaderStages::FRAGMENT)],
             ),
         }
     }

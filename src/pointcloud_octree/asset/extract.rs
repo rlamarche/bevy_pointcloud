@@ -1,23 +1,34 @@
-use crate::octree::extract::OctreeNodeExtraction;
-use crate::octree::extract::render::node::{PrepareOctreeNodeError, RenderOctreeNode};
-use crate::octree::node::OctreeNode;
-use crate::pointcloud_octree::asset::data::{PointCloudNodeData, PointData};
-use crate::pointcloud_octree::extract::{PointCloudNodeDataUniform, RenderPointCloudNodeData};
+use crate::{
+    octree::{
+        extract::{
+            render::node::{PrepareOctreeNodeError, RenderOctreeNode},
+            OctreeNodeExtraction,
+        },
+        node::OctreeNode,
+    },
+    pointcloud_octree::{
+        asset::data::{PointCloudNodeData, PointData},
+        extract::{PointCloudNodeDataUniform, RenderPointCloudNodeData},
+    },
+};
 
-use crate::octree::asset::Octree;
-use crate::octree::extract::render::asset::RenderOctreeNodeData;
-use crate::pointcloud_octree::component::PointCloudOctree3d;
+use crate::{
+    octree::{asset::Octree, extract::render::asset::RenderOctreeNodeData},
+    pointcloud_octree::component::PointCloudOctree3d,
+};
 use bevy_asset::AssetId;
 use bevy_ecs::{
     prelude::*,
-    system::{SystemParamItem, lifetimeless::SRes},
+    system::{lifetimeless::SRes, SystemParamItem},
 };
 use bevy_reflect::TypePath;
-use bevy_render::render_resource::binding_types::uniform_buffer;
-use bevy_render::render_resource::{
-    BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, ShaderStages, UniformBuffer,
+use bevy_render::{
+    render_resource::{
+        binding_types::uniform_buffer, BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries,
+        ShaderStages, UniformBuffer,
+    },
+    renderer::{RenderDevice, RenderQueue},
 };
-use bevy_render::renderer::{RenderDevice, RenderQueue};
 
 #[derive(TypePath)]
 pub struct PointCloudOctreeExtraction;

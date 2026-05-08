@@ -4,5 +4,6 @@
 /assets
 /node_modules
 /wasm
+/wasm_copc
 /package.json
 /package-lock.json

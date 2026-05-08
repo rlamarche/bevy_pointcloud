@@ -1,11 +1,14 @@
-use super::hierarchy::{HierarchyNode, HierarchyNodeStatus, HierarchyOctreeNode};
-use super::node::{NodeData, NodeStatus, OctreeNode};
-use crate::octree::storage::{GenerationalSlab, NodeId};
-use crate::octree::visibility::iter_one_bits;
+use super::{
+    hierarchy::{HierarchyNode, HierarchyNodeStatus, HierarchyOctreeNode},
+    node::{NodeData, NodeStatus, OctreeNode},
+};
+use crate::octree::{
+    storage::{GenerationalSlab, NodeId},
+    visibility::iter_one_bits,
+};
 use bevy_asset::Asset;
 use bevy_reflect::TypePath;
-use std::fmt::Debug;
-use std::sync::Arc;
+use std::{fmt::Debug, sync::Arc};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -183,7 +186,10 @@ impl<T: NodeData> Octree<T> {
     }
 
     pub fn insert_node_data(&mut self, node_id: NodeId, data: T) -> Result<(), UpdateNodeError> {
-        let node = self.hierarchy.get_mut(node_id).ok_or(UpdateNodeError::NodeNotFound)?;
+        let node = self
+            .hierarchy
+            .get_mut(node_id)
+            .ok_or(UpdateNodeError::NodeNotFound)?;
 
         node.data = Some(data);
         node.status = NodeStatus::Loaded;
@@ -194,28 +200,40 @@ impl<T: NodeData> Octree<T> {
     }
 
     pub fn set_node_hierarchy_loading(&mut self, node_id: NodeId) -> Result<(), UpdateNodeError> {
-        let node = self.hierarchy.get_mut(node_id).ok_or(UpdateNodeError::NodeNotFound)?;
+        let node = self
+            .hierarchy
+            .get_mut(node_id)
+            .ok_or(UpdateNodeError::NodeNotFound)?;
         node.hierarchy.status = HierarchyNodeStatus::Loading;
 
         Ok(())
     }
 
     pub fn unset_node_hierarchy_loading(&mut self, node_id: NodeId) -> Result<(), UpdateNodeError> {
-        let node = self.hierarchy.get_mut(node_id).ok_or(UpdateNodeError::NodeNotFound)?;
+        let node = self
+            .hierarchy
+            .get_mut(node_id)
+            .ok_or(UpdateNodeError::NodeNotFound)?;
         node.hierarchy.status = HierarchyNodeStatus::Proxy;
 
         Ok(())
     }
 
     pub fn set_node_data_loading(&mut self, node_id: NodeId) -> Result<(), UpdateNodeError> {
-        let node = self.hierarchy.get_mut(node_id).ok_or(UpdateNodeError::NodeNotFound)?;
+        let node = self
+            .hierarchy
+            .get_mut(node_id)
+            .ok_or(UpdateNodeError::NodeNotFound)?;
         node.status = NodeStatus::Loading;
 
         Ok(())
     }
 
     pub fn unset_node_data_loading(&mut self, node_id: NodeId) -> Result<(), UpdateNodeError> {
-        let node = self.hierarchy.get_mut(node_id).ok_or(UpdateNodeError::NodeNotFound)?;
+        let node = self
+            .hierarchy
+            .get_mut(node_id)
+            .ok_or(UpdateNodeError::NodeNotFound)?;
         node.status = NodeStatus::HierarchyOnly;
 
         Ok(())

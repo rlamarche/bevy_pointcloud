@@ -3,15 +3,17 @@ pub mod resources;
 pub mod systems;
 mod task;
 
-use super::asset::Octree;
-use super::hierarchy::{HierarchyNode, HierarchyOctreeNode};
-use super::loader::{ErasedOctreeLoader, OctreeLoader};
-use super::node::NodeData;
-use super::visibility::CheckOctreeNodesVisibility;
-use crate::octree::server::systems::{
-    evict_octree_nodes, update_octree_server_node_eviction_queue,
+use super::{
+    asset::Octree,
+    hierarchy::{HierarchyNode, HierarchyOctreeNode},
+    loader::{ErasedOctreeLoader, OctreeLoader},
+    node::NodeData,
+    visibility::CheckOctreeNodesVisibility,
 };
-use crate::octree::storage::NodeId;
+use crate::octree::{
+    server::systems::{evict_octree_nodes, update_octree_server_node_eviction_queue},
+    storage::NodeId,
+};
 use bevy_app::prelude::*;
 use bevy_asset::{AssetHandleProvider, AssetId, Assets, Handle};
 use bevy_ecs::prelude::*;
@@ -20,10 +22,8 @@ use bevy_platform::collections::HashMap;
 use bevy_tasks::IoTaskPool;
 use crossbeam::channel::{Receiver, Sender};
 use process::process_octree_load_tasks;
-use resources::OctreeLoadTasks;
-use resources::{OctreeServerEvictionQueue, OctreeServerSettings};
-use std::marker::PhantomData;
-use std::sync::Arc;
+use resources::{OctreeLoadTasks, OctreeServerEvictionQueue, OctreeServerSettings};
+use std::{marker::PhantomData, sync::Arc};
 use task::spawn_async_task;
 use thiserror::Error;
 
@@ -421,9 +421,20 @@ pub fn handle_internal_octree_events<T>(
                 loader,
             } => {
                 // store the asset in the assets resource
-                assets
-                    .insert(id, loaded_asset)
-                    .expect("the AssetId is always valid");
+                match assets.insert(id, loaded_asset) {
+                    Ok(_) => {}
+                    Err(err) => match err {
+                        bevy_asset::InvalidGenerationError::Occupied { .. } => {
+                            panic!("Invalid asset id encountered");
+                        }
+                        bevy_asset::InvalidGenerationError::Removed { .. } => {
+                            // The asset has been removed, continue with no error
+                            continue;
+                        }
+                    },
+                }
+
+                // .expect("the AssetId is always valid");
 
                 // store the loader in the server, this is where we need to borrow `server` as mutable
                 server.loaders.insert(id, loader);

@@ -1,11 +1,9 @@
 use bevy_math::{DVec3, UVec3};
 use copc_streaming::Aabb;
 
-
 const GRID_SIZE: f64 = 32.0;
 const GRID_SIZE_UINT: u32 = GRID_SIZE as u32;
 const GRID_SIZE_SPLAT: UVec3 = UVec3::splat(GRID_SIZE as u32 - 1);
-
 
 fn to_index(position: &DVec3, size: &DVec3) -> usize {
     let index = (GRID_SIZE * position / size)
@@ -16,7 +14,6 @@ fn to_index(position: &DVec3, size: &DVec3) -> usize {
 }
 
 pub fn compute_density(points: &Vec<las::Point>, aabb: &Aabb) -> u32 {
-
     let size = DVec3::new(
         aabb.max[0] - aabb.min[0],
         aabb.max[1] - aabb.min[1],

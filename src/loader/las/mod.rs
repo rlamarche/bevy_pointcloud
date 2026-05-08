@@ -1,7 +1,6 @@
 use crate::point_cloud::{PointCloud, PointCloudData};
 use bevy_app::{App, Plugin};
-use bevy_asset::io::Reader;
-use bevy_asset::{AssetApp, AssetLoader, LoadContext};
+use bevy_asset::{io::Reader, AssetApp, AssetLoader, LoadContext};
 use bevy_log::info;
 use bevy_math::Vec3;
 use bevy_reflect::TypePath;

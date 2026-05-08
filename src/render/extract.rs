@@ -1,6 +1,7 @@
-use crate::point_cloud::PointCloud3d;
-use crate::point_cloud_material::PointCloudMaterial3d;
-use crate::render::point_cloud_uniform::PointCloudUniform;
+use crate::{
+    point_cloud::PointCloud3d, point_cloud_material::PointCloudMaterial3d,
+    render::point_cloud_uniform::PointCloudUniform,
+};
 use bevy_ecs::query::QueryItem;
 use bevy_render::extract_component::ExtractComponent;
 use bevy_transform::prelude::GlobalTransform;

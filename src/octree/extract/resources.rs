@@ -7,7 +7,7 @@ use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 
 use crate::octree::{
-    extract::{OctreeNodeExtraction, render::buffer::RenderNodeData},
+    extract::{render::buffer::RenderNodeData, OctreeNodeExtraction},
     node::{NodeData, OctreeNodeKey},
 };
 
@@ -56,7 +56,7 @@ impl<E: OctreeNodeExtraction> FromWorld for OctreeNodeAllocations<E> {
 
         Self {
             allocator: Allocator::new(max_instances),
-            max_instances: max_instances,
+            max_instances,
             allocations: HashMap::new(),
             freed_nodes_this_frame: Vec::new(),
             allocated_nodes_this_frame: Vec::new(),
@@ -69,7 +69,8 @@ impl<E: OctreeNodeExtraction> FromWorld for OctreeNodeAllocations<E> {
 /// Nodes that are seen less recently are first in this queue.
 #[derive(Resource)]
 pub struct ExtractOctreeNodeEvictionQueue<E: OctreeNodeExtraction> {
-    pub eviction_queue: PriorityQueue<OctreeNodeKey<E::NodeData>, Reverse<OctreeNodeEvictionPriority>>,
+    pub eviction_queue:
+        PriorityQueue<OctreeNodeKey<E::NodeData>, Reverse<OctreeNodeEvictionPriority>>,
 }
 
 impl<E: OctreeNodeExtraction> Default for ExtractOctreeNodeEvictionQueue<E> {

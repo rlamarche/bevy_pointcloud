@@ -1,20 +1,20 @@
 use std::marker::PhantomData;
 
-use crate::pointcloud_octree::render::phase::{
-    PointCloudOctree3dNodePhase, ViewOctreeNodesRenderDepthPhases,
+use crate::{
+    pointcloud_octree::render::phase::{
+        PointCloudOctree3dNodePhase, ViewOctreeNodesRenderDepthPhases,
+    },
+    render::depth_pass::texture::ViewDepthPrepassTextures,
 };
-use crate::render::depth_pass::texture::ViewDepthPrepassTextures;
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::prelude::*;
-use bevy_render::render_phase::{BinnedPhaseItem, TrackedRenderPass};
-use bevy_render::render_resource::{CommandEncoderDescriptor, StoreOp};
-use bevy_render::view::ViewDepthTexture;
 use bevy_render::{
     camera::ExtractedCamera,
     render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode},
-    render_resource::RenderPassDescriptor,
+    render_phase::{BinnedPhaseItem, TrackedRenderPass},
+    render_resource::{CommandEncoderDescriptor, RenderPassDescriptor, StoreOp},
     renderer::RenderContext,
-    view::ExtractedView,
+    view::{ExtractedView, ViewDepthTexture},
 };
 
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
@@ -64,12 +64,10 @@ impl<BPI: BinnedPhaseItem> ViewNode for DepthPassOctreeNode<BPI> {
             return Ok(());
         };
 
-        let color_attachments = vec![
-            view_prepass_textures
-                .depth
-                .as_ref()
-                .map(|attribute_texture| attribute_texture.get_attachment()),
-        ];
+        let color_attachments = vec![view_prepass_textures
+            .depth
+            .as_ref()
+            .map(|attribute_texture| attribute_texture.get_attachment())];
 
         let depth_stencil_attachment = Some(view_depth_texture.get_attachment(StoreOp::Store));
 

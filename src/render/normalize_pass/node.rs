@@ -1,15 +1,14 @@
-use crate::render::normalize_pass::pipeline::NormalizePassPipelineId;
-use crate::render::normalize_pass::texture::NormalizePassBindGroup;
-use bevy_ecs::prelude::*;
-use bevy_ecs::query::QueryItem;
-use bevy_render::view::ViewDepthTexture;
+use crate::render::normalize_pass::{
+    eye_dome_lighting::NormalizePassEdlBindgroup, pipeline::NormalizePassPipelineId,
+    texture::NormalizePassBindGroup,
+};
+use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_render::{
     render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode},
     render_resource::*,
     renderer::RenderContext,
-    view::ViewTarget,
+    view::{ViewDepthTexture, ViewTarget},
 };
-use crate::render::normalize_pass::eye_dome_lighting::NormalizePassEdlBindgroup;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
 pub struct NormalizePassLabel;
@@ -31,7 +30,9 @@ impl ViewNode for NormalizePassNode {
         &self,
         _graph: &mut RenderGraphContext,
         render_context: &mut RenderContext,
-        (view_target, depth, textures_bind_group, edl_bind_group, pipeline_id): QueryItem<Self::ViewQuery>,
+        (view_target, depth, textures_bind_group, edl_bind_group, pipeline_id): QueryItem<
+            Self::ViewQuery,
+        >,
         world: &World,
     ) -> Result<(), NodeRunError> {
         let pipeline_cache = world.resource::<PipelineCache>();

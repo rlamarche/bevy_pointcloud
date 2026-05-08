@@ -4,18 +4,20 @@ use bevy_color::LinearRgba;
 use bevy_core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transmissive3d, Transparent3d};
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashMap;
-use bevy_render::camera::ExtractedCamera;
-use bevy_render::prelude::*;
-use bevy_render::render_phase::{ViewBinnedRenderPhases, ViewSortedRenderPhases};
-use bevy_render::render_resource::TextureFormat::{R32Float, Rg32Float};
-use bevy_render::render_resource::binding_types::texture_2d;
-use bevy_render::render_resource::{
-    BindGroup, BindGroupLayout, Extent3d, ShaderStages, TextureDescriptor, TextureDimension,
-    TextureSampleType, TextureUsages, TextureView,
+use bevy_render::{
+    camera::ExtractedCamera,
+    prelude::*,
+    render_phase::{ViewBinnedRenderPhases, ViewSortedRenderPhases},
+    render_resource::{
+        binding_types::texture_2d,
+        BindGroup, BindGroupLayout, Extent3d, ShaderStages, TextureDescriptor, TextureDimension,
+        TextureFormat::{R32Float, Rg32Float},
+        TextureSampleType, TextureUsages, TextureView,
+    },
+    renderer::RenderDevice,
+    texture::{ColorAttachment, TextureCache},
+    view::ExtractedView,
 };
-use bevy_render::renderer::RenderDevice;
-use bevy_render::texture::{ColorAttachment, TextureCache};
-use bevy_render::view::ExtractedView;
 
 /// Textures that are written to by the prepass.
 #[derive(Component)]

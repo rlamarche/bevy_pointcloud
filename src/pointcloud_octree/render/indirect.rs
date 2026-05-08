@@ -34,17 +34,11 @@ impl RenderVisibleNodesIndirectBuffers {
         })
     }
 
-    pub fn get(
-        &self,
-        entity: &Entity,
-    ) -> Option<&BufferVec<IndirectParametersNonIndexed>> {
+    pub fn get(&self, entity: &Entity) -> Option<&BufferVec<IndirectParametersNonIndexed>> {
         self.buffers.get(entity)
     }
 
-    fn remove(
-        &mut self,
-        entity: &Entity,
-    ) -> Option<BufferVec<IndirectParametersNonIndexed>> {
+    fn remove(&mut self, entity: &Entity) -> Option<BufferVec<IndirectParametersNonIndexed>> {
         self.buffers.remove(entity)
     }
 }
@@ -79,7 +73,6 @@ pub fn prepare_indirect_buffer(
 
         for (entity, (asset_id, visible_nodes)) in &visible_octree_nodes.octrees {
             let Some(render_octree) = render_octrees.get(*asset_id) else {
-                debug!("Missing octree when preparing indirect buffer");
                 continue;
             };
 

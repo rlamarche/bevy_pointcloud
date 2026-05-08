@@ -1,10 +1,13 @@
-use crate::render::NORMALIZE_SHADER_HANDLE;
-use crate::render::normalize_pass::EyeDomeLightingUniformBindgroupLayout;
+use crate::render::{
+    normalize_pass::EyeDomeLightingUniformBindgroupLayout, NORMALIZE_SHADER_HANDLE,
+};
 use bevy_core_pipeline::FullscreenShader;
 use bevy_ecs::prelude::*;
 use bevy_image::BevyDefault;
-use bevy_render::render_resource::binding_types::texture_2d_multisampled;
-use bevy_render::render_resource::{binding_types::texture_2d, *};
+use bevy_render::render_resource::{
+    binding_types::{texture_2d, texture_2d_multisampled},
+    *,
+};
 use bevy_shader::ShaderDefVal;
 
 #[derive(PartialEq, Eq, Hash, Clone)]

@@ -1,11 +1,13 @@
 use crate::render::phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey};
 use bevy_ecs::prelude::*;
-use bevy_render::render_phase::{
-    BinnedPhaseItem, CachedRenderPipelinePhaseItem, DrawFunctionId, PhaseItem
-    , PhaseItemExtraIndex,
+use bevy_render::{
+    render_phase::{
+        BinnedPhaseItem, CachedRenderPipelinePhaseItem, DrawFunctionId, PhaseItem,
+        PhaseItemExtraIndex,
+    },
+    render_resource::CachedRenderPipelineId,
+    sync_world::MainEntity,
 };
-use bevy_render::render_resource::CachedRenderPipelineId;
-use bevy_render::sync_world::MainEntity;
 use std::ops::Range;
 
 pub struct PointCloud3dAttributePhase {

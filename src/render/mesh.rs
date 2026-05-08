@@ -1,7 +1,9 @@
 use bevy_ecs::prelude::*;
 use bevy_math::prelude::*;
-use bevy_render::render_resource::{Buffer, BufferInitDescriptor, BufferUsages, RawBufferVec};
-use bevy_render::renderer::{RenderDevice, RenderQueue};
+use bevy_render::{
+    render_resource::{Buffer, BufferInitDescriptor, BufferUsages, RawBufferVec},
+    renderer::{RenderDevice, RenderQueue},
+};
 use bytemuck::{Pod, Zeroable};
 
 static VERTICES: [Vertex; 4] = [

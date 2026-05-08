@@ -1,15 +1,16 @@
-use bevy_ecs::prelude::*;
-use bevy_ecs::query::ROQueryItem;
-use bevy_ecs::system::SystemParamItem;
-use bevy_ecs::system::lifetimeless::Read;
+use bevy_ecs::{
+    prelude::*,
+    query::ROQueryItem,
+    system::{lifetimeless::Read, SystemParamItem},
+};
 use bevy_math::Mat4;
 use bevy_reflect::TypePath;
-use bevy_render::render_asset::RenderAssets;
-use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
-use bevy_render::render_resource::{
-    AsBindGroup, BindGroupLayoutDescriptor, PipelineCache, PreparedBindGroup,
+use bevy_render::{
+    render_asset::RenderAssets,
+    render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
+    render_resource::{AsBindGroup, BindGroupLayoutDescriptor, PipelineCache, PreparedBindGroup},
+    renderer::RenderDevice,
 };
-use bevy_render::renderer::RenderDevice;
 
 #[derive(Component, TypePath, AsBindGroup, Clone, Debug)]
 pub struct PointCloudUniform {

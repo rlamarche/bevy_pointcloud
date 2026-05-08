@@ -1,7 +1,8 @@
-use std::collections::BinaryHeap;
-use std::ops::{Deref, DerefMut};
-use crate::octree::node::NodeData;
-use crate::octree::visibility::stack::StackedOctreeNode;
+use crate::octree::{node::NodeData, visibility::stack::StackedOctreeNode};
+use std::{
+    collections::BinaryHeap,
+    ops::{Deref, DerefMut},
+};
 
 /// A RAII guard to safely use a 'static BinaryHeap with short-lived references.
 pub struct HeapGuard<'a, 'b, T: NodeData> {
@@ -20,7 +21,7 @@ impl<'a, 'b, T: NodeData> HeapGuard<'a, 'b, T> {
             // Memory layout of Node<'static> and Node<'a> is identical (pointer erasure).
             let transmuted = std::mem::transmute::<
                 &mut BinaryHeap<StackedOctreeNode<'static, T>>,
-                &mut BinaryHeap<StackedOctreeNode<'a, T>>
+                &mut BinaryHeap<StackedOctreeNode<'a, T>>,
             >(storage);
 
             Self { inner: transmuted }
@@ -38,9 +39,13 @@ impl<'a, 'b, T: NodeData> Drop for HeapGuard<'a, 'b, T> {
 // Deref allows you to use the guard exactly like a BinaryHeap.
 impl<'a, 'b, T: NodeData> Deref for HeapGuard<'a, 'b, T> {
     type Target = BinaryHeap<StackedOctreeNode<'a, T>>;
-    fn deref(&self) -> &Self::Target { self.inner }
+    fn deref(&self) -> &Self::Target {
+        self.inner
+    }
 }
 
 impl<'a, 'b, T: NodeData> DerefMut for HeapGuard<'a, 'b, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target { self.inner }
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.inner
+    }
 }

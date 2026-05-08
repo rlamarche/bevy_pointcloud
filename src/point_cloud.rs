@@ -1,9 +1,8 @@
 use bevy_asset::{AsAssetId, Asset, AssetId, Handle};
 use bevy_derive::{Deref, DerefMut};
-use bevy_ecs::component::Component;
-use bevy_ecs::reflect::ReflectComponent;
+use bevy_ecs::{component::Component, reflect::ReflectComponent};
 use bevy_math::Vec3;
-use bevy_reflect::{Reflect, std_traits::ReflectDefault};
+use bevy_reflect::{std_traits::ReflectDefault, Reflect};
 use bevy_transform::prelude::*;
 use bytemuck::{Pod, Zeroable};
 

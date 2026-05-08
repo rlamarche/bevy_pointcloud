@@ -1,10 +1,11 @@
 use crate::point_cloud::{PointCloud, PointCloudData};
 use bevy_asset::AssetId;
-use bevy_ecs::system::SystemParamItem;
-use bevy_ecs::system::lifetimeless::SRes;
-use bevy_render::render_asset::{PrepareAssetError, RenderAsset};
-use bevy_render::render_resource::{Buffer, BufferInitDescriptor, BufferUsages};
-use bevy_render::renderer::RenderDevice;
+use bevy_ecs::system::{lifetimeless::SRes, SystemParamItem};
+use bevy_render::{
+    render_asset::{PrepareAssetError, RenderAsset},
+    render_resource::{Buffer, BufferInitDescriptor, BufferUsages},
+    renderer::RenderDevice,
+};
 
 /// The render world representation of a [`PointCloud`].
 pub struct RenderPointCloud {

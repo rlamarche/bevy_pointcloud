@@ -1,9 +1,7 @@
-use std::any::Any;
-use std::sync::Arc;
-use crate::octree::storage::NodeId;
+use crate::octree::{loader::LoadedHierarchyNode, storage::NodeId};
 use bevy_camera::primitives::Aabb;
 use bevy_reflect::TypePath;
-use crate::octree::loader::LoadedHierarchyNode;
+use std::{any::Any, sync::Arc};
 
 #[derive(Debug, Clone, Copy)]
 pub enum HierarchyNodeStatus {
@@ -19,8 +17,7 @@ impl<T: Send + Sync + TypePath + Clone> HierarchyNodeData for T {}
 /// This type contains the hierarchy only data of an octree node
 /// It can be in state where it's loaded or not (`status`)
 #[derive(Clone, Debug)]
-pub struct HierarchyNode
-{
+pub struct HierarchyNode {
     pub status: HierarchyNodeStatus,
     pub child_index: u8,
     pub parent_id: Option<usize>,
@@ -29,8 +26,7 @@ pub struct HierarchyNode
 }
 
 #[derive(Clone, Debug)]
-pub struct HierarchyOctreeNode
-{
+pub struct HierarchyOctreeNode {
     pub id: NodeId,
     // e.g. r, r0, r3, r4, r01, r07, r30, ...
     pub name: Arc<str>,

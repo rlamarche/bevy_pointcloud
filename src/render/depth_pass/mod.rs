@@ -3,39 +3,39 @@ pub mod phase;
 pub mod pipeline;
 pub mod texture;
 
-use crate::point_cloud::PointCloud3d;
-use crate::render::depth_pass::node::{DepthPassLabel, DepthPassNode};
-use crate::render::depth_pass::pipeline::{DepthPipeline, DepthPipelineKey};
-use crate::render::depth_pass::texture::{DepthPassLayout, prepare_depth_pass_textures};
-use crate::render::draw::DrawPointCloud;
-use crate::render::material::SetPointCloudMaterialGroup;
-use crate::render::phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey};
-use crate::render::point_cloud_uniform::SetPointCloudUniformGroup;
-use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
+use crate::{
+    point_cloud::PointCloud3d,
+    render::{
+        depth_pass::{
+            node::{DepthPassLabel, DepthPassNode},
+            pipeline::{DepthPipeline, DepthPipelineKey},
+            texture::{prepare_depth_pass_textures, DepthPassLayout},
+        },
+        draw::DrawPointCloud,
+        material::SetPointCloudMaterialGroup,
+        phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey},
+        point_cloud_uniform::SetPointCloudUniformGroup,
+        PointCloudRenderMode, PointCloudRenderModeOpt,
+    },
+};
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
-use bevy_ecs::change_detection::Tick;
-use bevy_ecs::prelude::*;
+use bevy_ecs::{change_detection::Tick, prelude::*};
 use bevy_log::prelude::*;
-use bevy_pbr::{
-    MeshPipelineKey, SetMeshViewBindGroup,
-};
+use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
 use bevy_platform::collections::HashSet;
-use bevy_render::batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport};
-use bevy_render::render_graph::RenderGraphExt;
-use bevy_render::render_phase::{BinnedRenderPhaseType, InputUniformIndex, ViewBinnedRenderPhases};
-use bevy_render::render_resource::SpecializedRenderPipelines;
-use bevy_render::view::NoIndirectDrawing;
 use bevy_render::{
-    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
+    batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport},
     prelude::*,
-    render_graph::ViewNodeRunner,
+    render_graph::{RenderGraphExt, ViewNodeRunner},
     render_phase::{
-        AddRenderCommand, DrawFunctions, SetItemPipeline,
+        AddRenderCommand, BinnedRenderPhaseType, DrawFunctions, InputUniformIndex, SetItemPipeline,
+        ViewBinnedRenderPhases,
     },
-    render_resource::PipelineCache,
-    view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity},
+    render_resource::{PipelineCache, SpecializedRenderPipelines},
+    view::{ExtractedView, NoIndirectDrawing, RenderVisibleEntities, RetainedViewEntity},
+    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
 };
 use phase::PointCloud3dDepthPhase;
 
@@ -117,7 +117,11 @@ fn extract_camera_phases(
         pointcloud3d_phases.prepare_for_new_frame(retained_view_entity, gpu_preprocessing_mode);
 
         // clear phases between each iteration
-        pointcloud3d_phases.get_mut(&retained_view_entity).unwrap().non_mesh_items.clear();
+        pointcloud3d_phases
+            .get_mut(&retained_view_entity)
+            .unwrap()
+            .non_mesh_items
+            .clear();
 
         live_entities.insert(retained_view_entity);
     }
@@ -158,8 +162,7 @@ fn queue_depth_pass(
             is_octree: false,
         };
 
-        let pipeline_id =
-            pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, depth_key);
+        let pipeline_id = pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, depth_key);
 
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
         for (render_entity, main_entity) in visible_entities.iter::<PointCloud3d>() {

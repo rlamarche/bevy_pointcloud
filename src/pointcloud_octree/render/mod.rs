@@ -12,17 +12,17 @@ pub mod depth_pass;
 pub mod indirect;
 
 #[cfg(not(feature = "webgl"))]
-use indirect::{RenderVisibleNodesIndirectBuffers, prepare_indirect_buffer};
+use indirect::{prepare_indirect_buffer, RenderVisibleNodesIndirectBuffers};
 
 use super::asset::extract::PointCloudOctreeNodeUniformLayout;
 use bevy_app::prelude::*;
 use bevy_camera::Camera3d;
 use bevy_ecs::prelude::*;
 use bevy_render::{Render, RenderApp, RenderSystems};
-use data::{PointCloudOctree3dUniformLayout, prepare_point_cloud_octree_3d_uniform};
+use data::{prepare_point_cloud_octree_3d_uniform, PointCloudOctree3dUniformLayout};
 use prepare::{
-    VisibleNodesTextureLayout, prepare_visible_nodes_texture,
-    prepare_visible_nodes_texture_bind_group,
+    prepare_visible_nodes_texture, prepare_visible_nodes_texture_bind_group,
+    VisibleNodesTextureLayout,
 };
 
 #[derive(Default)]

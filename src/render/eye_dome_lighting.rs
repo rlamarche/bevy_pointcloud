@@ -3,15 +3,21 @@ use bevy_camera::Camera;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use bevy_math::Vec4;
-use bevy_platform::collections::HashMap;
-use bevy_platform::collections::hash_map::{Entry, VacantEntry};
-use bevy_platform::hash::FixedHasher;
-use bevy_render::Extract;
-use bevy_render::render_resource::binding_types::uniform_buffer;
-use bevy_render::render_resource::{
-    BindGroupLayoutDescriptor, BindGroupLayoutEntries, ShaderStages, ShaderType,
+use bevy_platform::{
+    collections::{
+        hash_map::{Entry, VacantEntry},
+        HashMap,
+    },
+    hash::FixedHasher,
 };
-use bevy_render::sync_world::RenderEntity;
+use bevy_render::{
+    render_resource::{
+        binding_types::uniform_buffer, BindGroupLayoutDescriptor, BindGroupLayoutEntries,
+        ShaderStages, ShaderType,
+    },
+    sync_world::RenderEntity,
+    Extract,
+};
 
 #[derive(Resource, Default)]
 pub struct NeighboursCache {

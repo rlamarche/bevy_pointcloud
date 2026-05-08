@@ -1,46 +1,51 @@
 pub mod node;
 
-use super::attribute_pass::node::AttributePassOctreeLabel;
-use super::depth_pass::node::DepthPassOctreeLabel;
-use super::phase::PointCloudOctree3dBinKey;
-use crate::octree::extract::render::components::RenderVisibleOctreeNodes;
-use crate::pointcloud_octree::asset::data::PointCloudNodeData;
-use crate::pointcloud_octree::component::PointCloudOctree3d;
-use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
-#[cfg(not(feature = "webgl"))]
-use crate::pointcloud_octree::render::draw::DrawPointCloudOctreeIndirect;
-use crate::pointcloud_octree::render::draw::SetRenderOctreeUniformGroup;
+use super::{
+    attribute_pass::node::AttributePassOctreeLabel, depth_pass::node::DepthPassOctreeLabel,
+    phase::PointCloudOctree3dBinKey,
+};
 #[cfg(feature = "webgl")]
 use crate::pointcloud_octree::render::draw::DrawPointCloudOctree;
-use crate::pointcloud_octree::render::draw::SetPointCloudOctreeNodeUniformGroup;
-use crate::pointcloud_octree::render::phase::{
-    PointCloudOctree3dNodePhase, ViewOctreeNodesRenderAttributePhases,
+#[cfg(not(feature = "webgl"))]
+use crate::pointcloud_octree::render::draw::DrawPointCloudOctreeIndirect;
+use crate::{
+    octree::extract::render::components::RenderVisibleOctreeNodes,
+    pointcloud_octree::{
+        asset::data::PointCloudNodeData,
+        component::PointCloudOctree3d,
+        render::{
+            data::SetPointCloudOctree3dUniformGroup,
+            draw::{SetPointCloudOctreeNodeUniformGroup, SetRenderOctreeUniformGroup},
+            phase::{PointCloudOctree3dNodePhase, ViewOctreeNodesRenderAttributePhases},
+            prepare::SetVisibleNodesTexture,
+        },
+    },
+    render::{
+        attribute_pass::{
+            pipeline::{AttributePassPipeline, AttributePipelineKey},
+            texture::prepare_attribute_pass_bind_groups,
+        },
+        material::SetPointCloudMaterialGroup,
+        normalize_pass::node::NormalizePassLabel,
+        phase::PointCloud3dBatchSetKey,
+    },
 };
-use crate::pointcloud_octree::render::prepare::SetVisibleNodesTexture;
-use crate::render::attribute_pass::pipeline::{AttributePassPipeline, AttributePipelineKey};
-use crate::render::attribute_pass::texture::prepare_attribute_pass_bind_groups;
-use crate::render::material::SetPointCloudMaterialGroup;
-use crate::render::normalize_pass::node::NormalizePassLabel;
-use crate::render::phase::PointCloud3dBatchSetKey;
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::Core3d;
-use bevy_ecs::change_detection::Tick;
-use bevy_ecs::prelude::*;
+use bevy_ecs::{change_detection::Tick, prelude::*};
 use bevy_log::prelude::*;
 use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
 use bevy_platform::collections::HashSet;
-use bevy_render::batching::gpu_preprocessing::GpuPreprocessingSupport;
-use bevy_render::render_graph::{RenderGraphExt, ViewNodeRunner};
-use bevy_render::render_phase::SetItemPipeline;
-use bevy_render::render_resource::{PipelineCache, SpecializedRenderPipelines};
-use bevy_render::sync_world::MainEntity;
-use bevy_render::view::ExtractedView;
 use bevy_render::{
-    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
+    batching::gpu_preprocessing::GpuPreprocessingSupport,
     prelude::*,
-    render_phase::{AddRenderCommand, DrawFunctions},
-    view::RetainedViewEntity,
+    render_graph::{RenderGraphExt, ViewNodeRunner},
+    render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline},
+    render_resource::{PipelineCache, SpecializedRenderPipelines},
+    sync_world::MainEntity,
+    view::{ExtractedView, RetainedViewEntity},
+    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
 };
 
 pub struct AttributePassPlugin;

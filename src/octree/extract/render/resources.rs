@@ -1,12 +1,16 @@
 use std::marker::PhantomData;
 
-use super::asset::{RenderOctree, RenderOctreeNodeData};
-use super::node::RenderOctreeNode;
-use crate::octree::asset::Octree;
-use crate::octree::extract::OctreeNodeExtraction;
-use crate::octree::extract::render::asset::RenderOctreeNodeAllocation;
-use crate::octree::extract::resources::NodeAllocation;
-use crate::octree::storage::NodeId;
+use super::{
+    asset::{RenderOctree, RenderOctreeNodeData},
+    node::RenderOctreeNode,
+};
+use crate::octree::{
+    asset::Octree,
+    extract::{
+        render::asset::RenderOctreeNodeAllocation, resources::NodeAllocation, OctreeNodeExtraction,
+    },
+    storage::NodeId,
+};
 use bevy_asset::AssetId;
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashMap;

@@ -4,15 +4,21 @@ pub mod extract;
 pub mod render;
 pub mod visibility;
 
-use crate::octree::OctreeAssetPlugin;
-use crate::octree::extract::ExtractVisibleOctreeNodesPlugin;
-use crate::octree::server::{OctreeServer, OctreeServerPlugin};
-use crate::octree::visibility::OctreeVisiblityPlugin;
-use crate::octree::visibility::components::OctreeVisibilitySettings;
-use crate::octree::visibility::filter::ScreenPixelRadiusFilter;
-use crate::pointcloud_octree::asset::data::PointCloudNodeData;
-use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
-use crate::pointcloud_octree::visibility::PointCloudOctreePointBudget;
+use crate::{
+    octree::{
+        extract::ExtractVisibleOctreeNodesPlugin,
+        server::{OctreeServer, OctreeServerPlugin},
+        visibility::{
+            components::OctreeVisibilitySettings, filter::ScreenPixelRadiusFilter,
+            OctreeVisiblityPlugin,
+        },
+        OctreeAssetPlugin,
+    },
+    pointcloud_octree::{
+        asset::data::PointCloudNodeData, extract::RenderPointCloudNodeData,
+        visibility::PointCloudOctreePointBudget,
+    },
+};
 use asset::extract::PointCloudOctreeExtraction;
 use bevy_app::plugin_group;
 use component::PointCloudOctree3d;

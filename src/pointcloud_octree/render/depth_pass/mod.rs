@@ -1,44 +1,48 @@
 pub mod node;
 
 use super::phase::PointCloudOctree3dBinKey;
-use crate::octree::extract::render::components::RenderVisibleOctreeNodes;
-use crate::pointcloud_octree::asset::data::PointCloudNodeData;
-use crate::pointcloud_octree::component::PointCloudOctree3d;
-use crate::pointcloud_octree::render::data::SetPointCloudOctree3dUniformGroup;
 #[cfg(feature = "webgl")]
 use crate::pointcloud_octree::render::draw::DrawPointCloudOctree;
 #[cfg(not(feature = "webgl"))]
 use crate::pointcloud_octree::render::draw::DrawPointCloudOctreeIndirect;
-use crate::pointcloud_octree::render::draw::SetRenderOctreeUniformGroup;
-use crate::pointcloud_octree::render::draw::SetPointCloudOctreeNodeUniformGroup;
-use crate::pointcloud_octree::render::phase::{
-    PointCloudOctree3dNodePhase, ViewOctreeNodesRenderDepthPhases,
+use crate::{
+    octree::extract::render::components::RenderVisibleOctreeNodes,
+    pointcloud_octree::{
+        asset::data::PointCloudNodeData,
+        component::PointCloudOctree3d,
+        render::{
+            data::SetPointCloudOctree3dUniformGroup,
+            draw::{SetPointCloudOctreeNodeUniformGroup, SetRenderOctreeUniformGroup},
+            phase::{PointCloudOctree3dNodePhase, ViewOctreeNodesRenderDepthPhases},
+            prepare::SetVisibleNodesTexture,
+        },
+    },
+    render::{
+        depth_pass::{
+            pipeline::{DepthPipeline, DepthPipelineKey},
+            texture::prepare_depth_pass_textures,
+        },
+        material::SetPointCloudMaterialGroup,
+        phase::PointCloud3dBatchSetKey,
+        PointCloudRenderMode, PointCloudRenderModeOpt,
+    },
 };
-use crate::pointcloud_octree::render::prepare::SetVisibleNodesTexture;
-use crate::render::depth_pass::pipeline::{DepthPipeline, DepthPipelineKey};
-use crate::render::depth_pass::texture::prepare_depth_pass_textures;
-use crate::render::material::SetPointCloudMaterialGroup;
-use crate::render::phase::PointCloud3dBatchSetKey;
-use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
-use bevy_ecs::change_detection::Tick;
-use bevy_ecs::prelude::*;
+use bevy_ecs::{change_detection::Tick, prelude::*};
 use bevy_log::prelude::*;
 use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
 use bevy_platform::collections::HashSet;
-use bevy_render::batching::gpu_preprocessing::GpuPreprocessingSupport;
-use bevy_render::render_graph::RenderGraphExt;
-use bevy_render::render_resource::SpecializedRenderPipelines;
 use bevy_render::{
-    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
+    batching::gpu_preprocessing::GpuPreprocessingSupport,
     prelude::*,
-    render_graph::ViewNodeRunner,
+    render_graph::{RenderGraphExt, ViewNodeRunner},
     render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline},
-    render_resource::PipelineCache,
+    render_resource::{PipelineCache, SpecializedRenderPipelines},
     sync_world::MainEntity,
     view::{ExtractedView, RetainedViewEntity},
+    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
 };
 use node::DepthPassOctreeLabel;
 

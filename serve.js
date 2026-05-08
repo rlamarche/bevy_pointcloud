@@ -13,5 +13,7 @@ app.use((req, res, next) => {
 app.use(express.static(__dirname));
 
 app.listen(8080, () => {
-    console.log('Server started on http://localhost:8080/wasm/');
+  console.log('Server started on http://localhost:8080/');
+  console.log('http://localhost:8080/wasm/ for potree demo');
+  console.log('http://localhost:8080/wasm_copc/ for copc demo');
 });

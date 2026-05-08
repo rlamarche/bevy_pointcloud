@@ -1,34 +1,38 @@
-use crate::octree::extract::render::components::RenderVisibleOctreeNodes;
-use crate::octree::extract::render::resources::{
-    AllocatedOctreeNodes, RenderOctreeIndex, RenderOctrees,
-};
-use crate::octree::storage::NodeId;
-use crate::octree::visibility::iter_one_bits;
-use crate::pointcloud_octree::asset::data::PointCloudNodeData;
-use crate::pointcloud_octree::asset::extract::PointCloudOctreeExtraction;
-use crate::pointcloud_octree::component::PointCloudOctree3d;
-use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
-use crate::pointcloud_octree::render::phase::{
-    PointCloudOctree3dNodePhase, ViewOctreeNodesRenderAttributePhases,
-    ViewOctreeNodesRenderDepthPhases,
+use crate::{
+    octree::{
+        extract::render::{
+            components::RenderVisibleOctreeNodes,
+            resources::{AllocatedOctreeNodes, RenderOctreeIndex, RenderOctrees},
+        },
+        storage::NodeId,
+        visibility::iter_one_bits,
+    },
+    pointcloud_octree::{
+        asset::{data::PointCloudNodeData, extract::PointCloudOctreeExtraction},
+        component::PointCloudOctree3d,
+        extract::RenderPointCloudNodeData,
+        render::phase::{
+            PointCloudOctree3dNodePhase, ViewOctreeNodesRenderAttributePhases,
+            ViewOctreeNodesRenderDepthPhases,
+        },
+    },
 };
 use bevy_color::LinearRgba;
-use bevy_ecs::prelude::*;
-use bevy_ecs::query::ROQueryItem;
-use bevy_ecs::system::SystemParamItem;
+use bevy_ecs::{prelude::*, query::ROQueryItem, system::SystemParamItem};
 use bevy_log::prelude::*;
 use bevy_platform::collections::HashMap;
-use bevy_render::prelude::*;
-use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
-use bevy_render::render_resource::TextureFormat::Rgba8Uint;
-use bevy_render::render_resource::binding_types::texture_2d;
-use bevy_render::render_resource::{
-    BindGroup, BindGroupEntries, BindGroupLayout, Extent3d, ShaderStages, TexelCopyBufferLayout,
-    TextureDescriptor, TextureDimension, TextureSampleType, TextureUsages,
+use bevy_render::{
+    prelude::*,
+    render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
+    render_resource::{
+        binding_types::texture_2d, BindGroup, BindGroupEntries, BindGroupLayout, Extent3d,
+        ShaderStages, TexelCopyBufferLayout, TextureDescriptor, TextureDimension,
+        TextureFormat::Rgba8Uint, TextureSampleType, TextureUsages,
+    },
+    renderer::{RenderDevice, RenderQueue},
+    texture::{ColorAttachment, TextureCache},
+    view::ExtractedView,
 };
-use bevy_render::renderer::{RenderDevice, RenderQueue};
-use bevy_render::texture::{ColorAttachment, TextureCache};
-use bevy_render::view::ExtractedView;
 use bytemuck::{Pod, Zeroable};
 use std::cmp::Ordering;
 
@@ -160,10 +164,7 @@ pub fn prepare_visible_nodes_texture(
             };
 
             let Some(octree_allocations) = allocated_octree_nodes.allocations.get(asset_id) else {
-                debug!(
-                    "Missing asset allocation {}",
-                    asset_id,
-                );
+                debug!("Missing asset allocation {}", asset_id,);
                 // no allocations means no visible nodes
                 continue;
             };

@@ -3,17 +3,16 @@ mod density;
 
 use std::{
     collections::{HashMap, VecDeque},
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
+use async_lock::RwLock;
 use async_trait::async_trait;
 use bevy_camera::primitives::Aabb;
 use bevy_ecs::error::BevyError;
-use bevy_log::info;
 use bevy_math::{DVec3, Vec4};
 use bevy_reflect::TypePath;
-use bevy_tasks::IoTaskPool;
-use copc_streaming::{ByteSource, CopcInfo, CopcStreamingReader, HierarchyEntry, VoxelKey};
+use copc_streaming::{ByteSource, CopcStreamingReader, HierarchyEntry, VoxelKey};
 
 use crate::{
     octree::{
@@ -25,7 +24,7 @@ use crate::{
 };
 
 pub struct CopcLoader<S: ByteSource> {
-    pub(crate) reader: Arc<Mutex<CopcStreamingReader<S>>>,
+    pub(crate) reader: Arc<RwLock<CopcStreamingReader<S>>>,
 }
 
 #[derive(Clone, TypePath)]
@@ -40,21 +39,12 @@ impl<S: ByteSource + 'static + Send + Sync> OctreeLoader<PointCloudNodeData> for
     async fn from_source(
         source: Self::Source,
     ) -> Result<Self, <Self as OctreeLoader<PointCloudNodeData>>::Error> {
-        // `CopcStreamingReader::open` future is not send
-        let reader = IoTaskPool::get()
-            .spawn_local(async move {
-                CopcStreamingReader::open(source)
-                    .await
-                    .map_err(|err| err.to_string())
-            })
+        let reader = CopcStreamingReader::open(source)
             .await
-            .map_err(|err| {
-                info!("An error occured loading from source: {:#?}", err);
-                err
-            })?;
+            .map_err(|err| err.to_string())?;
 
         Ok(CopcLoader {
-            reader: Arc::new(Mutex::new(reader)),
+            reader: Arc::new(RwLock::new(reader)),
         })
     }
 
@@ -62,26 +52,11 @@ impl<S: ByteSource + 'static + Send + Sync> OctreeLoader<PointCloudNodeData> for
     async fn load_initial_hierarchy(
         &self,
     ) -> Result<Vec<LoadedHierarchyNode<Self::Hierarchy>>, Self::Error> {
-        let reader = self.reader.clone();
-
-        // load all hierarchy for the moment
-        // TODO: load hierarchy progressively
-        IoTaskPool::get()
-            .spawn_local(async move {
-                let mut reader = reader
-                    .lock()
-                    .map_err(|err| format!("Unable to lock reader: {}", err.to_string()))?;
-                reader
-                    .load_all_hierarchy()
-                    .await
-                    .map_err(|err| err.to_string())
-            })
-            .await?;
-
-        let reader = self
-            .reader
-            .lock()
-            .map_err(|err| format!("Unable to lock reader: {}", err.to_string()))?;
+        let mut reader = self.reader.write().await;
+        reader
+            .load_all_hierarchy()
+            .await
+            .map_err(|err| err.to_string())?;
 
         let copc_info = reader.copc_info();
         let aabb = copc_info.root_bounds();
@@ -149,35 +124,26 @@ impl<S: ByteSource + 'static + Send + Sync> OctreeLoader<PointCloudNodeData> for
         &self,
         node: &LoadedHierarchyNode<Self::Hierarchy>,
     ) -> Result<PointCloudNodeData, Self::Error> {
-        let reader = self.reader.clone();
         let key = node.data.0.key;
+        let reader = self.reader.read().await;
 
-        let chunk = IoTaskPool::get()
-            .spawn_local(async move {
-                let reader = reader
-                    .lock()
-                    .map_err(|err| format!("Unable to lock reader: {}", err.to_string()))?;
-                reader
-                    .fetch_chunk(&key)
-                    .await
-                    .map_err(|err| err.to_string())
-            })
-            .await?;
+        let chunk = reader
+            .fetch_chunk(&key)
+            .await
+            .map_err(|err| err.to_string())?;
 
-        let reader = self
-            .reader
-            .lock()
-            .map_err(|err| format!("Unable to lock reader: {}", err.to_string()))?;
+        let spacing = reader.copc_info().spacing;
 
-        let copc_info = reader.copc_info();
         let aabb = node.data.0.key.bounds(&reader.copc_info().root_bounds());
 
         let points = reader.read_points(&chunk)?;
 
+        drop(reader);
+
         let level = node.data.0.key.level as f64;
         let density = compute_density(&points, &aabb);
 
-        let spacing = (copc_info.spacing / level.exp2()) as f32;
+        let spacing = (spacing / level.exp2()) as f32;
 
         // magic formula from Potree
         let offset = (density as f32).log2() / 2.0 - 1.5;
@@ -193,7 +159,7 @@ impl<S: ByteSource + 'static + Send + Sync> OctreeLoader<PointCloudNodeData> for
                     .map(|point| {
                         let position =
                             Vec4::new(point.x as f32, point.y as f32, point.z as f32, 1.0);
-                        let color = compute_point_color(&point, copc_info);
+                        let color = compute_point_color(&point);
                         PointData { position, color }
                     })
                     .collect(),
@@ -204,15 +170,24 @@ impl<S: ByteSource + 'static + Send + Sync> OctreeLoader<PointCloudNodeData> for
 
 /// Compute the point color from the point
 /// Returns the color available, else compute a color based on the classification
-fn compute_point_color(value: &copc_streaming::Point, _copc_info: &CopcInfo) -> Vec4 {
+fn compute_point_color(value: &copc_streaming::Point) -> Vec4 {
     if let Some(color) = value.color {
         return Vec4::new(
-            color.red as f32 / 512.0,
-            color.blue as f32 / 512.0,
-            color.green as f32 / 512.0,
+            color.red as f32 / 65535.0,
+            color.blue as f32 / 65535.0,
+            color.green as f32 / 65535.0,
             1.0,
         );
     }
+
+    // let intensity = value.intensity;
+
+    // Vec4::new(
+    //     intensity as f32 / 65535.0,
+    //     intensity as f32 / 256.0,
+    //     intensity as f32 / 256.0,
+    //     1.0,
+    // )
 
     let color = classification_to_color(&value.classification);
 

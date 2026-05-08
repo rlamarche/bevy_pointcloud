@@ -4,9 +4,7 @@ use bevy_log::prelude::*;
 use bevy_tasks::IoTaskPool;
 
 #[cfg(not(feature = "potree_wasm_worker"))]
-pub fn spawn_async_task<T>(
-    future: impl Future<Output = T> + Send + 'static,
-) -> bevy_tasks::Task<T>
+pub fn spawn_async_task<T>(future: impl Future<Output = T> + Send + 'static) -> bevy_tasks::Task<T>
 where
     T: Send + 'static,
 {
@@ -14,9 +12,7 @@ where
 }
 
 #[cfg(feature = "potree_wasm_worker")]
-pub fn spawn_async_task(
-    future: impl Future<Output = ()> + Send + 'static,
-) -> () {
+pub fn spawn_async_task(future: impl Future<Output = ()> + Send + 'static) -> () {
     wasm_thread::spawn({
         || {
             info!("Hello from wasm thread!");

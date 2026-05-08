@@ -1,19 +1,19 @@
-use super::asset::RenderOctreeNodeAllocation;
-use super::asset::RenderOctreeNodeData;
-use super::components::RenderVisibleOctreeNodes;
-use super::node::RenderOctreeNode;
-use super::resources::{ExtractedOctreeNodes, RenderOctreeIndex};
-use crate::octree::asset::Octree;
-use crate::octree::extract::OctreeNodeExtraction;
-use crate::octree::extract::resources::OctreeNodeAllocations;
-use crate::octree::visibility::components::ViewVisibleOctreeNodes;
+use super::{
+    asset::{RenderOctreeNodeAllocation, RenderOctreeNodeData},
+    components::RenderVisibleOctreeNodes,
+    node::RenderOctreeNode,
+    resources::{ExtractedOctreeNodes, RenderOctreeIndex},
+};
+use crate::octree::{
+    asset::Octree,
+    extract::{resources::OctreeNodeAllocations, OctreeNodeExtraction},
+    visibility::components::ViewVisibleOctreeNodes,
+};
 use bevy_asset::Assets;
 use bevy_camera::Camera;
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
-use bevy_render::Extract;
-use bevy_render::sync_world::RenderEntity;
-use bevy_render::view::ExtractedView;
+use bevy_render::{sync_world::RenderEntity, view::ExtractedView, Extract};
 
 /// This system extracts computed visible octree nodes and add them in the render world, for each view (camera)
 #[cfg_attr(feature = "trace", tracing::instrument(skip_all))]

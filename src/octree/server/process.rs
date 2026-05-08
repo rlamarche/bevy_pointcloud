@@ -1,10 +1,13 @@
-use super::super::asset::Octree;
-use super::super::hierarchy::HierarchyNodeStatus;
-use super::super::node::{NodeData, NodeStatus};
-use super::OctreeServer;
-use super::resources::{OctreeLoadTasks, WeightedOctreeNodeLoadTask};
-use crate::octree::OctreeTotalSize;
-use crate::octree::server::resources::OctreeServerSettings;
+use super::{
+    super::{
+        asset::Octree,
+        hierarchy::HierarchyNodeStatus,
+        node::{NodeData, NodeStatus},
+    },
+    resources::{OctreeLoadTasks, WeightedOctreeNodeLoadTask},
+    OctreeServer,
+};
+use crate::octree::{server::resources::OctreeServerSettings, OctreeTotalSize};
 use bevy_asset::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;

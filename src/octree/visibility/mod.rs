@@ -5,24 +5,29 @@ mod heap_guard;
 pub mod resources;
 pub mod stack;
 
-use super::asset::Octree;
-use super::hierarchy::HierarchyNodeStatus;
-use super::node::{NodeData, NodeStatus};
-use super::server::resources::{LoadRequestType, OctreeLoadTasks};
+use super::{
+    asset::Octree,
+    hierarchy::HierarchyNodeStatus,
+    node::{NodeData, NodeStatus},
+    server::resources::{LoadRequestType, OctreeLoadTasks},
+};
 use bevy_app::{App, Plugin, PostUpdate};
 use bevy_asset::{AssetId, Assets};
-use bevy_camera::primitives::{Aabb, Frustum};
-use bevy_camera::visibility::VisibilitySystems::CheckVisibility;
-use bevy_camera::visibility::{Visibility, VisibilityClass, VisibleEntities, add_visibility_class};
-use bevy_camera::{Camera, Projection};
+use bevy_camera::{
+    primitives::{Aabb, Frustum},
+    visibility::{
+        add_visibility_class, Visibility, VisibilityClass, VisibilitySystems::CheckVisibility,
+        VisibleEntities,
+    },
+    Camera, Projection,
+};
 use bevy_diagnostic::{
-    DEFAULT_MAX_HISTORY_LENGTH, Diagnostic, DiagnosticPath, Diagnostics, RegisterDiagnostic,
+    Diagnostic, DiagnosticPath, Diagnostics, RegisterDiagnostic, DEFAULT_MAX_HISTORY_LENGTH,
 };
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
 use bevy_math::prelude::*;
-use bevy_platform::collections::HashMap;
-use bevy_platform::time::Instant;
+use bevy_platform::{collections::HashMap, time::Instant};
 use bevy_time::{Real, Time};
 use bevy_transform::prelude::*;
 use budget::OctreeNodesBudget;
@@ -31,9 +36,7 @@ use filter::*;
 use heap_guard::HeapGuard;
 use resources::GlobalVisibleOctreeNodes;
 use stack::*;
-use std::any::TypeId;
-use std::collections::BinaryHeap;
-use std::marker::PhantomData;
+use std::{any::TypeId, collections::BinaryHeap, marker::PhantomData};
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CheckOctreeNodesVisibility;
@@ -102,18 +105,16 @@ pub fn check_octree_nodes_visibility<T, C, F, B>(
     _time: Res<Time<Real>>,
     entities: Query<(&C, &GlobalTransform)>,
     // TODO add a way to disable checking of a camera
-    mut views: Query<
-        (
-            &VisibleEntities,
-            &Camera,
-            &Frustum,
-            &GlobalTransform,
-            &Projection,
-            Option<&OctreeVisibilitySettings<T, F, B>>,
-            &mut ViewVisibleOctreeNodes<T, C>,
-            Option<&SkipOctreeVisibility>,
-        ),
-    >,
+    mut views: Query<(
+        &VisibleEntities,
+        &Camera,
+        &Frustum,
+        &GlobalTransform,
+        &Projection,
+        Option<&OctreeVisibilitySettings<T, F, B>>,
+        &mut ViewVisibleOctreeNodes<T, C>,
+        Option<&SkipOctreeVisibility>,
+    )>,
     octrees: Res<Assets<Octree<T>>>,
     mut octree_load_tasks: ResMut<OctreeLoadTasks<T>>,
     mut priority_stack: Local<BinaryHeap<StackedOctreeNode<T>>>,

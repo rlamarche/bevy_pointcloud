@@ -16,6 +16,14 @@ name = "copc"
 required-features = ["copc"]
 
 [[example]]
+name = "copc_wasm"
+required-features = ["copc_wasm"]
+
+[[example]]
+name = "copc_wasm_ui"
+required-features = ["copc_wasm"]
+
+[[example]]
 path = "examples/potree_wasm.rs"
 name = "potree_wasm"
 required-features = ["potree_wasm"]
@@ -84,7 +92,10 @@ wasm_thread = { version = "0.3.3", optional = true }
 priority-queue = "2.7.0"
 
 # Added for copc
-copc-streaming = { version = "0.1.5", optional = true }
+copc-streaming = { path = "../../vendor/copc/copc-streaming", optional = true }
+ehttp = { version = "0.5", optional = true }
+futures = { version = "0.3", optional = true }
+async-lock = { version =  "3.4.2", optional = true }
 
 [dev-dependencies]
 bevy_dev_tools = { version = "0.18.1" }
@@ -97,6 +108,12 @@ bevy_window = { version = "0.18.1" }
 bevy_text = { version = "0.18.1" }
 bevy_light = { version = "0.18.1" }
 bevy_pbr = { version = "0.18.1" }
+bevy_picking = { version = "0.18.1" }
+bevy_ui = { version = "0.18.1" }
+bevy_input_focus = { version = "0.18.1" }
+bevy_ui_widgets = { version = "0.18.1" }
+bevy_feathers = { version = "0.18.1" }
+bevy_ui_text_input = "0.7.0"
 
 [dev-dependencies.bevy]
 version = "0.18.1"
@@ -154,6 +171,8 @@ features = [
     "wayland",
     "debug",
     "zstd_rust",
+# Added
+    "experimental_bevy_feathers",
 ]
 
 [features]
@@ -178,7 +197,8 @@ potree_ehttp_local = ["potree/ehttp_local"]
 potree_wasm = ["potree/wasm"]
 potree_wasm_worker = ["wasm_worker", "potree/wasm_worker", "dep:wasm-bindgen", "dep:wasm-bindgen-futures"]
 potree_fs = ["potree/fs"]
-copc = ["dep:copc-streaming"]
+copc = ["dep:copc-streaming", "dep:async-lock"]
+copc_wasm = ["copc", "dep:ehttp", "dep:futures"]
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]

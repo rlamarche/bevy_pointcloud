@@ -3,12 +3,13 @@ use std::cmp::Reverse;
 use bevy_time::{Real, Time};
 
 use super::resources::OctreeServerEvictionQueue;
-use crate::bevy::prelude::*;
-use crate::octree::OctreeTotalSize;
-use crate::octree::asset::Octree;
-use crate::octree::node::NodeData;
-use crate::octree::server::resources::OctreeServerSettings;
-use crate::octree::visibility::resources::GlobalVisibleOctreeNodes;
+use crate::{
+    bevy::prelude::*,
+    octree::{
+        asset::Octree, node::NodeData, server::resources::OctreeServerSettings,
+        visibility::resources::GlobalVisibleOctreeNodes, OctreeTotalSize,
+    },
+};
 
 /// This system update the octree node eviction queue with latest informations
 pub fn update_octree_server_node_eviction_queue<T: NodeData>(

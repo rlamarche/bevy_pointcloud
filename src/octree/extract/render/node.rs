@@ -1,11 +1,10 @@
-use super::asset::RenderOctreeNodeData;
-use crate::octree::asset::Octree;
-use super::buffer::RenderNodeData;
-use crate::octree::node::NodeData;
-use crate::octree::storage::NodeId;
+use super::{asset::RenderOctreeNodeData, buffer::RenderNodeData};
+use crate::octree::{asset::Octree, node::NodeData, storage::NodeId};
 use bevy_asset::AssetId;
-use bevy_ecs::prelude::*;
-use bevy_ecs::system::{SystemParam, SystemParamItem};
+use bevy_ecs::{
+    prelude::*,
+    system::{SystemParam, SystemParamItem},
+};
 use bevy_render::render_resource::AsBindGroupError;
 use thiserror::Error;
 

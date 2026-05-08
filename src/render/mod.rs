@@ -11,38 +11,38 @@ pub mod phase;
 pub mod point_cloud;
 pub mod point_cloud_uniform;
 
-use crate::point_cloud::PointCloud3d;
-use crate::render::eye_dome_lighting::{
-    EyeDomeLightingUniform, NeighboursCache, extract_cameras_render_mode,
+use crate::{
+    point_cloud::PointCloud3d,
+    render::{
+        eye_dome_lighting::{extract_cameras_render_mode, EyeDomeLightingUniform, NeighboursCache},
+        material::{RenderPointCloudMaterial, RenderPointCloudMaterialLayout},
+        mesh::PointCloudMesh,
+        point_cloud::RenderPointCloud,
+    },
 };
-use crate::render::material::{RenderPointCloudMaterial, RenderPointCloudMaterialLayout};
-use crate::render::mesh::PointCloudMesh;
-use crate::render::point_cloud::RenderPointCloud;
 use aabb::compute_point_cloud_aabb;
 use attribute_pass::AttributePassPlugin;
 use bevy_app::prelude::*;
-use bevy_asset::load_internal_asset;
-use bevy_asset::{prelude::*, uuid_handle};
+use bevy_asset::{load_internal_asset, prelude::*, uuid_handle};
 use bevy_camera::visibility::calculate_bounds;
-use bevy_ecs::prelude::*;
-use bevy_ecs::system::{SystemParamItem, lifetimeless::*};
-use bevy_pbr::RenderMeshInstances;
-use bevy_render::RenderSystems;
-use bevy_render::camera::extract_cameras;
-use bevy_render::extract_component::UniformComponentPlugin;
-use bevy_render::render_asset::RenderAssetPlugin;
-use bevy_render::{
-    Render, RenderApp,
-    extract_component::ExtractComponentPlugin,
-    mesh::{RenderMesh, RenderMeshBufferInfo, allocator::MeshAllocator},
+use bevy_ecs::{
     prelude::*,
-    render_asset::RenderAssets,
+    system::{lifetimeless::*, SystemParamItem},
+};
+use bevy_pbr::RenderMeshInstances;
+use bevy_render::{
+    camera::extract_cameras,
+    extract_component::{ExtractComponentPlugin, UniformComponentPlugin},
+    mesh::{allocator::MeshAllocator, RenderMesh, RenderMeshBufferInfo},
+    prelude::*,
+    render_asset::{RenderAssetPlugin, RenderAssets},
     render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
+    Render, RenderApp, RenderSystems,
 };
 use bevy_shader::Shader;
 use depth_pass::DepthPassPlugin;
 use normalize_pass::NormalizePassPlugin;
-use point_cloud_uniform::{PointCloudUniformLayout, prepare_point_cloud_uniform};
+use point_cloud_uniform::{prepare_point_cloud_uniform, PointCloudUniformLayout};
 
 const POINTCLOUD_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("9c7d8df3-86dd-4412-a9cc-dad5c7916a8c");

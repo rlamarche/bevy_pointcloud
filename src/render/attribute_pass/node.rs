@@ -1,18 +1,15 @@
 use super::texture::ViewAttributePrepassTextures;
+use crate::render::attribute_pass::phase::PointCloud3dAttributePhase;
 use bevy_ecs::{prelude::*, query::QueryItem};
-use bevy_log::prelude::*;
-use bevy_log::error;
-use bevy_render::render_phase::{TrackedRenderPass, ViewBinnedRenderPhases};
-use bevy_render::render_resource::{CommandEncoderDescriptor, StoreOp};
-use bevy_render::view::ViewDepthTexture;
+use bevy_log::{error, prelude::*};
 use bevy_render::{
     camera::ExtractedCamera,
     render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode},
-    render_resource::RenderPassDescriptor,
+    render_phase::{TrackedRenderPass, ViewBinnedRenderPhases},
+    render_resource::{CommandEncoderDescriptor, RenderPassDescriptor, StoreOp},
     renderer::RenderContext,
-    view::ExtractedView,
+    view::{ExtractedView, ViewDepthTexture},
 };
-use crate::render::attribute_pass::phase::PointCloud3dAttributePhase;
 
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct AttributePassLabel;
@@ -51,12 +48,10 @@ impl ViewNode for AttributePassNode {
             return Ok(());
         };
 
-        let color_attachments = vec![
-            view_prepass_textures
-                .attribute
-                .as_ref()
-                .map(|attribute_texture| attribute_texture.get_attachment()),
-        ];
+        let color_attachments = vec![view_prepass_textures
+            .attribute
+            .as_ref()
+            .map(|attribute_texture| attribute_texture.get_attachment())];
 
         let depth_stencil_attachment = Some(depth.get_attachment(StoreOp::Store));
 

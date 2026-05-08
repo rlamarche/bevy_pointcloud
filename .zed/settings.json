@@ -7,7 +7,19 @@
     "rust-analyzer": {
       "initialization_options": {
         "cargo": {
-          "features": ["potree", "potree_fs", "potree_ehttp", "copc"],
+          "features": [
+            "potree",
+            "potree_fs",
+            "potree_ehttp",
+            "copc",
+            "copc_wasm",
+          ],
+        },
+        "check": {
+          "command": "clippy", // rust-analyzer.check.command (default: "check")
+        },
+        "rustfmt": {
+          "extraArgs": ["+nightly"],
         },
       },
     },

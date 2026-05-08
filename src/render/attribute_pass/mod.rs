@@ -3,37 +3,39 @@ pub mod phase;
 pub mod pipeline;
 pub mod texture;
 
-use crate::point_cloud::PointCloud3d;
-use crate::render::attribute_pass::pipeline::{AttributePassPipeline, AttributePipelineKey};
-use crate::render::attribute_pass::texture::{
-    AttributePassLayout, prepare_attribute_pass_bind_groups,
+use crate::{
+    point_cloud::PointCloud3d,
+    render::{
+        attribute_pass::{
+            pipeline::{AttributePassPipeline, AttributePipelineKey},
+            texture::{prepare_attribute_pass_bind_groups, AttributePassLayout},
+        },
+        depth_pass::node::DepthPassLabel,
+        draw::DrawPointCloud,
+        material::SetPointCloudMaterialGroup,
+        phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey},
+        point_cloud_uniform::SetPointCloudUniformGroup,
+    },
 };
-use crate::render::depth_pass::node::DepthPassLabel;
-use crate::render::draw::DrawPointCloud;
-use crate::render::material::SetPointCloudMaterialGroup;
-use crate::render::phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey};
-use crate::render::point_cloud_uniform::SetPointCloudUniformGroup;
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::Core3d;
-use bevy_ecs::change_detection::Tick;
-use bevy_ecs::prelude::*;
+use bevy_ecs::{change_detection::Tick, prelude::*};
 use bevy_log::prelude::*;
 use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
 use bevy_platform::collections::HashSet;
-use bevy_render::batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport};
-use bevy_render::render_graph::RenderGraphExt;
-use bevy_render::render_phase::{BinnedRenderPhaseType, InputUniformIndex, ViewBinnedRenderPhases};
-use bevy_render::render_resource::SpecializedRenderPipelines;
-use bevy_render::view::NoIndirectDrawing;
 use bevy_render::{
-    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
+    batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport},
     prelude::*,
-    render_graph::ViewNodeRunner,
-    render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline},
-    render_resource::PipelineCache,
+    render_graph::{RenderGraphExt, ViewNodeRunner},
+    render_phase::{
+        AddRenderCommand, BinnedRenderPhaseType, DrawFunctions, InputUniformIndex, SetItemPipeline,
+        ViewBinnedRenderPhases,
+    },
+    render_resource::{PipelineCache, SpecializedRenderPipelines},
     sync_world::MainEntity,
-    view::{ExtractedView, RenderVisibleEntities, RetainedViewEntity},
+    view::{ExtractedView, NoIndirectDrawing, RenderVisibleEntities, RetainedViewEntity},
+    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
 };
 use node::{AttributePassLabel, AttributePassNode};
 use phase::PointCloud3dAttributePhase;

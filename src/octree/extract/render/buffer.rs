@@ -2,8 +2,10 @@ use super::node::RenderOctreeNode;
 use crate::octree::extract::render::asset::RenderOctreeNodeAllocation;
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashMap;
-use bevy_render::render_resource::{Buffer, BufferDescriptor, BufferUsages};
-use bevy_render::renderer::{RenderDevice, RenderQueue};
+use bevy_render::{
+    render_resource::{Buffer, BufferDescriptor, BufferUsages},
+    renderer::{RenderDevice, RenderQueue},
+};
 use bytemuck::Pod;
 use std::marker::PhantomData;
 use thiserror::Error;

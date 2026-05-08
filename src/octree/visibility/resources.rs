@@ -1,5 +1,7 @@
-use crate::octree::asset::Octree;
-use crate::octree::node::{NodeData, OctreeNode, OctreeNodeKey};
+use crate::octree::{
+    asset::Octree,
+    node::{NodeData, OctreeNode, OctreeNodeKey},
+};
 use bevy_asset::AssetId;
 use bevy_ecs::prelude::*;
 use indexmap::IndexMap;

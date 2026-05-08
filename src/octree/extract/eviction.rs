@@ -1,7 +1,11 @@
 use super::resources::ExtractOctreeNodeEvictionQueue;
-use crate::octree::extract::resources::OctreeNodeEvictionPriority;
-use crate::octree::extract::{OctreeNodeExtraction, resources::OctreeNodeAllocations};
-use crate::octree::visibility::resources::GlobalVisibleOctreeNodes;
+use crate::octree::{
+    extract::{
+        resources::{OctreeNodeAllocations, OctreeNodeEvictionPriority},
+        OctreeNodeExtraction,
+    },
+    visibility::resources::GlobalVisibleOctreeNodes,
+};
 use bevy_ecs::prelude::*;
 use bevy_time::{Real, Time};
 use std::cmp::Reverse;

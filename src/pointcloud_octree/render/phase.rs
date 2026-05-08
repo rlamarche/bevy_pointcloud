@@ -1,20 +1,19 @@
-use std::hash::Hash;
-use std::ops::Range;
+use std::{hash::Hash, ops::Range};
 
-use crate::pointcloud_octree::asset::PointCloudOctree;
-use crate::render::phase::PointCloud3dBatchSetKey;
+use crate::{pointcloud_octree::asset::PointCloudOctree, render::phase::PointCloud3dBatchSetKey};
 use bevy_asset::AssetId;
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
-use bevy_platform::collections::HashMap;
-use bevy_platform::collections::hash_map::Entry;
-use bevy_render::render_phase::{
-    BinnedPhaseItem, CachedRenderPipelinePhaseItem, DrawError, DrawFunctionId, DrawFunctions,
-    PhaseItem, PhaseItemExtraIndex, TrackedRenderPass,
+use bevy_platform::collections::{hash_map::Entry, HashMap};
+use bevy_render::{
+    render_phase::{
+        BinnedPhaseItem, CachedRenderPipelinePhaseItem, DrawError, DrawFunctionId, DrawFunctions,
+        PhaseItem, PhaseItemExtraIndex, TrackedRenderPass,
+    },
+    render_resource::CachedRenderPipelineId,
+    sync_world::MainEntity,
+    view::RetainedViewEntity,
 };
-use bevy_render::render_resource::CachedRenderPipelineId;
-use bevy_render::sync_world::MainEntity;
-use bevy_render::view::RetainedViewEntity;
 use indexmap::IndexMap;
 
 /// Data that must be identical in order to *batch* phase items together.

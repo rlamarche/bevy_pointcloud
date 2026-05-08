@@ -1,8 +1,6 @@
 use bevy_math::Vec3;
 use bevy_reflect::TypePath;
-use bevy_render::render_resource::{
-    BindGroup, Buffer, ShaderType, UniformBuffer,
-};
+use bevy_render::render_resource::{BindGroup, Buffer, ShaderType, UniformBuffer};
 use bytemuck::{Pod, Zeroable};
 
 #[derive(ShaderType, Pod, Zeroable, Clone, Copy)]

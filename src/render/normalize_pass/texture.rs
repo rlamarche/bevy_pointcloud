@@ -1,11 +1,14 @@
-use crate::render::attribute_pass::texture::ViewAttributePrepassTextures;
-use crate::render::depth_pass::texture::ViewDepthPrepassTextures;
-use crate::render::normalize_pass::pipeline::NormalizePassPipeline;
+use crate::render::{
+    attribute_pass::texture::ViewAttributePrepassTextures,
+    depth_pass::texture::ViewDepthPrepassTextures, normalize_pass::pipeline::NormalizePassPipeline,
+};
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
-use bevy_render::render_resource::{BindGroup, BindGroupEntry, IntoBinding, PipelineCache};
-use bevy_render::renderer::RenderDevice;
-use bevy_render::view::Msaa;
+use bevy_render::{
+    render_resource::{BindGroup, BindGroupEntry, IntoBinding, PipelineCache},
+    renderer::RenderDevice,
+    view::Msaa,
+};
 
 #[derive(Component)]
 pub struct NormalizePassBindGroup {

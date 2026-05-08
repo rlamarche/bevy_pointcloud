@@ -1,20 +1,29 @@
-use crate::octree::extract::render::buffer::RenderOctreesBuffers;
-use crate::octree::extract::render::components::{RenderOctreeEntityUniform, RenderVisibleOctreeNodes};
-use crate::octree::extract::render::resources::RenderOctrees;
-use crate::octree::visibility::components::VisibleOctreeNode;
-use crate::pointcloud_octree::asset::data::PointCloudNodeData;
-use crate::pointcloud_octree::component::PointCloudOctree3d;
-use crate::pointcloud_octree::extract::RenderPointCloudNodeData;
 #[cfg(not(feature = "webgl"))]
 use crate::pointcloud_octree::render::indirect::RenderVisibleNodesIndirectBuffers;
-use crate::render::mesh::PointCloudMesh;
-use bevy_ecs::query::ROQueryItem;
-use bevy_ecs::system::{SystemParamItem, lifetimeless::*};
-use bevy_log::prelude::*;
-use bevy_render::render_phase::{
-    BinnedPhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass,
+use crate::{
+    octree::{
+        extract::render::{
+            buffer::RenderOctreesBuffers,
+            components::{RenderOctreeEntityUniform, RenderVisibleOctreeNodes},
+            resources::RenderOctrees,
+        },
+        visibility::components::VisibleOctreeNode,
+    },
+    pointcloud_octree::{
+        asset::data::PointCloudNodeData, component::PointCloudOctree3d,
+        extract::RenderPointCloudNodeData,
+    },
+    render::mesh::PointCloudMesh,
 };
-use bevy_render::renderer::RenderQueue;
+use bevy_ecs::{
+    query::ROQueryItem,
+    system::{lifetimeless::*, SystemParamItem},
+};
+use bevy_log::prelude::*;
+use bevy_render::{
+    render_phase::{BinnedPhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
+    renderer::RenderQueue,
+};
 
 pub struct DrawPointCloudOctreeNode;
 

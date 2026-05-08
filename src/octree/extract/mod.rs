@@ -4,38 +4,43 @@ pub mod limiter;
 pub mod render;
 pub mod resources;
 
-use super::asset::Octree;
-use super::node::{NodeData, OctreeNode};
-use crate::octree::extract::render::components::RenderVisibleOctreeNodes;
-use crate::octree::extract::render::prepare::prepare_octrees_uniforms;
-use crate::octree::extract::render::resources::AllocatedOctreeNodes;
-use crate::octree::visibility::CheckOctreeNodesVisibility;
+use super::{
+    asset::Octree,
+    node::{NodeData, OctreeNode},
+};
+use crate::octree::{
+    extract::render::{
+        components::RenderVisibleOctreeNodes, prepare::prepare_octrees_uniforms,
+        resources::AllocatedOctreeNodes,
+    },
+    visibility::CheckOctreeNodesVisibility,
+};
 use allocate::allocate_visible_octree_nodes;
 use bevy_app::prelude::*;
 use bevy_asset::AssetId;
-use bevy_ecs::prelude::*;
-use bevy_ecs::schedule::ScheduleConfigs;
-use bevy_ecs::system::ScheduleSystem;
+use bevy_ecs::{prelude::*, schedule::ScheduleConfigs, system::ScheduleSystem};
 use bevy_reflect::TypePath;
-use bevy_render::camera::extract_cameras;
-use bevy_render::extract_component::{ExtractComponent, ExtractComponentPlugin};
-use bevy_render::view::ExtractedView;
-use bevy_render::{ExtractSchedule, Render, RenderApp, RenderSystems};
+use bevy_render::{
+    camera::extract_cameras,
+    extract_component::{ExtractComponent, ExtractComponentPlugin},
+    view::ExtractedView,
+    ExtractSchedule, Render, RenderApp, RenderSystems,
+};
 use eviction::update_extract_octree_node_eviction_queue;
 use limiter::{
-    RenderOctreeNodesBytesPerFrame, RenderOctreeNodesBytesPerFrameLimiter,
     extract_render_asset_bytes_per_frame, reset_render_asset_bytes_per_frame,
+    RenderOctreeNodesBytesPerFrame, RenderOctreeNodesBytesPerFrameLimiter,
 };
-use render::buffer::{RenderNodeData, RenderOctreesBuffers};
-use render::extract::extract_octree_node_allocations;
-use render::extract::extract_visible_octree_nodes;
-use render::node::RenderOctreeNode;
-use render::prepare::prepare_assets;
-use render::resources::ExtractedOctreeNodes;
-use render::resources::RenderOctreeIndex;
-use render::resources::{PrepareNextFrameOctreeNodes, RenderOctrees};
-use resources::ExtractOctreeNodeEvictionQueue;
-use resources::{OctreeBufferSettings, OctreeNodeAllocations};
+use render::{
+    buffer::{RenderNodeData, RenderOctreesBuffers},
+    extract::{extract_octree_node_allocations, extract_visible_octree_nodes},
+    node::RenderOctreeNode,
+    prepare::prepare_assets,
+    resources::{
+        ExtractedOctreeNodes, PrepareNextFrameOctreeNodes, RenderOctreeIndex, RenderOctrees,
+    },
+};
+use resources::{ExtractOctreeNodeEvictionQueue, OctreeBufferSettings, OctreeNodeAllocations};
 use std::marker::PhantomData;
 
 pub trait OctreeNodeExtraction: Send + Sync + TypePath {

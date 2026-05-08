@@ -1,19 +1,24 @@
 use crate::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
 use bevy_asset::AssetId;
-use bevy_ecs::prelude::World;
-use bevy_ecs::query::ROQueryItem;
-use bevy_ecs::resource::Resource;
-use bevy_ecs::system::SystemParamItem;
-use bevy_ecs::system::lifetimeless::{Read, SRes};
-use bevy_ecs::world::FromWorld;
-use bevy_render::render_asset::{PrepareAssetError, RenderAsset, RenderAssets};
-use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
-use bevy_render::render_resource::binding_types::uniform_buffer;
-use bevy_render::render_resource::{
-    BindGroup, BindGroupEntries, BindGroupLayout, BindGroupLayoutEntries, ShaderStages,
-    UniformBuffer,
+use bevy_ecs::{
+    prelude::World,
+    query::ROQueryItem,
+    resource::Resource,
+    system::{
+        lifetimeless::{Read, SRes},
+        SystemParamItem,
+    },
+    world::FromWorld,
 };
-use bevy_render::renderer::{RenderDevice, RenderQueue};
+use bevy_render::{
+    render_asset::{PrepareAssetError, RenderAsset, RenderAssets},
+    render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
+    render_resource::{
+        binding_types::uniform_buffer, BindGroup, BindGroupEntries, BindGroupLayout,
+        BindGroupLayoutEntries, ShaderStages, UniformBuffer,
+    },
+    renderer::{RenderDevice, RenderQueue},
+};
 
 /// The render world representation of a [`PointCloudMaterial`].
 pub struct RenderPointCloudMaterial {

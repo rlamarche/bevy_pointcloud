@@ -3,19 +3,25 @@ pub mod node;
 mod pipeline;
 mod texture;
 
-use crate::render::attribute_pass::node::AttributePassLabel;
-use crate::render::eye_dome_lighting::EyeDomeLightingUniformBindgroupLayout;
-use crate::render::normalize_pass::eye_dome_lighting::prepare_normalize_pass_edl_bind_groups;
-use crate::render::normalize_pass::pipeline::{NormalizePassPipelineId, NormalizePassPipelineKey};
-use crate::render::normalize_pass::texture::prepare_normalize_pass_bind_groups;
-use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
+use crate::render::{
+    attribute_pass::node::AttributePassLabel,
+    eye_dome_lighting::EyeDomeLightingUniformBindgroupLayout,
+    normalize_pass::{
+        eye_dome_lighting::prepare_normalize_pass_edl_bind_groups,
+        pipeline::{NormalizePassPipelineId, NormalizePassPipelineKey},
+        texture::prepare_normalize_pass_bind_groups,
+    },
+    PointCloudRenderMode, PointCloudRenderModeOpt,
+};
 use bevy_app::prelude::*;
 use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy_ecs::prelude::*;
-use bevy_render::render_graph::RenderGraphExt;
-use bevy_render::render_resource::{PipelineCache, SpecializedRenderPipelines};
-use bevy_render::view::Msaa;
-use bevy_render::{Render, RenderApp, RenderSystems, render_graph::ViewNodeRunner};
+use bevy_render::{
+    render_graph::{RenderGraphExt, ViewNodeRunner},
+    render_resource::{PipelineCache, SpecializedRenderPipelines},
+    view::Msaa,
+    Render, RenderApp, RenderSystems,
+};
 use node::{NormalizePassLabel, NormalizePassNode};
 use pipeline::NormalizePassPipeline;
 

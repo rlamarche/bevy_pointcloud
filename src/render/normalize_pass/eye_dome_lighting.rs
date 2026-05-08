@@ -1,12 +1,14 @@
-use crate::render::PointCloudRenderMode;
-use crate::render::eye_dome_lighting::{
-    EyeDomeLightingUniform, EyeDomeLightingUniformBindgroupLayout,
+use crate::render::{
+    eye_dome_lighting::{EyeDomeLightingUniform, EyeDomeLightingUniformBindgroupLayout},
+    PointCloudRenderMode,
 };
 use bevy_ecs::prelude::*;
-use bevy_render::extract_component::{ComponentUniforms, DynamicUniformIndex};
-use bevy_render::render_resource::{BindGroup, BindGroupEntries, PipelineCache};
-use bevy_render::renderer::RenderDevice;
-use bevy_render::view::Msaa;
+use bevy_render::{
+    extract_component::{ComponentUniforms, DynamicUniformIndex},
+    render_resource::{BindGroup, BindGroupEntries, PipelineCache},
+    renderer::RenderDevice,
+    view::Msaa,
+};
 
 #[derive(Component)]
 pub struct NormalizePassEdlBindgroup {

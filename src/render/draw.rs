@@ -1,11 +1,16 @@
-use crate::point_cloud::PointCloud3d;
-use crate::render::mesh::PointCloudMesh;
-use crate::render::point_cloud::RenderPointCloud;
-use bevy_ecs::system::lifetimeless::{Read, SRes};
-use bevy_ecs::system::SystemParamItem;
-use bevy_render::render_asset::RenderAssets;
-use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
-use bevy_render::render_resource::IndexFormat;
+use crate::{
+    point_cloud::PointCloud3d,
+    render::{mesh::PointCloudMesh, point_cloud::RenderPointCloud},
+};
+use bevy_ecs::system::{
+    lifetimeless::{Read, SRes},
+    SystemParamItem,
+};
+use bevy_render::{
+    render_asset::RenderAssets,
+    render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
+    render_resource::IndexFormat,
+};
 
 pub struct DrawPointCloud;
 
@@ -54,12 +59,8 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloud {
         //     IndexFormat::Uint32,
         // );
 
-
         pass.set_vertex_buffer(0, point_cloud_mesh.vertex_buffer.slice(..));
-        pass.set_index_buffer(
-            point_cloud_mesh.index_buffer.slice(..),
-            IndexFormat::Uint32,
-        );
+        pass.set_index_buffer(point_cloud_mesh.index_buffer.slice(..), IndexFormat::Uint32);
 
         pass.set_vertex_buffer(1, render_point_cloud.buffer.slice(..));
 

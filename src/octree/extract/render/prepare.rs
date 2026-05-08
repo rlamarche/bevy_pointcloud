@@ -1,21 +1,29 @@
 use std::marker::PhantomData;
 
-use crate::octree::extract::render::components::RenderOctreeEntityUniform;
-use crate::octree::extract::render::resources::{AllocatedOctreeNodes, RenderOctreeIndex};
-use crate::pointcloud_octree::extract::PointCloudOctreeUniform;
-use crate::render::attribute_pass::pipeline::AttributePassPipeline;
+use crate::{
+    octree::extract::render::{
+        components::RenderOctreeEntityUniform,
+        resources::{AllocatedOctreeNodes, RenderOctreeIndex},
+    },
+    pointcloud_octree::extract::PointCloudOctreeUniform,
+    render::attribute_pass::pipeline::AttributePassPipeline,
+};
 
-use super::super::limiter::RenderOctreeNodesBytesPerFrameLimiter;
-use super::super::{ExtractedOctreeNodes, OctreeNodeExtraction};
-use super::asset::RenderOctreeNodeData;
-use super::node::{PrepareOctreeNodeError, RenderOctreeNode};
-use super::resources::RenderOctrees;
-use bevy_ecs::prelude::*;
-use bevy_ecs::system::StaticSystemParam;
+use super::{
+    super::{
+        limiter::RenderOctreeNodesBytesPerFrameLimiter, ExtractedOctreeNodes, OctreeNodeExtraction,
+    },
+    asset::RenderOctreeNodeData,
+    node::{PrepareOctreeNodeError, RenderOctreeNode},
+    resources::RenderOctrees,
+};
+use bevy_ecs::{prelude::*, system::StaticSystemParam};
 use bevy_log::prelude::*;
 use bevy_platform::collections::HashMap;
-use bevy_render::render_resource::{BindGroupEntries, PipelineCache, UniformBuffer};
-use bevy_render::renderer::{RenderDevice, RenderQueue};
+use bevy_render::{
+    render_resource::{BindGroupEntries, PipelineCache, UniformBuffer},
+    renderer::{RenderDevice, RenderQueue},
+};
 
 pub fn prepare_octrees_uniforms<E: OctreeNodeExtraction>(
     mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,

@@ -1,24 +1,25 @@
-use crate::point_cloud::PointCloudData;
-use crate::point_cloud_material::PointCloudMaterial;
-use crate::pointcloud_octree::extract::{PointCloudOctreeUniform, PointCloudNodeDataUniform};
-use crate::render::POINTCLOUD_SHADER_HANDLE;
-use crate::render::point_cloud_uniform::PointCloudUniform;
+use crate::{
+    point_cloud::PointCloudData,
+    point_cloud_material::PointCloudMaterial,
+    pointcloud_octree::extract::{PointCloudNodeDataUniform, PointCloudOctreeUniform},
+    render::{point_cloud_uniform::PointCloudUniform, POINTCLOUD_SHADER_HANDLE},
+};
 use bevy_asset::prelude::*;
 use bevy_core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT;
 use bevy_ecs::prelude::*;
 use bevy_mesh::{PrimitiveTopology, VertexBufferLayout, VertexFormat};
 use bevy_pbr::{MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey};
-use bevy_render::render_resource::binding_types::{texture_2d, uniform_buffer};
-use bevy_render::render_resource::{
-    AsBindGroup, BindGroupLayoutDescriptor, BindGroupLayoutEntries, ColorTargetState, ColorWrites,
-    CompareFunction, DepthBiasState, DepthStencilState, ShaderStages, SpecializedRenderPipeline,
-    StencilState, TextureFormat, TextureSampleType, VertexAttribute, VertexStepMode,
+use bevy_render::{
+    render_resource::{
+        binding_types::{texture_2d, uniform_buffer},
+        AsBindGroup, BindGroupLayoutDescriptor, BindGroupLayoutEntries, ColorTargetState,
+        ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Face, FragmentState,
+        FrontFace, MultisampleState, PolygonMode, PrimitiveState, RenderPipelineDescriptor,
+        ShaderStages, SpecializedRenderPipeline, StencilState, TextureFormat, TextureSampleType,
+        VertexAttribute, VertexState, VertexStepMode,
+    },
+    renderer::RenderDevice,
 };
-use bevy_render::render_resource::{
-    Face, FragmentState, FrontFace, MultisampleState, PolygonMode, PrimitiveState,
-    RenderPipelineDescriptor, VertexState,
-};
-use bevy_render::renderer::RenderDevice;
 use bevy_shader::Shader;
 use bevy_utils::default;
 
