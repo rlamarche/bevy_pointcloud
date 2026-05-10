@@ -1,3 +1,23 @@
+use std::cmp::Ordering;
+
+use bevy_color::LinearRgba;
+use bevy_ecs::{prelude::*, query::ROQueryItem, system::SystemParamItem};
+use bevy_log::prelude::*;
+use bevy_platform::collections::HashMap;
+use bevy_render::{
+    prelude::*,
+    render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
+    render_resource::{
+        binding_types::texture_2d, BindGroup, BindGroupEntries, BindGroupLayout, Extent3d,
+        ShaderStages, TexelCopyBufferLayout, TextureDescriptor, TextureDimension,
+        TextureFormat::Rgba8Uint, TextureSampleType, TextureUsages,
+    },
+    renderer::{RenderDevice, RenderQueue},
+    texture::{ColorAttachment, TextureCache},
+    view::ExtractedView,
+};
+use bytemuck::{Pod, Zeroable};
+
 use crate::{
     octree::{
         extract::render::{
@@ -17,24 +37,6 @@ use crate::{
         },
     },
 };
-use bevy_color::LinearRgba;
-use bevy_ecs::{prelude::*, query::ROQueryItem, system::SystemParamItem};
-use bevy_log::prelude::*;
-use bevy_platform::collections::HashMap;
-use bevy_render::{
-    prelude::*,
-    render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
-    render_resource::{
-        binding_types::texture_2d, BindGroup, BindGroupEntries, BindGroupLayout, Extent3d,
-        ShaderStages, TexelCopyBufferLayout, TextureDescriptor, TextureDimension,
-        TextureFormat::Rgba8Uint, TextureSampleType, TextureUsages,
-    },
-    renderer::{RenderDevice, RenderQueue},
-    texture::{ColorAttachment, TextureCache},
-    view::ExtractedView,
-};
-use bytemuck::{Pod, Zeroable};
-use std::cmp::Ordering;
 
 /// Stores visible nodes and mapping textures for each view
 #[derive(Component)]

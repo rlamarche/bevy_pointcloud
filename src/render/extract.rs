@@ -1,10 +1,11 @@
+use bevy_ecs::query::QueryItem;
+use bevy_render::extract_component::ExtractComponent;
+use bevy_transform::prelude::GlobalTransform;
+
 use crate::{
     point_cloud::PointCloud3d, point_cloud_material::PointCloudMaterial3d,
     render::point_cloud_uniform::PointCloudUniform,
 };
-use bevy_ecs::query::QueryItem;
-use bevy_render::extract_component::ExtractComponent;
-use bevy_transform::prelude::GlobalTransform;
 
 impl ExtractComponent for PointCloud3d {
     type QueryData = (

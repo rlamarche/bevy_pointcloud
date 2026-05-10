@@ -1,4 +1,3 @@
-use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
 use bevy_camera::Camera3d;
 use bevy_color::LinearRgba;
 use bevy_core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transmissive3d, Transparent3d};
@@ -18,6 +17,8 @@ use bevy_render::{
     texture::{ColorAttachment, TextureCache},
     view::ExtractedView,
 };
+
+use crate::render::{PointCloudRenderMode, PointCloudRenderModeOpt};
 
 /// Textures that are written to by the prepass.
 #[derive(Component)]

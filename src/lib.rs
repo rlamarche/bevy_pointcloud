@@ -1,10 +1,11 @@
+use bevy_app::prelude::*;
+use bevy_asset::AssetApp;
+use bevy_camera::visibility::{add_visibility_class, Visibility, VisibilityClass};
+
 use crate::{
     point_cloud::{PointCloud, PointCloud3d},
     point_cloud_material::PointCloudMaterial,
 };
-use bevy_app::prelude::*;
-use bevy_asset::AssetApp;
-use bevy_camera::visibility::{add_visibility_class, Visibility, VisibilityClass};
 
 pub mod bevy;
 pub mod loader;

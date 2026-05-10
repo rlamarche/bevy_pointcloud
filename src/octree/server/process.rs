@@ -1,3 +1,7 @@
+use bevy_asset::prelude::*;
+use bevy_ecs::prelude::*;
+use bevy_log::prelude::*;
+
 use super::{
     super::{
         asset::Octree,
@@ -8,9 +12,6 @@ use super::{
     OctreeServer,
 };
 use crate::octree::{server::resources::OctreeServerSettings, OctreeTotalSize};
-use bevy_asset::prelude::*;
-use bevy_ecs::prelude::*;
-use bevy_log::prelude::*;
 
 pub fn process_octree_load_tasks<T>(
     mut load_tasks: ResMut<OctreeLoadTasks<T>>,

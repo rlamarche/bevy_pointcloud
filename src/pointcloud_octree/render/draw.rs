@@ -1,3 +1,13 @@
+use bevy_ecs::{
+    query::ROQueryItem,
+    system::{lifetimeless::*, SystemParamItem},
+};
+use bevy_log::prelude::*;
+use bevy_render::{
+    render_phase::{BinnedPhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
+    renderer::RenderQueue,
+};
+
 #[cfg(not(feature = "webgl"))]
 use crate::pointcloud_octree::render::indirect::RenderVisibleNodesIndirectBuffers;
 use crate::{
@@ -14,15 +24,6 @@ use crate::{
         extract::RenderPointCloudNodeData,
     },
     render::mesh::PointCloudMesh,
-};
-use bevy_ecs::{
-    query::ROQueryItem,
-    system::{lifetimeless::*, SystemParamItem},
-};
-use bevy_log::prelude::*;
-use bevy_render::{
-    render_phase::{BinnedPhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
-    renderer::RenderQueue,
 };
 
 pub struct DrawPointCloudOctreeNode;

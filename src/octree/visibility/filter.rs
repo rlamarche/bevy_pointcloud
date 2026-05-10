@@ -1,6 +1,7 @@
+use bevy_transform::prelude::*;
+
 use super::CameraView;
 use crate::octree::node::{NodeData, OctreeNode};
-use bevy_transform::prelude::*;
 
 pub trait OctreeNodesFilter<T: NodeData>: Send + Sync + 'static {
     type Settings: Send + Sync;

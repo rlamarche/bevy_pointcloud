@@ -1,12 +1,5 @@
 use std::sync::Arc;
 
-use crate::{
-    octree::{
-        hierarchy::HierarchyNodeStatus,
-        loader::{LoadedHierarchyNode, OctreeLoader},
-    },
-    pointcloud_octree::asset::data::PointCloudNodeData,
-};
 use async_trait::async_trait;
 use bevy_camera::primitives::Aabb;
 use bevy_ecs::error::BevyError;
@@ -17,6 +10,14 @@ use potree::{
     metadata::Points,
     octree::node::{NodeType, OctreeNode as PotreeOctreeNode},
     prelude::Hierarchy,
+};
+
+use crate::{
+    octree::{
+        hierarchy::HierarchyNodeStatus,
+        loader::{LoadedHierarchyNode, OctreeLoader},
+    },
+    pointcloud_octree::asset::data::PointCloudNodeData,
 };
 
 pub struct PotreeLoader<T> {

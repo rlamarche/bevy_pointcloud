@@ -1,5 +1,5 @@
-use super::node::RenderOctreeNode;
-use crate::octree::extract::render::asset::RenderOctreeNodeAllocation;
+use std::marker::PhantomData;
+
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashMap;
 use bevy_render::{
@@ -7,8 +7,10 @@ use bevy_render::{
     renderer::{RenderDevice, RenderQueue},
 };
 use bytemuck::Pod;
-use std::marker::PhantomData;
 use thiserror::Error;
+
+use super::node::RenderOctreeNode;
+use crate::octree::extract::render::asset::RenderOctreeNodeAllocation;
 
 /// Describes how an octree node gets extracted and prepared for rendering.
 ///

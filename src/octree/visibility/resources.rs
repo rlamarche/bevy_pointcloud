@@ -1,11 +1,12 @@
-use crate::octree::{
-    asset::Octree,
-    node::{NodeData, OctreeNode, OctreeNodeKey},
-};
 use bevy_asset::AssetId;
 use bevy_ecs::prelude::*;
 use indexmap::IndexMap;
 use ordered_float::OrderedFloat;
+
+use crate::octree::{
+    asset::Octree,
+    node::{NodeData, OctreeNode, OctreeNodeKey},
+};
 
 /// This resource contains all visible octree nodes in the current iteration, across all cameras
 #[derive(Resource)]

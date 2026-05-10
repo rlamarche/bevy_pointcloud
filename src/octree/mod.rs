@@ -8,13 +8,13 @@ pub mod server;
 pub mod storage;
 pub mod visibility;
 
-use asset::Octree;
+use std::marker::PhantomData;
 
+use asset::Octree;
 use bevy_app::{App, First, Plugin};
 use bevy_asset::prelude::*;
 use bevy_ecs::prelude::*;
 use node::NodeData;
-use std::marker::PhantomData;
 
 pub struct OctreeAssetPlugin<T>(PhantomData<fn() -> T>);
 

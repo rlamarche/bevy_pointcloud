@@ -1,7 +1,9 @@
-use crate::octree::{loader::LoadedHierarchyNode, storage::NodeId};
+use std::{any::Any, sync::Arc};
+
 use bevy_camera::primitives::Aabb;
 use bevy_reflect::TypePath;
-use std::{any::Any, sync::Arc};
+
+use crate::octree::{loader::LoadedHierarchyNode, storage::NodeId};
 
 #[derive(Debug, Clone, Copy)]
 pub enum HierarchyNodeStatus {

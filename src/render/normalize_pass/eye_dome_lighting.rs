@@ -1,13 +1,14 @@
-use crate::render::{
-    eye_dome_lighting::{EyeDomeLightingUniform, EyeDomeLightingUniformBindgroupLayout},
-    PointCloudRenderMode,
-};
 use bevy_ecs::prelude::*;
 use bevy_render::{
     extract_component::{ComponentUniforms, DynamicUniformIndex},
     render_resource::{BindGroup, BindGroupEntries, PipelineCache},
     renderer::RenderDevice,
     view::Msaa,
+};
+
+use crate::render::{
+    eye_dome_lighting::{EyeDomeLightingUniform, EyeDomeLightingUniformBindgroupLayout},
+    PointCloudRenderMode,
 };
 
 #[derive(Component)]

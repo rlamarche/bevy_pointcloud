@@ -1,4 +1,3 @@
-use crate::render::PointCloudRenderMode;
 use bevy_camera::Camera;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
@@ -18,6 +17,8 @@ use bevy_render::{
     sync_world::RenderEntity,
     Extract,
 };
+
+use crate::render::PointCloudRenderMode;
 
 #[derive(Resource, Default)]
 pub struct NeighboursCache {

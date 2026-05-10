@@ -1,5 +1,10 @@
 use std::marker::PhantomData;
 
+use bevy_asset::AssetId;
+use bevy_ecs::prelude::*;
+use bevy_platform::collections::HashMap;
+use slab::Slab;
+
 use super::{
     asset::{RenderOctree, RenderOctreeNodeData},
     node::RenderOctreeNode,
@@ -11,10 +16,6 @@ use crate::octree::{
     },
     storage::NodeId,
 };
-use bevy_asset::AssetId;
-use bevy_ecs::prelude::*;
-use bevy_platform::collections::HashMap;
-use slab::Slab;
 
 /// This resource stores the octree mapping to index in render world.
 #[derive(Debug, Resource)]

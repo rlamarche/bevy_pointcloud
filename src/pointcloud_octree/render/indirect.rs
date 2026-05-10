@@ -1,3 +1,11 @@
+use bevy_camera::Camera3d;
+use bevy_platform::collections::{HashMap, HashSet};
+use bevy_render::{
+    batching::gpu_preprocessing::IndirectParametersNonIndexed,
+    render_resource::{BufferUsages, BufferVec},
+    renderer::{RenderDevice, RenderQueue},
+};
+
 use crate::{
     bevy::prelude::*,
     octree::extract::render::{components::RenderVisibleOctreeNodes, resources::RenderOctrees},
@@ -6,13 +14,6 @@ use crate::{
         extract::RenderPointCloudNodeData, render::prepare::MAX_NODES,
     },
     render::mesh::PointCloudMesh,
-};
-use bevy_camera::Camera3d;
-use bevy_platform::collections::{HashMap, HashSet};
-use bevy_render::{
-    batching::gpu_preprocessing::IndirectParametersNonIndexed,
-    render_resource::{BufferUsages, BufferVec},
-    renderer::{RenderDevice, RenderQueue},
 };
 
 /// Stores multi draw indirect buffer for each view

@@ -3,16 +3,6 @@ pub mod node;
 mod pipeline;
 mod texture;
 
-use crate::render::{
-    attribute_pass::node::AttributePassLabel,
-    eye_dome_lighting::EyeDomeLightingUniformBindgroupLayout,
-    normalize_pass::{
-        eye_dome_lighting::prepare_normalize_pass_edl_bind_groups,
-        pipeline::{NormalizePassPipelineId, NormalizePassPipelineKey},
-        texture::prepare_normalize_pass_bind_groups,
-    },
-    PointCloudRenderMode, PointCloudRenderModeOpt,
-};
 use bevy_app::prelude::*;
 use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy_ecs::prelude::*;
@@ -24,6 +14,17 @@ use bevy_render::{
 };
 use node::{NormalizePassLabel, NormalizePassNode};
 use pipeline::NormalizePassPipeline;
+
+use crate::render::{
+    attribute_pass::node::AttributePassLabel,
+    eye_dome_lighting::EyeDomeLightingUniformBindgroupLayout,
+    normalize_pass::{
+        eye_dome_lighting::prepare_normalize_pass_edl_bind_groups,
+        pipeline::{NormalizePassPipelineId, NormalizePassPipelineKey},
+        texture::prepare_normalize_pass_bind_groups,
+    },
+    PointCloudRenderMode, PointCloudRenderModeOpt,
+};
 
 pub struct NormalizePassPlugin;
 

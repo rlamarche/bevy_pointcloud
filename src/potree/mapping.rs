@@ -1,6 +1,7 @@
-use crate::pointcloud_octree::asset::data::PointData;
 use bevy_math::prelude::*;
 use potree::prelude::PointData as PotreePointData;
+
+use crate::pointcloud_octree::asset::data::PointData;
 
 impl From<PotreePointData> for PointData {
     fn from(value: PotreePointData) -> Self {

@@ -1,9 +1,11 @@
-use super::node::RenderOctreeNode;
-use crate::octree::storage::NodeId;
+use std::fmt::Debug;
+
 use bevy_camera::primitives::Aabb;
 use bevy_platform::collections::HashMap;
-use std::fmt::Debug;
 use thiserror::Error;
+
+use super::node::RenderOctreeNode;
+use crate::octree::storage::NodeId;
 
 #[derive(Error, Debug)]
 pub enum InsertNodeError {

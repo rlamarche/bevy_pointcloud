@@ -3,20 +3,6 @@ pub mod phase;
 pub mod pipeline;
 pub mod texture;
 
-use crate::{
-    point_cloud::PointCloud3d,
-    render::{
-        attribute_pass::{
-            pipeline::{AttributePassPipeline, AttributePipelineKey},
-            texture::{prepare_attribute_pass_bind_groups, AttributePassLayout},
-        },
-        depth_pass::node::DepthPassLabel,
-        draw::DrawPointCloud,
-        material::SetPointCloudMaterialGroup,
-        phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey},
-        point_cloud_uniform::SetPointCloudUniformGroup,
-    },
-};
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::Core3d;
@@ -40,6 +26,21 @@ use bevy_render::{
 use node::{AttributePassLabel, AttributePassNode};
 use phase::PointCloud3dAttributePhase;
 use texture::prepare_attribute_pass_textures;
+
+use crate::{
+    point_cloud::PointCloud3d,
+    render::{
+        attribute_pass::{
+            pipeline::{AttributePassPipeline, AttributePipelineKey},
+            texture::{prepare_attribute_pass_bind_groups, AttributePassLayout},
+        },
+        depth_pass::node::DepthPassLabel,
+        draw::DrawPointCloud,
+        material::SetPointCloudMaterialGroup,
+        phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey},
+        point_cloud_uniform::SetPointCloudUniformGroup,
+    },
+};
 
 pub struct AttributePassPlugin;
 impl Plugin for AttributePassPlugin {

@@ -1,6 +1,7 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use bevy_ecs::prelude::*;
 use bevy_render::Extract;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub fn reset_render_asset_bytes_per_frame(
     mut bpf_limiter: ResMut<RenderOctreeNodesBytesPerFrameLimiter>,

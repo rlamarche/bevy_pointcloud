@@ -3,6 +3,20 @@ pub mod resources;
 pub mod systems;
 mod task;
 
+use std::{marker::PhantomData, sync::Arc};
+
+use bevy_app::prelude::*;
+use bevy_asset::{AssetHandleProvider, AssetId, Assets, Handle};
+use bevy_ecs::prelude::*;
+use bevy_log::prelude::*;
+use bevy_platform::collections::HashMap;
+use bevy_tasks::IoTaskPool;
+use crossbeam::channel::{Receiver, Sender};
+use process::process_octree_load_tasks;
+use resources::{OctreeLoadTasks, OctreeServerEvictionQueue, OctreeServerSettings};
+use task::spawn_async_task;
+use thiserror::Error;
+
 use super::{
     asset::Octree,
     hierarchy::{HierarchyNode, HierarchyOctreeNode},
@@ -14,18 +28,6 @@ use crate::octree::{
     server::systems::{evict_octree_nodes, update_octree_server_node_eviction_queue},
     storage::NodeId,
 };
-use bevy_app::prelude::*;
-use bevy_asset::{AssetHandleProvider, AssetId, Assets, Handle};
-use bevy_ecs::prelude::*;
-use bevy_log::prelude::*;
-use bevy_platform::collections::HashMap;
-use bevy_tasks::IoTaskPool;
-use crossbeam::channel::{Receiver, Sender};
-use process::process_octree_load_tasks;
-use resources::{OctreeLoadTasks, OctreeServerEvictionQueue, OctreeServerSettings};
-use std::{marker::PhantomData, sync::Arc};
-use task::spawn_async_task;
-use thiserror::Error;
 
 pub struct OctreeServerPlugin<T> {
     pub max_size: usize,

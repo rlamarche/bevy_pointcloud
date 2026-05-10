@@ -5,12 +5,8 @@ mod heap_guard;
 pub mod resources;
 pub mod stack;
 
-use super::{
-    asset::Octree,
-    hierarchy::HierarchyNodeStatus,
-    node::{NodeData, NodeStatus},
-    server::resources::{LoadRequestType, OctreeLoadTasks},
-};
+use std::{any::TypeId, collections::BinaryHeap, marker::PhantomData};
+
 use bevy_app::{App, Plugin, PostUpdate};
 use bevy_asset::{AssetId, Assets};
 use bevy_camera::{
@@ -36,7 +32,13 @@ use filter::*;
 use heap_guard::HeapGuard;
 use resources::GlobalVisibleOctreeNodes;
 use stack::*;
-use std::{any::TypeId, collections::BinaryHeap, marker::PhantomData};
+
+use super::{
+    asset::Octree,
+    hierarchy::HierarchyNodeStatus,
+    node::{NodeData, NodeStatus},
+    server::resources::{LoadRequestType, OctreeLoadTasks},
+};
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CheckOctreeNodesVisibility;

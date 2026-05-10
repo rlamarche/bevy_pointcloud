@@ -1,4 +1,3 @@
-use crate::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
 use bevy_asset::AssetId;
 use bevy_ecs::{
     prelude::World,
@@ -19,6 +18,8 @@ use bevy_render::{
     },
     renderer::{RenderDevice, RenderQueue},
 };
+
+use crate::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
 
 /// The render world representation of a [`PointCloudMaterial`].
 pub struct RenderPointCloudMaterial {

@@ -1,5 +1,3 @@
-use super::texture::ViewAttributePrepassTextures;
-use crate::render::attribute_pass::phase::PointCloud3dAttributePhase;
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::{error, prelude::*};
 use bevy_render::{
@@ -10,6 +8,9 @@ use bevy_render::{
     renderer::RenderContext,
     view::{ExtractedView, ViewDepthTexture},
 };
+
+use super::texture::ViewAttributePrepassTextures;
+use crate::render::attribute_pass::phase::PointCloud3dAttributePhase;
 
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct AttributePassLabel;

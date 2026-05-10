@@ -1,3 +1,9 @@
+use std::{fmt::Debug, sync::Arc};
+
+use bevy_asset::Asset;
+use bevy_reflect::TypePath;
+use thiserror::Error;
+
 use super::{
     hierarchy::{HierarchyNode, HierarchyNodeStatus, HierarchyOctreeNode},
     node::{NodeData, NodeStatus, OctreeNode},
@@ -6,10 +12,6 @@ use crate::octree::{
     storage::{GenerationalSlab, NodeId},
     visibility::iter_one_bits,
 };
-use bevy_asset::Asset;
-use bevy_reflect::TypePath;
-use std::{fmt::Debug, sync::Arc};
-use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum InsertNodeError {

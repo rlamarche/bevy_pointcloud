@@ -1,9 +1,10 @@
+use bevy_ecs::prelude::*;
+use bevy_reflect::Reflect;
+
 use crate::{
     octree::{node::OctreeNode, visibility::budget::OctreeNodesBudget},
     pointcloud_octree::{asset::data::PointCloudNodeData, render::prepare::MAX_NODES},
 };
-use bevy_ecs::prelude::*;
-use bevy_reflect::Reflect;
 
 pub struct PointCloudOctreePointBudget {
     pub point_budget: usize,

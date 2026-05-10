@@ -1,18 +1,20 @@
-use crate::octree::{
-    asset::Octree,
-    node::{NodeData, OctreeNodeKey},
-    storage::NodeId,
-};
-use bevy_asset::AssetId;
-use bevy_ecs::prelude::*;
-use bevy_platform::collections::HashSet;
-use ordered_float::OrderedFloat;
-use priority_queue::PriorityQueue;
 use std::{
     cmp::{Ordering, Reverse},
     collections::BinaryHeap,
     hash::{Hash, Hasher},
     marker::PhantomData,
+};
+
+use bevy_asset::AssetId;
+use bevy_ecs::prelude::*;
+use bevy_platform::collections::HashSet;
+use ordered_float::OrderedFloat;
+use priority_queue::PriorityQueue;
+
+use crate::octree::{
+    asset::Octree,
+    node::{NodeData, OctreeNodeKey},
+    storage::NodeId,
 };
 
 #[derive(Resource)]

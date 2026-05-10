@@ -1,11 +1,13 @@
+use std::cmp::Ordering;
+
+use bevy_asset::AssetId;
+use bevy_ecs::prelude::*;
+use ordered_float::OrderedFloat;
+
 use crate::octree::{
     asset::Octree,
     node::{NodeData, OctreeNode},
 };
-use bevy_asset::AssetId;
-use bevy_ecs::prelude::*;
-use ordered_float::OrderedFloat;
-use std::cmp::Ordering;
 
 pub struct StackedOctreeNode<'a, T: NodeData> {
     pub entity: Entity,

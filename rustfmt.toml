@@ -7,6 +7,8 @@ style_edition = "2021"
 # unstable_features = true
 imports_granularity = "Crate"
 normalize_comments = true
+reorder_imports = true
+group_imports = "StdExternalCrate"
 
 # these options seem poorly implemented and cause churn, so, try to avoid them
 # wrap_comments = true

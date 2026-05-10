@@ -1,12 +1,14 @@
-use crate::point_cloud::{PointCloud, PointCloudData};
+use std::io::{Cursor, Error};
+
 use bevy_app::{App, Plugin};
 use bevy_asset::{io::Reader, AssetApp, AssetLoader, LoadContext};
 use bevy_log::info;
 use bevy_math::Vec3;
 use bevy_reflect::TypePath;
 use serde::{Deserialize, Serialize};
-use std::io::{Cursor, Error};
 use thiserror::Error;
+
+use crate::point_cloud::{PointCloud, PointCloudData};
 
 /// Naive implementation of a las loader because it loads the las file completely in memory
 pub struct LasLoaderPlugin;

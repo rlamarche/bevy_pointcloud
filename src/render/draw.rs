@@ -1,7 +1,3 @@
-use crate::{
-    point_cloud::PointCloud3d,
-    render::{mesh::PointCloudMesh, point_cloud::RenderPointCloud},
-};
 use bevy_ecs::system::{
     lifetimeless::{Read, SRes},
     SystemParamItem,
@@ -10,6 +6,11 @@ use bevy_render::{
     render_asset::RenderAssets,
     render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
     render_resource::IndexFormat,
+};
+
+use crate::{
+    point_cloud::PointCloud3d,
+    render::{mesh::PointCloudMesh, point_cloud::RenderPointCloud},
 };
 
 pub struct DrawPointCloud;

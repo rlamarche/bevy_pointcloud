@@ -1,19 +1,18 @@
-use crate::point_cloud::{PointCloud, PointCloudData};
-use bevy_app::{App, Plugin};
-use bevy_math::Vec3;
+use std::io::{BufReader, Cursor, Error};
 
+use bevy_app::{App, Plugin};
 use bevy_asset::{io::Reader, AssetApp, AssetLoader, LoadContext};
 use bevy_log;
+use bevy_math::Vec3;
 use bevy_reflect::TypePath;
-use std::io::BufReader;
-use thiserror::Error;
-
 use ply_rs::{
     parser::Parser,
     ply::{Property, PropertyAccess},
 };
 use serde::{Deserialize, Serialize};
-use std::io::{Cursor, Error};
+use thiserror::Error;
+
+use crate::point_cloud::{PointCloud, PointCloudData};
 
 #[derive(TypePath)]
 pub struct PlyLoaderPlugin;

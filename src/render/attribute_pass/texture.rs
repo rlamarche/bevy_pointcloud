@@ -1,6 +1,3 @@
-use crate::render::{
-    attribute_pass::pipeline::AttributePassPipeline, depth_pass::texture::ViewDepthPrepassTextures,
-};
 use bevy_color::LinearRgba;
 use bevy_core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transmissive3d, Transparent3d};
 use bevy_ecs::{prelude::*, query::ROQueryItem, system::SystemParamItem};
@@ -21,6 +18,10 @@ use bevy_render::{
     renderer::RenderDevice,
     texture::{ColorAttachment, TextureCache},
     view::ExtractedView,
+};
+
+use crate::render::{
+    attribute_pass::pipeline::AttributePassPipeline, depth_pass::texture::ViewDepthPrepassTextures,
 };
 
 #[derive(Component)]

@@ -2,15 +2,14 @@ use crate::{
     bevy::prelude::*,
     octree::{
         asset::Octree,
-        extract::resources::{
-            ExtractOctreeNodeEvictionQueue, NodeAllocation, OctreeNodeAllocations,
+        extract::{
+            resources::{ExtractOctreeNodeEvictionQueue, NodeAllocation, OctreeNodeAllocations},
+            OctreeNodeExtraction,
         },
         node::NodeData,
         visibility::resources::GlobalVisibleOctreeNodes,
     },
 };
-
-use crate::octree::extract::OctreeNodeExtraction;
 
 /// This system allocates gpu memory for computed visible octree nodes, and trace allocations for later extraction.
 /// It frees gpu memory of nodes that aren't visible, if needed.

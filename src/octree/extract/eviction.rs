@@ -1,3 +1,8 @@
+use std::cmp::Reverse;
+
+use bevy_ecs::prelude::*;
+use bevy_time::{Real, Time};
+
 use super::resources::ExtractOctreeNodeEvictionQueue;
 use crate::octree::{
     extract::{
@@ -6,9 +11,6 @@ use crate::octree::{
     },
     visibility::resources::GlobalVisibleOctreeNodes,
 };
-use bevy_ecs::prelude::*;
-use bevy_time::{Real, Time};
-use std::cmp::Reverse;
 
 /// This system update the octree node eviction queue with latest informations
 pub fn update_extract_octree_node_eviction_queue<E: OctreeNodeExtraction>(

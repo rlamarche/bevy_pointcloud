@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
-use crate::octree::node::NodeData;
 use bevy_math::prelude::*;
 use bevy_reflect::TypePath;
 use bevy_render::render_resource::AsBindGroup;
 use bytemuck::{Pod, Zeroable};
+
+use crate::octree::node::NodeData;
 
 #[derive(Default, Debug, Clone, TypePath, AsBindGroup)]
 pub struct PointCloudNodeData {

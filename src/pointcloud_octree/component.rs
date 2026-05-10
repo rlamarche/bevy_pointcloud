@@ -1,12 +1,13 @@
+use bevy_asset::{AssetId, Handle};
+use bevy_ecs::{prelude::*, query::QueryItem};
+use bevy_render::extract_component::ExtractComponent;
+use bevy_transform::prelude::GlobalTransform;
+
 use super::asset::data::PointCloudNodeData;
 use crate::{
     octree::asset::Octree, point_cloud_material::PointCloudMaterial3d,
     pointcloud_octree::render::data::PointCloudOctree3dUniform,
 };
-use bevy_asset::{AssetId, Handle};
-use bevy_ecs::{prelude::*, query::QueryItem};
-use bevy_render::extract_component::ExtractComponent;
-use bevy_transform::prelude::GlobalTransform;
 
 #[derive(Component, Clone, Debug)]
 pub struct PointCloudOctree3d(pub Handle<Octree<PointCloudNodeData>>);

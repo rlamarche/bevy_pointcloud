@@ -1,5 +1,3 @@
-use super::{asset::RenderOctreeNodeData, buffer::RenderNodeData};
-use crate::octree::{asset::Octree, node::NodeData, storage::NodeId};
 use bevy_asset::AssetId;
 use bevy_ecs::{
     prelude::*,
@@ -7,6 +5,9 @@ use bevy_ecs::{
 };
 use bevy_render::render_resource::AsBindGroupError;
 use thiserror::Error;
+
+use super::{asset::RenderOctreeNodeData, buffer::RenderNodeData};
+use crate::octree::{asset::Octree, node::NodeData, storage::NodeId};
 
 #[derive(Debug, Error)]
 pub enum PrepareOctreeNodeError<T: Send + Sync> {

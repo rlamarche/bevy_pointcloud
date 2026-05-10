@@ -1,4 +1,5 @@
-use crate::render::phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey};
+use std::ops::Range;
+
 use bevy_ecs::prelude::*;
 use bevy_render::{
     render_phase::{
@@ -8,7 +9,8 @@ use bevy_render::{
     render_resource::CachedRenderPipelineId,
     sync_world::MainEntity,
 };
-use std::ops::Range;
+
+use crate::render::phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey};
 
 pub struct PointCloud3dDepthPhase {
     /// Determines which objects can be placed into a *batch set*.

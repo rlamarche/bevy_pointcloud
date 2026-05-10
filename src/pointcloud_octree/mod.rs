@@ -4,6 +4,10 @@ pub mod extract;
 pub mod render;
 pub mod visibility;
 
+use asset::extract::PointCloudOctreeExtraction;
+use bevy_app::plugin_group;
+use component::PointCloudOctree3d;
+
 use crate::{
     octree::{
         extract::ExtractVisibleOctreeNodesPlugin,
@@ -19,9 +23,6 @@ use crate::{
         visibility::PointCloudOctreePointBudget,
     },
 };
-use asset::extract::PointCloudOctreeExtraction;
-use bevy_app::plugin_group;
-use component::PointCloudOctree3d;
 
 pub type PointCloudOctreeAssetPlugin = OctreeAssetPlugin<PointCloudNodeData>;
 

@@ -4,17 +4,8 @@ pub mod limiter;
 pub mod render;
 pub mod resources;
 
-use super::{
-    asset::Octree,
-    node::{NodeData, OctreeNode},
-};
-use crate::octree::{
-    extract::render::{
-        components::RenderVisibleOctreeNodes, prepare::prepare_octrees_uniforms,
-        resources::AllocatedOctreeNodes,
-    },
-    visibility::CheckOctreeNodesVisibility,
-};
+use std::marker::PhantomData;
+
 use allocate::allocate_visible_octree_nodes;
 use bevy_app::prelude::*;
 use bevy_asset::AssetId;
@@ -41,7 +32,18 @@ use render::{
     },
 };
 use resources::{ExtractOctreeNodeEvictionQueue, OctreeBufferSettings, OctreeNodeAllocations};
-use std::marker::PhantomData;
+
+use super::{
+    asset::Octree,
+    node::{NodeData, OctreeNode},
+};
+use crate::octree::{
+    extract::render::{
+        components::RenderVisibleOctreeNodes, prepare::prepare_octrees_uniforms,
+        resources::AllocatedOctreeNodes,
+    },
+    visibility::CheckOctreeNodesVisibility,
+};
 
 pub trait OctreeNodeExtraction: Send + Sync + TypePath {
     type NodeData: NodeData;

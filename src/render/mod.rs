@@ -11,15 +11,6 @@ pub mod phase;
 pub mod point_cloud;
 pub mod point_cloud_uniform;
 
-use crate::{
-    point_cloud::PointCloud3d,
-    render::{
-        eye_dome_lighting::{extract_cameras_render_mode, EyeDomeLightingUniform, NeighboursCache},
-        material::{RenderPointCloudMaterial, RenderPointCloudMaterialLayout},
-        mesh::PointCloudMesh,
-        point_cloud::RenderPointCloud,
-    },
-};
 use aabb::compute_point_cloud_aabb;
 use attribute_pass::AttributePassPlugin;
 use bevy_app::prelude::*;
@@ -43,6 +34,16 @@ use bevy_shader::Shader;
 use depth_pass::DepthPassPlugin;
 use normalize_pass::NormalizePassPlugin;
 use point_cloud_uniform::{prepare_point_cloud_uniform, PointCloudUniformLayout};
+
+use crate::{
+    point_cloud::PointCloud3d,
+    render::{
+        eye_dome_lighting::{extract_cameras_render_mode, EyeDomeLightingUniform, NeighboursCache},
+        material::{RenderPointCloudMaterial, RenderPointCloudMaterialLayout},
+        mesh::PointCloudMesh,
+        point_cloud::RenderPointCloud,
+    },
+};
 
 const POINTCLOUD_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("9c7d8df3-86dd-4412-a9cc-dad5c7916a8c");

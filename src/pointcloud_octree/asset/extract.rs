@@ -1,21 +1,3 @@
-use crate::{
-    octree::{
-        extract::{
-            render::node::{PrepareOctreeNodeError, RenderOctreeNode},
-            OctreeNodeExtraction,
-        },
-        node::OctreeNode,
-    },
-    pointcloud_octree::{
-        asset::data::{PointCloudNodeData, PointData},
-        extract::{PointCloudNodeDataUniform, RenderPointCloudNodeData},
-    },
-};
-
-use crate::{
-    octree::{asset::Octree, extract::render::asset::RenderOctreeNodeData},
-    pointcloud_octree::component::PointCloudOctree3d,
-};
 use bevy_asset::AssetId;
 use bevy_ecs::{
     prelude::*,
@@ -28,6 +10,25 @@ use bevy_render::{
         ShaderStages, UniformBuffer,
     },
     renderer::{RenderDevice, RenderQueue},
+};
+
+use crate::{
+    octree::{
+        asset::Octree,
+        extract::{
+            render::{
+                asset::RenderOctreeNodeData,
+                node::{PrepareOctreeNodeError, RenderOctreeNode},
+            },
+            OctreeNodeExtraction,
+        },
+        node::OctreeNode,
+    },
+    pointcloud_octree::{
+        asset::data::{PointCloudNodeData, PointData},
+        component::PointCloudOctree3d,
+        extract::{PointCloudNodeDataUniform, RenderPointCloudNodeData},
+    },
 };
 
 #[derive(TypePath)]

@@ -1,9 +1,5 @@
 use std::marker::PhantomData;
 
-use crate::{
-    pointcloud_octree::render::phase::ViewOctreeNodesRenderAttributePhases,
-    render::attribute_pass::texture::ViewAttributePrepassTextures,
-};
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::{error, prelude::*};
 use bevy_render::{
@@ -13,6 +9,11 @@ use bevy_render::{
     render_resource::{CommandEncoderDescriptor, RenderPassDescriptor, StoreOp},
     renderer::RenderContext,
     view::{ExtractedView, ViewDepthTexture},
+};
+
+use crate::{
+    pointcloud_octree::render::phase::ViewOctreeNodesRenderAttributePhases,
+    render::attribute_pass::texture::ViewAttributePrepassTextures,
 };
 
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]

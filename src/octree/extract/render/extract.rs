@@ -1,3 +1,9 @@
+use bevy_asset::Assets;
+use bevy_camera::Camera;
+use bevy_ecs::prelude::*;
+use bevy_log::prelude::*;
+use bevy_render::{sync_world::RenderEntity, view::ExtractedView, Extract};
+
 use super::{
     asset::{RenderOctreeNodeAllocation, RenderOctreeNodeData},
     components::RenderVisibleOctreeNodes,
@@ -9,11 +15,6 @@ use crate::octree::{
     extract::{resources::OctreeNodeAllocations, OctreeNodeExtraction},
     visibility::components::ViewVisibleOctreeNodes,
 };
-use bevy_asset::Assets;
-use bevy_camera::Camera;
-use bevy_ecs::prelude::*;
-use bevy_log::prelude::*;
-use bevy_render::{sync_world::RenderEntity, view::ExtractedView, Extract};
 
 /// This system extracts computed visible octree nodes and add them in the render world, for each view (camera)
 #[cfg_attr(feature = "trace", tracing::instrument(skip_all))]

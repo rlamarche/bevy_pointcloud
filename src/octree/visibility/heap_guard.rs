@@ -1,8 +1,9 @@
-use crate::octree::{node::NodeData, visibility::stack::StackedOctreeNode};
 use std::{
     collections::BinaryHeap,
     ops::{Deref, DerefMut},
 };
+
+use crate::octree::{node::NodeData, visibility::stack::StackedOctreeNode};
 
 /// A RAII guard to safely use a 'static BinaryHeap with short-lived references.
 pub struct HeapGuard<'a, 'b, T: NodeData> {

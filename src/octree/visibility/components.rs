@@ -1,14 +1,16 @@
+use std::{marker::PhantomData, sync::Arc};
+
+use bevy_asset::AssetId;
+use bevy_ecs::prelude::*;
+use bevy_platform::collections::HashMap;
+use bevy_reflect::Reflect;
+
 use crate::octree::{
     asset::Octree,
     node::{NodeData, OctreeNode},
     storage::NodeId,
     visibility::{budget::OctreeNodesBudget, filter::OctreeNodesFilter},
 };
-use bevy_asset::AssetId;
-use bevy_ecs::prelude::*;
-use bevy_platform::collections::HashMap;
-use bevy_reflect::Reflect;
-use std::{marker::PhantomData, sync::Arc};
 
 #[derive(Debug, Component, Reflect)]
 pub struct OctreeVisibilitySettings<T: NodeData, F: OctreeNodesFilter<T>, B: OctreeNodesBudget<T>> {

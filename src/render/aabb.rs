@@ -1,7 +1,8 @@
-use crate::{point_cloud::PointCloud, render::PointCloud3d};
 use bevy_asset::Assets;
 use bevy_camera::{primitives::Aabb, visibility::NoFrustumCulling};
 use bevy_ecs::prelude::*;
+
+use crate::{point_cloud::PointCloud, render::PointCloud3d};
 
 #[derive(Component)]
 pub struct AabbComputed;

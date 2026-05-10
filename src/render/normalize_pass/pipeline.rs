@@ -1,6 +1,3 @@
-use crate::render::{
-    normalize_pass::EyeDomeLightingUniformBindgroupLayout, NORMALIZE_SHADER_HANDLE,
-};
 use bevy_core_pipeline::FullscreenShader;
 use bevy_ecs::prelude::*;
 use bevy_image::BevyDefault;
@@ -9,6 +6,10 @@ use bevy_render::render_resource::{
     *,
 };
 use bevy_shader::ShaderDefVal;
+
+use crate::render::{
+    normalize_pass::EyeDomeLightingUniformBindgroupLayout, NORMALIZE_SHADER_HANDLE,
+};
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct NormalizePassPipelineKey {

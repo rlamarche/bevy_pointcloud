@@ -1,10 +1,12 @@
-use crate::point_cloud::PointCloud;
+use std::hash::Hash;
+
 use bevy_asset::AssetId;
 use bevy_render::{
     render_phase::{DrawFunctionId, PhaseItemBatchSetKey},
     render_resource::CachedRenderPipelineId,
 };
-use std::hash::Hash;
+
+use crate::point_cloud::PointCloud;
 
 /// Information that must be identical in order to place opaque meshes in the
 /// same *batch set*.

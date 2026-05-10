@@ -1,6 +1,5 @@
 use std::{hash::Hash, ops::Range};
 
-use crate::{pointcloud_octree::asset::PointCloudOctree, render::phase::PointCloud3dBatchSetKey};
 use bevy_asset::AssetId;
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
@@ -15,6 +14,8 @@ use bevy_render::{
     view::RetainedViewEntity,
 };
 use indexmap::IndexMap;
+
+use crate::{pointcloud_octree::asset::PointCloudOctree, render::phase::PointCloud3dBatchSetKey};
 
 /// Data that must be identical in order to *batch* phase items together.
 ///

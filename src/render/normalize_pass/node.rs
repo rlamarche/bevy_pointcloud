@@ -1,13 +1,14 @@
-use crate::render::normalize_pass::{
-    eye_dome_lighting::NormalizePassEdlBindgroup, pipeline::NormalizePassPipelineId,
-    texture::NormalizePassBindGroup,
-};
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_render::{
     render_graph::{NodeRunError, RenderGraphContext, RenderLabel, ViewNode},
     render_resource::*,
     renderer::RenderContext,
     view::{ViewDepthTexture, ViewTarget},
+};
+
+use crate::render::normalize_pass::{
+    eye_dome_lighting::NormalizePassEdlBindgroup, pipeline::NormalizePassPipelineId,
+    texture::NormalizePassBindGroup,
 };
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]

@@ -3,21 +3,6 @@ pub mod phase;
 pub mod pipeline;
 pub mod texture;
 
-use crate::{
-    point_cloud::PointCloud3d,
-    render::{
-        depth_pass::{
-            node::{DepthPassLabel, DepthPassNode},
-            pipeline::{DepthPipeline, DepthPipelineKey},
-            texture::{prepare_depth_pass_textures, DepthPassLayout},
-        },
-        draw::DrawPointCloud,
-        material::SetPointCloudMaterialGroup,
-        phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey},
-        point_cloud_uniform::SetPointCloudUniformGroup,
-        PointCloudRenderMode, PointCloudRenderModeOpt,
-    },
-};
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
@@ -38,6 +23,22 @@ use bevy_render::{
     Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
 };
 use phase::PointCloud3dDepthPhase;
+
+use crate::{
+    point_cloud::PointCloud3d,
+    render::{
+        depth_pass::{
+            node::{DepthPassLabel, DepthPassNode},
+            pipeline::{DepthPipeline, DepthPipelineKey},
+            texture::{prepare_depth_pass_textures, DepthPassLayout},
+        },
+        draw::DrawPointCloud,
+        material::SetPointCloudMaterialGroup,
+        phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey},
+        point_cloud_uniform::SetPointCloudUniformGroup,
+        PointCloudRenderMode, PointCloudRenderModeOpt,
+    },
+};
 
 pub struct DepthPassPlugin;
 impl Plugin for DepthPassPlugin {

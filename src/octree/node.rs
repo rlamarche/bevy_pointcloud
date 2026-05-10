@@ -1,10 +1,12 @@
-use crate::octree::{asset::Octree, hierarchy::HierarchyOctreeNode, storage::NodeId};
-use bevy_asset::AssetId;
-use bevy_reflect::TypePath;
 use std::{
     fmt::{Debug, Formatter},
     hash::{Hash, Hasher},
 };
+
+use bevy_asset::AssetId;
+use bevy_reflect::TypePath;
+
+use crate::octree::{asset::Octree, hierarchy::HierarchyOctreeNode, storage::NodeId};
 
 pub trait NodeData: Send + Sync + TypePath {
     fn instance_count(&self) -> usize;

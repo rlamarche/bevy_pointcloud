@@ -1,9 +1,3 @@
-use crate::{
-    point_cloud::PointCloudData,
-    point_cloud_material::PointCloudMaterial,
-    pointcloud_octree::extract::{PointCloudNodeDataUniform, PointCloudOctreeUniform},
-    render::{point_cloud_uniform::PointCloudUniform, POINTCLOUD_SHADER_HANDLE},
-};
 use bevy_asset::prelude::*;
 use bevy_core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT;
 use bevy_ecs::prelude::*;
@@ -22,6 +16,13 @@ use bevy_render::{
 };
 use bevy_shader::Shader;
 use bevy_utils::default;
+
+use crate::{
+    point_cloud::PointCloudData,
+    point_cloud_material::PointCloudMaterial,
+    pointcloud_octree::extract::{PointCloudNodeDataUniform, PointCloudOctreeUniform},
+    render::{point_cloud_uniform::PointCloudUniform, POINTCLOUD_SHADER_HANDLE},
+};
 
 #[derive(Resource)]
 pub struct DepthPipeline {

@@ -1,11 +1,13 @@
+use std::fmt::Display;
+
+use async_trait::async_trait;
+use bevy_camera::primitives::Aabb;
+use bevy_ecs::{error::BevyError, prelude::*};
+
 use crate::octree::{
     hierarchy::{HierarchyNode, HierarchyNodeData, HierarchyNodeStatus, HierarchyOctreeNode},
     node::NodeData,
 };
-use async_trait::async_trait;
-use bevy_camera::primitives::Aabb;
-use bevy_ecs::{error::BevyError, prelude::*};
-use std::fmt::Display;
 
 #[derive(Debug, Clone)]
 pub struct LoadedHierarchyNode<H>

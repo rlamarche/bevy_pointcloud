@@ -1,7 +1,8 @@
+use std::fmt::{Display, Formatter};
+
 use bevy_reflect::Reflect;
 /// Generated using claude.ai
 use slab::Slab;
-use std::fmt::{Display, Formatter};
 
 /// A stable handle used to reference an entry inside a `GenerationalSlab`.
 #[derive(Copy, Clone, Default, Debug, Eq, PartialEq, PartialOrd, Ord, Hash, Reflect)]

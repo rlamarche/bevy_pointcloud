@@ -1,5 +1,24 @@
 pub mod node;
 
+use bevy_app::prelude::*;
+use bevy_camera::{Camera, Camera3d};
+use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
+use bevy_ecs::{change_detection::Tick, prelude::*};
+use bevy_log::prelude::*;
+use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
+use bevy_platform::collections::HashSet;
+use bevy_render::{
+    batching::gpu_preprocessing::GpuPreprocessingSupport,
+    prelude::*,
+    render_graph::{RenderGraphExt, ViewNodeRunner},
+    render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline},
+    render_resource::{PipelineCache, SpecializedRenderPipelines},
+    sync_world::MainEntity,
+    view::{ExtractedView, RetainedViewEntity},
+    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
+};
+use node::DepthPassOctreeLabel;
+
 use super::phase::PointCloudOctree3dBinKey;
 #[cfg(feature = "webgl")]
 use crate::pointcloud_octree::render::draw::DrawPointCloudOctree;
@@ -27,24 +46,6 @@ use crate::{
         PointCloudRenderMode, PointCloudRenderModeOpt,
     },
 };
-use bevy_app::prelude::*;
-use bevy_camera::{Camera, Camera3d};
-use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
-use bevy_ecs::{change_detection::Tick, prelude::*};
-use bevy_log::prelude::*;
-use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
-use bevy_platform::collections::HashSet;
-use bevy_render::{
-    batching::gpu_preprocessing::GpuPreprocessingSupport,
-    prelude::*,
-    render_graph::{RenderGraphExt, ViewNodeRunner},
-    render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline},
-    render_resource::{PipelineCache, SpecializedRenderPipelines},
-    sync_world::MainEntity,
-    view::{ExtractedView, RetainedViewEntity},
-    Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
-};
-use node::DepthPassOctreeLabel;
 
 pub struct DepthPassPlugin;
 impl Plugin for DepthPassPlugin {

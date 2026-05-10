@@ -1,5 +1,6 @@
 mod classification;
 mod density;
+mod http_source;
 
 use std::{
     collections::{HashMap, VecDeque},
@@ -13,6 +14,7 @@ use bevy_ecs::error::BevyError;
 use bevy_math::{DVec3, Vec4};
 use bevy_reflect::TypePath;
 use copc_streaming::{ByteSource, CopcStreamingReader, HierarchyEntry, VoxelKey};
+pub use http_source::*;
 
 use crate::{
     octree::{
