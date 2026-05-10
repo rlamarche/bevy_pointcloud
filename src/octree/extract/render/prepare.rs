@@ -33,24 +33,18 @@ pub fn prepare_octrees_uniforms<E: OctreeNodeExtraction>(
     attribute_pass_pipeline: Res<AttributePassPipeline>,
     mut commands: Commands,
 ) {
-    for entity in std::mem::take(&mut render_octree_index.removed_octrees) {
-        commands
-            .entity(entity)
-            .remove::<RenderOctreeEntityUniform<E::NodeData, E::Component>>();
-    }
-
     for entity in std::mem::take(&mut render_octree_index.added_octrees) {
+        let Some(octree_index) = render_octree_index.octrees_index.get(&entity) else {
+            warn!("Missing index for octree {}", entity);
+            continue;
+        };
         let mut octree_buffer = UniformBuffer::from(PointCloudOctreeUniform {
-            octree_index: *render_octree_index
-                .octrees_index
-                .get(&entity)
-                .expect("missing octree index") as u32,
-            ..Default::default()
+            octree_index: *octree_index as u32,
         });
         octree_buffer.write_buffer(&render_device, &render_queue);
 
         let bind_group = render_device.create_bind_group(
-            Some(format!("octree_entity_bind_group").as_str()),
+            "octree_entity_bind_group",
             &pipeline_cache
                 .get_bind_group_layout(&attribute_pass_pipeline.point_cloud_octree_data_layout),
             &BindGroupEntries::single(&octree_buffer),
@@ -68,6 +62,7 @@ pub fn prepare_octrees_uniforms<E: OctreeNodeExtraction>(
 /// This system prepares all assets of the corresponding [`RenderAsset::SourceAsset`] type
 /// which where extracted this frame for the GPU.
 #[cfg_attr(feature = "trace", tracing::instrument(skip_all))]
+#[allow(clippy::too_many_arguments)]
 pub fn prepare_assets<E, A>(
     mut extracted_octree_nodes: ResMut<ExtractedOctreeNodes<E>>,
     mut allocated_octree_nodes: ResMut<AllocatedOctreeNodes<E>>,
@@ -130,12 +125,12 @@ pub fn prepare_assets<E, A>(
         // clone node metadata
         let cloned_node = RenderOctreeNodeData::<()> {
             id: extracted_octree_node.id,
-            parent_id: extracted_octree_node.parent_id.clone(),
+            parent_id: extracted_octree_node.parent_id,
             child_index: extracted_octree_node.child_index,
-            children: extracted_octree_node.children.clone(),
+            children: extracted_octree_node.children,
             children_mask: extracted_octree_node.children_mask,
             depth: extracted_octree_node.depth,
-            bounding_box: extracted_octree_node.bounding_box.clone(),
+            bounding_box: extracted_octree_node.bounding_box,
             data: (),
             allocation: extracted_octree_node.allocation.clone(),
         };
@@ -230,12 +225,12 @@ pub fn prepare_assets<E, A>(
             // clone node metadata
             let cloned_node = RenderOctreeNodeData::<()> {
                 id: extracted_octree_node.id,
-                parent_id: extracted_octree_node.parent_id.clone(),
+                parent_id: extracted_octree_node.parent_id,
                 child_index: extracted_octree_node.child_index,
-                children: extracted_octree_node.children.clone(),
+                children: extracted_octree_node.children,
                 children_mask: extracted_octree_node.children_mask,
                 depth: extracted_octree_node.depth,
-                bounding_box: extracted_octree_node.bounding_box.clone(),
+                bounding_box: extracted_octree_node.bounding_box,
                 data: (),
                 allocation: extracted_octree_node.allocation.clone(),
             };

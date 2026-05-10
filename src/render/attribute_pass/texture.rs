@@ -36,6 +36,7 @@ impl ViewAttributePrepassTextures {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn prepare_attribute_pass_textures(
     mut commands: Commands,
     mut texture_cache: ResMut<TextureCache>,
@@ -122,7 +123,7 @@ impl FromWorld for AttributePassLayout {
         AttributePassLayout {
             layout: render_device.create_bind_group_layout(
                 "pcl_attribute_layout",
-                &vec![texture_2d(TextureSampleType::Float { filterable: true })
+                &[texture_2d(TextureSampleType::Float { filterable: true })
                     .build(0, ShaderStages::FRAGMENT)],
             ),
         }

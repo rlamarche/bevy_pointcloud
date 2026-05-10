@@ -1,7 +1,8 @@
 use std::{cmp::Reverse, marker::PhantomData};
 
-use bevy_ecs::{resource::Resource, world::FromWorld};
+use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashMap;
+use bevy_render::sync_world::RenderEntity;
 use offset_allocator::{Allocation, Allocator};
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
@@ -28,9 +29,9 @@ impl<T: NodeData> Clone for NodeAllocation<T> {
     fn clone(&self) -> Self {
         Self {
             octree_node_key: self.octree_node_key.clone(),
-            allocation: self.allocation.clone(),
-            start: self.start.clone(),
-            count: self.count.clone(),
+            allocation: self.allocation,
+            start: self.start,
+            count: self.count,
         }
     }
 }
@@ -40,6 +41,7 @@ pub struct OctreeNodeAllocations<E: OctreeNodeExtraction> {
     pub(crate) allocator: Allocator,
     pub(crate) max_instances: u32,
     pub(crate) allocations: HashMap<OctreeNodeKey<E::NodeData>, NodeAllocation<E::NodeData>>,
+    pub(crate) removed_octrees_this_frame: Vec<(Entity, RenderEntity)>,
     pub(crate) freed_nodes_this_frame: Vec<NodeAllocation<E::NodeData>>,
     pub(crate) allocated_nodes_this_frame: Vec<NodeAllocation<E::NodeData>>,
     _phantom: PhantomData<fn() -> E>,
@@ -58,6 +60,7 @@ impl<E: OctreeNodeExtraction> FromWorld for OctreeNodeAllocations<E> {
             allocator: Allocator::new(max_instances),
             max_instances,
             allocations: HashMap::new(),
+            removed_octrees_this_frame: Vec::new(),
             freed_nodes_this_frame: Vec::new(),
             allocated_nodes_this_frame: Vec::new(),
             _phantom: PhantomData,

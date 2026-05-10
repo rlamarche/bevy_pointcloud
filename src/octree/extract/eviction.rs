@@ -15,7 +15,7 @@ use crate::octree::{
 /// This system update the octree node eviction queue with latest informations
 pub fn update_extract_octree_node_eviction_queue<E: OctreeNodeExtraction>(
     mut octree_node_eviction_queue: ResMut<ExtractOctreeNodeEvictionQueue<E>>,
-    octree_buffer_allocator: ResMut<OctreeNodeAllocations<E>>,
+    octree_buffer_allocator: Res<OctreeNodeAllocations<E>>,
     global_visible_octree_nodes: Res<GlobalVisibleOctreeNodes<E::NodeData>>,
     time: Res<Time<Real>>,
 ) {

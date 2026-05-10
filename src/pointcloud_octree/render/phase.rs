@@ -132,8 +132,7 @@ where
                 entry.get_mut().push(phase_item);
             }
             indexmap::map::Entry::Vacant(entry) => {
-                let mut phase_items = Vec::new();
-                phase_items.push(phase_item);
+                let phase_items: Vec<BPI> = vec![phase_item];
                 entry.insert(phase_items);
             }
         }
@@ -166,7 +165,7 @@ where
                 };
 
                 for phase_item in phase_items {
-                    draw_function.draw(world, render_pass, view, &phase_item)?;
+                    draw_function.draw(world, render_pass, view, phase_item)?;
                 }
             }
         }

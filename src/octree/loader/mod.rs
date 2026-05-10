@@ -86,7 +86,7 @@ impl<T: NodeData, L: OctreeLoader<T>> ErasedOctreeLoader<T> for L {
 
         Ok(initial_hierarchy
             .into_iter()
-            .map(|node| HierarchyNode::from(node))
+            .map(HierarchyNode::from)
             .collect())
     }
 
@@ -109,7 +109,7 @@ impl<T: NodeData, L: OctreeLoader<T>> ErasedOctreeLoader<T> for L {
 
         Ok(loaded_nodes
             .into_iter()
-            .map(|node| HierarchyNode::from(node))
+            .map(HierarchyNode::from)
             .collect())
     }
 

@@ -40,7 +40,7 @@ impl PropertyAccess for PointCloudData {
             ("red", Property::UChar(v)) => self.color[0] = v as f32 / u8::MAX as f32,
             ("green", Property::UChar(v)) => self.color[1] = v as f32 / u8::MAX as f32,
             ("blue", Property::UChar(v)) => self.color[2] = v as f32 / u8::MAX as f32,
-            (_, v) => {
+            (_, _) => {
                 // bevy_log::warn!("Unhandled PLY property: {} {:?}", key, v);
             }
         }

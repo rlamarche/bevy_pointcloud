@@ -46,13 +46,13 @@ pub fn prepare_normalize_pass_bind_groups(
             _ => &pipeline.layout_msaa,
         };
 
-        let layout = pipeline_cache.get_bind_group_layout(&layout_descriptor);
+        let layout = pipeline_cache.get_bind_group_layout(layout_descriptor);
 
         commands.entity(entity).insert(NormalizePassBindGroup {
             value: render_device.create_bind_group(
                 "pcl_normalize_pass_view_bind_group",
                 &layout,
-                &vec![
+                &[
                     BindGroupEntry {
                         binding: 0,
                         resource: depth_view.into_binding(),

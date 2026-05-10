@@ -1,3 +1,6 @@
+use bevy_ecs::prelude::*;
+use bevy_render::sync_world::RenderEntity;
+
 use crate::{
     bevy::prelude::*,
     octree::{
@@ -7,9 +10,27 @@ use crate::{
             OctreeNodeExtraction,
         },
         node::NodeData,
-        visibility::resources::GlobalVisibleOctreeNodes,
+        visibility::{components::ViewVisibleOctreeNodes, resources::GlobalVisibleOctreeNodes},
     },
 };
+
+/// Detects removed octrees and trace it along with the [`RenderEntity`] component.
+pub fn on_remove_octree<E: OctreeNodeExtraction>(
+    trigger: On<Remove, E::Component>,
+    query: Query<&RenderEntity>,
+    view_visible_octree_nodes: Query<&mut ViewVisibleOctreeNodes<E::NodeData, E::Component>>,
+    mut octree_node_allocations: ResMut<OctreeNodeAllocations<E>>,
+) {
+    if let Ok(render_entity) = query.get(trigger.entity) {
+        octree_node_allocations
+            .removed_octrees_this_frame
+            .push((trigger.entity, *render_entity));
+    }
+    // cleanup nodes visibility for this entity
+    for mut view_visible_octree_node in view_visible_octree_nodes {
+        view_visible_octree_node.octrees.remove(&trigger.entity);
+    }
+}
 
 /// This system allocates gpu memory for computed visible octree nodes, and trace allocations for later extraction.
 /// It frees gpu memory of nodes that aren't visible, if needed.
@@ -17,19 +38,19 @@ use crate::{
 pub fn allocate_visible_octree_nodes<E: OctreeNodeExtraction>(
     global_visible_octree_nodes: Res<GlobalVisibleOctreeNodes<E::NodeData>>,
     octrees: Res<Assets<Octree<E::NodeData>>>,
-    mut octree_buffer_allocator: ResMut<OctreeNodeAllocations<E>>,
+    mut octree_node_allocations: ResMut<OctreeNodeAllocations<E>>,
     mut extract_octree_node_eviction_queue: ResMut<ExtractOctreeNodeEvictionQueue<E>>,
 ) {
     // clear previously allocated nodes
-    octree_buffer_allocator.allocated_nodes_this_frame.clear();
-    octree_buffer_allocator.freed_nodes_this_frame.clear();
+    octree_node_allocations.allocated_nodes_this_frame.clear();
+    octree_node_allocations.freed_nodes_this_frame.clear();
 
     // iterate through nodes that needs allocations
     // note that they are ordered by priority because in insertion order
     for (octree_node_key, &weight) in &global_visible_octree_nodes.visible_octree_nodes {
         // skip already allocated nodes
         // TODO find a way to not iterate all visible nodes
-        if octree_buffer_allocator
+        if octree_node_allocations
             .allocations
             .contains_key(octree_node_key)
         {
@@ -59,7 +80,7 @@ pub fn allocate_visible_octree_nodes<E: OctreeNodeExtraction>(
         // try to allocate memory for this node
         let mut allocation = None;
         while allocation.is_none() {
-            allocation = match octree_buffer_allocator
+            allocation = match octree_node_allocations
                 .allocator
                 .allocate(instance_count as u32)
             {
@@ -77,20 +98,20 @@ pub fn allocate_visible_octree_nodes<E: OctreeNodeExtraction>(
                                 || eviction_priority.0.weight < weight
                         })
                     {
-                        if let Some(evictable_allocation) = octree_buffer_allocator
+                        if let Some(evictable_allocation) = octree_node_allocations
                             .allocations
                             .remove(&evictable_node_key)
                         {
-                            if let Some(octree) = octrees.get(evictable_node_key.octree_id) {
-                                if let Some(node) = octree.node(evictable_node_key.node_id) {
-                                    debug!("Free node {}", node.hierarchy.name);
-                                }
+                            if let Some(octree) = octrees.get(evictable_node_key.octree_id)
+                                && let Some(node) = octree.node(evictable_node_key.node_id)
+                            {
+                                debug!("Free node {}", node.hierarchy.name);
                             }
 
-                            octree_buffer_allocator
+                            octree_node_allocations
                                 .allocator
                                 .free(evictable_allocation.allocation);
-                            octree_buffer_allocator
+                            octree_node_allocations
                                 .freed_nodes_this_frame
                                 .push(evictable_allocation);
                         } else {
@@ -121,11 +142,11 @@ pub fn allocate_visible_octree_nodes<E: OctreeNodeExtraction>(
             };
 
             // store the allocation infos
-            octree_buffer_allocator
+            octree_node_allocations
                 .allocations
                 .insert(octree_node_key.clone(), node_allocation.clone());
 
-            octree_buffer_allocator
+            octree_node_allocations
                 .allocated_nodes_this_frame
                 .push(node_allocation);
         } else {

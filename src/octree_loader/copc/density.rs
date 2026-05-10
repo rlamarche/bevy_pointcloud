@@ -37,9 +37,9 @@ pub fn compute_density(points: &Vec<las::Point>, aabb: &Aabb) -> u32 {
         }
     }
 
-    if num_occupied_cells == 0 {
-        0
+    if let Some(density) = points.len().checked_div(num_occupied_cells) {
+        density as u32
     } else {
-        (points.len() / num_occupied_cells) as u32
+        0
     }
 }

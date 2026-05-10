@@ -38,11 +38,16 @@ use super::{
     node::{NodeData, OctreeNode},
 };
 use crate::octree::{
-    extract::render::{
-        components::RenderVisibleOctreeNodes, prepare::prepare_octrees_uniforms,
-        resources::AllocatedOctreeNodes,
+    extract::{
+        allocate::on_remove_octree,
+        render::{
+            components::RenderVisibleOctreeNodes,
+            extract::{clear_removed_octrees, extract_removed_octrees},
+            prepare::prepare_octrees_uniforms,
+            resources::AllocatedOctreeNodes,
+        },
     },
-    visibility::CheckOctreeNodesVisibility,
+    visibility::OctreeVisibilitySystems,
 };
 
 pub trait OctreeNodeExtraction: Send + Sync + TypePath {
@@ -70,6 +75,7 @@ pub trait OctreeNodeExtraction: Send + Sync + TypePath {
 /// The `AFTER` generic parameter can be used to specify that [`RenderOctreeNode::prepare_octree_node`] should not be run until
 /// `prepare_assets::<AFTER>` has completed. This allows the [`RenderOctreeNode::prepare_octree_node`] function to depend on another
 /// prepared [`RenderOctreeNode`].
+#[allow(clippy::type_complexity)]
 pub struct ExtractVisibleOctreeNodesPlugin<E, A, AFTER = ()> {
     max_size: usize,
     _phantom: PhantomData<fn() -> (E, A, AFTER)>,
@@ -125,8 +131,9 @@ where
         )
         .configure_sets(
             PostUpdate,
-            (CheckOctreeNodesVisibility, ExtractOctreeNode).chain(),
-        );
+            ExtractOctreeNode.after(OctreeVisibilitySystems::CheckOctreeNodesVisibility),
+        )
+        .add_observer(on_remove_octree::<E>);
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
@@ -138,7 +145,6 @@ where
 
         render_app
             .init_resource::<RenderOctreeNodesBytesPerFrameLimiter>()
-            // .init_resource::<RenderOctreeNodeAllocations<E>>()
             .add_systems(ExtractSchedule, extract_render_asset_bytes_per_frame)
             .add_systems(
                 Render,
@@ -150,11 +156,14 @@ where
             .init_resource::<RenderOctreesBuffers<A>>()
             .init_resource::<PrepareNextFrameOctreeNodes<A>>()
             .init_resource::<RenderOctreeIndex<E::Component>>()
+            // Add in [`First`] schedule because it has to run just after the [`ExtractSchedule`] before any observer
             .add_systems(
                 ExtractSchedule,
                 (
                     extract_visible_octree_nodes::<E, A>.after(extract_cameras),
                     extract_octree_node_allocations::<E>,
+                    extract_removed_octrees::<E>,
+                    clear_removed_octrees::<E>.after(extract_removed_octrees::<E>),
                 ),
             )
             .add_systems(

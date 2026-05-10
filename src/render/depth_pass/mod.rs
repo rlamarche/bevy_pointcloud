@@ -92,6 +92,7 @@ type DrawDepthPass = (
     DrawPointCloud,
 );
 
+#[allow(clippy::type_complexity)]
 fn extract_camera_phases(
     mut pointcloud3d_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dDepthPhase>>,
     cameras: Extract<Query<(Entity, &Camera, Has<NoIndirectDrawing>), With<Camera3d>>>,
@@ -131,6 +132,7 @@ fn extract_camera_phases(
     pointcloud3d_phases.retain(|camera_entity, _| live_entities.contains(camera_entity));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn queue_depth_pass(
     custom_draw_functions: Res<DrawFunctions<PointCloud3dDepthPhase>>,
     mut pipelines: ResMut<SpecializedRenderPipelines<DepthPipeline>>,

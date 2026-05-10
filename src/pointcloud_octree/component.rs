@@ -12,9 +12,9 @@ use crate::{
 #[derive(Component, Clone, Debug)]
 pub struct PointCloudOctree3d(pub Handle<Octree<PointCloudNodeData>>);
 
-impl Into<AssetId<Octree<PointCloudNodeData>>> for &PointCloudOctree3d {
-    fn into(self) -> AssetId<Octree<PointCloudNodeData>> {
-        self.0.clone().id()
+impl From<&PointCloudOctree3d> for AssetId<Octree<PointCloudNodeData>> {
+    fn from(val: &PointCloudOctree3d) -> Self {
+        val.0.clone().id()
     }
 }
 

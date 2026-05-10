@@ -30,7 +30,7 @@ impl<'a, T: NodeData> PartialEq<Self> for StackedOctreeNode<'a, T> {
 
 impl<'a, T: NodeData> PartialOrd<Self> for StackedOctreeNode<'a, T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.weight.partial_cmp(&other.weight)
+        Some(self.cmp(other))
     }
 }
 

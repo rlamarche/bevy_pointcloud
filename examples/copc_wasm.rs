@@ -1,55 +1,76 @@
 #[path = "helpers/camera_controller.rs"]
 mod camera_controller;
 
-use bevy::prelude::*;
+use std::ops::Mul;
+
+use bevy::DefaultPlugins;
+use bevy_app::prelude::*;
+use bevy_asset::{Assets, Handle};
+use bevy_camera::Camera3d;
+use bevy_color::palettes::basic::RED;
 use bevy_diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
+use bevy_ecs::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
+use bevy_gizmos::prelude::*;
+use bevy_math::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pointcloud::{
+    octree::visibility::components::{SkipOctreeVisibility, ViewVisibleOctreeNodes},
+    octree_loader::copc::{CopcLoader, HttpSource},
     point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d},
     pointcloud_octree::{
-        component::PointCloudOctree3d, ExtractVisiblePointCloudOctreeNodesPlugin,
-        PointCloudOctreePlugin, PointCloudOctreeServer, PointCloudOctreeServerPlugin,
-        PointCloudOctreeVisibilityPlugin, PointCloudOctreeVisibilitySettings,
+        asset::{data::PointCloudNodeData, PointCloudOctree},
+        component::PointCloudOctree3d,
+        ExtractVisiblePointCloudOctreeNodesPlugin, PointCloudOctreePlugin, PointCloudOctreeServer,
+        PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin,
+        PointCloudOctreeVisibilitySettings,
     },
-    potree::loader::PotreeLoader,
     render::PointCloudRenderMode,
     PointCloudPlugin,
 };
-use bevy_render::view::NoIndirectDrawing;
-use potree::prelude::PotreeHttpAsset;
+use bevy_render::prelude::*;
+use bevy_transform::prelude::*;
+use bevy_window::{PresentMode, Window};
 
 fn main() {
     let mut app = App::new();
     app.add_plugins((
         DefaultPlugins,
         EguiPlugin::default(),
+        // WorldInspectorPlugin::default(),
         PanOrbitCameraPlugin,
         PointCloudPlugin,
         PointCloudOctreePlugin.set(ExtractVisiblePointCloudOctreeNodesPlugin::with_max_size(
-            // limit to 256 mb of gpu memory
-            256 * 1024 * 1024,
+            // limit to 512 MB of gpu memory
+            512 * 1024 * 1024,
         )),
         PointCloudOctreeServerPlugin::with_max_size(
-            // limit to 512 mb of cpu memory
-            512 * 1024 * 1024,
+            // limit to 1 GB of cpu memory
+            1024 * 1024 * 1024,
         ),
     ));
 
-    app.add_systems(Startup, (setup, load_pointcloud))
+    app.add_systems(Startup, (setup_window, setup, load_pointcloud))
+        // .add_systems(PreUpdate, draw_gizmos.after(propagate_parent_transforms))
         .add_systems(EguiPrimaryContextPass, ui_settings)
         .run();
+}
+
+fn setup_window(mut windows: Query<&mut Window>) {
+    #[allow(unused, unused_mut)]
+    let mut window = windows.single_mut().unwrap();
+
+    #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
+    {
+        window.present_mode = PresentMode::Mailbox;
+    }
 }
 
 fn setup(mut commands: Commands) {
     // camera
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(5.0, 5.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
-        // We need this component because we use `draw_indexed` and `draw`
-        // instead of `draw_indirect_indexed` and `draw_indirect` in
-        // `DrawMeshInstanced::render`.
-        NoIndirectDrawing,
+        Transform::from_xyz(18.0, 8.0, -3.0).looking_at(Vec3::new(0.0, 8.0, -3.0), Vec3::Y),
         PanOrbitCamera::default(),
         Msaa::Off,
         PointCloudRenderMode {
@@ -57,10 +78,9 @@ fn setup(mut commands: Commands) {
             edl_radius: 1.4,
             edl_strength: 0.4,
             edl_neighbour_count: 4,
-            ..Default::default()
         },
         PointCloudOctreeVisibilitySettings {
-            filter: Some(150.0),
+            filter: Some(30.0),
             budget: Some(1_000_000),
         },
     ));
@@ -78,32 +98,75 @@ fn load_pointcloud(
         point_size: 30.0,
         min_point_size: 2.0,
         max_point_size: 50.0,
-        ..default()
     });
     commands.spawn(MyMaterial(my_material.clone()));
 
-    let octree_handle = octree_server.load_octree::<PotreeLoader<_>>(PotreeHttpAsset::from_url(
-        "https://pub-e2043f8abc6f45d983f8f77641ea772e.r2.dev/potree/heidentor",
-    ));
+    let octree_handle = octree_server.load_octree::<CopcLoader<_>>(
+        HttpSource::open("https://s3.amazonaws.com/hobu-lidar/autzen-classified.copc.laz").unwrap(),
+    );
 
-    // let octree_handle = octree_server.load_octree::<PotreeLoader>("assets/potree/heidentor");
+    // let octree_handle = octree_server.load_octree::<CopcLoader<_>>(
+    //     FileSource::open("/home/romain/Téléchargements/autzen-classified.copc.laz").unwrap(),
+    // );
 
+    #[allow(clippy::excessive_precision)]
     commands.spawn((
-        PointCloudOctree3d(octree_handle),
         Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2)),
-        PointCloudMaterial3d(my_material.clone()),
+        children![(
+            PointCloudOctree3d(octree_handle),
+            PointCloudMaterial3d(my_material.clone()),
+            Transform::from_translation(Vec3::new(-637905.545, -851209.905, -2733.895000000005)),
+        )],
     ));
 }
 
+#[allow(unused)]
+fn draw_gizmos(
+    octrees: Res<Assets<PointCloudOctree>>,
+    entities: Query<&GlobalTransform, With<PointCloudOctree3d>>,
+    octrees_vibility: Query<&ViewVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>>,
+    mut gizmos: Gizmos,
+) {
+    for octree_visibility in octrees_vibility {
+        for (entity, (asset_id, visible_nodes)) in &octree_visibility.octrees {
+            let Ok(global_transform) = entities.get(*entity) else {
+                continue;
+            };
+            let Some(octree) = octrees.get(*asset_id) else {
+                continue;
+            };
+
+            for visible_node in visible_nodes {
+                let Some(node) = octree.hierarchy_node(visible_node.id) else {
+                    continue;
+                };
+
+                let center = node.bounding_box.center;
+                let scale = node.bounding_box.half_extents.mul(2.0);
+
+                let local_transform =
+                    Transform::from_translation(center.into()).with_scale(scale.into());
+
+                let world_transform = global_transform.mul_transform(local_transform);
+
+                gizmos.cube(world_transform, RED);
+            }
+        }
+    }
+}
+
 fn ui_settings(
+    mut commands: Commands,
     mut contexts: EguiContexts,
     mut point_cloud_settings: Query<(
+        Entity,
         &mut PointCloudOctreeVisibilitySettings,
         &mut PointCloudRenderMode,
+        Option<&SkipOctreeVisibility>,
     )>,
     diagnostic: Res<DiagnosticsStore>,
 ) -> Result {
-    let (mut point_cloud_settings, mut point_cloud_render_mode) =
+    let (view_entity, mut point_cloud_settings, mut point_cloud_render_mode, skip_visibility_check) =
         point_cloud_settings.single_mut().unwrap();
 
     let mut use_edl = point_cloud_render_mode.use_edl;
@@ -112,6 +175,8 @@ fn ui_settings(
     let mut edl_neighbour_count = point_cloud_render_mode.edl_neighbour_count;
     let mut min_node_size: f32 = point_cloud_settings.filter.unwrap_or(0.0);
     let mut point_budget: usize = point_cloud_settings.budget.unwrap_or(0);
+
+    let mut has_skip_visibility_check = skip_visibility_check.is_some();
 
     let visibility_time = diagnostic
         .get(&PointCloudOctreeVisibilityPlugin::VISIBILITY_CHECK_TIME)
@@ -130,6 +195,7 @@ fn ui_settings(
         .show(contexts.ctx_mut()?, |ui| {
             ui.vertical(|ui| {
                 ui.label("Render Settings");
+                ui.checkbox(&mut has_skip_visibility_check, "Skip Visibility Check");
                 ui.checkbox(&mut use_edl, "Eye Dome Lightning");
                 ui.add(
                     egui::Slider::new(&mut edl_radius, 0.0..=10.0)
@@ -152,7 +218,7 @@ fn ui_settings(
 
                 ui.label("Budget Settings");
                 ui.add(
-                    egui::Slider::new(&mut min_node_size, 50.0..=1000.0)
+                    egui::Slider::new(&mut min_node_size, 30.0..=1000.0)
                         .text("Min node size")
                         .step_by(10.0)
                         .drag_value_speed(10.0),
@@ -197,6 +263,19 @@ fn ui_settings(
 
     point_cloud_settings.filter = Some(min_node_size);
     point_cloud_settings.budget = Some(point_budget);
+
+    if has_skip_visibility_check != skip_visibility_check.is_some() {
+        match has_skip_visibility_check {
+            true => {
+                commands.entity(view_entity).insert(SkipOctreeVisibility);
+            }
+            false => {
+                commands
+                    .entity(view_entity)
+                    .remove::<SkipOctreeVisibility>();
+            }
+        }
+    }
 
     Ok(())
 }

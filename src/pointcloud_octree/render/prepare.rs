@@ -76,6 +76,7 @@ pub struct PreparedVisibleOctreeNode {
     pub first_child_index: u16,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn prepare_visible_nodes_texture(
     mut commands: Commands,
     mut texture_cache: ResMut<TextureCache>,
@@ -310,7 +311,7 @@ impl FromWorld for VisibleNodesTextureLayout {
         VisibleNodesTextureLayout {
             layout: render_device.create_bind_group_layout(
                 "pcl_attribute_layout",
-                &vec![texture_2d(TextureSampleType::Uint).build(0, ShaderStages::VERTEX)],
+                &[texture_2d(TextureSampleType::Uint).build(0, ShaderStages::VERTEX)],
             ),
         }
     }

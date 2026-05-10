@@ -280,7 +280,7 @@ impl<P: BinnedPhaseItem, const I: usize> RenderCommand<P>
             return RenderCommandResult::Skip;
         };
 
-        if visible_octree_nodes.len() > 0 {
+        if !visible_octree_nodes.is_empty() {
             let root_node = &visible_octree_nodes[0];
 
             let Some(node) = octree.nodes.get(&root_node.id) else {

@@ -16,18 +16,12 @@ use attribute_pass::AttributePassPlugin;
 use bevy_app::prelude::*;
 use bevy_asset::{load_internal_asset, prelude::*, uuid_handle};
 use bevy_camera::visibility::calculate_bounds;
-use bevy_ecs::{
-    prelude::*,
-    system::{lifetimeless::*, SystemParamItem},
-};
-use bevy_pbr::RenderMeshInstances;
+use bevy_ecs::prelude::*;
 use bevy_render::{
     camera::extract_cameras,
     extract_component::{ExtractComponentPlugin, UniformComponentPlugin},
-    mesh::{allocator::MeshAllocator, RenderMesh, RenderMeshBufferInfo},
     prelude::*,
-    render_asset::{RenderAssetPlugin, RenderAssets},
-    render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
+    render_asset::RenderAssetPlugin,
     Render, RenderApp, RenderSystems,
 };
 use bevy_shader::Shader;
@@ -93,13 +87,6 @@ impl Plugin for RenderPipelinePlugin {
                 extract_cameras_render_mode.after(extract_cameras),
             );
 
-        // let render_app = app.sub_app_mut(RenderApp);
-
-        // render_app
-        //     .add_render_graph_node::<ViewNodeRunner<OpaquePointCloud3d>>(Core3d, OpaquePointCloud3dLabel)
-        //     // Tell the node to run before the main transparent pass
-        //     .add_render_graph_edges(Core3d, (OpaquePointCloud3dLabel, Node3d::MainTransparentPass));
-
         app.add_plugins((DepthPassPlugin, AttributePassPlugin, NormalizePassPlugin));
     }
 
@@ -108,88 +95,6 @@ impl Plugin for RenderPipelinePlugin {
             .init_resource::<RenderPointCloudMaterialLayout>()
             .init_resource::<PointCloudUniformLayout>()
             .init_resource::<PointCloudMesh>();
-    }
-}
-
-struct DrawMeshInstanced;
-
-impl<P: PhaseItem> RenderCommand<P> for DrawMeshInstanced {
-    type Param = (
-        SRes<RenderAssets<RenderMesh>>,
-        SRes<RenderMeshInstances>,
-        SRes<MeshAllocator>,
-        SRes<RenderAssets<RenderPointCloud>>,
-    );
-    type ViewQuery = ();
-    type ItemQuery = Read<PointCloud3d>;
-
-    #[inline]
-    fn render<'w>(
-        item: &P,
-        _view: (),
-        point_cloud_3d: Option<&'w PointCloud3d>,
-        (meshes, render_mesh_instances, mesh_allocator, render_point_clouds): SystemParamItem<
-            'w,
-            '_,
-            Self::Param,
-        >,
-        pass: &mut TrackedRenderPass<'w>,
-    ) -> RenderCommandResult {
-        // A borrow check workaround.
-        let mesh_allocator = mesh_allocator.into_inner();
-        let render_point_clouds = render_point_clouds.into_inner();
-
-        let Some(mesh_instance) = render_mesh_instances.render_mesh_queue_data(item.main_entity())
-        else {
-            return RenderCommandResult::Skip;
-        };
-
-        let Some(gpu_mesh) = meshes.into_inner().get(mesh_instance.mesh_asset_id) else {
-            return RenderCommandResult::Skip;
-        };
-        let Some(point_cloud_3d) = point_cloud_3d else {
-            return RenderCommandResult::Skip;
-        };
-        let Some(render_point_cloud) = render_point_clouds.get(point_cloud_3d) else {
-            return RenderCommandResult::Skip;
-        };
-
-        let Some(vertex_buffer_slice) =
-            mesh_allocator.mesh_vertex_slice(&mesh_instance.mesh_asset_id)
-        else {
-            return RenderCommandResult::Skip;
-        };
-
-        pass.set_vertex_buffer(0, vertex_buffer_slice.buffer.slice(..));
-        pass.set_vertex_buffer(1, render_point_cloud.buffer.slice(..));
-
-        match &gpu_mesh.buffer_info {
-            RenderMeshBufferInfo::Indexed {
-                index_format,
-                count,
-            } => {
-                let Some(index_buffer_slice) =
-                    mesh_allocator.mesh_index_slice(&mesh_instance.mesh_asset_id)
-                else {
-                    return RenderCommandResult::Skip;
-                };
-
-                pass.set_index_buffer(index_buffer_slice.buffer.slice(..), *index_format);
-                pass.draw_indexed(
-                    index_buffer_slice.range.start..(index_buffer_slice.range.start + count),
-                    vertex_buffer_slice.range.start as i32,
-                    0..render_point_cloud.length as u32,
-                );
-            }
-            RenderMeshBufferInfo::NonIndexed => {
-                pass.draw(
-                    vertex_buffer_slice.range,
-                    0..render_point_cloud.length as u32,
-                );
-            }
-        }
-
-        RenderCommandResult::Success
     }
 }
 

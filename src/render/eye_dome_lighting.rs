@@ -36,7 +36,7 @@ impl NeighboursCache {
         #[cold]
         fn get_neighbours_slow(
             neighbours_count: u32,
-            entry: VacantEntry<u32, [Vec4; 4], FixedHasher>,
+            entry: VacantEntry<'_, u32, [Vec4; 4], FixedHasher>,
         ) -> &[Vec4; 4] {
             let neighbours: [Vec4; 4] = std::array::from_fn(|i| {
                 // j in (0..4) for neighbours_count = 4
@@ -105,9 +105,8 @@ pub fn extract_cameras_render_mode(
                         radius: render_mode.edl_radius,
                         screen_width: target_size.x as f32,
                         screen_height: target_size.y as f32,
-                        neighbours: neighbours_cache
-                            .get_neighbours(render_mode.edl_neighbour_count)
-                            .clone(),
+                        neighbours: *neighbours_cache
+                            .get_neighbours(render_mode.edl_neighbour_count),
                     },
                     // we also need the render mode information to have the neighbours count
                     render_mode.clone(),

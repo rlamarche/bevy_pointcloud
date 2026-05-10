@@ -173,15 +173,15 @@ impl<T> GenerationalSlab<T> {
     /// After removal, the generation for that index is incremented
     /// to prevent stale handles from remaining valid.
     pub fn remove(&mut self, id: NodeId) -> Option<T> {
-        if let Some((stored_generation, _)) = self.slab.get(id.index) {
-            if *stored_generation == id.generation {
-                // Increment generation before reusing the slot later.
-                self.generations[id.index] = self.generations[id.index].wrapping_add(1);
+        if let Some((stored_generation, _)) = self.slab.get(id.index)
+            && *stored_generation == id.generation
+        {
+            // Increment generation before reusing the slot later.
+            self.generations[id.index] = self.generations[id.index].wrapping_add(1);
 
-                // Remove and return the stored value.
-                let (_old_generation, value) = self.slab.remove(id.index);
-                return Some(value);
-            }
+            // Remove and return the stored value.
+            let (_old_generation, value) = self.slab.remove(id.index);
+            return Some(value);
         }
         None
     }

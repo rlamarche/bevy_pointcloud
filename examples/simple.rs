@@ -1,41 +1,36 @@
 #[path = "helpers/camera_controller.rs"]
 mod camera_controller;
 
+use std::ops::Neg;
+
 use bevy::DefaultPlugins;
 use bevy_app::prelude::*;
 use bevy_asset::{AssetServer, Assets, Handle};
-use bevy_camera::primitives::Aabb;
-use bevy_camera::{Camera3d, PerspectiveProjection, Projection};
-use bevy_color::Color;
-use bevy_color::palettes::basic::SILVER;
+use bevy_camera::{primitives::Aabb, Camera3d, PerspectiveProjection, Projection};
 #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
 use bevy_color::palettes::basic::{GREEN, RED};
+use bevy_color::{palettes::basic::SILVER, Color};
 #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
 use bevy_dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin};
 use bevy_ecs::prelude::*;
-use bevy_input::ButtonInput;
-use bevy_input::prelude::*;
+use bevy_input::{prelude::*, ButtonInput};
 use bevy_light::{NotShadowCaster, PointLight};
 use bevy_math::prelude::*;
 use bevy_mesh::{Mesh, Mesh3d, Meshable};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pbr::{MeshMaterial3d, StandardMaterial};
-use bevy_pointcloud::PointCloudPlugin;
-use bevy_pointcloud::loader::las::LasLoaderPlugin;
-use bevy_pointcloud::point_cloud::{PointCloud, PointCloud3d};
-use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
-use bevy_pointcloud::render::PointCloudRenderMode;
-use bevy_render::prelude::*;
-use bevy_render::view::NoIndirectDrawing;
+use bevy_pointcloud::{
+    loader::las::LasLoaderPlugin,
+    point_cloud::{PointCloud, PointCloud3d},
+    point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d},
+    render::PointCloudRenderMode,
+    PointCloudPlugin,
+};
+use bevy_render::{prelude::*, view::NoIndirectDrawing};
 use bevy_text::{FontSmoothing, TextFont};
 use bevy_transform::prelude::*;
 use bevy_utils::default;
 use bevy_window::{PresentMode, Window};
-use std::ops::Neg;
-
-#[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
-
-/// This example uses a shader source file from the assets subdirectory
 
 fn main() {
     App::new()
@@ -104,7 +99,6 @@ fn setup(mut commands: Commands) {
             edl_radius: 2.8,
             edl_strength: 0.4,
             edl_neighbour_count: 4,
-            ..Default::default()
         },
     ));
 }
@@ -234,6 +228,7 @@ fn calculate_from_translation_and_focus(
     (yaw, pitch, radius)
 }
 
+#[allow(clippy::type_complexity)]
 fn center_point_cloud(
     mut camera: Query<
         (&mut Transform, &mut PanOrbitCamera),

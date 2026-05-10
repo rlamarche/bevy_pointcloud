@@ -35,6 +35,8 @@ impl ViewDepthPrepassTextures {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 pub fn prepare_depth_pass_textures(
     mut commands: Commands,
     mut texture_cache: ResMut<TextureCache>,
@@ -134,7 +136,7 @@ impl FromWorld for DepthPassLayout {
         DepthPassLayout {
             layout: render_device.create_bind_group_layout(
                 "pcl_depth_layout",
-                &vec![texture_2d(TextureSampleType::Depth).build(0, ShaderStages::FRAGMENT)],
+                &[texture_2d(TextureSampleType::Depth).build(0, ShaderStages::FRAGMENT)],
             ),
         }
     }

@@ -123,7 +123,7 @@ fn process_node_data_loads<T>(
         }
 
         let Some(octree) = octree_assets.get_mut(task.asset_id) else {
-            warn!("Octree asset not found: {:?}", task.asset_id);
+            debug!("Octree asset not found: {:?}", task.asset_id);
             continue;
         };
 

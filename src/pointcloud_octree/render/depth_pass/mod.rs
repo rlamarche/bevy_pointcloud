@@ -129,6 +129,8 @@ fn extract_camera_phases(
     pointcloud3d_phases.retain(|camera_entity, _| live_entities.contains(camera_entity));
 }
 
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 fn queue_depth_pass(
     custom_draw_functions: Res<DrawFunctions<PointCloudOctree3dNodePhase>>,
     mut pipelines: ResMut<SpecializedRenderPipelines<DepthPipeline>>,

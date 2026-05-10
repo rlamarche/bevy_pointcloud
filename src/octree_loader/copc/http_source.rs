@@ -21,7 +21,7 @@ impl ByteSource for HttpSource {
         length: u64,
     ) -> Result<Vec<u8>, copc_streaming::CopcError> {
         let end = offset.checked_add(length).map(|v| v - 1).ok_or_else(|| {
-            copc_streaming::CopcError::ByteSource(MyError("Range overflow".into()).into())
+            copc_streaming::CopcError::ByteSource(HttpSourceError("Range overflow".into()).into())
         })?;
 
         let mut headers = BTreeMap::new();
@@ -36,14 +36,14 @@ impl ByteSource for HttpSource {
 }
 
 #[derive(Debug)]
-pub struct MyError(String);
+pub struct HttpSourceError(String);
 
-impl std::fmt::Display for MyError {
+impl std::fmt::Display for HttpSourceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
-impl std::error::Error for MyError {}
+impl std::error::Error for HttpSourceError {}
 
 async fn ehttp_get_size(
     url: &str,
@@ -108,15 +108,15 @@ async fn send_request(
     });
 
     let result = rx.await.map_err(|_| {
-        copc_streaming::CopcError::ByteSource(MyError("channel closed".into()).into())
+        copc_streaming::CopcError::ByteSource(HttpSourceError("channel closed".into()).into())
     })?;
 
     let response = result
-        .map_err(|e| copc_streaming::CopcError::ByteSource(MyError(format!("{e:?}")).into()))?;
+        .map_err(|e| copc_streaming::CopcError::ByteSource(HttpSourceError(format!("{e:?}")).into()))?;
 
     if !(200..300).contains(&(response.status as usize)) {
         return Err(copc_streaming::CopcError::ByteSource(
-            MyError(format!("HTTP {}", response.status)).into(),
+            HttpSourceError(format!("HTTP {}", response.status)).into(),
         ));
     }
 

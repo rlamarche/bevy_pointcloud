@@ -49,19 +49,21 @@ pub struct Octree<T: NodeData> {
     pub(crate) removed_nodes_data: Vec<NodeId>,
 }
 
-impl<T: NodeData> Octree<T> {
-    pub fn new() -> Self {
+impl<T: NodeData> Default for Octree<T> {
+    fn default() -> Self {
         Self {
-            hierarchy: GenerationalSlab::new(),
-            root_id: None,
-            added_nodes: Vec::new(),
-            added_nodes_data: Vec::new(),
-            modified_nodes: Vec::new(),
-            removed_nodes: Vec::new(),
-            removed_nodes_data: Vec::new(),
+            hierarchy: Default::default(),
+            root_id: Default::default(),
+            added_nodes: Default::default(),
+            added_nodes_data: Default::default(),
+            modified_nodes: Default::default(),
+            removed_nodes: Default::default(),
+            removed_nodes_data: Default::default(),
         }
     }
+}
 
+impl<T: NodeData> Octree<T> {
     pub(crate) fn clear_tracking(&mut self) {
         self.added_nodes.clear();
         self.added_nodes_data.clear();

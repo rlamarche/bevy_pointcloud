@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use bevy_asset::AssetId;
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashMap;
+use bevy_render::sync_world::RenderEntity;
 use slab::Slab;
 
 use super::{
@@ -26,7 +27,6 @@ where
     pub(crate) octrees_slab: Slab<Entity>,
     pub(crate) octrees_index: HashMap<Entity, usize>,
     pub(crate) added_octrees: Vec<Entity>,
-    pub(crate) removed_octrees: Vec<Entity>,
     pub(crate) _phantom_data: PhantomData<C>,
 }
 
@@ -36,7 +36,6 @@ impl<C: Component> FromWorld for RenderOctreeIndex<C> {
             octrees_slab: Slab::new(),
             octrees_index: HashMap::new(),
             added_octrees: Vec::new(),
-            removed_octrees: Vec::new(),
             _phantom_data: PhantomData,
         }
     }
@@ -56,11 +55,9 @@ impl<C: Component> RenderOctreeIndex<C> {
     }
 
     /// Removes an entity from the index.
-    /// TODO: call this function
     pub fn remove_octree(&mut self, entity: Entity) -> Option<usize> {
         if let Some(index) = self.octrees_index.remove(&entity) {
             self.octrees_slab.remove(index);
-            self.removed_octrees.push(entity);
             Some(index)
         } else {
             None
@@ -74,6 +71,7 @@ impl<C: Component> RenderOctreeIndex<C> {
 
 /// All assets that should be prepared next frame.
 #[derive(Resource)]
+#[allow(clippy::type_complexity)]
 pub struct PrepareNextFrameOctreeNodes<A: RenderOctreeNode> {
     pub(crate) assets: Vec<(
         AssetId<Octree<A::SourceOctreeNode>>,
@@ -125,14 +123,16 @@ impl<A: RenderOctreeNode> RenderOctrees<A> {
     }
 }
 
+pub type RenderOctreesNodeData<T, A> =
+    HashMap<AssetId<Octree<T>>, HashMap<NodeId, RenderOctreeNodeData<A>>>;
+
 /// Contains all extracted octree nodes for preparing
 #[derive(Resource)]
 pub struct ExtractedOctreeNodes<E: OctreeNodeExtraction> {
     pub(crate) max_instances: u32,
-    pub(crate) octrees: HashMap<
-        AssetId<Octree<E::NodeData>>,
-        HashMap<NodeId, RenderOctreeNodeData<E::ExtractedNodeData>>,
-    >,
+    pub(crate) octrees: RenderOctreesNodeData<E::NodeData, E::ExtractedNodeData>,
+
+    pub(crate) removed_octrees: Vec<(Entity, RenderEntity)>,
 
     /// IDs of the assets that were removed this frame.
     ///
@@ -157,6 +157,7 @@ impl<E: OctreeNodeExtraction> Default for ExtractedOctreeNodes<E> {
         Self {
             max_instances: 0,
             octrees: HashMap::new(),
+            removed_octrees: Default::default(),
             // removed_assets: Default::default(),
             removed_nodes: Default::default(),
             // modified_assets: Default::default(),
@@ -171,6 +172,7 @@ impl<E: OctreeNodeExtraction> Default for ExtractedOctreeNodes<E> {
 
 impl<E: OctreeNodeExtraction> ExtractedOctreeNodes<E> {
     pub fn clear_all(&mut self) {
+        self.removed_octrees.clear();
         // self.added_assets.clear();
         self.added_nodes.clear();
         // self.modified_assets.clear();
@@ -186,9 +188,7 @@ impl<E: OctreeNodeExtraction> ExtractedOctreeNodes<E> {
         &mut self,
         id: impl Into<AssetId<Octree<E::NodeData>>>,
     ) -> &mut HashMap<NodeId, RenderOctreeNodeData<E::ExtractedNodeData>> {
-        self.octrees
-            .entry(id.into())
-            .or_insert_with(Default::default)
+        self.octrees.entry(id.into()).or_default()
     }
 }
 
@@ -212,8 +212,6 @@ impl<E: OctreeNodeExtraction> AllocatedOctreeNodes<E> {
         &mut self,
         id: impl Into<AssetId<Octree<E::NodeData>>>,
     ) -> &mut HashMap<NodeId, RenderOctreeNodeAllocation> {
-        self.allocations
-            .entry(id.into())
-            .or_insert_with(Default::default)
+        self.allocations.entry(id.into()).or_default()
     }
 }

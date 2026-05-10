@@ -1,13 +1,15 @@
 #[path = "helpers/camera_controller.rs"]
 mod camera_controller;
 
+use std::ops::Mul;
+
 use bevy::DefaultPlugins;
 use bevy_app::prelude::*;
 use bevy_asset::{Assets, Handle};
 use bevy_camera::Camera3d;
-use bevy_color::Color;
 #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
 use bevy_color::palettes::basic::{GREEN, RED};
+use bevy_color::Color;
 #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
 use bevy_dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig};
 use bevy_diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
@@ -16,28 +18,26 @@ use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_gizmos::prelude::*;
 use bevy_math::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
-use bevy_pointcloud::PointCloudPlugin;
-use bevy_pointcloud::octree::visibility::components::{
-    SkipOctreeVisibility, ViewVisibleOctreeNodes,
+use bevy_pointcloud::{
+    octree::visibility::components::{SkipOctreeVisibility, ViewVisibleOctreeNodes},
+    point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d},
+    pointcloud_octree::{
+        asset::{data::PointCloudNodeData, PointCloudOctree},
+        component::PointCloudOctree3d,
+        ExtractVisiblePointCloudOctreeNodesPlugin, PointCloudOctreePlugin, PointCloudOctreeServer,
+        PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin,
+        PointCloudOctreeVisibilitySettings,
+    },
+    potree::loader::PotreeLoader,
+    render::PointCloudRenderMode,
+    PointCloudPlugin,
 };
-use bevy_pointcloud::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
-use bevy_pointcloud::pointcloud_octree::asset::PointCloudOctree;
-use bevy_pointcloud::pointcloud_octree::asset::data::PointCloudNodeData;
-use bevy_pointcloud::pointcloud_octree::component::PointCloudOctree3d;
-use bevy_pointcloud::pointcloud_octree::{
-    ExtractVisiblePointCloudOctreeNodesPlugin, PointCloudOctreePlugin, PointCloudOctreeServer,
-    PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin,
-    PointCloudOctreeVisibilitySettings,
-};
-use bevy_pointcloud::potree::loader::PotreeLoader;
-use bevy_pointcloud::render::PointCloudRenderMode;
 use bevy_render::prelude::*;
 use bevy_text::{FontSmoothing, TextFont};
 use bevy_transform::prelude::*;
 use bevy_utils::default;
 use bevy_window::{PresentMode, Window};
 use potree::asset::fs::PotreeFsAsset;
-use std::ops::Mul;
 
 fn main() {
     let mut app = App::new();
@@ -87,7 +87,6 @@ fn main() {
                     FrameTimeGraphConfig::default()
                 }
             },
-            ..Default::default()
         },
     });
 
@@ -119,7 +118,6 @@ fn setup(mut commands: Commands) {
             edl_radius: 1.4,
             edl_strength: 0.4,
             edl_neighbour_count: 4,
-            ..Default::default()
         },
         PointCloudOctreeVisibilitySettings {
             filter: Some(30.0),
@@ -140,7 +138,6 @@ fn load_pointcloud(
         point_size: 30.0,
         min_point_size: 2.0,
         max_point_size: 50.0,
-        ..default()
     });
     commands.spawn(MyMaterial(my_material.clone()));
 
@@ -175,7 +172,7 @@ fn draw_gizmos(
                     continue;
                 };
 
-                let center = node.bounding_box.center.clone();
+                let center = node.bounding_box.center;
                 let scale = node.bounding_box.half_extents.mul(2.0);
 
                 let local_transform =

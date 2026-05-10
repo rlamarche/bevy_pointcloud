@@ -8,12 +8,12 @@ pub mod stack;
 use std::{any::TypeId, collections::BinaryHeap, marker::PhantomData};
 
 use bevy_app::{App, Plugin, PostUpdate};
-use bevy_asset::{AssetId, Assets};
+use bevy_asset::{AssetEventSystems, AssetId, Assets};
 use bevy_camera::{
     primitives::{Aabb, Frustum},
     visibility::{
-        add_visibility_class, Visibility, VisibilityClass, VisibilitySystems::CheckVisibility,
-        VisibleEntities,
+        add_visibility_class, NoAutoAabb, NoFrustumCulling, Visibility, VisibilityClass,
+        VisibilitySystems::CheckVisibility, VisibleEntities,
     },
     Camera, Projection,
 };
@@ -40,9 +40,13 @@ use super::{
     server::resources::{LoadRequestType, OctreeLoadTasks},
 };
 
-#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CheckOctreeNodesVisibility;
+#[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
+pub enum OctreeVisibilitySystems {
+    CalculateBounds,
+    CheckOctreeNodesVisibility,
+}
 
+#[allow(clippy::type_complexity)]
 pub struct OctreeVisiblityPlugin<T, C, F = ScreenPixelRadiusFilter, B = ()>(
     PhantomData<fn() -> (T, C, F, B)>,
 );
@@ -89,11 +93,22 @@ where
             .init_resource::<GlobalVisibleOctreeNodes<T>>()
             .add_systems(
                 PostUpdate,
-                check_octree_nodes_visibility::<T, C, F, B>.in_set(CheckOctreeNodesVisibility),
+                (
+                    calculate_bounds::<T, C>.in_set(OctreeVisibilitySystems::CalculateBounds),
+                    check_octree_nodes_visibility::<T, C, F, B>
+                        .in_set(OctreeVisibilitySystems::CheckOctreeNodesVisibility),
+                ),
             )
             .configure_sets(
                 PostUpdate,
-                (CheckVisibility, CheckOctreeNodesVisibility).chain(),
+                OctreeVisibilitySystems::CheckOctreeNodesVisibility.after(CheckVisibility),
+            )
+            .configure_sets(
+                PostUpdate,
+                OctreeVisibilitySystems::CalculateBounds
+                    .before(CheckVisibility)
+                    .after(TransformSystems::Propagate)
+                    .after(AssetEventSystems),
             );
 
         app.world_mut()
@@ -102,6 +117,51 @@ where
     }
 }
 
+/// Computes and adds an [`Aabb`] component to entities with a
+/// [`C`] component and without a [`NoFrustumCulling`] component.
+#[allow(clippy::type_complexity)]
+pub fn calculate_bounds<T, C>(
+    mut commands: Commands,
+    octrees: Res<Assets<Octree<T>>>,
+    new_aabb: Query<
+        (Entity, &C),
+        (
+            Without<Aabb>,
+            Without<NoFrustumCulling>,
+            Without<NoAutoAabb>,
+        ),
+    >,
+    mut update_aabb: Query<
+        (&C, &mut Aabb),
+        (Changed<C>, Without<NoFrustumCulling>, Without<NoAutoAabb>),
+    >,
+) where
+    T: NodeData,
+    C: Component,
+    for<'a> &'a C: Into<AssetId<Octree<T>>>,
+{
+    for (entity, octree_handle) in &new_aabb {
+        if let Some(octree) = octrees.get(octree_handle)
+            && let Some(aabb) = octree.hierarchy_root().map(|root| root.bounding_box)
+        {
+            commands.entity(entity).try_insert(aabb);
+        }
+    }
+
+    update_aabb
+        .par_iter_mut()
+        .for_each(|(octree_handle, mut old_aabb)| {
+            if let Some(aabb) = octrees
+                .get(octree_handle)
+                .and_then(|octree| octree.hierarchy_root().map(|root| root.bounding_box))
+            {
+                *old_aabb = aabb;
+            }
+        });
+}
+
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 pub fn check_octree_nodes_visibility<T, C, F, B>(
     mut diagnostics: Diagnostics,
     _time: Res<Time<Real>>,
@@ -331,7 +391,8 @@ fn compute_screen_pixel_radius(
     }
 }
 
-fn compute_visible_nodes_stack<'a, T, C, F, B>(
+#[allow(clippy::too_many_arguments)]
+fn compute_visible_nodes_stack<T, C, F, B>(
     camera_view: &CameraView,
     filter: &F,
     budget: &mut Option<B>,
@@ -348,21 +409,17 @@ fn compute_visible_nodes_stack<'a, T, C, F, B>(
 {
     #[cfg(feature = "trace")]
     let _span = info_span!("compute_visible_nodes_stack", name = "main").entered();
-    loop {
-        let Some(StackedOctreeNode {
-            entity,
-            asset_id,
-            octree,
-            node,
-            screen_pixel_radius,
-            weight,
-            mut completely_visible,
-            parent_index,
-        }) = stack.pop()
-        else {
-            break;
-        };
-
+    while let Some(StackedOctreeNode {
+        entity,
+        asset_id,
+        octree,
+        node,
+        screen_pixel_radius,
+        weight,
+        mut completely_visible,
+        parent_index,
+    }) = stack.pop()
+    {
         let (_, visible_nodes) = view_visible_octree_nodes.get_mut(entity);
         let Some(transform) = entities_transform.get(&entity) else {
             warn!("Missing transform for entity {}, skip", entity);

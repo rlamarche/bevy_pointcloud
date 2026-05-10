@@ -13,15 +13,15 @@ required-features = ["potree", "potree_fs"]
 
 [[example]]
 name = "copc"
-required-features = ["copc"]
+required-features = ["copc", "copc_ehttp"]
 
 [[example]]
 name = "copc_wasm"
 required-features = ["copc_wasm"]
 
 [[example]]
-name = "copc_wasm_ui"
-required-features = ["copc_wasm"]
+name = "viewer"
+required-features = ["copc_ehttp"]
 
 [[example]]
 path = "examples/potree_wasm.rs"
@@ -198,7 +198,8 @@ potree_wasm = ["potree/wasm"]
 potree_wasm_worker = ["wasm_worker", "potree/wasm_worker", "dep:wasm-bindgen", "dep:wasm-bindgen-futures"]
 potree_fs = ["potree/fs"]
 copc = ["dep:copc-streaming", "dep:async-lock"]
-copc_wasm = ["copc", "dep:ehttp", "dep:futures"]
+copc_wasm = ["copc", "copc_ehttp"]
+copc_ehttp = ["copc", "dep:ehttp", "dep:futures"]
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]

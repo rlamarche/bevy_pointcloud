@@ -89,6 +89,7 @@ type DrawAttributePass = (
     DrawPointCloud,
 );
 
+#[allow(clippy::type_complexity)]
 fn extract_camera_phases(
     mut pointcloud3d_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dAttributePhase>>,
     cameras: Extract<Query<(Entity, &Camera, Has<NoIndirectDrawing>), With<Camera3d>>>,
@@ -127,6 +128,7 @@ fn extract_camera_phases(
     pointcloud3d_phases.retain(|camera_entity, _| live_entities.contains(camera_entity));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn queue_attribute_pass(
     custom_draw_functions: Res<DrawFunctions<PointCloud3dAttributePhase>>,
     mut pipelines: ResMut<SpecializedRenderPipelines<AttributePassPipeline>>,

@@ -13,9 +13,7 @@ pub trait OctreeNodesBudget<T: NodeData>: Send + Sync + 'static {
 impl<T: NodeData> OctreeNodesBudget<T> for () {
     type Settings = ();
 
-    fn new(_settings: &Self::Settings) -> Self {
-        ()
-    }
+    fn new(_settings: &Self::Settings) -> Self {}
 
     fn add_node(&mut self, _node: &OctreeNode<T>) -> bool {
         true

@@ -1,5 +1,6 @@
 mod classification;
 mod density;
+#[cfg(feature = "copc_ehttp")]
 mod http_source;
 
 use std::{
@@ -14,6 +15,7 @@ use bevy_ecs::error::BevyError;
 use bevy_math::{DVec3, Vec4};
 use bevy_reflect::TypePath;
 use copc_streaming::{ByteSource, CopcStreamingReader, HierarchyEntry, VoxelKey};
+#[cfg(feature = "copc_ehttp")]
 pub use http_source::*;
 
 use crate::{

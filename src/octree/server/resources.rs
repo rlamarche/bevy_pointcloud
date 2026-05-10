@@ -116,7 +116,7 @@ impl<T: NodeData> Eq for WeightedOctreeNodeLoadTask<T> {}
 
 impl<T: NodeData> PartialOrd<Self> for WeightedOctreeNodeLoadTask<T> {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.1.partial_cmp(&other.1)
+        Some(self.cmp(other))
     }
 }
 

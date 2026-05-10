@@ -3,17 +3,20 @@
 //! - Copy the code for the [`CameraControllerPlugin`] and add the plugin to your App.
 //! - Attach the [`CameraController`] component to an entity with a [`Camera3d`].
 
+use std::{f32::consts::*, fmt};
+
 use bevy_app::{App, Plugin, Update};
 use bevy_camera::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
-use bevy_input::prelude::*;
+use bevy_input::{
+    mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit},
+    prelude::*,
+};
 use bevy_log::prelude::*;
 use bevy_math::prelude::*;
 use bevy_time::Time;
 use bevy_transform::prelude::*;
 use bevy_window::{CursorGrabMode, CursorOptions, Window};
-use std::{f32::consts::*, fmt};
 
 pub struct CameraControllerPlugin;
 

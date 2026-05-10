@@ -39,27 +39,6 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloud {
             return RenderCommandResult::Skip;
         };
 
-        // // Tell the GPU where the vertices are.
-        // pass.set_vertex_buffer(
-        //     0,
-        //     point_cloud_mesh
-        //         .vertices
-        //         .buffer()
-        //         .unwrap()
-        //         .slice(..),
-        // );
-        //
-        // // Tell the GPU where the indices are.
-        // pass.set_index_buffer(
-        //     point_cloud_mesh
-        //         .indices
-        //         .buffer()
-        //         .unwrap()
-        //         .slice(..),
-        //     0,
-        //     IndexFormat::Uint32,
-        // );
-
         pass.set_vertex_buffer(0, point_cloud_mesh.vertex_buffer.slice(..));
         pass.set_index_buffer(point_cloud_mesh.index_buffer.slice(..), IndexFormat::Uint32);
 

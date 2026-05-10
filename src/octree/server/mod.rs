@@ -6,7 +6,7 @@ mod task;
 use std::{marker::PhantomData, sync::Arc};
 
 use bevy_app::prelude::*;
-use bevy_asset::{AssetHandleProvider, AssetId, Assets, Handle};
+use bevy_asset::{AssetEvent, AssetHandleProvider, AssetId, Assets, Handle};
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
 use bevy_platform::collections::HashMap;
@@ -22,11 +22,11 @@ use super::{
     hierarchy::{HierarchyNode, HierarchyOctreeNode},
     loader::{ErasedOctreeLoader, OctreeLoader},
     node::NodeData,
-    visibility::CheckOctreeNodesVisibility,
 };
 use crate::octree::{
     server::systems::{evict_octree_nodes, update_octree_server_node_eviction_queue},
     storage::NodeId,
+    visibility::OctreeVisibilitySystems,
 };
 
 pub struct OctreeServerPlugin<T> {
@@ -67,9 +67,12 @@ where
         .add_systems(
             PostUpdate,
             (
+                cleanup_loaders::<T>,
                 handle_internal_octree_events::<T>,
-                process_octree_load_tasks::<T>.after(CheckOctreeNodesVisibility),
-                update_octree_server_node_eviction_queue::<T>.after(CheckOctreeNodesVisibility),
+                process_octree_load_tasks::<T>
+                    .after(OctreeVisibilitySystems::CheckOctreeNodesVisibility),
+                update_octree_server_node_eviction_queue::<T>
+                    .after(OctreeVisibilitySystems::CheckOctreeNodesVisibility),
                 evict_octree_nodes::<T>.after(update_octree_server_node_eviction_queue::<T>),
             ),
         );
@@ -106,7 +109,7 @@ where
         let loader = L::from_source(source).await.map_err(|error| error.into())?;
         let asset_id = handle.id();
 
-        let mut octree = Octree::<T>::new();
+        let mut octree = Octree::<T>::default();
 
         let initial_hierarchy = loader
             .load_initial_hierarchy()
@@ -166,9 +169,7 @@ where
         hierarchy_node: &HierarchyOctreeNode,
     ) -> Result<(), BevyError> {
         match loader.load_hierarchy(hierarchy_node).await {
-            Ok(loaded_hierarchy_nodes) => {
-                let hierarchy_nodes = loaded_hierarchy_nodes.into_iter().map(Into::into).collect();
-
+            Ok(hierarchy_nodes) => {
                 self.octree_event_sender
                     .send(InternalOctreeEvent::SubHierarchyLoaded {
                         id,
@@ -406,6 +407,18 @@ where
     }
 }
 
+/// Remove loader from cache upon octree asset removal
+pub fn cleanup_loaders<T: NodeData>(
+    mut server: ResMut<OctreeServer<T>>,
+    mut events: MessageReader<AssetEvent<Octree<T>>>,
+) {
+    for event in events.read() {
+        if let AssetEvent::Removed { id } = event {
+            server.loaders.remove(id);
+        }
+    }
+}
+
 /// A system that manages internal [`OctreeServer`] events, such as finalizing asset loads.
 pub fn handle_internal_octree_events<T>(
     mut server: ResMut<OctreeServer<T>>,
@@ -436,12 +449,10 @@ pub fn handle_internal_octree_events<T>(
                     },
                 }
 
-                // .expect("the AssetId is always valid");
-
                 // store the loader in the server, this is where we need to borrow `server` as mutable
                 server.loaders.insert(id, loader);
 
-                info!("Loaded octree {:?}", id);
+                debug!("Loaded octree {:?}", id);
             }
             InternalOctreeEvent::SubHierarchyLoaded {
                 id,
@@ -454,7 +465,7 @@ pub fn handle_internal_octree_events<T>(
                 load_tasks.hierarchy_in_flight.remove(&key);
 
                 let Some(octree) = assets.get_mut(id) else {
-                    warn!(
+                    debug!(
                         "No asset found for {:?}, unable to append loaded hierarchy nodes.",
                         id
                     );
@@ -538,7 +549,7 @@ pub fn handle_internal_octree_events<T>(
                 load_tasks.hierarchy_in_flight.remove(&key);
 
                 let Some(octree) = assets.get_mut(id) else {
-                    warn!(
+                    debug!(
                         "No asset found for {:?}, unable to append loaded hierarchy nodes.",
                         id
                     );
@@ -558,7 +569,7 @@ pub fn handle_internal_octree_events<T>(
                 load_tasks.node_in_flight.remove(&key);
 
                 let Some(octree) = assets.get_mut(id) else {
-                    warn!("No asset found for {:?}, unable to store node data.", id);
+                    debug!("No asset found for {:?}, unable to store node data.", id);
                     continue;
                 };
 
@@ -581,7 +592,7 @@ pub fn handle_internal_octree_events<T>(
                 load_tasks.node_in_flight.remove(&key);
 
                 let Some(octree) = assets.get_mut(id) else {
-                    warn!(
+                    debug!(
                         "No asset found for {:?}, unable to append loaded hierarchy nodes.",
                         id
                     );

@@ -21,6 +21,7 @@ pub struct AabbComputed;
 ///
 /// ```
 /// ```
+#[allow(clippy::type_complexity)]
 pub fn compute_point_cloud_aabb(
     point_clouds_without_aabb: Query<
         (Entity, &PointCloud3d),

@@ -2,7 +2,7 @@ use bevy_asset::Assets;
 use bevy_camera::Camera;
 use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
-use bevy_render::{sync_world::RenderEntity, view::ExtractedView, Extract};
+use bevy_render::{sync_world::RenderEntity, view::ExtractedView, Extract, MainWorld};
 
 use super::{
     asset::{RenderOctreeNodeAllocation, RenderOctreeNodeData},
@@ -16,9 +16,31 @@ use crate::octree::{
     visibility::components::ViewVisibleOctreeNodes,
 };
 
+/// This add newly added octrees to the [`RenderOctreeIndex`]
+pub fn extract_removed_octrees<E: OctreeNodeExtraction>(
+    octree_node_allocations: Extract<Res<OctreeNodeAllocations<E>>>,
+    mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,
+) {
+    for (_, render_entity) in &octree_node_allocations.removed_octrees_this_frame {
+        render_octree_index.remove_octree(render_entity.id());
+    }
+}
+
+/// Clear tracked removed octrees just after processing them
+pub fn clear_removed_octrees<E: OctreeNodeExtraction>(mut main_world: ResMut<MainWorld>) {
+    main_world
+        .resource_mut::<OctreeNodeAllocations<E>>()
+        .removed_octrees_this_frame
+        .clear();
+}
+
 /// This system extracts computed visible octree nodes and add them in the render world, for each view (camera)
 #[cfg_attr(feature = "trace", tracing::instrument(skip_all))]
-pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction, A: RenderOctreeNode>(
+#[allow(clippy::type_complexity)]
+pub fn extract_visible_octree_nodes<
+    E: OctreeNodeExtraction,
+    A: RenderOctreeNode<SourceOctreeNode = E::NodeData>,
+>(
     views: Extract<
         Query<
             (
@@ -32,14 +54,13 @@ pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction, A: RenderOctreeNode
         &mut RenderVisibleOctreeNodes<E::NodeData, E::Component>,
         With<ExtractedView>,
     >,
+    octree_node_allocations: Extract<Res<OctreeNodeAllocations<E>>>,
     mapper: Extract<Query<&RenderEntity>>,
     mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,
-) where
-    A: RenderOctreeNode<SourceOctreeNode = E::NodeData>,
-{
+) {
     for (render_entity, visible_point_cloud_octree_3d_nodes) in views.iter() {
         let Ok(mut render_visible_octree_nodes) = extracted_views.get_mut(render_entity) else {
-            warn!(
+            debug!(
                 "Missing RenderVisibleOctreeNodes::<E::NodeData, E::Component> for extracted view"
             );
             continue;
@@ -56,7 +77,7 @@ pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction, A: RenderOctreeNode
 
         for (entity, data) in &visible_point_cloud_octree_3d_nodes.octrees {
             let Ok(render_entity) = mapper.get(*entity) else {
-                warn!("Render entity for PointCloudOctree3d not found");
+                warn!("Render entity for PointCloudOctree3d {} not found", entity);
                 continue;
             };
 
@@ -67,6 +88,11 @@ pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction, A: RenderOctreeNode
                 .octrees
                 .insert(render_entity.id(), data.clone());
         }
+
+        // trace removed octrees
+        for (_, render_entity) in &octree_node_allocations.removed_octrees_this_frame {
+            render_octree_index.remove_octree(render_entity.id());
+        }
     }
 }
 
@@ -74,8 +100,6 @@ pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction, A: RenderOctreeNode
 pub fn extract_octree_node_allocations<E: OctreeNodeExtraction>(
     allocations: Extract<Res<OctreeNodeAllocations<E>>>,
     octrees: Extract<Res<Assets<Octree<E::NodeData>>>>,
-    // mut render_allocations: ResMut<RenderOctreeNodeAllocations<E>>,
-    // mut render_octrees: ResMut<RenderOctrees<A>>,
     mut extracted_octree_nodes: ResMut<ExtractedOctreeNodes<E>>,
 ) {
     if extracted_octree_nodes.max_instances == 0 {
@@ -85,6 +109,9 @@ pub fn extract_octree_node_allocations<E: OctreeNodeExtraction>(
     // clear tracking
     // clear previously computed data
     extracted_octree_nodes.clear_all();
+    extracted_octree_nodes
+        .removed_octrees
+        .extend_from_slice(&allocations.removed_octrees_this_frame);
     extracted_octree_nodes
         .allocated_nodes_this_frame
         .extend_from_slice(&allocations.allocated_nodes_this_frame);
@@ -141,10 +168,10 @@ pub fn extract_octree_node_allocations<E: OctreeNodeExtraction>(
                     id: octree_node.hierarchy.id,
                     parent_id: octree_node.hierarchy.parent_id,
                     child_index: octree_node.hierarchy.child_index,
-                    children: octree_node.hierarchy.children.clone(),
-                    children_mask: octree_node.hierarchy.children_mask.clone(),
+                    children: octree_node.hierarchy.children,
+                    children_mask: octree_node.hierarchy.children_mask,
                     depth: octree_node.hierarchy.depth,
-                    bounding_box: octree_node.hierarchy.bounding_box.clone(),
+                    bounding_box: octree_node.hierarchy.bounding_box,
                     data,
                     allocation: RenderOctreeNodeAllocation {
                         start: allocated_node.start,

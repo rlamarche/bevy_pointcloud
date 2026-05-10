@@ -48,6 +48,7 @@ pub trait RenderOctreeNode: Send + Sync + Sized + 'static {
     /// Prepares the [`RenderAsset::SourceAsset`] for the GPU by transforming it into a [`RenderAsset`].
     ///
     /// ECS data may be accessed via `param`.
+    #[allow(clippy::result_large_err)]
     fn prepare_octree_node(
         source_node: RenderOctreeNodeData<Self::ExtractedOctreeNode>,
         asset_id: AssetId<Octree<Self::SourceOctreeNode>>,
