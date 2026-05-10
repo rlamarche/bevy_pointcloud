@@ -2067,6 +2067,7 @@ dependencies = [
 [[package]]
 name = "copc-streaming"
 version = "0.0.0-dev"
+source = "git+https://github.com/rlamarche/copc.git?branch=feat%2Fadd-send#90fb5a3f69c9f4d43cdaf71ec21751d39e556ab3"
 dependencies = [
  "byteorder",
  "las",
@@ -4578,6 +4579,7 @@ dependencies = [
 [[package]]
 name = "potree"
 version = "0.1.0"
+source = "git+https://github.com/rlamarche/potree-rs.git?branch=main#1cb5adc9a1673fdc0fa6cfd8046ac0a9fe92ab35"
 dependencies = [
  "async-trait",
  "binrw",

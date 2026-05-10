@@ -77,7 +77,7 @@ offset-allocator = "0.2.0"
 bevy_gizmos = { version = "0.18.1" }
 bevy_gizmos_render = { version = "0.18.1" }
 bevy_tasks = { version = "0.18.1" }
-potree = { path = "../potree-rs", default-features = false, optional = true }
+potree = { git = "https://github.com/rlamarche/potree-rs.git", branch = "main", default-features = false, optional = true }
 crossbeam = { version = "0.8", features = [
     "crossbeam-channel",
     "crossbeam-queue",
@@ -92,7 +92,7 @@ wasm_thread = { version = "0.3.3", optional = true }
 priority-queue = "2.7.0"
 
 # Added for copc
-copc-streaming = { path = "../../vendor/copc/copc-streaming", optional = true }
+copc-streaming = { git = "https://github.com/rlamarche/copc.git", branch = "feat/add-send", optional = true }
 ehttp = { version = "0.5", optional = true }
 futures = { version = "0.3", optional = true }
 async-lock = { version =  "3.4.2", optional = true }
