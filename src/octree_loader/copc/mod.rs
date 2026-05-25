@@ -178,8 +178,8 @@ fn compute_point_color(value: &copc_streaming::Point) -> Vec4 {
     if let Some(color) = value.color {
         return Vec4::new(
             color.red as f32 / 65535.0,
-            color.blue as f32 / 65535.0,
             color.green as f32 / 65535.0,
+            color.blue as f32 / 65535.0,
             1.0,
         );
     }
