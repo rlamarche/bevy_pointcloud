@@ -70,7 +70,7 @@ pub fn prepare_assets<E, A>(
     mut render_octrees_buffers: ResMut<super::buffer::RenderOctreesBuffers<A>>,
     mut prepare_next_frame: ResMut<super::resources::PrepareNextFrameOctreeNodes<A>>,
     param: StaticSystemParam<<A as RenderOctreeNode>::Param>,
-    bpf: Res<RenderOctreeNodesBytesPerFrameLimiter>,
+    bpf: Res<RenderOctreeNodesBytesPerFrameLimiter<E>>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
 ) where

@@ -107,10 +107,7 @@ impl<T: NodeData, L: OctreeLoader<T>> ErasedOctreeLoader<T> for L {
             .await
             .map_err(|err| err.into())?;
 
-        Ok(loaded_nodes
-            .into_iter()
-            .map(HierarchyNode::from)
-            .collect())
+        Ok(loaded_nodes.into_iter().map(HierarchyNode::from).collect())
     }
 
     async fn load_node_data(&self, node: &HierarchyOctreeNode) -> Result<T, BevyError> {

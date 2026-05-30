@@ -26,7 +26,7 @@ impl Default for UiSettings {
             edl_strength: 0.4,
             edl_neighbour_count: 4,
             min_node_size: 30.0,
-            point_budget: 1_000_000,
+            point_budget: 10_000_000,
             skip_visibility: false,
         }
     }

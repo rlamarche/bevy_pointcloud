@@ -111,8 +111,9 @@ async fn send_request(
         copc_streaming::CopcError::ByteSource(HttpSourceError("channel closed".into()).into())
     })?;
 
-    let response = result
-        .map_err(|e| copc_streaming::CopcError::ByteSource(HttpSourceError(format!("{e:?}")).into()))?;
+    let response = result.map_err(|e| {
+        copc_streaming::CopcError::ByteSource(HttpSourceError(format!("{e:?}")).into())
+    })?;
 
     if !(200..300).contains(&(response.status as usize)) {
         return Err(copc_streaming::CopcError::ByteSource(

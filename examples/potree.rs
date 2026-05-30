@@ -20,6 +20,7 @@ use bevy_math::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pointcloud::{
     octree::visibility::components::{SkipOctreeVisibility, ViewVisibleOctreeNodes},
+    octree_loader::potree::loader::PotreeLoader,
     point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d},
     pointcloud_octree::{
         asset::{data::PointCloudNodeData, PointCloudOctree},
@@ -28,7 +29,6 @@ use bevy_pointcloud::{
         PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin,
         PointCloudOctreeVisibilitySettings,
     },
-    potree::loader::PotreeLoader,
     render::PointCloudRenderMode,
     PointCloudPlugin,
 };

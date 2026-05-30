@@ -13,7 +13,7 @@ required-features = ["potree", "potree_fs"]
 
 [[example]]
 name = "copc"
-required-features = ["copc", "copc_ehttp"]
+required-features = ["copc"]
 
 [[example]]
 name = "copc_wasm"
@@ -173,6 +173,7 @@ features = [
     "zstd_rust",
 # Added
     "experimental_bevy_feathers",
+    "free_camera",
 ]
 
 [features]
@@ -191,12 +192,12 @@ ply = ["dep:ply-rs"]
 las = ["dep:las"]
 wasm_worker = ["dep:wasm_thread", "multi_threaded"]
 potree = ["dep:potree"]
-potree_reqwest = ["potree/reqwest"]
-potree_ehttp = ["potree/ehttp"]
-potree_ehttp_local = ["potree/ehttp_local"]
-potree_wasm = ["potree/wasm"]
-potree_wasm_worker = ["wasm_worker", "potree/wasm_worker", "dep:wasm-bindgen", "dep:wasm-bindgen-futures"]
-potree_fs = ["potree/fs"]
+potree_reqwest = ["potree", "potree/reqwest"]
+potree_ehttp = ["potree", "potree/ehttp"]
+potree_ehttp_local = ["potree", "potree/ehttp_local"]
+potree_wasm = ["potree", "potree/wasm"]
+potree_wasm_worker = ["potree", "wasm_worker", "potree/wasm_worker", "dep:wasm-bindgen", "dep:wasm-bindgen-futures"]
+potree_fs = ["potree", "potree/fs"]
 copc = ["dep:copc-streaming", "dep:async-lock"]
 copc_wasm = ["copc", "copc_ehttp"]
 copc_ehttp = ["copc", "dep:ehttp", "dep:futures"]

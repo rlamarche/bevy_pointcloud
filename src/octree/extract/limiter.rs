@@ -1,17 +1,22 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+    marker::PhantomData,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use bevy_ecs::prelude::*;
 use bevy_render::Extract;
 
-pub fn reset_render_asset_bytes_per_frame(
-    mut bpf_limiter: ResMut<RenderOctreeNodesBytesPerFrameLimiter>,
+use crate::octree::extract::OctreeNodeExtraction;
+
+pub fn reset_render_asset_bytes_per_frame<E: OctreeNodeExtraction>(
+    mut bpf_limiter: ResMut<RenderOctreeNodesBytesPerFrameLimiter<E>>,
 ) {
     bpf_limiter.reset();
 }
 
-pub fn extract_render_asset_bytes_per_frame(
-    bpf: Extract<Res<RenderOctreeNodesBytesPerFrame>>,
-    mut bpf_limiter: ResMut<RenderOctreeNodesBytesPerFrameLimiter>,
+pub fn extract_render_asset_bytes_per_frame<E: OctreeNodeExtraction>(
+    bpf: Extract<Res<RenderOctreeNodesBytesPerFrame<E>>>,
+    mut bpf_limiter: ResMut<RenderOctreeNodesBytesPerFrameLimiter<E>>,
 ) {
     bpf_limiter.max_bytes = bpf.max_bytes;
 }
@@ -20,11 +25,12 @@ pub fn extract_render_asset_bytes_per_frame(
 /// each frame, preventing choppy frames at the cost of waiting longer for GPU assets
 /// to become available.
 #[derive(Resource, Default)]
-pub struct RenderOctreeNodesBytesPerFrame {
+pub struct RenderOctreeNodesBytesPerFrame<E: OctreeNodeExtraction> {
     pub max_bytes: Option<usize>,
+    pub(crate) _phantom: PhantomData<E>,
 }
 
-impl RenderOctreeNodesBytesPerFrame {
+impl<E: OctreeNodeExtraction> RenderOctreeNodesBytesPerFrame<E> {
     /// `max_bytes`: the number of bytes to write per frame.
     ///
     /// This is a soft limit: only full assets are written currently, uploading stops
@@ -35,6 +41,7 @@ impl RenderOctreeNodesBytesPerFrame {
     pub fn new(max_bytes: usize) -> Self {
         Self {
             max_bytes: Some(max_bytes),
+            _phantom: PhantomData,
         }
     }
 }
@@ -42,15 +49,26 @@ impl RenderOctreeNodesBytesPerFrame {
 /// A render-world resource that facilitates limiting the data transferred from CPU to GPU
 /// each frame, preventing choppy frames at the cost of waiting longer for GPU assets
 /// to become available.
-#[derive(Resource, Default)]
-pub struct RenderOctreeNodesBytesPerFrameLimiter {
+#[derive(Resource)]
+pub struct RenderOctreeNodesBytesPerFrameLimiter<E: OctreeNodeExtraction> {
     /// Populated by [`RenderOctreeNodesBytesPerFrame`] during extraction.
     pub max_bytes: Option<usize>,
     /// Bytes written this frame.
     pub bytes_written: AtomicUsize,
+    pub(crate) phantom: PhantomData<E>,
 }
 
-impl RenderOctreeNodesBytesPerFrameLimiter {
+impl<E: OctreeNodeExtraction> Default for RenderOctreeNodesBytesPerFrameLimiter<E> {
+    fn default() -> Self {
+        Self {
+            max_bytes: Default::default(),
+            bytes_written: Default::default(),
+            phantom: Default::default(),
+        }
+    }
+}
+
+impl<E: OctreeNodeExtraction> RenderOctreeNodesBytesPerFrameLimiter<E> {
     /// Reset the available bytes. Called once per frame during extraction by [`crate::RenderPlugin`].
     pub fn reset(&mut self) {
         if self.max_bytes.is_none() {

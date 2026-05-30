@@ -48,7 +48,7 @@ pub fn settings_panel() -> impl Bundle {
         ui_hover_observer(),
         children![
             settings_title(),
-            settings_checkbox(),
+            // settings_checkbox(),
             settings_section("URL", settings_section_url()),
             settings_section(
                 "EDL radius",
@@ -70,7 +70,7 @@ pub fn settings_panel() -> impl Bundle {
             ),
             settings_section(
                 "Min Node Size",
-                settings_slider(30.0, 1000.0, 30.0, 10.0, 0, |ui_settings, value| {
+                settings_slider(30.0, 1000.0, 150.0, 10.0, 0, |ui_settings, value| {
                     ui_settings.min_node_size = value;
                 })
             ),
@@ -78,8 +78,8 @@ pub fn settings_panel() -> impl Bundle {
                 "Point Budget",
                 settings_slider(
                     100_000.0,
+                    100_000_000.0,
                     10_000_000.0,
-                    1_000_000.0,
                     100.0,
                     -2,
                     |ui_settings, value| {

@@ -78,6 +78,7 @@ pub trait OctreeNodeExtraction: Send + Sync + TypePath {
 #[allow(clippy::type_complexity)]
 pub struct ExtractVisibleOctreeNodesPlugin<E, A, AFTER = ()> {
     max_size: usize,
+    max_bytes_per_frame: Option<usize>,
     _phantom: PhantomData<fn() -> (E, A, AFTER)>,
 }
 
@@ -85,6 +86,7 @@ impl<E, A, AFTER> Default for ExtractVisibleOctreeNodesPlugin<E, A, AFTER> {
     fn default() -> Self {
         ExtractVisibleOctreeNodesPlugin {
             max_size: 512 * 1024 * 1024, // 512 mb
+            max_bytes_per_frame: None,
             _phantom: PhantomData,
         }
     }
@@ -95,6 +97,18 @@ impl<E, A, AFTER> ExtractVisibleOctreeNodesPlugin<E, A, AFTER> {
     pub fn with_max_size(max_size: usize) -> Self {
         Self {
             max_size,
+            max_bytes_per_frame: None,
+            _phantom: PhantomData,
+        }
+    }
+    /// Construct with specific max memory size for GPU
+    pub fn with_max_size_and_max_bytes_per_frame(
+        max_size: usize,
+        max_bytes_per_frame: usize,
+    ) -> Self {
+        Self {
+            max_size,
+            max_bytes_per_frame: Some(max_bytes_per_frame),
             _phantom: PhantomData,
         }
     }
@@ -119,7 +133,10 @@ where
         .init_resource::<OctreeNodeAllocations<E>>()
         .init_resource::<ExtractOctreeNodeEvictionQueue<E>>()
         .add_plugins(ExtractComponentPlugin::<E::Component>::default())
-        .init_resource::<RenderOctreeNodesBytesPerFrame>()
+        .insert_resource(RenderOctreeNodesBytesPerFrame::<E> {
+            max_bytes: self.max_bytes_per_frame,
+            _phantom: PhantomData,
+        })
         .add_systems(
             PostUpdate,
             (
@@ -144,11 +161,11 @@ where
             .register_required_components::<ExtractedView, RenderVisibleOctreeNodes::<E::NodeData, E::Component>>();
 
         render_app
-            .init_resource::<RenderOctreeNodesBytesPerFrameLimiter>()
-            .add_systems(ExtractSchedule, extract_render_asset_bytes_per_frame)
+            .init_resource::<RenderOctreeNodesBytesPerFrameLimiter<E>>()
+            .add_systems(ExtractSchedule, extract_render_asset_bytes_per_frame::<E>)
             .add_systems(
                 Render,
-                reset_render_asset_bytes_per_frame.in_set(RenderSystems::Cleanup),
+                reset_render_asset_bytes_per_frame::<E>.in_set(RenderSystems::Cleanup),
             )
             .init_resource::<ExtractedOctreeNodes<E>>()
             .init_resource::<AllocatedOctreeNodes<E>>()

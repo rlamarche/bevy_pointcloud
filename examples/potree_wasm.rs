@@ -6,13 +6,13 @@ use bevy_diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
 use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pointcloud::{
+    octree_loader::potree::loader::PotreeLoader,
     point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d},
     pointcloud_octree::{
         component::PointCloudOctree3d, ExtractVisiblePointCloudOctreeNodesPlugin,
         PointCloudOctreePlugin, PointCloudOctreeServer, PointCloudOctreeServerPlugin,
         PointCloudOctreeVisibilityPlugin, PointCloudOctreeVisibilitySettings,
     },
-    potree::loader::PotreeLoader,
     render::PointCloudRenderMode,
     PointCloudPlugin,
 };

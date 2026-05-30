@@ -6,6 +6,7 @@ use bevy::{
     app::prelude::*,
     asset::Assets,
     camera::{visibility::Visibility, Camera3d},
+    camera_controller::free_camera::{FreeCamera, FreeCameraPlugin},
     ecs::prelude::*,
     feathers::{dark_theme::create_dark_theme, theme::UiTheme, FeathersPlugins},
     input_focus::InputDispatchPlugin,
@@ -52,11 +53,14 @@ fn main() {
         TextInputPlugin,
         PanOrbitCameraPlugin,
         PointCloudPlugin,
-        PointCloudOctreePlugin.set(ExtractVisiblePointCloudOctreeNodesPlugin::with_max_size(
-            512 * 1024 * 1024, // 512 MB GPU budget
-        )),
+        PointCloudOctreePlugin.set(
+            ExtractVisiblePointCloudOctreeNodesPlugin::with_max_size_and_max_bytes_per_frame(
+                512 * 1024 * 1024, // 512 MB GPU budget
+                100 * 1024 * 1024, // 100 MB max uploaded per frame
+            ),
+        ),
         PointCloudOctreeServerPlugin::with_max_size(
-            1024 * 1024 * 1024, // 1 GB CPU budget
+            512 * 1024 * 1024, // 512 MB CPU budget
         ),
         MyUiPlugin,
     ));
@@ -75,11 +79,16 @@ fn main() {
 // Startup systems
 // ---------------------------------------------------------------------------
 
+#[derive(Component)]
+pub struct MainCamera;
+
 fn setup_camera(mut commands: Commands) {
     commands.spawn((
+        MainCamera,
         Camera3d::default(),
         // Transform::from_xyz(18.0, 8.0, -3.0).looking_at(Vec3::new(0.0, 8.0, -3.0), Vec3::Y),
-        PanOrbitCamera::default(),
+        // PanOrbitCamera::default(),
+        FreeCamera::default(),
         Msaa::Off,
         PointCloudRenderMode {
             use_edl: true,
@@ -89,7 +98,7 @@ fn setup_camera(mut commands: Commands) {
         },
         PointCloudOctreeVisibilitySettings {
             filter: Some(30.0),
-            budget: Some(1_000_000),
+            budget: Some(10_000_000),
         },
     ));
 }
@@ -98,9 +107,26 @@ fn setup_camera(mut commands: Commands) {
 // UI Behavior
 // ---------------------------------------------------------------------------
 
-fn update_camera_control(mut cameras: Query<&mut PanOrbitCamera>, ui_state: Res<UiState>) {
-    for mut cam in &mut cameras {
-        cam.enabled = !ui_state.dragging && !ui_state.hovering;
+#[allow(clippy::type_complexity)]
+fn update_camera_control(
+    mut cameras: Query<
+        (Entity, Option<&mut PanOrbitCamera>, Option<&mut FreeCamera>),
+        With<MainCamera>,
+    >,
+    ui_state: Res<UiState>,
+    mut commands: Commands,
+) {
+    for (entity, pan_orbit_camera, free_camera) in &mut cameras {
+        if let Some(mut pan_orbit_camera) = pan_orbit_camera {
+            pan_orbit_camera.enabled = !ui_state.dragging && !ui_state.hovering;
+        }
+        if !ui_state.dragging && !ui_state.hovering && free_camera.is_none() {
+            commands.entity(entity).insert(FreeCamera::default());
+        } else if free_camera.is_some() && (ui_state.dragging || ui_state.hovering) {
+            commands.entity(entity).remove::<FreeCamera>();
+        }
+        // if let Some(mut free_camera) = free_camera {
+        // }
     }
 }
 
@@ -186,8 +212,8 @@ fn move_octree_at_center(
     assets: Res<Assets<PointCloudOctree>>,
     loading_point_clouds: Query<(Entity, &PointCloudOctree3d, &Aabb), With<LoadingPointCloud>>,
     mut camera: Query<
-        (&mut Transform, &mut PanOrbitCamera, &Projection),
-        (With<Camera3d>, Without<PointCloudOctree3d>),
+        (&mut Transform, Option<&mut PanOrbitCamera>, &Projection),
+        (With<MainCamera>, Without<PointCloudOctree3d>),
     >,
     mut commands: Commands,
 ) {
@@ -210,7 +236,7 @@ fn move_octree_at_center(
                         ))
                         .remove::<LoadingPointCloud>();
 
-                    let (mut camera_transform, mut pan_orbit_camera, projection) =
+                    let (mut camera_transform, pan_orbit_camera, projection) =
                         camera.single_mut().unwrap();
 
                     fit_camera_to_centered_aabb(
@@ -219,19 +245,20 @@ fn move_octree_at_center(
                         &aabb.half_extents.into(),
                         Vec3::new(1.0, 1.0, 1.0), // vue isométrique-ish
                     );
+                    if let Some(mut pan_orbit_camera) = pan_orbit_camera {
+                        // recompute camera yaw/pitch/radius
+                        let target_focus = Vec3::new(0.0, 0.0, 0.0);
+                        let (yaw, pitch, radius) = calculate_from_translation_and_focus(
+                            camera_transform.translation,
+                            target_focus,
+                            pan_orbit_camera.axis,
+                        );
 
-                    // recompute camera yaw/pitch/radius
-                    let target_focus = Vec3::new(0.0, 0.0, 0.0);
-                    let (yaw, pitch, radius) = calculate_from_translation_and_focus(
-                        camera_transform.translation,
-                        target_focus,
-                        pan_orbit_camera.axis,
-                    );
-
-                    pan_orbit_camera.target_yaw = yaw;
-                    pan_orbit_camera.target_pitch = pitch;
-                    pan_orbit_camera.target_radius = radius;
-                    pan_orbit_camera.target_focus = target_focus;
+                        pan_orbit_camera.target_yaw = yaw;
+                        pan_orbit_camera.target_pitch = pitch;
+                        pan_orbit_camera.target_radius = radius;
+                        pan_orbit_camera.target_focus = target_focus;
+                    }
                 }
             }
         }
@@ -272,7 +299,7 @@ fn fit_camera_to_centered_aabb(
 #[allow(clippy::type_complexity)]
 fn center_point_cloud(
     mut camera: Query<
-        (&mut Transform, &mut PanOrbitCamera),
+        (&mut Transform, Option<&mut PanOrbitCamera>),
         (With<Camera3d>, Without<PointCloudOctree3d>),
     >,
     mut query: Query<(&Aabb, &mut Transform), (With<PointCloudOctree3d>, Changed<Aabb>)>,
@@ -288,19 +315,21 @@ fn center_point_cloud(
         (aabb.center.neg() + Vec3A::new(0.0, aabb.half_extents.y, 0.0)).into(),
     );
 
-    let (camera_transform, mut pan_orbit_camera) = camera.single_mut().unwrap();
+    let (camera_transform, pan_orbit_camera) = camera.single_mut().unwrap();
 
-    let target_focus = Vec3::new(0.0, aabb.half_extents.y, 0.0);
-    let (yaw, pitch, radius) = calculate_from_translation_and_focus(
-        camera_transform.translation,
-        target_focus,
-        pan_orbit_camera.axis,
-    );
+    if let Some(mut pan_orbit_camera) = pan_orbit_camera {
+        let target_focus = Vec3::new(0.0, aabb.half_extents.y, 0.0);
+        let (yaw, pitch, radius) = calculate_from_translation_and_focus(
+            camera_transform.translation,
+            target_focus,
+            pan_orbit_camera.axis,
+        );
 
-    pan_orbit_camera.target_yaw = yaw;
-    pan_orbit_camera.target_pitch = pitch;
-    pan_orbit_camera.target_radius = radius;
-    pan_orbit_camera.target_focus = target_focus;
+        pan_orbit_camera.target_yaw = yaw;
+        pan_orbit_camera.target_pitch = pitch;
+        pan_orbit_camera.target_radius = radius;
+        pan_orbit_camera.target_focus = target_focus;
+    }
 }
 
 fn calculate_from_translation_and_focus(
