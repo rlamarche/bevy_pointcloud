@@ -16,12 +16,12 @@ pub const QUAD_INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
 
 #[derive(Debug, Clone, Asset, Reflect)]
 pub struct PointCloud {
-    pub points: Vec<PointCloudData>,
+    pub points: Vec<Point>,
 }
 
 #[derive(Debug, Clone, Copy, Reflect, Pod, Zeroable)]
 #[repr(C)]
-pub struct PointCloudData {
+pub struct Point {
     pub position: Vec4,
     pub color: Vec4,
 }

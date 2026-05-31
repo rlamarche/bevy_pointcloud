@@ -12,7 +12,7 @@ use ply_rs::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::point_cloud::{PointCloud, PointCloudData};
+use crate::point_cloud::{Point, PointCloud};
 
 #[derive(TypePath)]
 pub struct PlyLoaderPlugin;
@@ -23,9 +23,9 @@ impl Plugin for PlyLoaderPlugin {
     }
 }
 
-impl PropertyAccess for PointCloudData {
+impl PropertyAccess for Point {
     fn new() -> Self {
-        PointCloudData {
+        Point {
             position: (Vec3::ZERO, 1.0).into(),
             color: Vec4::splat(1.0),
         }
@@ -80,7 +80,7 @@ impl AssetLoader for PlyLoader {
         let cursor = Cursor::new(bytes);
         let mut f = BufReader::new(cursor);
 
-        let parser = Parser::<PointCloudData>::new();
+        let parser = Parser::<Point>::new();
         let header = parser.read_header(&mut f)?;
 
         let mut cloud = Vec::new();

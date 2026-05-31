@@ -6,7 +6,7 @@ use bevy_render::{
     renderer::RenderDevice,
 };
 
-use crate::point_cloud::{PointCloud, PointCloudData};
+use crate::point_cloud::{Point, PointCloud};
 
 /// The render world representation of a [`PointCloud`].
 pub struct RenderPointCloud {
@@ -19,7 +19,7 @@ impl RenderAsset for RenderPointCloud {
     type Param = SRes<RenderDevice>;
 
     fn byte_len(source_asset: &Self::SourceAsset) -> Option<usize> {
-        Some(source_asset.points.len() * size_of::<PointCloudData>())
+        Some(source_asset.points.len() * size_of::<Point>())
     }
 
     fn prepare_asset(

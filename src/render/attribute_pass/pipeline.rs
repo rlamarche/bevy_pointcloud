@@ -19,7 +19,7 @@ use bevy_shader::Shader;
 use bevy_utils::default;
 
 use crate::{
-    point_cloud::PointCloudData,
+    point_cloud::Point,
     point_cloud_material::PointCloudMaterial,
     pointcloud_octree::extract::{PointCloudNodeDataUniform, PointCloudOctreeUniform},
     render::{point_cloud_uniform::PointCloudUniform, POINTCLOUD_SHADER_HANDLE},
@@ -121,7 +121,7 @@ impl SpecializedRenderPipeline for AttributePassPipeline {
         };
 
         let instance_buffer_layout = VertexBufferLayout {
-            array_stride: size_of::<PointCloudData>() as u64,
+            array_stride: size_of::<Point>() as u64,
             step_mode: VertexStepMode::Instance,
             attributes: vec![
                 // Point position

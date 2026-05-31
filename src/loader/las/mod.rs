@@ -8,7 +8,7 @@ use bevy_reflect::TypePath;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::point_cloud::{PointCloud, PointCloudData};
+use crate::point_cloud::{Point, PointCloud};
 
 /// Naive implementation of a las loader because it loads the las file completely in memory
 pub struct LasLoaderPlugin;
@@ -72,7 +72,7 @@ impl AssetLoader for LasLoader {
         for wrapped_point in las_reader.points() {
             let point = wrapped_point.unwrap();
             if let Some(color) = point.color {
-                points.push(PointCloudData {
+                points.push(Point {
                     position: Vec4::new(point.x as f32, point.z as f32, -point.y as f32, -1.0),
                     // < 0.0 means every points have the same size (taken from the material)
                     color: Vec4::new(
