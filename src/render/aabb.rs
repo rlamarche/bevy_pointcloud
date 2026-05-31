@@ -1,6 +1,7 @@
 use bevy_asset::Assets;
 use bevy_camera::{primitives::Aabb, visibility::NoFrustumCulling};
 use bevy_ecs::prelude::*;
+use bevy_math::prelude::*;
 
 use crate::{point_cloud::PointCloud, render::PointCloud3d};
 
@@ -39,7 +40,8 @@ pub fn compute_point_cloud_aabb(
             continue;
         };
 
-        let Some(aabb) = Aabb::enclosing(point_cloud.points.iter().map(|p| p.position)) else {
+        let Some(aabb) = Aabb::enclosing(point_cloud.points.iter().map(|p| p.position.xyz()))
+        else {
             continue;
         };
 

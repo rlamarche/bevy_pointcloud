@@ -1,7 +1,7 @@
 use bevy_asset::{AsAssetId, Asset, AssetId, Handle};
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::{component::Component, reflect::ReflectComponent};
-use bevy_math::Vec3;
+use bevy_math::prelude::*;
 use bevy_reflect::{std_traits::ReflectDefault, Reflect};
 use bevy_transform::prelude::*;
 use bytemuck::{Pod, Zeroable};
@@ -22,9 +22,8 @@ pub struct PointCloud {
 #[derive(Debug, Clone, Copy, Reflect, Pod, Zeroable)]
 #[repr(C)]
 pub struct PointCloudData {
-    pub position: Vec3,
-    pub point_size: f32,
-    pub color: [f32; 4],
+    pub position: Vec4,
+    pub color: Vec4,
 }
 
 #[derive(Component, Clone, Debug, Default, Deref, DerefMut, Reflect, PartialEq, Eq)]

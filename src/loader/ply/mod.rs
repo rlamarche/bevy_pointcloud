@@ -3,7 +3,7 @@ use std::io::{BufReader, Cursor, Error};
 use bevy_app::{App, Plugin};
 use bevy_asset::{io::Reader, AssetApp, AssetLoader, LoadContext};
 use bevy_log;
-use bevy_math::Vec3;
+use bevy_math::{Vec3, Vec4};
 use bevy_reflect::TypePath;
 use ply_rs::{
     parser::Parser,
@@ -26,9 +26,8 @@ impl Plugin for PlyLoaderPlugin {
 impl PropertyAccess for PointCloudData {
     fn new() -> Self {
         PointCloudData {
-            position: Vec3::ZERO,
-            point_size: 1.0,
-            color: [1.0, 1.0, 1.0, 1.0],
+            position: (Vec3::ZERO, 1.0).into(),
+            color: Vec4::splat(1.0),
         }
     }
 

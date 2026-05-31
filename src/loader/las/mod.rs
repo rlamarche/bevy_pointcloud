@@ -3,7 +3,7 @@ use std::io::{Cursor, Error};
 use bevy_app::{App, Plugin};
 use bevy_asset::{io::Reader, AssetApp, AssetLoader, LoadContext};
 use bevy_log::info;
-use bevy_math::Vec3;
+use bevy_math::prelude::*;
 use bevy_reflect::TypePath;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -73,16 +73,14 @@ impl AssetLoader for LasLoader {
             let point = wrapped_point.unwrap();
             if let Some(color) = point.color {
                 points.push(PointCloudData {
-                    position: Vec3::new(point.x as f32, point.z as f32, -point.y as f32),
+                    position: Vec4::new(point.x as f32, point.z as f32, -point.y as f32, -1.0),
                     // < 0.0 means every points have the same size (taken from the material)
-                    point_size: -1.0,
-                    // color,
-                    color: [
+                    color: Vec4::new(
                         color.red as f32 / u16::MAX as f32,
                         color.green as f32 / u16::MAX as f32,
                         color.blue as f32 / u16::MAX as f32,
                         1.0,
-                    ],
+                    ),
                 });
             }
         }
