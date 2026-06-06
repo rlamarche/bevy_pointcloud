@@ -2,8 +2,7 @@ use bevy_math::prelude::*;
 use bevy_reflect::TypePath;
 use bytemuck::{Pod, Zeroable};
 
-use super::Point;
-use crate::render::point_cloud::GpuPoint;
+use super::{GpuPoint, Point};
 
 #[derive(Clone, Copy, Debug, TypePath, Pod, Zeroable)]
 #[repr(C)]

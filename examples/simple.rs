@@ -5,7 +5,7 @@ use std::ops::Neg;
 
 use bevy::DefaultPlugins;
 use bevy_app::prelude::*;
-use bevy_asset::{AssetServer, Assets, Handle};
+use bevy_asset::{AssetPlugin, AssetServer, Assets, Handle};
 use bevy_camera::{primitives::Aabb, Camera3d, PerspectiveProjection, Projection};
 #[cfg(all(not(feature = "webgl"), not(feature = "webgpu")))]
 use bevy_color::palettes::basic::{GREEN, RED};
@@ -20,7 +20,9 @@ use bevy_mesh::{Mesh, Mesh3d, Meshable};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pbr::{MeshMaterial3d, StandardMaterial};
 use bevy_pointcloud::{
-    PointCloudPlugin, loader::las::LasLoaderPlugin, point::RGBPoint, point_cloud::{PointCloud, PointCloud3d}, point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d}, render::PointCloudRenderMode
+    loader::las::LasLoaderPlugin, point::RGBPoint, render::PointCloudRenderMode, PointCloud,
+    PointCloud3d, PointCloudMaterial3d, PointCloudMaterialPlugin, PointCloudPlugin,
+    SimplePointCloudMaterial,
 };
 use bevy_render::{prelude::*, view::NoIndirectDrawing};
 use bevy_text::{FontSmoothing, TextFont};
@@ -31,9 +33,13 @@ use bevy_window::{PresentMode, Window};
 fn main() {
     App::new()
         .add_plugins((
-            DefaultPlugins,
+            DefaultPlugins.set(AssetPlugin {
+                watch_for_changes_override: Some(true),
+                ..Default::default()
+            }),
             PanOrbitCameraPlugin,
             PointCloudPlugin::<RGBPoint, RGBPoint>::default(),
+            PointCloudMaterialPlugin::<RGBPoint, RGBPoint, SimplePointCloudMaterial>::default(),
             LasLoaderPlugin::<RGBPoint>::default(),
         ))
         .add_plugins(FpsOverlayPlugin {
@@ -130,24 +136,25 @@ fn load_meshes(
 }
 
 #[derive(Component)]
-pub struct MyMaterial(Handle<PointCloudMaterial>);
+pub struct MyMaterial(Handle<SimplePointCloudMaterial>);
 
 #[derive(Component)]
 struct MainPointCloud;
 
 fn load_pointcloud(
     mut commands: Commands,
-    mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
+    mut point_cloud_materials: ResMut<Assets<SimplePointCloudMaterial>>,
     _point_clouds: ResMut<Assets<PointCloud<RGBPoint>>>,
     asset_server: Res<AssetServer>,
 ) {
-    let my_material = point_cloud_materials.add(PointCloudMaterial {
+    let my_material = point_cloud_materials.add(SimplePointCloudMaterial {
         point_size: 30.0,
         ..default()
     });
     commands.spawn(MyMaterial(my_material.clone()));
 
-    let point_cloud = asset_server.load::<PointCloud<RGBPoint>>("pointclouds/lion_takanawa.copc.laz");
+    let point_cloud =
+        asset_server.load::<PointCloud<RGBPoint>>("pointclouds/lion_takanawa.copc.laz");
     commands.spawn((
         PointCloud3d(point_cloud),
         PointCloudMaterial3d(my_material.clone()),
@@ -232,7 +239,11 @@ fn center_point_cloud(
     >,
     mut query: Query<
         (&Aabb, &mut Transform),
-        (With<PointCloud3d<RGBPoint>>, With<MainPointCloud>, Changed<Aabb>),
+        (
+            With<PointCloud3d<RGBPoint>>,
+            With<MainPointCloud>,
+            Changed<Aabb>,
+        ),
     >,
 ) {
     let Some((aabb, mut transform)) = query.iter_mut().next() else {
@@ -262,7 +273,7 @@ fn center_point_cloud(
 fn update_material_on_keypress(
     key_input: Res<ButtonInput<KeyCode>>,
     my_material: Query<&MyMaterial>,
-    mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
+    mut point_cloud_materials: ResMut<Assets<SimplePointCloudMaterial>>,
     mut point_cloud_render_mode: Query<&mut PointCloudRenderMode>,
 ) {
     let my_material = my_material.single().unwrap();

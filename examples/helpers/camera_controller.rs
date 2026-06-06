@@ -18,6 +18,7 @@ use bevy_time::Time;
 use bevy_transform::prelude::*;
 use bevy_window::{CursorGrabMode, CursorOptions, Window};
 
+#[allow(unused)]
 pub struct CameraControllerPlugin;
 
 impl Plugin for CameraControllerPlugin {
@@ -29,8 +30,10 @@ impl Plugin for CameraControllerPlugin {
 /// Based on Valorant's default sensitivity, not entirely sure why it is exactly 1.0 / 180.0,
 /// but I'm guessing it is a misunderstanding between degrees/radians and then sticking with
 /// it because it felt nice.
+#[allow(unused)]
 pub const RADIANS_PER_DOT: f32 = 1.0 / 180.0;
 
+#[allow(unused)]
 #[derive(Component)]
 pub struct CameraController {
     pub enabled: bool,
@@ -110,6 +113,7 @@ Freecam Controls:
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(unused)]
 fn run_camera_controller(
     time: Res<Time>,
     mut windows: Query<(&Window, &mut CursorOptions)>,

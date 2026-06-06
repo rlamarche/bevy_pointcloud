@@ -7,11 +7,11 @@ use bevy_render::{
     render_resource::{Buffer, BufferInitDescriptor, BufferUsages},
     renderer::RenderDevice,
 };
-use bytemuck::{Pod, Zeroable};
 
-use crate::{point::Point, point_cloud::PointCloud};
-
-pub trait GpuPoint: Pod + Zeroable + Copy {}
+use crate::{
+    point::{GpuPoint, Point},
+    point_cloud::PointCloud,
+};
 
 /// The render world representation of a [`PointCloud`].
 pub struct RenderPointCloud<T: Point, U: GpuPoint> {

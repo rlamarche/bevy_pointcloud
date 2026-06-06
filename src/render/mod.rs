@@ -26,20 +26,21 @@ use bevy_render::{
     render_asset::RenderAssetPlugin,
     Render, RenderApp, RenderSystems,
 };
-use bevy_shader::Shader;
+use bevy_shader::{load_shader_library, Shader};
 use depth_pass::DepthPassPlugin;
 use normalize_pass::NormalizePassPlugin;
 use point_cloud_uniform::{prepare_point_cloud_uniform, PointCloudUniformLayout};
 
 use crate::{
-    point::Point,
+    point::{GpuPoint, Point},
     point_cloud::PointCloud3d,
     render::{
         eye_dome_lighting::{extract_cameras_render_mode, EyeDomeLightingUniform, NeighboursCache},
         material::{RenderPointCloudMaterial, RenderPointCloudMaterialLayout},
         mesh::PointCloudMesh,
-        point_cloud::{GpuPoint, RenderPointCloud},
+        point_cloud::RenderPointCloud,
     },
+    PointCloudMaterial, PointCloudMaterial3d,
 };
 
 const POINTCLOUD_SHADER_HANDLE: Handle<Shader> =
@@ -48,19 +49,24 @@ const POINTCLOUD_SHADER_HANDLE: Handle<Shader> =
 const NORMALIZE_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("0e5fffec-7e0b-4b44-8c32-b92d9b99fd58");
 
-pub struct RenderPipelinePlugin<T: Point, U: GpuPoint>(PhantomData<fn() -> (T, U)>);
+pub struct RenderPipelinePlugin<T: Point, U: GpuPoint, M: PointCloudMaterial>(
+    #[allow(clippy::type_complexity)] PhantomData<fn() -> (T, U, M)>,
+);
 
-impl<T: Point, U: GpuPoint> Default for RenderPipelinePlugin<T, U> {
+impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Default for RenderPipelinePlugin<T, U, M> {
     fn default() -> Self {
         Self(PhantomData)
     }
 }
 
-impl<T: Point, U: GpuPoint> Plugin for RenderPipelinePlugin<T, U>
+impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Plugin for RenderPipelinePlugin<T, U, M>
 where
     for<'a> &'a T: Into<U>,
 {
     fn build(&self, app: &mut App) {
+        load_shader_library!(app, "types.wgsl");
+        load_shader_library!(app, "bindings.wgsl");
+        load_shader_library!(app, "functions.wgsl");
         load_internal_asset!(
             app,
             POINTCLOUD_SHADER_HANDLE,
@@ -77,8 +83,9 @@ where
 
         // Automatically create uniform from these settings
         app.add_plugins(RenderAssetPlugin::<RenderPointCloud<T, U>>::default())
-            .add_plugins(RenderAssetPlugin::<RenderPointCloudMaterial>::default())
+            .add_plugins(RenderAssetPlugin::<RenderPointCloudMaterial<M>>::default())
             .add_plugins(ExtractComponentPlugin::<PointCloud3d<T>>::default())
+            .add_plugins(ExtractComponentPlugin::<PointCloudMaterial3d<M>>::default())
             .add_plugins(UniformComponentPlugin::<EyeDomeLightingUniform>::default())
             // compute point cloud aabb **before** [`bevy_render::view::calculate_bounds`] to prevent using mesh's aabb.
             .add_systems(
@@ -100,15 +107,15 @@ where
             );
 
         app.add_plugins((
-            DepthPassPlugin::<T, U>::default(),
-            AttributePassPlugin::<T, U>::default(),
+            DepthPassPlugin::<T, U, M>::default(),
+            AttributePassPlugin::<T, U, M>::default(),
             NormalizePassPlugin,
         ));
     }
 
     fn finish(&self, app: &mut App) {
         app.sub_app_mut(RenderApp)
-            .init_resource::<RenderPointCloudMaterialLayout>()
+            .init_resource::<RenderPointCloudMaterialLayout<M>>()
             .init_resource::<PointCloudUniformLayout>()
             .init_resource::<PointCloudMesh>();
     }

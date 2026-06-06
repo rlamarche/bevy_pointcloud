@@ -11,12 +11,9 @@ use bevy_render::{
 };
 
 use crate::{
-    point::Point,
+    point::{GpuPoint, Point},
     point_cloud::PointCloud3d,
-    render::{
-        mesh::PointCloudMesh,
-        point_cloud::{GpuPoint, RenderPointCloud},
-    },
+    render::{mesh::PointCloudMesh, point_cloud::RenderPointCloud},
 };
 
 pub struct DrawPointCloud<T: Point, U: GpuPoint>(PhantomData<fn() -> (T, U)>);
