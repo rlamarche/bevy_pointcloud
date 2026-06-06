@@ -1,3 +1,5 @@
+use std::{hash::Hash, marker::PhantomData};
+
 use bevy_asset::prelude::*;
 use bevy_core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT;
 use bevy_ecs::prelude::*;
@@ -18,26 +20,33 @@ use bevy_render::{
 use bevy_shader::Shader;
 use bevy_utils::default;
 
+#[cfg(feature = "pointcloud_octree")]
+use crate::pointcloud_octree::extract::{PointCloudNodeDataUniform, PointCloudOctreeUniform};
 use crate::{
-    point_cloud::Point,
+    point::Point,
     point_cloud_material::PointCloudMaterial,
-    pointcloud_octree::extract::{PointCloudNodeDataUniform, PointCloudOctreeUniform},
-    render::{point_cloud_uniform::PointCloudUniform, POINTCLOUD_SHADER_HANDLE},
+    render::{
+        point_cloud::GpuPoint, point_cloud_uniform::PointCloudUniform, POINTCLOUD_SHADER_HANDLE,
+    },
 };
 
 #[derive(Resource)]
-pub struct AttributePassPipeline {
+pub struct AttributePassPipeline<T: Point, U: GpuPoint> {
     mesh_pipeline: MeshPipeline,
     shader_handle: Handle<Shader>,
     pub(crate) layout: BindGroupLayout,
     pub(crate) layout_msaa: BindGroupLayout,
     pub(crate) point_cloud_layout: BindGroupLayoutDescriptor,
     pub(crate) point_cloud_material_layout: BindGroupLayoutDescriptor,
+    #[cfg(feature = "pointcloud_octree")]
     pub(crate) point_cloud_octree_visible_nodes_layout: BindGroupLayoutDescriptor,
+    #[cfg(feature = "pointcloud_octree")]
     pub(crate) point_cloud_octree_node_data_layout: BindGroupLayoutDescriptor,
+    #[cfg(feature = "pointcloud_octree")]
     pub(crate) point_cloud_octree_data_layout: BindGroupLayoutDescriptor,
+    _phantom: PhantomData<fn() -> (T, U)>,
 }
-impl FromWorld for AttributePassPipeline {
+impl<T: Point, U: GpuPoint> FromWorld for AttributePassPipeline<T, U> {
     fn from_world(world: &mut World) -> Self {
         let mesh_pipeline = world.resource::<MeshPipeline>();
         let render_device = world.resource::<RenderDevice>();
@@ -72,6 +81,7 @@ impl FromWorld for AttributePassPipeline {
                 )
                 .to_vec(),
             },
+            #[cfg(feature = "pointcloud_octree")]
             point_cloud_octree_visible_nodes_layout: BindGroupLayoutDescriptor {
                 label: "pcl_octree_visible_nodes_layout".into(),
                 entries: BindGroupLayoutEntries::single(
@@ -80,6 +90,7 @@ impl FromWorld for AttributePassPipeline {
                 )
                 .to_vec(),
             },
+            #[cfg(feature = "pointcloud_octree")]
             point_cloud_octree_node_data_layout: BindGroupLayoutDescriptor {
                 label: "pcl_octree_node_data".into(),
                 entries: BindGroupLayoutEntries::single(
@@ -88,6 +99,7 @@ impl FromWorld for AttributePassPipeline {
                 )
                 .to_vec(),
             },
+            #[cfg(feature = "pointcloud_octree")]
             point_cloud_octree_data_layout: BindGroupLayoutDescriptor {
                 label: "layout_pcl_octree_layout".into(),
                 entries: BindGroupLayoutEntries::single(
@@ -96,18 +108,49 @@ impl FromWorld for AttributePassPipeline {
                 )
                 .to_vec(),
             },
+            _phantom: PhantomData,
         }
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Clone)]
-pub struct AttributePipelineKey {
+#[derive(Clone)]
+pub struct AttributePipelineKey<T: Point> {
     pub mesh_key: MeshPipelineKey,
     pub is_octree: bool,
+    _phantom: PhantomData<T>,
 }
 
-impl SpecializedRenderPipeline for AttributePassPipeline {
-    type Key = AttributePipelineKey;
+impl<T: Point> AttributePipelineKey<T> {
+    #[inline]
+    pub fn new(mesh_key: MeshPipelineKey, is_octree: bool) -> Self {
+        Self {
+            mesh_key,
+            is_octree,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<T: Point> Hash for AttributePipelineKey<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.mesh_key.hash(state);
+        self.is_octree.hash(state);
+        self._phantom.hash(state);
+    }
+}
+
+impl<T: Point> PartialEq for AttributePipelineKey<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.mesh_key == other.mesh_key
+            && self.is_octree == other.is_octree
+            && self._phantom == other._phantom
+    }
+}
+
+impl<T: Point> Eq for AttributePipelineKey<T> {}
+
+impl<T: Point, U: GpuPoint> SpecializedRenderPipeline for AttributePassPipeline<T, U> {
+    type Key = AttributePipelineKey<T>;
 
     fn specialize(&self, key: Self::Key) -> RenderPipelineDescriptor {
         let vertex_buffer_layout = VertexBufferLayout {
@@ -121,7 +164,7 @@ impl SpecializedRenderPipeline for AttributePassPipeline {
         };
 
         let instance_buffer_layout = VertexBufferLayout {
-            array_stride: size_of::<Point>() as u64,
+            array_stride: size_of::<U>() as u64,
             step_mode: VertexStepMode::Instance,
             attributes: vec![
                 // Point position
@@ -145,6 +188,7 @@ impl SpecializedRenderPipeline for AttributePassPipeline {
             shader_defs.push("IS_OCTREE".into());
         }
 
+        #[allow(unused_mut)]
         let mut layout = vec![
             // Bind group 0 is the view uniform
             self.mesh_pipeline
@@ -157,6 +201,7 @@ impl SpecializedRenderPipeline for AttributePassPipeline {
             self.point_cloud_material_layout.clone(),
         ];
 
+        #[cfg(feature = "pointcloud_octree")]
         if key.is_octree {
             layout.push(self.point_cloud_octree_visible_nodes_layout.clone());
             layout.push(self.point_cloud_octree_node_data_layout.clone());

@@ -3,6 +3,8 @@ pub mod phase;
 pub mod pipeline;
 pub mod texture;
 
+use std::marker::PhantomData;
+
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::Core3d;
@@ -28,6 +30,7 @@ use phase::PointCloud3dAttributePhase;
 use texture::prepare_attribute_pass_textures;
 
 use crate::{
+    point::Point,
     point_cloud::PointCloud3d,
     render::{
         attribute_pass::{
@@ -38,33 +41,48 @@ use crate::{
         draw::DrawPointCloud,
         material::SetPointCloudMaterialGroup,
         phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey},
+        point_cloud::GpuPoint,
         point_cloud_uniform::SetPointCloudUniformGroup,
     },
 };
 
-pub struct AttributePassPlugin;
-impl Plugin for AttributePassPlugin {
+pub struct AttributePassPlugin<T: Point, U: GpuPoint>(PhantomData<fn() -> (T, U)>);
+
+impl<T: Point, U: GpuPoint> Default for AttributePassPlugin<T, U> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<T: Point, U: GpuPoint> Plugin for AttributePassPlugin<T, U>
+where
+    for<'a> &'a T: Into<U>,
+{
     fn build(&self, app: &mut App) {
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
         render_app
-            .init_resource::<DrawFunctions<PointCloud3dAttributePhase>>()
-            .init_resource::<ViewBinnedRenderPhases<PointCloud3dAttributePhase>>()
-            .add_render_command::<PointCloud3dAttributePhase, DrawAttributePass>()
-            .init_resource::<SpecializedRenderPipelines<AttributePassPipeline>>()
-            .add_systems(ExtractSchedule, extract_camera_phases)
+            .init_resource::<DrawFunctions<PointCloud3dAttributePhase<T>>>()
+            .init_resource::<ViewBinnedRenderPhases<PointCloud3dAttributePhase<T>>>()
+            .add_render_command::<PointCloud3dAttributePhase<T>, DrawAttributePass<T, U>>()
+            .init_resource::<SpecializedRenderPipelines<AttributePassPipeline<T, U>>>()
+            .add_systems(ExtractSchedule, extract_camera_phases::<T>)
             .add_systems(
                 Render,
                 (
                     prepare_attribute_pass_textures.in_set(RenderSystems::PrepareResources),
-                    prepare_attribute_pass_bind_groups.in_set(RenderSystems::PrepareResources),
-                    queue_attribute_pass.in_set(RenderSystems::QueueMeshes),
+                    prepare_attribute_pass_bind_groups::<T, U>
+                        .in_set(RenderSystems::PrepareResources),
+                    queue_attribute_pass::<T, U>.in_set(RenderSystems::QueueMeshes),
                 ),
             );
 
         render_app
-            .add_render_graph_node::<ViewNodeRunner<AttributePassNode>>(Core3d, AttributePassLabel)
+            .add_render_graph_node::<ViewNodeRunner<AttributePassNode<T>>>(
+                Core3d,
+                AttributePassLabel,
+            )
             .add_render_graph_edges(Core3d, (DepthPassLabel, AttributePassLabel));
     }
 
@@ -76,22 +94,22 @@ impl Plugin for AttributePassPlugin {
         // are initialized
         render_app
             .init_resource::<AttributePassLayout>()
-            .init_resource::<AttributePassPipeline>();
+            .init_resource::<AttributePassPipeline<T, U>>();
     }
 }
 
 // We will reuse render commands already defined by bevy to draw a 3d mesh
-type DrawAttributePass = (
+type DrawAttributePass<T, U> = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetPointCloudUniformGroup<1>,
     SetPointCloudMaterialGroup<2>,
-    DrawPointCloud,
+    DrawPointCloud<T, U>,
 );
 
 #[allow(clippy::type_complexity)]
-fn extract_camera_phases(
-    mut pointcloud3d_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dAttributePhase>>,
+fn extract_camera_phases<T: Point>(
+    mut pointcloud3d_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dAttributePhase<T>>>,
     cameras: Extract<Query<(Entity, &Camera, Has<NoIndirectDrawing>), With<Camera3d>>>,
     mut live_entities: Local<HashSet<RetainedViewEntity>>,
     gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
@@ -129,13 +147,13 @@ fn extract_camera_phases(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn queue_attribute_pass(
-    custom_draw_functions: Res<DrawFunctions<PointCloud3dAttributePhase>>,
-    mut pipelines: ResMut<SpecializedRenderPipelines<AttributePassPipeline>>,
+fn queue_attribute_pass<T: Point, U: GpuPoint>(
+    custom_draw_functions: Res<DrawFunctions<PointCloud3dAttributePhase<T>>>,
+    mut pipelines: ResMut<SpecializedRenderPipelines<AttributePassPipeline<T, U>>>,
     pipeline_cache: Res<PipelineCache>,
-    custom_draw_pipeline: Res<AttributePassPipeline>,
-    point_clouds_3d: Query<&PointCloud3d>,
-    mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dAttributePhase>>,
+    custom_draw_pipeline: Res<AttributePassPipeline<T, U>>,
+    point_clouds_3d: Query<&PointCloud3d<T>>,
+    mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dAttributePhase<T>>>,
     mut views: Query<(&ExtractedView, &RenderVisibleEntities, &Msaa)>,
     main_entities: Query<&MainEntity>,
     mut next_tick: Local<Tick>,
@@ -144,23 +162,20 @@ fn queue_attribute_pass(
         let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
-        let draw_custom = custom_draw_functions.read().id::<DrawAttributePass>();
+        let draw_custom = custom_draw_functions.read().id::<DrawAttributePass<T, U>>();
 
         // Create the key based on the view.
         // In this case we only care about MSAA and HDR
         let view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
             | MeshPipelineKey::from_hdr(view.hdr);
 
-        let attribute_key = AttributePipelineKey {
-            mesh_key: view_key,
-            is_octree: false,
-        };
+        let attribute_key = AttributePipelineKey::new(view_key, false);
 
         let pipeline_id =
             pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, attribute_key);
 
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
-        for (render_entity, _visible_entity) in visible_entities.iter::<PointCloud3d>() {
+        for (render_entity, _visible_entity) in visible_entities.iter::<PointCloud3d<T>>() {
             let Ok(main_entity) = main_entities.get(*render_entity) else {
                 warn!("Render entity not found, skipping.");
                 continue;

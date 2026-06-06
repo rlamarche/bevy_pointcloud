@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::{error, prelude::*};
 use bevy_render::{
@@ -10,14 +12,20 @@ use bevy_render::{
 };
 
 use super::texture::ViewAttributePrepassTextures;
-use crate::render::attribute_pass::phase::PointCloud3dAttributePhase;
+use crate::{point::Point, render::attribute_pass::phase::PointCloud3dAttributePhase};
 
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct AttributePassLabel;
 
-#[derive(Default)]
-pub struct AttributePassNode;
-impl ViewNode for AttributePassNode {
+pub struct AttributePassNode<T: Point>(PhantomData<T>);
+
+impl<T: Point> Default for AttributePassNode<T> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<T: Point> ViewNode for AttributePassNode<T> {
     type ViewQuery = (
         &'static ExtractedCamera,
         &'static ExtractedView,
@@ -34,7 +42,7 @@ impl ViewNode for AttributePassNode {
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource
         let Some(point_cloud_3d_phases) =
-            world.get_resource::<ViewBinnedRenderPhases<PointCloud3dAttributePhase>>()
+            world.get_resource::<ViewBinnedRenderPhases<PointCloud3dAttributePhase<T>>>()
         else {
             info!("no pointcloud phases");
             return Ok(());

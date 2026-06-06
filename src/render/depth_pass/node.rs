@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use bevy_ecs::{prelude::*, query::QueryItem};
 use bevy_log::prelude::*;
 use bevy_render::{
@@ -9,14 +11,23 @@ use bevy_render::{
     view::{ExtractedView, ViewDepthTexture},
 };
 
-use crate::render::depth_pass::{phase::PointCloud3dDepthPhase, texture::ViewDepthPrepassTextures};
+use crate::{
+    point::Point,
+    render::depth_pass::{phase::PointCloud3dDepthPhase, texture::ViewDepthPrepassTextures},
+};
 
 #[derive(RenderLabel, Debug, Clone, Hash, PartialEq, Eq)]
 pub struct DepthPassLabel;
 
-#[derive(Default)]
-pub struct DepthPassNode;
-impl ViewNode for DepthPassNode {
+pub struct DepthPassNode<T: Point>(PhantomData<T>);
+
+impl<T: Point> Default for DepthPassNode<T> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<T: Point> ViewNode for DepthPassNode<T> {
     type ViewQuery = (
         &'static ExtractedCamera,
         &'static ExtractedView,
@@ -37,7 +48,7 @@ impl ViewNode for DepthPassNode {
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource
         let Some(point_cloud_3d_phases) =
-            world.get_resource::<ViewBinnedRenderPhases<PointCloud3dDepthPhase>>()
+            world.get_resource::<ViewBinnedRenderPhases<PointCloud3dDepthPhase<T>>>()
         else {
             info!("no pointcloud phases");
             return Ok(());

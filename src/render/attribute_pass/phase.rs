@@ -10,16 +10,19 @@ use bevy_render::{
     sync_world::MainEntity,
 };
 
-use crate::render::phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey};
+use crate::{
+    point::Point,
+    render::phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey},
+};
 
-pub struct PointCloud3dAttributePhase {
+pub struct PointCloud3dAttributePhase<T: Point> {
     /// Determines which objects can be placed into a *batch set*.
     ///
     /// Objects in a single batch set can potentially be multi-drawn together,
     /// if it's enabled and the current platform supports it.
     pub batch_set_key: PointCloud3dBatchSetKey,
     /// The key, which determines which can be batched.
-    pub bin_key: PointCloud3dBinKey,
+    pub bin_key: PointCloud3dBinKey<T>,
     /// An entity from which data will be fetched, including the mesh if
     /// applicable.
     pub representative_entity: (Entity, MainEntity),
@@ -30,7 +33,7 @@ pub struct PointCloud3dAttributePhase {
     pub extra_index: PhaseItemExtraIndex,
 }
 
-impl PhaseItem for PointCloud3dAttributePhase {
+impl<T: Point> PhaseItem for PointCloud3dAttributePhase<T> {
     #[inline]
     fn entity(&self) -> Entity {
         self.representative_entity.0
@@ -65,8 +68,8 @@ impl PhaseItem for PointCloud3dAttributePhase {
     }
 }
 
-impl BinnedPhaseItem for PointCloud3dAttributePhase {
-    type BinKey = PointCloud3dBinKey;
+impl<T: Point> BinnedPhaseItem for PointCloud3dAttributePhase<T> {
+    type BinKey = PointCloud3dBinKey<T>;
     type BatchSetKey = PointCloud3dBatchSetKey;
 
     #[inline]
@@ -87,7 +90,7 @@ impl BinnedPhaseItem for PointCloud3dAttributePhase {
     }
 }
 
-impl CachedRenderPipelinePhaseItem for PointCloud3dAttributePhase {
+impl<T: Point> CachedRenderPipelinePhaseItem for PointCloud3dAttributePhase<T> {
     #[inline]
     fn cached_pipeline(&self) -> CachedRenderPipelineId {
         self.batch_set_key.pipeline

@@ -1,10 +1,10 @@
 use bevy_asset::{AsAssetId, Asset, AssetId, Handle};
 use bevy_derive::{Deref, DerefMut};
-use bevy_ecs::{component::Component, reflect::ReflectComponent};
-use bevy_math::prelude::*;
-use bevy_reflect::{std_traits::ReflectDefault, Reflect};
+use bevy_ecs::component::Component;
+use bevy_reflect::TypePath;
 use bevy_transform::prelude::*;
-use bytemuck::{Pod, Zeroable};
+
+use crate::point::Point;
 
 pub const QUAD_POSITIONS: &[[f32; 3]] = &[
     [-0.5, -0.5, 0.0],
@@ -14,37 +14,29 @@ pub const QUAD_POSITIONS: &[[f32; 3]] = &[
 ];
 pub const QUAD_INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
 
-#[derive(Debug, Clone, Asset, Reflect)]
-pub struct PointCloud {
-    pub points: Vec<Point>,
+#[derive(Debug, Clone, Asset, TypePath)]
+pub struct PointCloud<T: Point> {
+    pub points: Vec<T>,
 }
 
-#[derive(Debug, Clone, Copy, Reflect, Pod, Zeroable)]
-#[repr(C)]
-pub struct Point {
-    pub position: Vec4,
-    pub color: Vec4,
-}
-
-#[derive(Component, Clone, Debug, Default, Deref, DerefMut, Reflect, PartialEq, Eq)]
-#[reflect(Component, Default, Clone, PartialEq)]
+#[derive(Component, Clone, Debug, Default, Deref, DerefMut, TypePath, PartialEq, Eq)]
 #[require(Transform)]
-pub struct PointCloud3d(pub Handle<PointCloud>);
+pub struct PointCloud3d<T: Point>(pub Handle<PointCloud<T>>);
 
-impl From<PointCloud3d> for AssetId<PointCloud> {
-    fn from(point_cloud: PointCloud3d) -> Self {
+impl<T: Point> From<PointCloud3d<T>> for AssetId<PointCloud<T>> {
+    fn from(point_cloud: PointCloud3d<T>) -> Self {
         point_cloud.id()
     }
 }
 
-impl From<&PointCloud3d> for AssetId<PointCloud> {
-    fn from(pointcloud: &PointCloud3d) -> Self {
+impl<T: Point> From<&PointCloud3d<T>> for AssetId<PointCloud<T>> {
+    fn from(pointcloud: &PointCloud3d<T>) -> Self {
         pointcloud.id()
     }
 }
 
-impl AsAssetId for PointCloud3d {
-    type Asset = PointCloud;
+impl<T: Point> AsAssetId for PointCloud3d<T> {
+    type Asset = PointCloud<T>;
 
     fn as_asset_id(&self) -> AssetId<Self::Asset> {
         self.id()

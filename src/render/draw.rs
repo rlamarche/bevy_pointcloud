@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use bevy_ecs::system::{
     lifetimeless::{Read, SRes},
     SystemParamItem,
@@ -9,22 +11,32 @@ use bevy_render::{
 };
 
 use crate::{
+    point::Point,
     point_cloud::PointCloud3d,
-    render::{mesh::PointCloudMesh, point_cloud::RenderPointCloud},
+    render::{
+        mesh::PointCloudMesh,
+        point_cloud::{GpuPoint, RenderPointCloud},
+    },
 };
 
-pub struct DrawPointCloud;
+pub struct DrawPointCloud<T: Point, U: GpuPoint>(PhantomData<fn() -> (T, U)>);
 
-impl<P: PhaseItem> RenderCommand<P> for DrawPointCloud {
-    type Param = (SRes<PointCloudMesh>, SRes<RenderAssets<RenderPointCloud>>);
+impl<T: Point, U: GpuPoint, P: PhaseItem> RenderCommand<P> for DrawPointCloud<T, U>
+where
+    for<'a> &'a T: Into<U>,
+{
+    type Param = (
+        SRes<PointCloudMesh>,
+        SRes<RenderAssets<RenderPointCloud<T, U>>>,
+    );
     type ViewQuery = ();
-    type ItemQuery = Read<PointCloud3d>;
+    type ItemQuery = Read<PointCloud3d<T>>;
 
     #[inline]
     fn render<'w>(
         _item: &P,
         _view: (),
-        point_cloud_3d: Option<&'w PointCloud3d>,
+        point_cloud_3d: Option<&'w PointCloud3d<T>>,
         (point_cloud_mesh, render_point_clouds): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {

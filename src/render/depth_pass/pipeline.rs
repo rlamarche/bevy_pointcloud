@@ -1,40 +1,50 @@
+use std::marker::PhantomData;
+
 use bevy_asset::prelude::*;
 use bevy_core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT;
 use bevy_ecs::prelude::*;
 use bevy_mesh::{PrimitiveTopology, VertexBufferLayout, VertexFormat};
 use bevy_pbr::{MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey};
+#[cfg(feature = "pointcloud_octree")]
+use bevy_render::render_resource::{binding_types::texture_2d, TextureSampleType};
 use bevy_render::{
     render_resource::{
-        binding_types::{texture_2d, uniform_buffer},
-        AsBindGroup, BindGroupLayoutDescriptor, BindGroupLayoutEntries, ColorTargetState,
-        ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Face, FragmentState,
-        FrontFace, MultisampleState, PolygonMode, PrimitiveState, RenderPipelineDescriptor,
-        ShaderStages, SpecializedRenderPipeline, StencilState, TextureFormat, TextureSampleType,
-        VertexAttribute, VertexState, VertexStepMode,
+        binding_types::uniform_buffer, AsBindGroup, BindGroupLayoutDescriptor,
+        BindGroupLayoutEntries, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
+        DepthStencilState, Face, FragmentState, FrontFace, MultisampleState, PolygonMode,
+        PrimitiveState, RenderPipelineDescriptor, ShaderStages, SpecializedRenderPipeline,
+        StencilState, TextureFormat, VertexAttribute, VertexState, VertexStepMode,
     },
     renderer::RenderDevice,
 };
 use bevy_shader::Shader;
 use bevy_utils::default;
 
+#[cfg(feature = "pointcloud_octree")]
+use crate::pointcloud_octree::extract::{PointCloudNodeDataUniform, PointCloudOctreeUniform};
 use crate::{
-    point_cloud::Point,
+    point::Point,
     point_cloud_material::PointCloudMaterial,
-    pointcloud_octree::extract::{PointCloudNodeDataUniform, PointCloudOctreeUniform},
-    render::{point_cloud_uniform::PointCloudUniform, POINTCLOUD_SHADER_HANDLE},
+    render::{
+        point_cloud::GpuPoint, point_cloud_uniform::PointCloudUniform, POINTCLOUD_SHADER_HANDLE,
+    },
 };
 
 #[derive(Resource)]
-pub struct DepthPipeline {
+pub struct DepthPipeline<T: Point, U: GpuPoint> {
     mesh_pipeline: MeshPipeline,
     shader_handle: Handle<Shader>,
     point_cloud_layout: BindGroupLayoutDescriptor,
     point_cloud_material_layout: BindGroupLayoutDescriptor,
+    #[cfg(feature = "pointcloud_octree")]
     point_cloud_octree_visible_nodes_layout: BindGroupLayoutDescriptor,
+    #[cfg(feature = "pointcloud_octree")]
     point_cloud_octree_node_data_layout: BindGroupLayoutDescriptor,
+    #[cfg(feature = "pointcloud_octree")]
     point_cloud_octree_data_layout: BindGroupLayoutDescriptor,
+    _phantom: PhantomData<fn() -> (T, U)>,
 }
-impl FromWorld for DepthPipeline {
+impl<T: Point, U: GpuPoint> FromWorld for DepthPipeline<T, U> {
     fn from_world(world: &mut World) -> Self {
         let mesh_pipeline = world.resource::<MeshPipeline>();
         let render_device = world.resource::<RenderDevice>();
@@ -51,6 +61,7 @@ impl FromWorld for DepthPipeline {
                 )
                 .to_vec(),
             },
+            #[cfg(feature = "pointcloud_octree")]
             point_cloud_octree_visible_nodes_layout: BindGroupLayoutDescriptor {
                 label: "pcl_octree_visible_nodes_layout".into(),
                 entries: BindGroupLayoutEntries::single(
@@ -59,6 +70,7 @@ impl FromWorld for DepthPipeline {
                 )
                 .to_vec(),
             },
+            #[cfg(feature = "pointcloud_octree")]
             point_cloud_octree_node_data_layout: BindGroupLayoutDescriptor {
                 label: "pcl_octree_node_data".into(),
                 entries: BindGroupLayoutEntries::single(
@@ -67,6 +79,7 @@ impl FromWorld for DepthPipeline {
                 )
                 .to_vec(),
             },
+            #[cfg(feature = "pointcloud_octree")]
             point_cloud_octree_data_layout: BindGroupLayoutDescriptor {
                 label: "layout_pcl_octree_layout".into(),
                 entries: BindGroupLayoutEntries::single(
@@ -75,6 +88,7 @@ impl FromWorld for DepthPipeline {
                 )
                 .to_vec(),
             },
+            _phantom: PhantomData,
         }
     }
 }
@@ -86,7 +100,7 @@ pub struct DepthPipelineKey {
     pub is_octree: bool,
 }
 
-impl SpecializedRenderPipeline for DepthPipeline {
+impl<T: Point, U: GpuPoint> SpecializedRenderPipeline for DepthPipeline<T, U> {
     type Key = DepthPipelineKey;
 
     fn specialize(&self, key: Self::Key) -> RenderPipelineDescriptor {
@@ -101,7 +115,7 @@ impl SpecializedRenderPipeline for DepthPipeline {
         };
 
         let instance_buffer_layout = VertexBufferLayout {
-            array_stride: size_of::<Point>() as u64,
+            array_stride: size_of::<T>() as u64,
             step_mode: VertexStepMode::Instance,
             attributes: vec![
                 // Point position
@@ -127,6 +141,7 @@ impl SpecializedRenderPipeline for DepthPipeline {
             shader_defs.push("IS_OCTREE".into());
         }
 
+        #[allow(unused_mut)]
         let mut layout = vec![
             // Bind group 0 is the view uniform
             self.mesh_pipeline
@@ -139,6 +154,7 @@ impl SpecializedRenderPipeline for DepthPipeline {
             self.point_cloud_material_layout.clone(),
         ];
 
+        #[cfg(feature = "pointcloud_octree")]
         if key.is_octree {
             layout.push(self.point_cloud_octree_visible_nodes_layout.clone());
             layout.push(self.point_cloud_octree_node_data_layout.clone());

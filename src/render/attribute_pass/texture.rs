@@ -20,8 +20,12 @@ use bevy_render::{
     view::ExtractedView,
 };
 
-use crate::render::{
-    attribute_pass::pipeline::AttributePassPipeline, depth_pass::texture::ViewDepthPrepassTextures,
+use crate::{
+    point::Point,
+    render::{
+        attribute_pass::pipeline::AttributePassPipeline,
+        depth_pass::texture::ViewDepthPrepassTextures, point_cloud::GpuPoint,
+    },
 };
 
 #[derive(Component)]
@@ -130,9 +134,9 @@ impl FromWorld for AttributePassLayout {
     }
 }
 
-pub fn prepare_attribute_pass_bind_groups(
+pub fn prepare_attribute_pass_bind_groups<T: Point, U: GpuPoint>(
     mut commands: Commands,
-    pipeline: Res<AttributePassPipeline>,
+    pipeline: Res<AttributePassPipeline<T, U>>,
     render_device: Res<RenderDevice>,
     views: Query<(Entity, &ViewDepthPrepassTextures, &Msaa)>,
 ) {

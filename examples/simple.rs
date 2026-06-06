@@ -20,11 +20,7 @@ use bevy_mesh::{Mesh, Mesh3d, Meshable};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pbr::{MeshMaterial3d, StandardMaterial};
 use bevy_pointcloud::{
-    loader::las::LasLoaderPlugin,
-    point_cloud::{PointCloud, PointCloud3d},
-    point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d},
-    render::PointCloudRenderMode,
-    PointCloudPlugin,
+    PointCloudPlugin, loader::las::LasLoaderPlugin, point::RGBPoint, point_cloud::{PointCloud, PointCloud3d}, point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d}, render::PointCloudRenderMode
 };
 use bevy_render::{prelude::*, view::NoIndirectDrawing};
 use bevy_text::{FontSmoothing, TextFont};
@@ -37,8 +33,8 @@ fn main() {
         .add_plugins((
             DefaultPlugins,
             PanOrbitCameraPlugin,
-            PointCloudPlugin,
-            LasLoaderPlugin,
+            PointCloudPlugin::<RGBPoint, RGBPoint>::default(),
+            LasLoaderPlugin::<RGBPoint>::default(),
         ))
         .add_plugins(FpsOverlayPlugin {
             config: FpsOverlayConfig {
@@ -142,7 +138,7 @@ struct MainPointCloud;
 fn load_pointcloud(
     mut commands: Commands,
     mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
-    _point_clouds: ResMut<Assets<PointCloud>>,
+    _point_clouds: ResMut<Assets<PointCloud<RGBPoint>>>,
     asset_server: Res<AssetServer>,
 ) {
     let my_material = point_cloud_materials.add(PointCloudMaterial {
@@ -151,7 +147,7 @@ fn load_pointcloud(
     });
     commands.spawn(MyMaterial(my_material.clone()));
 
-    let point_cloud = asset_server.load::<PointCloud>("pointclouds/lion_takanawa.copc.laz");
+    let point_cloud = asset_server.load::<PointCloud<RGBPoint>>("pointclouds/lion_takanawa.copc.laz");
     commands.spawn((
         PointCloud3d(point_cloud),
         PointCloudMaterial3d(my_material.clone()),
@@ -232,11 +228,11 @@ fn calculate_from_translation_and_focus(
 fn center_point_cloud(
     mut camera: Query<
         (&mut Transform, &mut PanOrbitCamera),
-        (With<Camera3d>, Without<PointCloud3d>),
+        (With<Camera3d>, Without<PointCloud3d<RGBPoint>>),
     >,
     mut query: Query<
         (&Aabb, &mut Transform),
-        (With<PointCloud3d>, With<MainPointCloud>, Changed<Aabb>),
+        (With<PointCloud3d<RGBPoint>>, With<MainPointCloud>, Changed<Aabb>),
     >,
 ) {
     let Some((aabb, mut transform)) = query.iter_mut().next() else {

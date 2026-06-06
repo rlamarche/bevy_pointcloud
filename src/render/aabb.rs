@@ -1,9 +1,8 @@
 use bevy_asset::Assets;
 use bevy_camera::{primitives::Aabb, visibility::NoFrustumCulling};
 use bevy_ecs::prelude::*;
-use bevy_math::prelude::*;
 
-use crate::{point_cloud::PointCloud, render::PointCloud3d};
+use crate::{point::Point, point_cloud::PointCloud, render::PointCloud3d};
 
 #[derive(Component)]
 pub struct AabbComputed;
@@ -23,16 +22,16 @@ pub struct AabbComputed;
 /// ```
 /// ```
 #[allow(clippy::type_complexity)]
-pub fn compute_point_cloud_aabb(
+pub fn compute_point_cloud_aabb<T: Point>(
     point_clouds_without_aabb: Query<
-        (Entity, &PointCloud3d),
+        (Entity, &PointCloud3d<T>),
         (
-            With<PointCloud3d>,
+            With<PointCloud3d<T>>,
             Without<NoFrustumCulling>,
             Without<AabbComputed>,
         ),
     >,
-    point_clouds: Res<Assets<PointCloud>>,
+    point_clouds: Res<Assets<PointCloud<T>>>,
     mut commands: Commands,
 ) {
     for (entity, point_cloud_3d) in point_clouds_without_aabb.iter() {
@@ -40,8 +39,7 @@ pub fn compute_point_cloud_aabb(
             continue;
         };
 
-        let Some(aabb) = Aabb::enclosing(point_cloud.points.iter().map(|p| p.position.xyz()))
-        else {
+        let Some(aabb) = Aabb::enclosing(point_cloud.points.iter().map(|p| p.position())) else {
             continue;
         };
 
