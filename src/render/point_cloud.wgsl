@@ -10,30 +10,10 @@
 #import bevy_pbr::view_transformations::position_view_to_clip
 #import bevy_pbr::view_transformations::position_view_to_ndc
 
-struct Vertex {
-    // This is needed if you are using batching and/or gpu preprocessing
-    // It's a built in so you don't need to define it in the vertex layout
-    @builtin(instance_index) instance_index: u32,
-    // Like we defined for the vertex layout
-    // position is at location 0
-    @location(0) position: vec3<f32>,
+#import bevy_pointcloud::bindings
+#import bevy_pointcloud::functions
+#import bevy_pointcloud::types
 
-    @location(1) i_pos_size: vec4<f32>,
-    @location(2) i_color: vec4<f32>,
-};
-
-// This is the output of the vertex shader and we also use it as the input for the fragment shader
-struct VertexOutput {
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) view_position: vec3<f32>,
-    @location(1) uv: vec2<f32>,
-    @location(2) color: vec4<f32>,
-    @location(3) log_depth: f32,
-    @location(4) radius: f32,
-};
-
-@group(1) @binding(0)
-var<uniform> world_from_local: mat4x4<f32>;
 
 struct PointCloudMaterial {
     point_size: f32,
@@ -48,179 +28,20 @@ struct PointCloudMaterial {
 @group(2) @binding(0)
 var<uniform> material: PointCloudMaterial;
 
-#ifdef IS_OCTREE
-
-struct OctreeNode {
-    spacing: f32,
-    level: u32,
-    center: vec3<f32>,
-    half_extents: vec3<f32>,
-};
-
-struct OctreeEntity {
-    octree_index: u32,
-#ifdef SIXTEEN_BYTE_ALIGNMENT
-    // WebGL2 structs must be 16 byte aligned.
-    _webgl2_padding: vec3<f32>,
-#endif
-};
-
-@group(3) @binding(0)
-var visible_nodes: texture_2d<u32>;
-
-@group(4) @binding(0)
-var<uniform> octree_node: OctreeNode;
-
-@group(5) @binding(0)
-var<uniform> octree_entity: OctreeEntity;
-
-#endif
-
-const PI: f32 = 3.14159265358979323846264338327950288;
-
-
-fn srgb_to_rgb_simple(color: vec3<f32>) -> vec3<f32> {
-    return pow(color, vec3<f32>(2.2));
-}
-
-// Extract an approximate uniform scale factor from a transform matrix.
-// We take the largest axis scale to keep point sizing stable under non-uniform scaling.
-fn extract_max_scale(matrix: mat4x4<f32>) -> f32 {
-    let scale_x = length(matrix[0].xyz);
-    let scale_y = length(matrix[1].xyz);
-    let scale_z = length(matrix[2].xyz);
-
-    return max(scale_x, max(scale_y, scale_z));
-}
-
-
-#ifdef IS_OCTREE
-
-
-fn is_bit_set(number: u32, index: u32) -> bool {
-    return (number & (1u << index)) != 0u;
-}
-
-fn count_one_bits_compat(x: u32) -> u32 {
-    var v = x;
-    v = v - ((v >> 1u) & 0x55555555u);
-    v = (v & 0x33333333u) + ((v >> 2u) & 0x33333333u);
-    return (((v + (v >> 4u)) & 0x0F0F0F0Fu) * 0x01010101u) >> 24u;
-}
-
-// Count number of bits before provided index
-fn count_bits_before(mask: u32, index: u32) -> u32 {
-    // Create a mask for bits before index
-    let before_mask = (1u << index) - 1u;
-
-    // TODO add ifdef to use native version if available
-    return count_one_bits_compat(mask & before_mask);
-//    return countOneBits(mask & before_mask);
-}
-
-
-fn get_max_relative_depth(position: vec3<f32>) -> f32 {
-
-    // var current_index = visible_node.node_index;
-    var current_index = 0u;
-    var relative_depth: i32 = 0;
-
-    var center = octree_node.center;
-    var half_extents = octree_node.half_extents;
-
-    for (var i = 0; i <= 30; i ++) {
-        let current_node = textureLoad(visible_nodes, vec2<u32>(current_index, octree_entity.octree_index), 0);
-
-        // Extract data
-        let children_mask = current_node.r;  // u8 dans le canal R
-
-        let first_child_index = current_node.b | (current_node.a << 8u);  // u16 reconstruit à partir de B et A
-
-        // Determiner in which octant is the position
-        let relative_position = position - center;
-
-        // index3d contains 0 or 1 for each axe
-        let index3d = step(vec3(0.0), relative_position);
-
-        // compute the child_index
-        let child_index = u32(round(4.0 * index3d.x + 2.0 * index3d.y + index3d.z));
-
-        // check if a children exists at this index
-        if is_bit_set(children_mask, child_index) {
-            // compute child offset
-            var child_offset: u32 = 0u;
-            if child_index > 0 {
-                child_offset = count_bits_before(children_mask, child_index);
-            }
-
-            let actual_child_index = first_child_index + child_offset;
-
-            relative_depth ++;
-
-            current_index = actual_child_index;
-            half_extents = half_extents  * 0.5;
-
-            let offset = (index3d * 2.0 - 1.0) * half_extents;
-            center = center + offset;
-        } else {
-            let offset = f32(current_node.g) / 10.0 - 10.0;
-            return f32(relative_depth) + offset;
-        }
-
-    }
-
-    return f32(relative_depth);
-}
-
-#endif
-
 
 @vertex
-fn vertex(vertex: Vertex) -> VertexOutput {
-    let center = vertex.i_pos_size.xyz;
-
-    let viewport = view_bindings::view.viewport;
-
-    let transform_scale = extract_max_scale(world_from_local);
-
-    // Compute world & view position of the point instance (applying the world_from_local matrix)
-    let world_position = mesh_position_local_to_world(world_from_local, vec4<f32>(vertex.i_pos_size.xyz, 1.0));
+fn vertex(vertex: types::Vertex) -> types::VertexOutput {
+    // Compute world & view position of the point instance (applying the bindings::world_from_local matrix)
+    let world_position = mesh_position_local_to_world(bindings::world_from_local, vec4<f32>(vertex.i_pos_size.xyz, 1.0));
     var view_position = position_world_to_view(world_position.xyz);
 
-#ifdef IS_OCTREE
-    // Get the fov from projection matrix
-    let f = view_bindings::view.clip_from_view[1][1];
-    let fov = 2.0 * atan(1.0 / f);
-    let slope = tan(fov / 2.0);
-    var proj_factor = -0.5 * viewport[3] / (slope * view_position.z);
-
-    // TODO precalculate it on cpu
-    let model_view = view_bindings::view.view_from_world * world_from_local;
-
-    // let scale = length(
-    //   model_view * vec4(0, 0, 0, 1) -
-    //   model_view * vec4(octree_node.spacing, 0, 0, 1)
-    // ) / octree_node.spacing;
-
-    let max_relative_depth = get_max_relative_depth(vertex.i_pos_size.xyz);
-    let attenuation = exp2(max_relative_depth);
-    //let attenuation = pow(2.0, max_relative_depth);
-
-    // Base screen-space radius driven by spacing and LOD attenuation
-    var radius_screen = octree_node.spacing * 1.7 / attenuation;
-    radius_screen = radius_screen * proj_factor * transform_scale;
-
-    radius_screen = max(material.min_point_size, radius_screen);
-    radius_screen = min(material.max_point_size, radius_screen);
-
-
-    let radius = radius_screen / proj_factor;
-#else
-    let point_size = select(material.point_size, vertex.i_pos_size.w, material.point_size <= 0.0) * transform_scale;
-
-    // Compute radius to size the point correctly with viewport size
-    let radius = point_size / min(viewport[2], viewport[3]);
-#endif
+    let radius = functions::compute_point_size(
+        vertex,
+        view_position,
+        material.point_size,
+        material.min_point_size,
+        material.max_point_size
+    );
 
     // Compute the offset to apply for creating a quad
     let offset = vertex.position.xy * radius;
@@ -228,7 +49,7 @@ fn vertex(vertex: Vertex) -> VertexOutput {
     // Apply the offset to the view position and compute clip position
     let clip_position = position_view_to_clip(view_position + vec3<f32>(offset, 0.0));
 
-    var out: VertexOutput;
+    var out: types::VertexOutput;
 
     out.clip_position = clip_position;
     out.view_position = view_position;
@@ -239,7 +60,8 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 #ifdef DEBUG_COLOR
     var debug_color = vec3<f32>(1.0, 1.0, 1.0);
 
-    let absolute_depth = u32(max_relative_depth) + octree_node.level;
+    let max_relative_depth = functions::get_max_relative_depth(bindings::octree_entity, bindings::octree_node, bindings::visible_nodes, vertex.i_pos_size.xyz);
+    let absolute_depth = u32(max_relative_depth) + bindings::octree_node.level;
 
     if absolute_depth == 0u {
         debug_color = vec3<f32>(1.0, 0.0, 0.0); // Rouge = problème !
@@ -264,10 +86,7 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 		let adjusted_depth = original_depth + 2.0 * radius;
 		let adjust = adjusted_depth / original_depth;
 
-        view_position *= adjust;
-        view_position += vec3<f32>(offset, 0.0);
-
-        out.clip_position = position_view_to_clip(view_position);
+        out.clip_position = position_view_to_clip(view_position * adjust + vec3<f32>(offset, 0.0));
 	#endif
 
     return out;
@@ -287,7 +106,7 @@ struct FragmentOutput {
 }
 
 @fragment
-fn fragment(in: VertexOutput) -> FragmentOutput {
+fn fragment(in: types::VertexOutput) -> FragmentOutput {
     let u = 2.0 * in.uv.x - 1.0;
     let v = 2.0 * in.uv.y - 1.0;
     let cc = u*u + v*v;
@@ -296,7 +115,7 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
     }
 
     // convert the color to linear RGB
-    let color = srgb_to_rgb_simple(in.color.xyz);
+    let color = functions::srgb_to_rgb_simple(in.color.xyz);
 
     var output: FragmentOutput;
 

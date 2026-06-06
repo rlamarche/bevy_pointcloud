@@ -1,5 +1,12 @@
 #define_import_path bevy_pointcloud::functions
 
+#import bevy_pbr::mesh_view_bindings as view_bindings
+
+#import bevy_pointcloud::types
+#import bevy_pointcloud::bindings
+
+const F32_MAX: f32 = 3.4028234663852886e+38;
+
 fn srgb_to_rgb_simple(color: vec3<f32>) -> vec3<f32> {
     return pow(color, vec3<f32>(2.2));
 }
@@ -39,7 +46,7 @@ fn count_bits_before(mask: u32, index: u32) -> u32 {
 }
 
 
-fn get_max_relative_depth(visible_nodes: texture_2d<u32>, position: vec3<f32>) -> f32 {
+fn get_max_relative_depth(octree_entity: types::OctreeEntity, octree_node: types::OctreeNode, visible_nodes: texture_2d<u32>, position: vec3<f32>) -> f32 {
     // var current_index = visible_node.node_index;
     var current_index = 0u;
     var relative_depth: i32 = 0;
@@ -92,3 +99,41 @@ fn get_max_relative_depth(visible_nodes: texture_2d<u32>, position: vec3<f32>) -
 }
 
 #endif
+
+
+fn compute_point_size(
+    vertex: types::Vertex,
+    view_position: vec3<f32>,
+    point_size: f32,
+    min_point_size: f32,
+    max_point_size: f32
+) -> f32 {
+    let checked_max_point_size = select(max_point_size, F32_MAX, max_point_size <= 0.0);
+    let transform_scale = extract_max_scale(bindings::world_from_local);
+    let viewport = view_bindings::view.viewport;
+
+    #ifdef IS_OCTREE
+        // Get the fov from projection matrix
+        let f = view_bindings::view.clip_from_view[1][1];
+        let fov = 2.0 * atan(1.0 / f);
+        let slope = tan(fov / 2.0);
+        var proj_factor = -0.5 * viewport[3] / (slope * view_position.z);
+
+        let max_relative_depth = get_max_relative_depth(bindings::octree_entity, bindings::octree_node, bindings::visible_nodes, vertex.i_pos_size.xyz);
+        let attenuation = exp2(max_relative_depth);
+
+        // Base screen-space radius driven by spacing and LOD attenuation
+        var radius_screen = bindings::octree_node.spacing * 1.7 / attenuation;
+        radius_screen = radius_screen * proj_factor * transform_scale;
+        radius_screen = clamp(radius_screen, min_point_size, checked_max_point_size);
+
+        let radius = radius_screen / proj_factor;
+    #else
+        var radius_screen = select(point_size, vertex.i_pos_size.w, point_size <= 0.0) * transform_scale;
+        radius_screen = clamp(radius_screen, min_point_size, checked_max_point_size);
+        // Compute radius to size the point correctly with viewport size
+        let radius = radius_screen / min(viewport[2], viewport[3]);
+    #endif
+
+    return radius;
+}

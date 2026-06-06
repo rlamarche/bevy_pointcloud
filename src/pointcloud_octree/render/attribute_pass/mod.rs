@@ -1,5 +1,7 @@
 pub mod node;
 
+use std::marker::PhantomData;
+
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::Core3d;
@@ -24,10 +26,9 @@ use super::{
 };
 #[cfg(feature = "webgl")]
 use crate::pointcloud_octree::render::draw::DrawPointCloudOctree;
-#[cfg(not(feature = "webgl"))]
-use crate::pointcloud_octree::render::draw::DrawPointCloudOctreeIndirect;
 use crate::{
     octree::extract::render::components::RenderVisibleOctreeNodes,
+    point::{GpuPoint, Point},
     pointcloud_octree::{
         asset::data::PointCloudNodeData,
         component::PointCloudOctree3d,
@@ -48,9 +49,21 @@ use crate::{
         phase::PointCloud3dBatchSetKey,
     },
 };
+#[cfg(not(feature = "webgl"))]
+use crate::{pointcloud_octree::render::draw::DrawPointCloudOctreeIndirect, PointCloudMaterial};
 
-pub struct AttributePassPlugin;
-impl Plugin for AttributePassPlugin {
+pub struct AttributePassPlugin<T: Point, U: GpuPoint, M: PointCloudMaterial>(
+    #[allow(clippy::type_complexity)]
+    PhantomData<fn() -> (T, U, M)>,
+);
+
+impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Default for AttributePassPlugin<T, U, M> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Plugin for AttributePassPlugin<T, U, M> {
     fn build(&self, app: &mut App) {
         // We need to get the render app from the main app
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -59,13 +72,14 @@ impl Plugin for AttributePassPlugin {
         render_app
             .init_resource::<DrawFunctions<PointCloudOctree3dNodePhase>>()
             .init_resource::<ViewOctreeNodesRenderAttributePhases<PointCloudOctree3dNodePhase>>()
-            .add_render_command::<PointCloudOctree3dNodePhase, DrawAttributePass>()
+            .add_render_command::<PointCloudOctree3dNodePhase, DrawAttributePass<M>>()
             .add_systems(ExtractSchedule, extract_camera_phases)
             .add_systems(
                 Render,
                 (
-                    prepare_attribute_pass_bind_groups.in_set(RenderSystems::PrepareResources),
-                    queue_attribute_pass.in_set(RenderSystems::QueueMeshes),
+                    prepare_attribute_pass_bind_groups::<T, U, M>
+                        .in_set(RenderSystems::PrepareResources),
+                    queue_attribute_pass::<T, U, M>.in_set(RenderSystems::QueueMeshes),
                 ),
             );
 
@@ -82,11 +96,11 @@ impl Plugin for AttributePassPlugin {
 // We will reuse render commands already defined by bevy to draw a 3d mesh
 
 #[cfg(not(feature = "webgl"))]
-type DrawAttributePass = (
+type DrawAttributePass<M> = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetPointCloudOctree3dUniformGroup<1>,
-    SetPointCloudMaterialGroup<2>,
+    SetPointCloudMaterialGroup<2, M>,
     SetVisibleNodesTexture<3>,
     SetPointCloudOctreeNodeUniformGroup<4>,
     SetRenderOctreeUniformGroup<5>,
@@ -94,11 +108,11 @@ type DrawAttributePass = (
 );
 
 #[cfg(feature = "webgl")]
-type DrawAttributePass = (
+type DrawAttributePass<M> = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetPointCloudOctree3dUniformGroup<1>,
-    SetPointCloudMaterialGroup<2>,
+    SetPointCloudMaterialGroup<2, M>,
     SetVisibleNodesTexture<3>,
     SetPointCloudOctreeNodeUniformGroup<4>,
     SetRenderOctreeUniformGroup<5>,
@@ -134,11 +148,11 @@ fn extract_camera_phases(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn queue_attribute_pass(
+fn queue_attribute_pass<T: Point, U: GpuPoint, M: PointCloudMaterial>(
     custom_draw_functions: Res<DrawFunctions<PointCloudOctree3dNodePhase>>,
-    mut pipelines: ResMut<SpecializedRenderPipelines<AttributePassPipeline>>,
+    mut pipelines: ResMut<SpecializedRenderPipelines<AttributePassPipeline<T, U, M>>>,
     pipeline_cache: Res<PipelineCache>,
-    custom_draw_pipeline: Res<AttributePassPipeline>,
+    custom_draw_pipeline: Res<AttributePassPipeline<T, U, M>>,
     point_cloud_octrees_3d: Query<&PointCloudOctree3d>,
     mut custom_render_phases: ResMut<
         ViewOctreeNodesRenderAttributePhases<PointCloudOctree3dNodePhase>,
@@ -155,17 +169,14 @@ fn queue_attribute_pass(
         let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
-        let draw_custom = custom_draw_functions.read().id::<DrawAttributePass>();
+        let draw_custom = custom_draw_functions.read().id::<DrawAttributePass<M>>();
 
         // Create the key based on the view.
         // In this case we only care about MSAA and HDR
         let view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
             | MeshPipelineKey::from_hdr(view.hdr);
 
-        let attribute_key = AttributePipelineKey {
-            mesh_key: view_key,
-            is_octree: true,
-        };
+        let attribute_key = AttributePipelineKey::<T>::new(view_key, true);
 
         let pipeline_id =
             pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, attribute_key);

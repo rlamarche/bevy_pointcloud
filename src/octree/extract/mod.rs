@@ -44,7 +44,7 @@ use crate::octree::{
             components::RenderVisibleOctreeNodes,
             extract::{clear_removed_octrees, extract_removed_octrees},
             prepare::prepare_octrees_uniforms,
-            resources::AllocatedOctreeNodes,
+            resources::{AllocatedOctreeNodes, OctreeEntityLayout},
         },
     },
     visibility::OctreeVisibilitySystems,
@@ -192,6 +192,13 @@ where
             render_app,
             prepare_assets::<E, A>.in_set(RenderSystems::PrepareAssets),
         );
+    }
+
+    fn finish(&self, app: &mut App) {
+        app.sub_app_mut(RenderApp)
+            .init_resource::<OctreeEntityLayout>();
+
+        // do nothing
     }
 }
 

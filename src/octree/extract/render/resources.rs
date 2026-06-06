@@ -3,7 +3,14 @@ use std::marker::PhantomData;
 use bevy_asset::AssetId;
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashMap;
-use bevy_render::sync_world::RenderEntity;
+use bevy_render::{
+    render_resource::{
+        binding_types::uniform_buffer, BindGroupLayout, BindGroupLayoutDescriptor,
+        BindGroupLayoutEntries, ShaderStages,
+    },
+    renderer::RenderDevice,
+    sync_world::RenderEntity,
+};
 use slab::Slab;
 
 use super::{
@@ -17,6 +24,33 @@ use crate::octree::{
     },
     storage::NodeId,
 };
+
+/// This resource stores the octree mapping to index in render world.
+#[derive(Resource)]
+pub struct OctreeEntityLayout {
+    pub descriptor: BindGroupLayoutDescriptor,
+    pub bind_group_layout: BindGroupLayout,
+}
+
+impl FromWorld for OctreeEntityLayout {
+    fn from_world(world: &mut World) -> Self {
+        let render_device = world.resource::<RenderDevice>();
+        let descriptor = BindGroupLayoutDescriptor {
+            label: "layout_octree_entity_layout".into(),
+            entries: BindGroupLayoutEntries::single(
+                ShaderStages::VERTEX,
+                uniform_buffer::<super::uniforms::OctreeEntityUniform>(false),
+            )
+            .to_vec(),
+        };
+        let bind_group_layout =
+            render_device.create_bind_group_layout(descriptor.label.as_ref(), &descriptor.entries);
+        Self {
+            descriptor,
+            bind_group_layout,
+        }
+    }
+}
 
 /// This resource stores the octree mapping to index in render world.
 #[derive(Debug, Resource)]

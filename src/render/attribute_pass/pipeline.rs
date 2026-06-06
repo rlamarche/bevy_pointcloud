@@ -6,10 +6,7 @@ use bevy_ecs::prelude::*;
 use bevy_mesh::{PrimitiveTopology, VertexBufferLayout, VertexFormat};
 use bevy_pbr::{MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey};
 #[cfg(feature = "pointcloud_octree")]
-use bevy_render::render_resource::{
-    binding_types::{texture_2d, uniform_buffer},
-    BindGroupLayoutEntries, ShaderStages, TextureSampleType,
-};
+use bevy_render::render_resource::binding_types::uniform_buffer;
 use bevy_render::{
     render_resource::{
         binding_types::{texture_2d, texture_2d_multisampled},

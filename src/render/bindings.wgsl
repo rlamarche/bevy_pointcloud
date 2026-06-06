@@ -1,5 +1,7 @@
 #define_import_path bevy_pointcloud::bindings
 
+#import bevy_pointcloud::types
+
 @group(1) @binding(0)
 var<uniform> world_from_local: mat4x4<f32>;
 
@@ -10,9 +12,9 @@ var<uniform> world_from_local: mat4x4<f32>;
 var visible_nodes: texture_2d<u32>;
 
 @group(4) @binding(0)
-var<uniform> octree_node: OctreeNode;
+var<uniform> octree_node: types::OctreeNode;
 
 @group(5) @binding(0)
-var<uniform> octree_entity: OctreeEntity;
+var<uniform> octree_entity: types::OctreeEntity;
 
 #endif

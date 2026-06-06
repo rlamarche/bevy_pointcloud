@@ -47,8 +47,7 @@ use crate::{
 };
 
 pub struct AttributePassPlugin<T: Point, U: GpuPoint, M: PointCloudMaterial>(
-    #[allow(clippy::type_complexity)]
-    PhantomData<fn() -> (T, U, M)>,
+    #[allow(clippy::type_complexity)] PhantomData<fn() -> (T, U, M)>,
 );
 
 impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Default for AttributePassPlugin<T, U, M> {

@@ -18,10 +18,12 @@ use crate::{
         },
         OctreeAssetPlugin,
     },
+    point::RGBPoint,
     pointcloud_octree::{
         asset::data::PointCloudNodeData, extract::RenderPointCloudNodeData,
         visibility::PointCloudOctreePointBudget,
     },
+    SimplePointCloudMaterial,
 };
 
 pub type PointCloudOctreeAssetPlugin = OctreeAssetPlugin<PointCloudNodeData>;
@@ -42,13 +44,16 @@ pub type PointCloudOctreeVisibilitySettings = OctreeVisibilitySettings<
     PointCloudOctreePointBudget,
 >;
 
+pub type RenderPointCloudRGBOctreePlugin =
+    render::RenderPointCloudOctreePlugin<RGBPoint, RGBPoint, SimplePointCloudMaterial>;
+
 plugin_group! {
     /// This plugin group will add all the default plugins for a *Bevy* application:
     pub struct PointCloudOctreePlugin {
             self:::PointCloudOctreeAssetPlugin,
             self:::PointCloudOctreeVisibilityPlugin,
             self:::ExtractVisiblePointCloudOctreeNodesPlugin,
-            render:::RenderPointCloudOctreePlugin,
+            self:::RenderPointCloudRGBOctreePlugin,
     }
 }
 

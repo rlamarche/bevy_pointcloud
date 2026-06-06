@@ -21,7 +21,7 @@ use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pointcloud::{
     octree::visibility::components::{SkipOctreeVisibility, ViewVisibleOctreeNodes},
     octree_loader::potree::loader::PotreeLoader,
-    point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d},
+    point::RGBPoint,
     pointcloud_octree::{
         asset::{data::PointCloudNodeData, PointCloudOctree},
         component::PointCloudOctree3d,
@@ -30,7 +30,7 @@ use bevy_pointcloud::{
         PointCloudOctreeVisibilitySettings,
     },
     render::PointCloudRenderMode,
-    PointCloudPlugin,
+    PointCloudMaterial3d, PointCloudMaterialPlugin, PointCloudPlugin, SimplePointCloudMaterial,
 };
 use bevy_render::prelude::*;
 use bevy_text::{FontSmoothing, TextFont};
@@ -46,7 +46,8 @@ fn main() {
         EguiPlugin::default(),
         // WorldInspectorPlugin::default(),
         PanOrbitCameraPlugin,
-        PointCloudPlugin,
+        PointCloudPlugin::<RGBPoint, RGBPoint>::default(),
+        PointCloudMaterialPlugin::<RGBPoint, RGBPoint, SimplePointCloudMaterial>::default(),
         PointCloudOctreePlugin.set(ExtractVisiblePointCloudOctreeNodesPlugin::with_max_size(
             // limit to 1 mb of gpu memory
             512 * 1024 * 1024,
@@ -127,17 +128,19 @@ fn setup(mut commands: Commands) {
 }
 
 #[derive(Component)]
-pub struct MyMaterial(#[allow(unused)] Handle<PointCloudMaterial>);
+pub struct MyMaterial(#[allow(unused)] Handle<SimplePointCloudMaterial>);
 
 fn load_pointcloud(
     mut commands: Commands,
-    mut point_cloud_materials: ResMut<Assets<PointCloudMaterial>>,
+    mut point_cloud_materials: ResMut<Assets<SimplePointCloudMaterial>>,
     octree_server: Res<PointCloudOctreeServer>,
 ) {
-    let my_material = point_cloud_materials.add(PointCloudMaterial {
+    #[allow(clippy::needless_update)]
+    let my_material = point_cloud_materials.add(SimplePointCloudMaterial {
         point_size: 30.0,
         min_point_size: 2.0,
         max_point_size: 50.0,
+        ..Default::default()
     });
     commands.spawn(MyMaterial(my_material.clone()));
 

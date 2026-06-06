@@ -45,8 +45,7 @@ use crate::{
 };
 
 pub struct DepthPassPlugin<T: Point, U: GpuPoint, M: PointCloudMaterial>(
-    #[allow(clippy::type_complexity)]
-    PhantomData<fn() -> (T, U, M)>,
+    #[allow(clippy::type_complexity)] PhantomData<fn() -> (T, U, M)>,
 );
 
 impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Default for DepthPassPlugin<T, U, M> {

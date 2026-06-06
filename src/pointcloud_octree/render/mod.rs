@@ -11,6 +11,8 @@ pub mod depth_pass;
 #[cfg(not(feature = "webgl"))]
 pub mod indirect;
 
+use std::marker::PhantomData;
+
 use bevy_app::prelude::*;
 use bevy_camera::Camera3d;
 use bevy_ecs::prelude::*;
@@ -24,11 +26,26 @@ use prepare::{
 };
 
 use super::asset::extract::PointCloudOctreeNodeUniformLayout;
+use crate::{
+    point::{GpuPoint, Point},
+    PointCloudMaterial,
+};
 
-#[derive(Default)]
-pub struct RenderPointCloudOctreePlugin;
+pub struct RenderPointCloudOctreePlugin<T: Point, U: GpuPoint, M: PointCloudMaterial>(
+    #[allow(clippy::type_complexity)] PhantomData<fn() -> (T, U, M)>,
+);
 
-impl Plugin for RenderPointCloudOctreePlugin {
+impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Default
+    for RenderPointCloudOctreePlugin<T, U, M>
+{
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Plugin
+    for RenderPointCloudOctreePlugin<T, U, M>
+{
     fn build(&self, app: &mut App) {
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
@@ -52,8 +69,8 @@ impl Plugin for RenderPointCloudOctreePlugin {
         );
 
         app.add_plugins((
-            depth_pass::DepthPassPlugin,
-            attribute_pass::AttributePassPlugin,
+            depth_pass::DepthPassPlugin::<T, U, M>::default(),
+            attribute_pass::AttributePassPlugin::<T, U, M>::default(),
         ));
     }
 

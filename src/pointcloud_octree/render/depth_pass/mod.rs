@@ -1,5 +1,7 @@
 pub mod node;
 
+use std::marker::PhantomData;
+
 use bevy_app::prelude::*;
 use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
@@ -26,6 +28,7 @@ use crate::pointcloud_octree::render::draw::DrawPointCloudOctree;
 use crate::pointcloud_octree::render::draw::DrawPointCloudOctreeIndirect;
 use crate::{
     octree::extract::render::components::RenderVisibleOctreeNodes,
+    point::{GpuPoint, Point},
     pointcloud_octree::{
         asset::data::PointCloudNodeData,
         component::PointCloudOctree3d,
@@ -45,10 +48,21 @@ use crate::{
         phase::PointCloud3dBatchSetKey,
         PointCloudRenderMode, PointCloudRenderModeOpt,
     },
+    PointCloudMaterial,
 };
 
-pub struct DepthPassPlugin;
-impl Plugin for DepthPassPlugin {
+pub struct DepthPassPlugin<T: Point, U: GpuPoint, M: PointCloudMaterial>(
+    #[allow(clippy::type_complexity)]
+    PhantomData<fn() -> (T, U, M)>,
+);
+
+impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Default for DepthPassPlugin<T, U, M> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Plugin for DepthPassPlugin<T, U, M> {
     fn build(&self, app: &mut App) {
         // We need to get the render app from the main app
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -57,14 +71,14 @@ impl Plugin for DepthPassPlugin {
         render_app
             .init_resource::<DrawFunctions<PointCloudOctree3dNodePhase>>()
             .init_resource::<ViewOctreeNodesRenderDepthPhases<PointCloudOctree3dNodePhase>>()
-            .add_render_command::<PointCloudOctree3dNodePhase, DrawDepthPass>()
-            .init_resource::<SpecializedRenderPipelines<DepthPipeline>>()
+            .add_render_command::<PointCloudOctree3dNodePhase, DrawDepthPass<M>>()
+            .init_resource::<SpecializedRenderPipelines<DepthPipeline<T, U, M>>>()
             .add_systems(ExtractSchedule, extract_camera_phases)
             .add_systems(
                 Render,
                 (
                     prepare_depth_pass_textures.in_set(RenderSystems::PrepareResources),
-                    queue_depth_pass.in_set(RenderSystems::QueueMeshes),
+                    queue_depth_pass::<T, U, M>.in_set(RenderSystems::QueueMeshes),
                 ),
             );
 
@@ -80,11 +94,11 @@ impl Plugin for DepthPassPlugin {
 
 // We will reuse render commands already defined by bevy to draw a 3d mesh
 #[cfg(not(feature = "webgl"))]
-type DrawDepthPass = (
+type DrawDepthPass<M> = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetPointCloudOctree3dUniformGroup<1>,
-    SetPointCloudMaterialGroup<2>,
+    SetPointCloudMaterialGroup<2, M>,
     SetVisibleNodesTexture<3>,
     SetPointCloudOctreeNodeUniformGroup<4>,
     SetRenderOctreeUniformGroup<5>,
@@ -92,11 +106,11 @@ type DrawDepthPass = (
 );
 
 #[cfg(feature = "webgl")]
-type DrawDepthPass = (
+type DrawDepthPass<M> = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetPointCloudOctree3dUniformGroup<1>,
-    SetPointCloudMaterialGroup<2>,
+    SetPointCloudMaterialGroup<2, M>,
     SetVisibleNodesTexture<3>,
     SetPointCloudOctreeNodeUniformGroup<4>,
     SetRenderOctreeUniformGroup<5>,
@@ -131,11 +145,11 @@ fn extract_camera_phases(
 
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
-fn queue_depth_pass(
+fn queue_depth_pass<T: Point, U: GpuPoint, M: PointCloudMaterial>(
     custom_draw_functions: Res<DrawFunctions<PointCloudOctree3dNodePhase>>,
-    mut pipelines: ResMut<SpecializedRenderPipelines<DepthPipeline>>,
+    mut pipelines: ResMut<SpecializedRenderPipelines<DepthPipeline<T, U, M>>>,
     pipeline_cache: Res<PipelineCache>,
-    custom_draw_pipeline: Res<DepthPipeline>,
+    custom_draw_pipeline: Res<DepthPipeline<T, U, M>>,
     point_cloud_octrees_3d: Query<&PointCloudOctree3d>,
     mut custom_render_phases: ResMut<ViewOctreeNodesRenderDepthPhases<PointCloudOctree3dNodePhase>>,
     mut views: Query<(
@@ -151,7 +165,7 @@ fn queue_depth_pass(
         let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
-        let draw_custom = custom_draw_functions.read().id::<DrawDepthPass>();
+        let draw_custom = custom_draw_functions.read().id::<DrawDepthPass<M>>();
 
         // Create the key based on the view.
         // In this case we only care about MSAA and HDR

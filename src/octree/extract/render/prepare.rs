@@ -4,7 +4,7 @@ use bevy_ecs::{prelude::*, system::StaticSystemParam};
 use bevy_log::prelude::*;
 use bevy_platform::collections::HashMap;
 use bevy_render::{
-    render_resource::{BindGroupEntries, PipelineCache, UniformBuffer},
+    render_resource::{BindGroupEntries, UniformBuffer},
     renderer::{RenderDevice, RenderQueue},
 };
 
@@ -16,21 +16,17 @@ use super::{
     node::{PrepareOctreeNodeError, RenderOctreeNode},
     resources::RenderOctrees,
 };
-use crate::{
-    octree::extract::render::{
-        components::RenderOctreeEntityUniform,
-        resources::{AllocatedOctreeNodes, RenderOctreeIndex},
-    },
-    pointcloud_octree::extract::PointCloudOctreeUniform,
-    render::attribute_pass::pipeline::AttributePassPipeline,
+use crate::octree::extract::render::{
+    components::RenderOctreeEntityUniform,
+    resources::{AllocatedOctreeNodes, OctreeEntityLayout, RenderOctreeIndex},
+    uniforms::OctreeEntityUniform,
 };
 
 pub fn prepare_octrees_uniforms<E: OctreeNodeExtraction>(
     mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
-    pipeline_cache: Res<PipelineCache>,
-    attribute_pass_pipeline: Res<AttributePassPipeline>,
+    octree_entity_layout: Res<OctreeEntityLayout>,
     mut commands: Commands,
 ) {
     for entity in std::mem::take(&mut render_octree_index.added_octrees) {
@@ -38,15 +34,14 @@ pub fn prepare_octrees_uniforms<E: OctreeNodeExtraction>(
             warn!("Missing index for octree {}", entity);
             continue;
         };
-        let mut octree_buffer = UniformBuffer::from(PointCloudOctreeUniform {
+        let mut octree_buffer = UniformBuffer::from(OctreeEntityUniform {
             octree_index: *octree_index as u32,
         });
         octree_buffer.write_buffer(&render_device, &render_queue);
 
         let bind_group = render_device.create_bind_group(
             "octree_entity_bind_group",
-            &pipeline_cache
-                .get_bind_group_layout(&attribute_pass_pipeline.point_cloud_octree_data_layout),
+            &octree_entity_layout.bind_group_layout,
             &BindGroupEntries::single(&octree_buffer),
         );
 
