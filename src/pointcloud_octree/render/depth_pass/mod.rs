@@ -52,8 +52,7 @@ use crate::{
 };
 
 pub struct DepthPassPlugin<T: Point, U: GpuPoint, M: PointCloudMaterial>(
-    #[allow(clippy::type_complexity)]
-    PhantomData<fn() -> (T, U, M)>,
+    #[allow(clippy::type_complexity)] PhantomData<fn() -> (T, U, M)>,
 );
 
 impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Default for DepthPassPlugin<T, U, M> {
@@ -69,11 +68,11 @@ impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Plugin for DepthPassPlugin<T,
             return;
         };
         render_app
-            .init_resource::<DrawFunctions<PointCloudOctree3dNodePhase>>()
-            .init_resource::<ViewOctreeNodesRenderDepthPhases<PointCloudOctree3dNodePhase>>()
-            .add_render_command::<PointCloudOctree3dNodePhase, DrawDepthPass<M>>()
+            .init_resource::<DrawFunctions<PointCloudOctree3dNodePhase<T>>>()
+            .init_resource::<ViewOctreeNodesRenderDepthPhases<PointCloudOctree3dNodePhase<T>>>()
+            .add_render_command::<PointCloudOctree3dNodePhase<T>, DrawDepthPass<T, U, M>>()
             .init_resource::<SpecializedRenderPipelines<DepthPipeline<T, U, M>>>()
-            .add_systems(ExtractSchedule, extract_camera_phases)
+            .add_systems(ExtractSchedule, extract_camera_phases::<T>)
             .add_systems(
                 Render,
                 (
@@ -83,7 +82,7 @@ impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Plugin for DepthPassPlugin<T,
             );
 
         render_app
-            .add_render_graph_node::<ViewNodeRunner<node::DepthPassOctreeNode::<PointCloudOctree3dNodePhase>>>(
+            .add_render_graph_node::<ViewNodeRunner<node::DepthPassOctreeNode::<PointCloudOctree3dNodePhase<T>>>>(
                 Core3d,
                 DepthPassOctreeLabel,
             )
@@ -94,15 +93,15 @@ impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Plugin for DepthPassPlugin<T,
 
 // We will reuse render commands already defined by bevy to draw a 3d mesh
 #[cfg(not(feature = "webgl"))]
-type DrawDepthPass<M> = (
+type DrawDepthPass<T, U, M> = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetPointCloudOctree3dUniformGroup<1>,
     SetPointCloudMaterialGroup<2, M>,
     SetVisibleNodesTexture<3>,
-    SetPointCloudOctreeNodeUniformGroup<4>,
-    SetRenderOctreeUniformGroup<5>,
-    DrawPointCloudOctreeIndirect,
+    SetPointCloudOctreeNodeUniformGroup<4, T, U>,
+    SetRenderOctreeUniformGroup<5, T, U>,
+    DrawPointCloudOctreeIndirect<T, U>,
 );
 
 #[cfg(feature = "webgl")]
@@ -112,13 +111,15 @@ type DrawDepthPass<M> = (
     SetPointCloudOctree3dUniformGroup<1>,
     SetPointCloudMaterialGroup<2, M>,
     SetVisibleNodesTexture<3>,
-    SetPointCloudOctreeNodeUniformGroup<4>,
-    SetRenderOctreeUniformGroup<5>,
-    DrawPointCloudOctree,
+    SetPointCloudOctreeNodeUniformGroup<4, T, U>,
+    SetRenderOctreeUniformGroup<5, T, U>,
+    DrawPointCloudOctree<T, U>,
 );
 
-fn extract_camera_phases(
-    mut pointcloud3d_phases: ResMut<ViewOctreeNodesRenderDepthPhases<PointCloudOctree3dNodePhase>>,
+fn extract_camera_phases<T: Point>(
+    mut pointcloud3d_phases: ResMut<
+        ViewOctreeNodesRenderDepthPhases<PointCloudOctree3dNodePhase<T>>,
+    >,
     cameras: Extract<Query<(Entity, &Camera), With<Camera3d>>>,
     mut live_entities: Local<HashSet<RetainedViewEntity>>,
     _gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
@@ -146,15 +147,17 @@ fn extract_camera_phases(
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
 fn queue_depth_pass<T: Point, U: GpuPoint, M: PointCloudMaterial>(
-    custom_draw_functions: Res<DrawFunctions<PointCloudOctree3dNodePhase>>,
+    custom_draw_functions: Res<DrawFunctions<PointCloudOctree3dNodePhase<T>>>,
     mut pipelines: ResMut<SpecializedRenderPipelines<DepthPipeline<T, U, M>>>,
     pipeline_cache: Res<PipelineCache>,
     custom_draw_pipeline: Res<DepthPipeline<T, U, M>>,
-    point_cloud_octrees_3d: Query<&PointCloudOctree3d>,
-    mut custom_render_phases: ResMut<ViewOctreeNodesRenderDepthPhases<PointCloudOctree3dNodePhase>>,
+    point_cloud_octrees_3d: Query<&PointCloudOctree3d<T>>,
+    mut custom_render_phases: ResMut<
+        ViewOctreeNodesRenderDepthPhases<PointCloudOctree3dNodePhase<T>>,
+    >,
     mut views: Query<(
         &ExtractedView,
-        &RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>,
+        &RenderVisibleOctreeNodes<PointCloudNodeData<T>, PointCloudOctree3d<T>>,
         &Msaa,
         Option<&PointCloudRenderMode>,
     )>,
@@ -165,7 +168,7 @@ fn queue_depth_pass<T: Point, U: GpuPoint, M: PointCloudMaterial>(
         let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
-        let draw_custom = custom_draw_functions.read().id::<DrawDepthPass<M>>();
+        let draw_custom = custom_draw_functions.read().id::<DrawDepthPass<T, U, M>>();
 
         // Create the key based on the view.
         // In this case we only care about MSAA and HDR

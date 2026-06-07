@@ -9,4 +9,4 @@ pub trait Point: Clone + Sync + Send + TypePath {
     fn position(&self) -> &Vec3;
 }
 
-pub trait GpuPoint: Pod + Zeroable + Copy {}
+pub trait GpuPoint: Sync + Send + Pod + Zeroable + Copy + TypePath {}

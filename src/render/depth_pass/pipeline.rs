@@ -49,12 +49,12 @@ impl<T: Point, U: GpuPoint, M: PointCloudMaterial> FromWorld for DepthPipeline<T
     fn from_world(world: &mut World) -> Self {
         let mesh_pipeline = world.resource::<MeshPipeline>();
         let render_device = world.resource::<RenderDevice>();
-        let asset_server = world.resource::<AssetServer>();
+        // let asset_server = world.resource::<AssetServer>();
 
         Self {
             mesh_pipeline: mesh_pipeline.clone(),
-            // shader_handle: POINTCLOUD_SHADER_HANDLE,
-            shader_handle: asset_server.load("shaders/point_cloud.wgsl"),
+            shader_handle: POINTCLOUD_SHADER_HANDLE,
+            // shader_handle: asset_server.load("shaders/point_cloud.wgsl"),
             point_cloud_layout: PointCloudUniform::bind_group_layout_descriptor(render_device),
             point_cloud_material_layout: M::bind_group_layout_descriptor(render_device),
             // point_cloud_material_layout: BindGroupLayoutDescriptor {

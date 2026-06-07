@@ -9,6 +9,7 @@ use potree::{
     hierarchy::HierarchyAsync,
     metadata::Points,
     octree::node::{NodeType, OctreeNode as PotreeOctreeNode},
+    point::PointSlice,
     prelude::Hierarchy,
 };
 
@@ -17,6 +18,8 @@ use crate::{
         hierarchy::HierarchyNodeStatus,
         loader::{LoadedHierarchyNode, OctreeLoader},
     },
+    octree_loader::potree::mapping::convert_potree_points_to_points,
+    point::Point,
     pointcloud_octree::asset::data::PointCloudNodeData,
 };
 
@@ -28,15 +31,18 @@ pub struct PotreeLoader<T> {
 pub struct PotreeHierarchy(pub(crate) PotreeOctreeNode);
 
 #[async_trait]
-impl<T: PotreeAsset + 'static> OctreeLoader<PointCloudNodeData> for PotreeLoader<T> {
-    type Source = T;
+impl<T: Point, P: PotreeAsset + 'static> OctreeLoader<PointCloudNodeData<T>> for PotreeLoader<P>
+where
+    T: for<'a> From<PointSlice<'a>>,
+{
+    type Source = P;
     type Hierarchy = PotreeHierarchy;
     type Error = BevyError;
 
     async fn from_source(
         source: Self::Source,
-    ) -> Result<Self, <Self as OctreeLoader<PointCloudNodeData>>::Error> {
-        let hierarchy = Hierarchy::new(source.into()).await?;
+    ) -> Result<Self, <Self as OctreeLoader<PointCloudNodeData<T>>>::Error> {
+        let hierarchy = Hierarchy::new(source).await?;
 
         Ok(PotreeLoader { hierarchy })
     }
@@ -65,8 +71,8 @@ impl<T: PotreeAsset + 'static> OctreeLoader<PointCloudNodeData> for PotreeLoader
     async fn load_node_data(
         &self,
         node: &LoadedHierarchyNode<PotreeHierarchy>,
-    ) -> Result<PointCloudNodeData, Self::Error> {
-        let Points { density, points } = self.hierarchy.load_points(&node.data.0).await?;
+    ) -> Result<PointCloudNodeData<T>, Self::Error> {
+        let Points { density, buffer } = self.hierarchy.load_points(&node.data.0).await?;
 
         // magic formula from Potree
         let offset = (density as f32).log2() / 2.0 - 1.5;
@@ -74,11 +80,11 @@ impl<T: PotreeAsset + 'static> OctreeLoader<PointCloudNodeData> for PotreeLoader
         // info!("Loaded {} points", points.len());
 
         Ok(PointCloudNodeData {
-            spacing: node.data.0.spacing as f32,
+            spacing: node.data.0.spacing,
             level: node.data.0.level,
             offset,
             num_points: node.data.0.num_points as usize,
-            points: Arc::new(points.into_iter().map(Into::into).collect()),
+            points: Arc::new(convert_potree_points_to_points(&buffer)),
         })
     }
 }
@@ -92,10 +98,7 @@ impl From<PotreeOctreeNode> for LoadedHierarchyNode<PotreeHierarchy> {
             },
             child_index: value.child_index,
             parent_id: value.parent,
-            bounding_box: Aabb::from_min_max(
-                value.bounding_box.min.as_vec3(),
-                value.bounding_box.max.as_vec3(),
-            ),
+            bounding_box: Aabb::from_min_max(value.bounding_box.min, value.bounding_box.max),
             data: PotreeHierarchy(value),
         }
     }

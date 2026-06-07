@@ -1,7 +1,11 @@
+use std::marker::PhantomData;
+
 use bevy_math::Vec3;
 use bevy_reflect::TypePath;
 use bevy_render::render_resource::{BindGroup, Buffer, ShaderType, UniformBuffer};
 use bytemuck::{Pod, Zeroable};
+
+use crate::point::{GpuPoint, Point};
 
 #[derive(ShaderType, Pod, Zeroable, Clone, Copy)]
 #[repr(C)]
@@ -22,10 +26,11 @@ pub struct PointCloudOctreeUniform {
 }
 
 #[derive(TypePath)]
-pub struct RenderPointCloudNodeData {
+pub struct RenderPointCloudNodeData<T: Point, U: GpuPoint> {
     pub points: Option<Buffer>,
     pub uniform: BindGroup,
     pub uniform_buffer: UniformBuffer<PointCloudNodeDataUniform>,
     pub num_points: usize,
     pub offset: f32,
+    pub _phantom: PhantomData<fn() -> (T, U)>,
 }

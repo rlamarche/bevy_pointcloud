@@ -3,6 +3,7 @@ use bevy_reflect::Reflect;
 
 use crate::{
     octree::{node::OctreeNode, visibility::budget::OctreeNodesBudget},
+    point::Point,
     pointcloud_octree::{asset::data::PointCloudNodeData, render::prepare::MAX_NODES},
 };
 
@@ -17,7 +18,7 @@ pub struct PointCloudOctreeBudgetSettings {
     pub point_budget: usize,
 }
 
-impl OctreeNodesBudget<PointCloudNodeData> for PointCloudOctreePointBudget {
+impl<T: Point> OctreeNodesBudget<PointCloudNodeData<T>> for PointCloudOctreePointBudget {
     type Settings = usize;
 
     fn new(settings: &Self::Settings) -> Self {
@@ -28,7 +29,7 @@ impl OctreeNodesBudget<PointCloudNodeData> for PointCloudOctreePointBudget {
         }
     }
 
-    fn add_node(&mut self, node: &OctreeNode<PointCloudNodeData>) -> bool {
+    fn add_node(&mut self, node: &OctreeNode<PointCloudNodeData<T>>) -> bool {
         if self.total_nodes >= MAX_NODES {
             return false;
         }

@@ -4,12 +4,22 @@ use bytemuck::{Pod, Zeroable};
 
 use super::{GpuPoint, Point};
 
-#[derive(Clone, Copy, Debug, TypePath, Pod, Zeroable)]
+#[derive(Default, Clone, Copy, Debug, TypePath, Pod, Zeroable)]
 #[repr(C)]
 pub struct RGBPoint {
     pub position: Vec3,
-    pub _padding: f32,
+    _padding: f32,
     pub color: Vec4,
+}
+
+impl RGBPoint {
+    pub fn new(position: Vec3, color: Vec4) -> Self {
+        Self {
+            position,
+            color,
+            ..Default::default()
+        }
+    }
 }
 
 impl Point for RGBPoint {

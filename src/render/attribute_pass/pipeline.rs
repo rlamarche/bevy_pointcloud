@@ -51,12 +51,12 @@ impl<T: Point, U: GpuPoint, M: PointCloudMaterial> FromWorld for AttributePassPi
     fn from_world(world: &mut World) -> Self {
         let mesh_pipeline = world.resource::<MeshPipeline>();
         let render_device = world.resource::<RenderDevice>();
-        let asset_server = world.resource::<AssetServer>();
+        // let asset_server = world.resource::<AssetServer>();
 
         Self {
             mesh_pipeline: mesh_pipeline.clone(),
-            // shader_handle: POINTCLOUD_SHADER_HANDLE,
-            shader_handle: asset_server.load("shaders/point_cloud.wgsl"),
+            shader_handle: POINTCLOUD_SHADER_HANDLE,
+            // shader_handle: asset_server.load("shaders/point_cloud.wgsl"),
             layout: render_device.create_bind_group_layout(
                 "pcl_attribute_pass_bind_group_layout",
                 &BindGroupLayoutEntries::single(

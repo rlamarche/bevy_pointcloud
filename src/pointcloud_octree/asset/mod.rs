@@ -5,4 +5,4 @@ use crate::octree::asset::Octree;
 pub mod data;
 pub mod extract;
 
-pub type PointCloudOctree = Octree<PointCloudNodeData>;
+pub type PointCloudOctree<T> = Octree<PointCloudNodeData<T>>;

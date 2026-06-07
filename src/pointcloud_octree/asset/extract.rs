@@ -1,3 +1,5 @@
+use std::{marker::PhantomData, sync::Arc};
+
 use bevy_asset::AssetId;
 use bevy_ecs::{
     prelude::*,
@@ -24,23 +26,40 @@ use crate::{
         },
         node::OctreeNode,
     },
+    point::{GpuPoint, Point},
     pointcloud_octree::{
-        asset::data::{PointCloudNodeData, PointData},
+        asset::data::PointCloudNodeData,
         component::PointCloudOctree3d,
         extract::{PointCloudNodeDataUniform, RenderPointCloudNodeData},
     },
 };
 
 #[derive(TypePath)]
-pub struct PointCloudOctreeExtraction;
+pub struct PointCloudOctreeExtraction<T: Point, U: GpuPoint>(PhantomData<fn() -> (T, U)>);
 
-impl OctreeNodeExtraction for PointCloudOctreeExtraction {
-    type NodeData = PointCloudNodeData;
-    type Component = PointCloudOctree3d;
-    type ExtractedNodeData = PointCloudNodeData;
+impl<T: Point, U: GpuPoint> Default for PointCloudOctreeExtraction<T, U> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<T: Point, U: GpuPoint> OctreeNodeExtraction for PointCloudOctreeExtraction<T, U>
+where
+    for<'a> &'a T: Into<U>,
+{
+    type NodeData = PointCloudNodeData<T>;
+    type Component = PointCloudOctree3d<T>;
+    type ExtractedNodeData = PointCloudNodeData<U>;
 
     fn extract_octree_node(node: &OctreeNode<Self::NodeData>) -> Option<Self::ExtractedNodeData> {
-        node.data.clone()
+        node.data.as_ref().map(|data| PointCloudNodeData {
+            spacing: data.spacing,
+            level: data.level,
+            offset: data.offset,
+            num_points: data.num_points,
+            // conversion to gpu points
+            points: Arc::new(data.points.iter().map(Into::into).collect()),
+        })
     }
 }
 
@@ -65,9 +84,9 @@ impl FromWorld for PointCloudOctreeNodeUniformLayout {
     }
 }
 
-impl RenderOctreeNode for RenderPointCloudNodeData {
-    type SourceOctreeNode = PointCloudNodeData;
-    type ExtractedOctreeNode = PointCloudNodeData;
+impl<T: Point, U: GpuPoint> RenderOctreeNode for RenderPointCloudNodeData<T, U> {
+    type SourceOctreeNode = PointCloudNodeData<T>;
+    type ExtractedOctreeNode = PointCloudNodeData<U>;
     type Param = (
         SRes<RenderDevice>,
         SRes<RenderQueue>,
@@ -75,7 +94,7 @@ impl RenderOctreeNode for RenderPointCloudNodeData {
     );
 
     fn byte_len(source_node: &RenderOctreeNodeData<Self::ExtractedOctreeNode>) -> Option<usize> {
-        Some(source_node.data.num_points * size_of::<PointData>())
+        Some(source_node.data.num_points * size_of::<U>())
     }
 
     fn prepare_octree_node(
@@ -119,6 +138,7 @@ impl RenderOctreeNode for RenderPointCloudNodeData {
             uniform_buffer,
             num_points: source_node.data.num_points,
             offset: source_node.data.offset,
+            _phantom: PhantomData,
         })
     }
 }

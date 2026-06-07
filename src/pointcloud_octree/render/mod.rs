@@ -43,8 +43,9 @@ impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Default
     }
 }
 
-impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Plugin
-    for RenderPointCloudOctreePlugin<T, U, M>
+impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Plugin for RenderPointCloudOctreePlugin<T, U, M>
+where
+    for<'a> &'a T: Into<U>,
 {
     fn build(&self, app: &mut App) {
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -60,8 +61,8 @@ impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Plugin
             Render,
             (
                 #[cfg(not(feature = "webgl"))]
-                prepare_indirect_buffer.in_set(RenderSystems::PrepareResources),
-                prepare_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
+                prepare_indirect_buffer::<T, U>.in_set(RenderSystems::PrepareResources),
+                prepare_visible_nodes_texture::<T, U>.in_set(RenderSystems::PrepareResources),
                 // nodes_mapping::prepare_octree_nodes_mapping_buffers.in_set(RenderSystems::PrepareBindGroups),
                 prepare_visible_nodes_texture_bind_group.in_set(RenderSystems::PrepareBindGroups),
                 prepare_point_cloud_octree_3d_uniform.in_set(RenderSystems::PrepareResources),

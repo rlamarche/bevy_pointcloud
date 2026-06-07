@@ -27,6 +27,7 @@ use crate::{
         storage::NodeId,
         visibility::iter_one_bits,
     },
+    point::{GpuPoint, Point},
     pointcloud_octree::{
         asset::{data::PointCloudNodeData, extract::PointCloudOctreeExtraction},
         component::PointCloudOctree3d,
@@ -77,28 +78,31 @@ pub struct PreparedVisibleOctreeNode {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn prepare_visible_nodes_texture(
+#[allow(clippy::type_complexity)]
+pub fn prepare_visible_nodes_texture<T: Point, U: GpuPoint>(
     mut commands: Commands,
     mut texture_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
-    render_octree_index: Res<RenderOctreeIndex<PointCloudOctree3d>>,
+    render_octree_index: Res<RenderOctreeIndex<PointCloudOctree3d<T>>>,
     point_cloud_octree_3d_node_depth_phases: Res<
-        ViewOctreeNodesRenderAttributePhases<PointCloudOctree3dNodePhase>,
+        ViewOctreeNodesRenderAttributePhases<PointCloudOctree3dNodePhase<T>>,
     >,
     point_cloud_octree_3d_node_attribute_phases: Res<
-        ViewOctreeNodesRenderDepthPhases<PointCloudOctree3dNodePhase>,
+        ViewOctreeNodesRenderDepthPhases<PointCloudOctree3dNodePhase<T>>,
     >,
     views_3d: Query<(
         Entity,
         &ExtractedView,
         &Msaa,
-        &RenderVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>,
+        &RenderVisibleOctreeNodes<PointCloudNodeData<T>, PointCloudOctree3d<T>>,
     )>,
     mut visible_nodes_buffer: Local<Vec<VisibleOctreeNodeUniform>>,
-    render_octrees: Res<RenderOctrees<RenderPointCloudNodeData>>,
-    allocated_octree_nodes: Res<AllocatedOctreeNodes<PointCloudOctreeExtraction>>,
-) {
+    render_octrees: Res<RenderOctrees<RenderPointCloudNodeData<T, U>>>,
+    allocated_octree_nodes: Res<AllocatedOctreeNodes<PointCloudOctreeExtraction<T, U>>>,
+) where
+    for<'a> &'a T: Into<U>,
+{
     // for each camera
     for (entity, extracted_view, _msaa, visible_nodes) in &views_3d {
         // skip if no phases

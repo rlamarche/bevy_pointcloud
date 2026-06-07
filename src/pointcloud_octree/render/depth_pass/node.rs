@@ -12,9 +12,7 @@ use bevy_render::{
 };
 
 use crate::{
-    pointcloud_octree::render::phase::{
-        PointCloudOctree3dNodePhase, ViewOctreeNodesRenderDepthPhases,
-    },
+    pointcloud_octree::render::phase::ViewOctreeNodesRenderDepthPhases,
     render::depth_pass::texture::ViewDepthPrepassTextures,
 };
 
@@ -50,7 +48,7 @@ impl<BPI: BinnedPhaseItem> ViewNode for DepthPassOctreeNode<BPI> {
     ) -> Result<(), NodeRunError> {
         // First, we need to get our phases resource
         let Some(point_cloud_3d_phases) =
-            world.get_resource::<ViewOctreeNodesRenderDepthPhases<PointCloudOctree3dNodePhase>>()
+            world.get_resource::<ViewOctreeNodesRenderDepthPhases<BPI>>()
         else {
             info!("no pointcloud octree phases");
             return Ok(());

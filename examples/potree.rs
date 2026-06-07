@@ -25,9 +25,9 @@ use bevy_pointcloud::{
     pointcloud_octree::{
         asset::{data::PointCloudNodeData, PointCloudOctree},
         component::PointCloudOctree3d,
-        ExtractVisiblePointCloudOctreeNodesPlugin, PointCloudOctreePlugin, PointCloudOctreeServer,
-        PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin,
-        PointCloudOctreeVisibilitySettings,
+        ExtractVisiblePointCloudOctreeNodesPlugin, PointCloudOctreeAssetPlugin,
+        PointCloudOctreeServer, PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin,
+        PointCloudOctreeVisibilitySettings, RenderPointCloudRGBOctreePlugin,
     },
     render::PointCloudRenderMode,
     PointCloudMaterial3d, PointCloudMaterialPlugin, PointCloudPlugin, SimplePointCloudMaterial,
@@ -48,11 +48,16 @@ fn main() {
         PanOrbitCameraPlugin,
         PointCloudPlugin::<RGBPoint, RGBPoint>::default(),
         PointCloudMaterialPlugin::<RGBPoint, RGBPoint, SimplePointCloudMaterial>::default(),
-        PointCloudOctreePlugin.set(ExtractVisiblePointCloudOctreeNodesPlugin::with_max_size(
+        PointCloudOctreeAssetPlugin::<RGBPoint>::default(),
+        PointCloudOctreeVisibilityPlugin::<RGBPoint>::default(),
+        ExtractVisiblePointCloudOctreeNodesPlugin::<RGBPoint, RGBPoint>::with_max_size_and_max_bytes_per_frame(
             // limit to 1 mb of gpu memory
             512 * 1024 * 1024,
-        )),
-        PointCloudOctreeServerPlugin::with_max_size(
+            // 100 MB max uploaded per frame
+            100 * 1024 * 1024,
+        ),
+        RenderPointCloudRGBOctreePlugin::default(),
+        PointCloudOctreeServerPlugin::<RGBPoint>::with_max_size(
             // limit to 512 mb of cpu memory
             512 * 1024 * 1024,
         ),
@@ -120,7 +125,7 @@ fn setup(mut commands: Commands) {
             edl_strength: 0.4,
             edl_neighbour_count: 4,
         },
-        PointCloudOctreeVisibilitySettings {
+        PointCloudOctreeVisibilitySettings::<RGBPoint> {
             filter: Some(30.0),
             budget: Some(1_000_000),
         },
@@ -133,7 +138,7 @@ pub struct MyMaterial(#[allow(unused)] Handle<SimplePointCloudMaterial>);
 fn load_pointcloud(
     mut commands: Commands,
     mut point_cloud_materials: ResMut<Assets<SimplePointCloudMaterial>>,
-    octree_server: Res<PointCloudOctreeServer>,
+    octree_server: Res<PointCloudOctreeServer<RGBPoint>>,
 ) {
     #[allow(clippy::needless_update)]
     let my_material = point_cloud_materials.add(SimplePointCloudMaterial {
@@ -156,9 +161,11 @@ fn load_pointcloud(
 
 #[allow(unused)]
 fn draw_gizmos(
-    octrees: Res<Assets<PointCloudOctree>>,
-    entities: Query<&GlobalTransform, With<PointCloudOctree3d>>,
-    octrees_vibility: Query<&ViewVisibleOctreeNodes<PointCloudNodeData, PointCloudOctree3d>>,
+    octrees: Res<Assets<PointCloudOctree<RGBPoint>>>,
+    entities: Query<&GlobalTransform, With<PointCloudOctree3d<RGBPoint>>>,
+    octrees_vibility: Query<
+        &ViewVisibleOctreeNodes<PointCloudNodeData<RGBPoint>, PointCloudOctree3d<RGBPoint>>,
+    >,
     mut gizmos: Gizmos,
 ) {
     for octree_visibility in octrees_vibility {
@@ -194,7 +201,7 @@ fn ui_settings(
     mut contexts: EguiContexts,
     mut point_cloud_settings: Query<(
         Entity,
-        &mut PointCloudOctreeVisibilitySettings,
+        &mut PointCloudOctreeVisibilitySettings<RGBPoint>,
         &mut PointCloudRenderMode,
         Option<&SkipOctreeVisibility>,
     )>,
@@ -213,11 +220,11 @@ fn ui_settings(
     let mut has_skip_visibility_check = skip_visibility_check.is_some();
 
     let visibility_time = diagnostic
-        .get(&PointCloudOctreeVisibilityPlugin::VISIBILITY_CHECK_TIME)
+        .get(&PointCloudOctreeVisibilityPlugin::<RGBPoint>::VISIBILITY_CHECK_TIME)
         .and_then(|value| value.smoothed());
 
     let nb_points = diagnostic
-        .get(&PointCloudOctreeVisibilityPlugin::BUDGET)
+        .get(&PointCloudOctreeVisibilityPlugin::<RGBPoint>::BUDGET)
         .and_then(|value| value.smoothed());
 
     let fps = diagnostic
