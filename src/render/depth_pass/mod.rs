@@ -14,6 +14,7 @@ use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
 use bevy_platform::collections::HashSet;
 use bevy_render::{
     batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport},
+    erased_render_asset::ErasedRenderAssets,
     prelude::*,
     render_graph::{RenderGraphExt, ViewNodeRunner},
     render_phase::{
@@ -32,7 +33,7 @@ use crate::{
     render::{
         depth_pass::{
             node::{DepthPassLabel, DepthPassNode},
-            pipeline::{DepthPipeline, DepthPipelineKey},
+            pipeline::{DepthPassPipelineSpecializer, DepthPipeline, DepthPipelineKey},
             texture::{prepare_depth_pass_textures, DepthPassLayout},
         },
         draw::DrawPointCloud,
@@ -41,20 +42,21 @@ use crate::{
         point_cloud_uniform::SetPointCloudUniformGroup,
         PointCloudRenderMode, PointCloudRenderModeOpt,
     },
-    PointCloudMaterial,
+    resources::RenderPointCloudMaterialInstances,
+    PreparedPointCloudMaterial,
 };
 
-pub struct DepthPassPlugin<T: Point, U: GpuPoint, M: PointCloudMaterial>(
-    #[allow(clippy::type_complexity)] PhantomData<fn() -> (T, U, M)>,
+pub struct DepthPassPlugin<T: Point, U: GpuPoint>(
+    #[allow(clippy::type_complexity)] PhantomData<fn() -> (T, U)>,
 );
 
-impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Default for DepthPassPlugin<T, U, M> {
+impl<T: Point, U: GpuPoint> Default for DepthPassPlugin<T, U> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Plugin for DepthPassPlugin<T, U, M>
+impl<T: Point, U: GpuPoint> Plugin for DepthPassPlugin<T, U>
 where
     for<'a> &'a T: Into<U>,
 {
@@ -70,14 +72,14 @@ where
         render_app
             .init_resource::<DrawFunctions<PointCloud3dDepthPhase<T>>>()
             .init_resource::<ViewBinnedRenderPhases<PointCloud3dDepthPhase<T>>>()
-            .add_render_command::<PointCloud3dDepthPhase<T>, DrawDepthPass<T, U, M>>()
-            .init_resource::<SpecializedRenderPipelines<DepthPipeline<T, U, M>>>()
+            .add_render_command::<PointCloud3dDepthPhase<T>, DrawDepthPass<T, U>>()
+            .init_resource::<SpecializedRenderPipelines<DepthPassPipelineSpecializer<T, U>>>()
             .add_systems(ExtractSchedule, extract_camera_phases::<T>)
             .add_systems(
                 Render,
                 (
                     prepare_depth_pass_textures.in_set(RenderSystems::PrepareResources),
-                    queue_depth_pass::<T, U, M>.in_set(RenderSystems::QueueMeshes),
+                    queue_depth_pass::<T, U>.in_set(RenderSystems::QueueMeshes),
                 ),
             );
 
@@ -95,16 +97,16 @@ where
         // are initialized
         render_app
             .init_resource::<DepthPassLayout>()
-            .init_resource::<DepthPipeline<T, U, M>>();
+            .init_resource::<DepthPipeline<T, U>>();
     }
 }
 
 // We will reuse render commands already defined by bevy to draw a 3d mesh
-type DrawDepthPass<T, U, M> = (
+type DrawDepthPass<T, U> = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetPointCloudUniformGroup<1>,
-    SetPointCloudMaterialGroup<2, M>,
+    SetPointCloudMaterialGroup<2>,
     DrawPointCloud<T, U>,
 );
 
@@ -149,11 +151,13 @@ fn extract_camera_phases<T: Point>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn queue_depth_pass<T: Point, U: GpuPoint, M: PointCloudMaterial>(
+fn queue_depth_pass<T: Point, U: GpuPoint>(
     custom_draw_functions: Res<DrawFunctions<PointCloud3dDepthPhase<T>>>,
-    mut pipelines: ResMut<SpecializedRenderPipelines<DepthPipeline<T, U, M>>>,
+    render_materials: Res<ErasedRenderAssets<PreparedPointCloudMaterial>>,
+    render_point_cloud_material_instances: Res<RenderPointCloudMaterialInstances>,
+    mut pipelines: ResMut<SpecializedRenderPipelines<DepthPassPipelineSpecializer<T, U>>>,
     pipeline_cache: Res<PipelineCache>,
-    custom_draw_pipeline: Res<DepthPipeline<T, U, M>>,
+    pipeline: Res<DepthPipeline<T, U>>,
     point_clouds_3d: Query<&PointCloud3d<T>>,
     mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dDepthPhase<T>>>,
     mut views: Query<(
@@ -168,27 +172,52 @@ fn queue_depth_pass<T: Point, U: GpuPoint, M: PointCloudMaterial>(
         let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
-        let draw_custom = custom_draw_functions.read().id::<DrawDepthPass<T, U, M>>();
+        let draw_custom = custom_draw_functions.read().id::<DrawDepthPass<T, U>>();
 
         // Create the key based on the view.
         // In this case we only care about MSAA and HDR
         let view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
             | MeshPipelineKey::from_hdr(view.hdr);
 
-        let depth_key = DepthPipelineKey {
-            mesh_key: view_key,
-            use_edl: point_cloud_render_mode.use_edl(),
-            is_octree: false,
-        };
-
-        let pipeline_id = pipelines.specialize(&pipeline_cache, &custom_draw_pipeline, depth_key);
-
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
         for (render_entity, main_entity) in visible_entities.iter::<PointCloud3d<T>>() {
+            let Some(material_instance) = render_point_cloud_material_instances
+                .instances
+                .get(main_entity)
+            else {
+                warn!(
+                    "Point Cloud Material not found for entity {:?}",
+                    main_entity
+                );
+                continue;
+            };
+            let Some(material) = render_materials.get(material_instance.asset_id) else {
+                warn!(
+                    "Render Point Cloud Material not found for asset id {:?}",
+                    material_instance.asset_id
+                );
+                continue;
+            };
+
             let Ok(point_cloud_3d) = point_clouds_3d.get(*render_entity) else {
                 warn!("point_cloud_3d missing");
                 continue;
             };
+
+            let depth_key = DepthPipelineKey::new(
+                view_key,
+                point_cloud_render_mode.use_edl(),
+                false,
+                material.properties.material_key.clone(),
+            );
+
+            let material_pipeline_specializer = DepthPassPipelineSpecializer {
+                pipeline: pipeline.clone(),
+                properties: material.properties.clone(),
+            };
+
+            let pipeline_id =
+                pipelines.specialize(&pipeline_cache, &material_pipeline_specializer, depth_key);
 
             // Bump the change tick in order to force Bevy to rebuild the bin.
             let this_tick = next_tick.get() + 1;

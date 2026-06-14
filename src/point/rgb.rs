@@ -1,5 +1,7 @@
 use bevy_math::prelude::*;
+use bevy_mesh::VertexFormat;
 use bevy_reflect::TypePath;
+use bevy_render::render_resource::VertexAttribute;
 use bytemuck::{Pod, Zeroable};
 
 use super::{GpuPoint, Point};
@@ -34,7 +36,24 @@ impl From<&RGBPoint> for RGBPoint {
     }
 }
 
-impl GpuPoint for RGBPoint {}
+impl GpuPoint for RGBPoint {
+    fn vertex_attributes() -> Vec<bevy_render::render_resource::VertexAttribute> {
+        vec![
+            // Point position
+            VertexAttribute {
+                format: VertexFormat::Float32x4,
+                offset: 0,
+                shader_location: 1,
+            },
+            // Point color
+            VertexAttribute {
+                format: VertexFormat::Float32x4,
+                offset: VertexFormat::Float32x4.size(),
+                shader_location: 2,
+            },
+        ]
+    }
+}
 
 #[cfg(feature = "las")]
 impl From<las::Point> for RGBPoint {

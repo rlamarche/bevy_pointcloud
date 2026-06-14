@@ -26,7 +26,6 @@ use crate::{
         attribute_pass::pipeline::AttributePassPipeline,
         depth_pass::texture::ViewDepthPrepassTextures,
     },
-    PointCloudMaterial,
 };
 
 #[derive(Component)]
@@ -135,9 +134,9 @@ impl FromWorld for AttributePassLayout {
     }
 }
 
-pub fn prepare_attribute_pass_bind_groups<T: Point, U: GpuPoint, M: PointCloudMaterial>(
+pub fn prepare_attribute_pass_bind_groups<T: Point, U: GpuPoint>(
     mut commands: Commands,
-    pipeline: Res<AttributePassPipeline<T, U, M>>,
+    pipeline: Res<AttributePassPipeline<T, U>>,
     render_device: Res<RenderDevice>,
     views: Query<(Entity, &ViewDepthPrepassTextures, &Msaa)>,
 ) {

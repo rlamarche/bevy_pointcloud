@@ -8,7 +8,7 @@ use bevy_ecs::component::Component;
 use bevy_reflect::TypePath;
 use bevy_transform::prelude::*;
 
-use crate::point::{GpuPoint, Point};
+use crate::{point::{GpuPoint, Point}, render::RenderPipelinePlugin};
 
 pub const QUAD_POSITIONS: &[[f32; 3]] = &[
     [-0.5, -0.5, 0.0],
@@ -71,7 +71,7 @@ where
         app.init_asset::<PointCloud<T>>();
         // .init_asset::<PointCloudMaterial>()
         // .register_asset_reflect::<PointCloudMaterial>();
-        // app.add_plugins(render::RenderPipelinePlugin::<T, U>::default());
+        app.add_plugins(RenderPipelinePlugin::<T, U>::default());
 
         app.world_mut()
             .register_component_hooks::<PointCloud3d<T>>()

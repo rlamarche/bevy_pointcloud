@@ -21,8 +21,8 @@ use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pbr::{MeshMaterial3d, StandardMaterial};
 use bevy_pointcloud::{
     loader::las::LasLoaderPlugin, point::RGBPoint, render::PointCloudRenderMode, PointCloud,
-    PointCloud3d, PointCloudMaterial3d, PointCloudMaterialPlugin, PointCloudPlugin,
-    SimplePointCloudMaterial,
+    PointCloud3d, PointCloudMaterial3d, PointCloudPlugin, SimplePointCloudMaterial,
+    SimplePointCloudMaterialPlugin,
 };
 use bevy_render::{prelude::*, view::NoIndirectDrawing};
 use bevy_text::{FontSmoothing, TextFont};
@@ -39,7 +39,7 @@ fn main() {
             }),
             PanOrbitCameraPlugin,
             PointCloudPlugin::<RGBPoint, RGBPoint>::default(),
-            PointCloudMaterialPlugin::<RGBPoint, RGBPoint, SimplePointCloudMaterial>::default(),
+            SimplePointCloudMaterialPlugin,
             LasLoaderPlugin::<RGBPoint>::default(),
         ))
         .add_plugins(FpsOverlayPlugin {

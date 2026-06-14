@@ -1,121 +1,114 @@
-use std::marker::PhantomData;
-
-use bevy_asset::AssetId;
-use bevy_ecs::{
-    prelude::World,
-    query::ROQueryItem,
-    resource::Resource,
-    system::{
-        lifetimeless::{Read, SRes},
-        SystemParamItem,
-    },
-    world::FromWorld,
-};
+use bevy_ecs::system::{lifetimeless::SRes, SystemParamItem};
+use bevy_pbr::MaterialBindGroupAllocators;
 use bevy_render::{
-    render_asset::{PrepareAssetError, RenderAsset, RenderAssets},
+    erased_render_asset::ErasedRenderAssets,
     render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
-    render_resource::{BindGroupLayoutDescriptor, PipelineCache, PreparedBindGroup},
-    renderer::RenderDevice,
 };
 
-use crate::point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d};
+use crate::{resources::RenderPointCloudMaterialInstances, PreparedPointCloudMaterial};
 
-/// The render world representation of a [`PointCloudMaterial`].
-pub struct RenderPointCloudMaterial<M: PointCloudMaterial> {
-    pub prepared_bind_group: PreparedBindGroup,
-    _phantom: PhantomData<M>,
-    // pub uniform_buffer: UniformBuffer<PointCloudMaterial>,
-}
+// /// The render world representation of a [`PointCloudMaterial`].
+// pub struct RenderPointCloudMaterial<M: PointCloudMaterial> {
+//     pub prepared_bind_group: PreparedBindGroup,
+//     _phantom: PhantomData<M>,
+//     // pub uniform_buffer: UniformBuffer<PointCloudMaterial>,
+// }
 
-#[derive(Resource)]
-pub struct RenderPointCloudMaterialLayout<M: PointCloudMaterial> {
-    pub layout: BindGroupLayoutDescriptor,
-    _phantom: PhantomData<M>,
-}
+// #[derive(Resource)]
+// pub struct RenderPointCloudMaterialLayout<M: PointCloudMaterial> {
+//     pub layout: BindGroupLayoutDescriptor,
+//     _phantom: PhantomData<M>,
+// }
 
-impl<M: PointCloudMaterial> FromWorld for RenderPointCloudMaterialLayout<M> {
-    fn from_world(world: &mut World) -> Self {
-        let render_device = world.resource::<RenderDevice>();
-        let layout = M::bind_group_layout_descriptor(render_device);
-        RenderPointCloudMaterialLayout {
-            layout,
-            _phantom: PhantomData,
-        }
-    }
-}
+// impl<M: PointCloudMaterial> FromWorld for RenderPointCloudMaterialLayout<M> {
+//     fn from_world(world: &mut World) -> Self {
+//         let render_device = world.resource::<RenderDevice>();
+//         let layout = M::bind_group_layout_descriptor(render_device);
+//         RenderPointCloudMaterialLayout {
+//             layout,
+//             _phantom: PhantomData,
+//         }
+//     }
+// }
 
-impl<M: PointCloudMaterial> RenderAsset for RenderPointCloudMaterial<M> {
-    type SourceAsset = M;
+// impl<M: PointCloudMaterial> RenderAsset for RenderPointCloudMaterial<M> {
+//     type SourceAsset = M;
+//     type Param = (
+//         SRes<RenderDevice>,
+//         SRes<RenderPointCloudMaterialLayout<M>>,
+//         SRes<PipelineCache>,
+//         M::Param,
+//     );
+
+//     fn prepare_asset(
+//         source_asset: Self::SourceAsset,
+//         _asset_id: AssetId<Self::SourceAsset>,
+//         (render_device, prepared_point_cloud_material_layout, pipeline_cache, param): &mut SystemParamItem<
+//             Self::Param,
+//         >,
+//         _: Option<&Self>,
+//     ) -> Result<Self, PrepareAssetError<Self::SourceAsset>> {
+//         let bind_group = source_asset
+//             .as_bind_group(
+//                 &prepared_point_cloud_material_layout.layout,
+//                 render_device,
+//                 pipeline_cache,
+//                 param,
+//             )
+//             .map_err(|err| PrepareAssetError::AsBindGroupError(err))?;
+
+//         Ok(RenderPointCloudMaterial {
+//             prepared_bind_group: bind_group,
+//             _phantom: PhantomData,
+//         })
+//     }
+// }
+
+pub struct SetPointCloudMaterialGroup<const I: usize>;
+
+impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudMaterialGroup<I> {
     type Param = (
-        SRes<RenderDevice>,
-        SRes<RenderPointCloudMaterialLayout<M>>,
-        SRes<PipelineCache>,
-        M::Param,
+        SRes<ErasedRenderAssets<PreparedPointCloudMaterial>>,
+        SRes<RenderPointCloudMaterialInstances>,
+        SRes<MaterialBindGroupAllocators>,
     );
-
-    fn prepare_asset(
-        source_asset: Self::SourceAsset,
-        _asset_id: AssetId<Self::SourceAsset>,
-        (render_device, prepared_point_cloud_material_layout, pipeline_cache, param): &mut SystemParamItem<
-            Self::Param,
-        >,
-        _: Option<&Self>,
-    ) -> Result<Self, PrepareAssetError<Self::SourceAsset>> {
-        let bind_group = source_asset
-            .as_bind_group(
-                &prepared_point_cloud_material_layout.layout,
-                render_device,
-                pipeline_cache,
-                param,
-            )
-            .map_err(|err| PrepareAssetError::AsBindGroupError(err))?;
-
-        Ok(RenderPointCloudMaterial {
-            prepared_bind_group: bind_group,
-            _phantom: PhantomData,
-        })
-    }
-}
-
-pub struct SetPointCloudMaterialGroup<const I: usize, M: PointCloudMaterial>(PhantomData<M>);
-
-impl<const I: usize, M: PointCloudMaterial> Default for SetPointCloudMaterialGroup<I, M> {
-    fn default() -> Self {
-        Self(Default::default())
-    }
-}
-
-impl<P: PhaseItem, const I: usize, M: PointCloudMaterial> RenderCommand<P>
-    for SetPointCloudMaterialGroup<I, M>
-{
-    type Param = SRes<RenderAssets<RenderPointCloudMaterial<M>>>;
     type ViewQuery = ();
-    type ItemQuery = Read<PointCloudMaterial3d<M>>;
+    type ItemQuery = (); // Read<PointCloudMaterial3d<M>>;
 
     fn render<'w>(
-        _item: &P,
-        _view: ROQueryItem<'w, '_, Self::ViewQuery>,
-        point_cloud_material_3d: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
-        render_point_cloud_materials: SystemParamItem<'w, '_, Self::Param>,
+        item: &P,
+        _view: (),
+        _item_query: Option<()>,
+        (materials, material_instances, material_bind_group_allocator): SystemParamItem<
+            'w,
+            '_,
+            Self::Param,
+        >,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let render_point_cloud_materials = render_point_cloud_materials.into_inner();
+        let materials = materials.into_inner();
+        let material_instances = material_instances.into_inner();
+        let material_bind_group_allocators = material_bind_group_allocator.into_inner();
 
-        let Some(point_cloud_material_3d) = point_cloud_material_3d else {
+        let Some(material_instance) = material_instances.instances.get(&item.main_entity()) else {
             return RenderCommandResult::Skip;
         };
-        let Some(render_point_cloud_material) =
-            render_point_cloud_materials.get(point_cloud_material_3d)
+        let Some(material_bind_group_allocator) =
+            material_bind_group_allocators.get(&material_instance.asset_id.type_id())
         else {
             return RenderCommandResult::Skip;
         };
-
-        pass.set_bind_group(
-            I,
-            &render_point_cloud_material.prepared_bind_group.bind_group,
-            &[],
-        );
-
+        let Some(material) = materials.get(material_instance.asset_id) else {
+            return RenderCommandResult::Skip;
+        };
+        let Some(material_bind_group) = material_bind_group_allocator.get(material.binding.group)
+        else {
+            return RenderCommandResult::Skip;
+        };
+        let Some(bind_group) = material_bind_group.bind_group() else {
+            return RenderCommandResult::Skip;
+        };
+        pass.set_bind_group(I, bind_group, &[]);
         RenderCommandResult::Success
     }
 }

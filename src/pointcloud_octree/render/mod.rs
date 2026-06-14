@@ -70,8 +70,8 @@ where
         );
 
         app.add_plugins((
-            depth_pass::DepthPassPlugin::<T, U, M>::default(),
-            attribute_pass::AttributePassPlugin::<T, U, M>::default(),
+            depth_pass::DepthPassPlugin::<T, U>::default(),
+            attribute_pass::AttributePassPlugin::<T, U>::default(),
         ));
     }
 

@@ -19,18 +19,9 @@ use bevy_gizmos::prelude::*;
 use bevy_math::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pointcloud::{
-    octree::visibility::components::{SkipOctreeVisibility, ViewVisibleOctreeNodes},
-    octree_loader::potree::loader::PotreeLoader,
-    point::RGBPoint,
-    pointcloud_octree::{
-        asset::{data::PointCloudNodeData, PointCloudOctree},
-        component::PointCloudOctree3d,
-        ExtractVisiblePointCloudOctreeNodesPlugin, PointCloudOctreeAssetPlugin,
-        PointCloudOctreeServer, PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin,
-        PointCloudOctreeVisibilitySettings, RenderPointCloudRGBOctreePlugin,
-    },
-    render::PointCloudRenderMode,
-    PointCloudMaterial3d, PointCloudMaterialPlugin, PointCloudPlugin, SimplePointCloudMaterial,
+    PointCloudMaterial3d, PointCloudPlugin, SimplePointCloudMaterial, SimplePointCloudMaterialPlugin, octree::visibility::components::{SkipOctreeVisibility, ViewVisibleOctreeNodes}, octree_loader::potree::loader::PotreeLoader, point::RGBPoint, pointcloud_octree::{
+        ExtractVisiblePointCloudOctreeNodesPlugin, PointCloudOctreeAssetPlugin, PointCloudOctreeServer, PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin, PointCloudOctreeVisibilitySettings, RenderPointCloudRGBOctreePlugin, asset::{PointCloudOctree, data::PointCloudNodeData}, component::PointCloudOctree3d
+    }, render::PointCloudRenderMode
 };
 use bevy_render::prelude::*;
 use bevy_text::{FontSmoothing, TextFont};
@@ -47,7 +38,7 @@ fn main() {
         // WorldInspectorPlugin::default(),
         PanOrbitCameraPlugin,
         PointCloudPlugin::<RGBPoint, RGBPoint>::default(),
-        PointCloudMaterialPlugin::<RGBPoint, RGBPoint, SimplePointCloudMaterial>::default(),
+        SimplePointCloudMaterialPlugin,
         PointCloudOctreeAssetPlugin::<RGBPoint>::default(),
         PointCloudOctreeVisibilityPlugin::<RGBPoint>::default(),
         ExtractVisiblePointCloudOctreeNodesPlugin::<RGBPoint, RGBPoint>::with_max_size_and_max_bytes_per_frame(

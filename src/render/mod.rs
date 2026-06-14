@@ -24,7 +24,7 @@ use bevy_render::{
     extract_component::{ExtractComponentPlugin, UniformComponentPlugin},
     prelude::*,
     render_asset::RenderAssetPlugin,
-    Render, RenderApp, RenderSystems,
+    Render, RenderApp, RenderDebugFlags, RenderSystems,
 };
 use bevy_shader::{load_shader_library, Shader};
 use depth_pass::DepthPassPlugin;
@@ -32,34 +32,38 @@ use normalize_pass::NormalizePassPlugin;
 use point_cloud_uniform::{prepare_point_cloud_uniform, PointCloudUniformLayout};
 
 use crate::{
-    point::{GpuPoint, Point},
-    point_cloud::PointCloud3d,
-    render::{
-        eye_dome_lighting::{extract_cameras_render_mode, EyeDomeLightingUniform, NeighboursCache},
-        material::{RenderPointCloudMaterial, RenderPointCloudMaterialLayout},
+    PointCloudMaterialsPlugin, late_sweep_point_cloud_material_instances, point::{GpuPoint, Point}, point_cloud::PointCloud3d, render::{
+        eye_dome_lighting::{EyeDomeLightingUniform, NeighboursCache, extract_cameras_render_mode},
         mesh::PointCloudMesh,
         point_cloud::RenderPointCloud,
-    },
-    PointCloudMaterial, PointCloudMaterial3d,
+    }
 };
 
-const POINTCLOUD_SHADER_HANDLE: Handle<Shader> =
+pub const POINTCLOUD_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("9c7d8df3-86dd-4412-a9cc-dad5c7916a8c");
 
-const NORMALIZE_SHADER_HANDLE: Handle<Shader> =
+pub const NORMALIZE_SHADER_HANDLE: Handle<Shader> =
     uuid_handle!("0e5fffec-7e0b-4b44-8c32-b92d9b99fd58");
 
-pub struct RenderPipelinePlugin<T: Point, U: GpuPoint, M: PointCloudMaterial>(
-    #[allow(clippy::type_complexity)] PhantomData<fn() -> (T, U, M)>,
-);
+pub const MATERIAL_BIND_GROUP_INDEX: usize = 2;
 
-impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Default for RenderPipelinePlugin<T, U, M> {
+pub struct RenderPipelinePlugin<T: Point, U: GpuPoint> {
+    /// Debugging flags that can optionally be set when constructing the renderer.
+    pub debug_flags: RenderDebugFlags,
+    #[allow(clippy::type_complexity)]
+    _phantom: PhantomData<fn() -> (T, U)>,
+}
+
+impl<T: Point, U: GpuPoint> Default for RenderPipelinePlugin<T, U> {
     fn default() -> Self {
-        Self(PhantomData)
+        Self {
+            debug_flags: Default::default(),
+            _phantom: PhantomData,
+        }
     }
 }
 
-impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Plugin for RenderPipelinePlugin<T, U, M>
+impl<T: Point, U: GpuPoint> Plugin for RenderPipelinePlugin<T, U>
 where
     for<'a> &'a T: Into<U>,
 {
@@ -82,40 +86,43 @@ where
         );
 
         // Automatically create uniform from these settings
-        app.add_plugins(RenderAssetPlugin::<RenderPointCloud<T, U>>::default())
-            .add_plugins(RenderAssetPlugin::<RenderPointCloudMaterial<M>>::default())
-            .add_plugins(ExtractComponentPlugin::<PointCloud3d<T>>::default())
-            .add_plugins(ExtractComponentPlugin::<PointCloudMaterial3d<M>>::default())
-            .add_plugins(UniformComponentPlugin::<EyeDomeLightingUniform>::default())
-            // compute point cloud aabb **before** [`bevy_render::view::calculate_bounds`] to prevent using mesh's aabb.
-            .add_systems(
-                PostUpdate,
-                compute_point_cloud_aabb::<T>.before(calculate_bounds),
-            )
-            .sub_app_mut(RenderApp)
-            .add_systems(
-                Render,
-                prepare_point_cloud_uniform.in_set(RenderSystems::PrepareResources),
-            );
+        app.add_plugins(PointCloudMaterialsPlugin {
+            debug_flags: self.debug_flags,
+        })
+        .add_plugins(RenderAssetPlugin::<RenderPointCloud<T, U>>::default())
+        .add_plugins(ExtractComponentPlugin::<PointCloud3d<T>>::default())
+        .add_plugins(UniformComponentPlugin::<EyeDomeLightingUniform>::default())
+        // compute point cloud aabb **before** [`bevy_render::view::calculate_bounds`] to prevent using mesh's aabb.
+        .add_systems(
+            PostUpdate,
+            compute_point_cloud_aabb::<T>.before(calculate_bounds),
+        )
+        .sub_app_mut(RenderApp)
+        .add_systems(
+            Render,
+            prepare_point_cloud_uniform.in_set(RenderSystems::PrepareResources),
+        );
 
         let render_app = app.sub_app_mut(RenderApp);
         render_app
             .insert_resource(NeighboursCache::default())
             .add_systems(
                 ExtractSchedule,
-                extract_cameras_render_mode.after(extract_cameras),
+                (
+                    extract_cameras_render_mode.after(extract_cameras),
+                    late_sweep_point_cloud_material_instances::<T>,
+                ),
             );
 
         app.add_plugins((
-            DepthPassPlugin::<T, U, M>::default(),
-            AttributePassPlugin::<T, U, M>::default(),
+            DepthPassPlugin::<T, U>::default(),
+            AttributePassPlugin::<T, U>::default(),
             NormalizePassPlugin,
         ));
     }
 
     fn finish(&self, app: &mut App) {
         app.sub_app_mut(RenderApp)
-            .init_resource::<RenderPointCloudMaterialLayout<M>>()
             .init_resource::<PointCloudUniformLayout>()
             .init_resource::<PointCloudMesh>();
     }
