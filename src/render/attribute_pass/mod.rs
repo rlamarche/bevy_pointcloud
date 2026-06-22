@@ -30,8 +30,9 @@ use phase::PointCloud3dAttributePhase;
 use texture::prepare_attribute_pass_textures;
 
 use crate::{
-    point::{GpuPoint, Point},
-    point_cloud::PointCloud3d,
+    point::Point,
+    point_cloud::{RenderPointCloud, PointCloud3d, RenderPointCloudInstances},
+    point_cloud_material::{PreparedPointCloudMaterial, RenderPointCloudMaterialInstances},
     render::{
         attribute_pass::{
             pipeline::{
@@ -45,24 +46,17 @@ use crate::{
         phase::{PointCloud3dBatchSetKey, PointCloud3dBinKey},
         point_cloud_uniform::SetPointCloudUniformGroup,
     },
-    resources::RenderPointCloudMaterialInstances,
-    PreparedPointCloudMaterial,
 };
 
-pub struct AttributePassPlugin<T: Point, U: GpuPoint>(
-    #[allow(clippy::type_complexity)] PhantomData<fn() -> (T, U)>,
-);
+pub struct AttributePassPlugin<T: Point>(#[allow(clippy::type_complexity)] PhantomData<fn() -> T>);
 
-impl<T: Point, U: GpuPoint> Default for AttributePassPlugin<T, U> {
+impl<T: Point> Default for AttributePassPlugin<T> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<T: Point, U: GpuPoint> Plugin for AttributePassPlugin<T, U>
-where
-    for<'a> &'a T: Into<U>,
-{
+impl<T: Point> Plugin for AttributePassPlugin<T> {
     fn build(&self, app: &mut App) {
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
@@ -70,16 +64,15 @@ where
         render_app
             .init_resource::<DrawFunctions<PointCloud3dAttributePhase<T>>>()
             .init_resource::<ViewBinnedRenderPhases<PointCloud3dAttributePhase<T>>>()
-            .add_render_command::<PointCloud3dAttributePhase<T>, DrawAttributePass<T, U>>()
-            .init_resource::<SpecializedRenderPipelines<AttributePassPipelineSpecializer<T, U>>>()
+            .add_render_command::<PointCloud3dAttributePhase<T>, DrawAttributePass<T>>()
+            .init_resource::<SpecializedRenderPipelines<AttributePassPipelineSpecializer<T>>>()
             .add_systems(ExtractSchedule, extract_camera_phases::<T>)
             .add_systems(
                 Render,
                 (
                     prepare_attribute_pass_textures.in_set(RenderSystems::PrepareResources),
-                    prepare_attribute_pass_bind_groups::<T, U>
-                        .in_set(RenderSystems::PrepareResources),
-                    queue_attribute_pass::<T, U>.in_set(RenderSystems::QueueMeshes),
+                    prepare_attribute_pass_bind_groups::<T>.in_set(RenderSystems::PrepareResources),
+                    queue_attribute_pass::<T>.in_set(RenderSystems::QueueMeshes),
                 ),
             );
 
@@ -99,17 +92,17 @@ where
         // are initialized
         render_app
             .init_resource::<AttributePassLayout>()
-            .init_resource::<AttributePassPipeline<T, U>>();
+            .init_resource::<AttributePassPipeline<T>>();
     }
 }
 
 // We will reuse render commands already defined by bevy to draw a 3d mesh
-type DrawAttributePass<T, U> = (
+type DrawAttributePass<T> = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetPointCloudUniformGroup<1>,
     SetPointCloudMaterialGroup<2>,
-    DrawPointCloud<T, U>,
+    DrawPointCloud<T>,
 );
 
 #[allow(clippy::type_complexity)]
@@ -152,13 +145,15 @@ fn extract_camera_phases<T: Point>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn queue_attribute_pass<T: Point, U: GpuPoint>(
+fn queue_attribute_pass<T: Point>(
     custom_draw_functions: Res<DrawFunctions<PointCloud3dAttributePhase<T>>>,
+    render_point_clouds: Res<ErasedRenderAssets<RenderPointCloud>>,
+    render_point_cloud_instances: Res<RenderPointCloudInstances<T>>,
     render_materials: Res<ErasedRenderAssets<PreparedPointCloudMaterial>>,
     render_point_cloud_material_instances: Res<RenderPointCloudMaterialInstances>,
-    mut pipelines: ResMut<SpecializedRenderPipelines<AttributePassPipelineSpecializer<T, U>>>,
+    mut pipelines: ResMut<SpecializedRenderPipelines<AttributePassPipelineSpecializer<T>>>,
     pipeline_cache: Res<PipelineCache>,
-    pipeline: Res<AttributePassPipeline<T, U>>,
+    pipeline: Res<AttributePassPipeline<T>>,
     point_clouds_3d: Query<&PointCloud3d<T>>,
     mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dAttributePhase<T>>>,
     mut views: Query<(&ExtractedView, &RenderVisibleEntities, &Msaa)>,
@@ -168,7 +163,7 @@ fn queue_attribute_pass<T: Point, U: GpuPoint>(
         let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
-        let draw_custom = custom_draw_functions.read().id::<DrawAttributePass<T, U>>();
+        let draw_custom = custom_draw_functions.read().id::<DrawAttributePass<T>>();
 
         // Create the key based on the view.
         // In this case we only care about MSAA and HDR
@@ -177,18 +172,30 @@ fn queue_attribute_pass<T: Point, U: GpuPoint>(
 
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
         for (render_entity, main_entity) in visible_entities.iter::<PointCloud3d<T>>() {
+            let Some(pointcloud_instance) = render_point_cloud_instances.instances.get(main_entity)
+            else {
+                debug!("Point Cloud not found for entity {:?}", main_entity);
+                continue;
+            };
+            let Some(point_cloud) = render_point_clouds.get(pointcloud_instance.asset_id) else {
+                debug!(
+                    "Render Point Cloud not found for asset id {:?}",
+                    pointcloud_instance.asset_id
+                );
+                continue;
+            };
             let Some(material_instance) = render_point_cloud_material_instances
                 .instances
                 .get(main_entity)
             else {
-                warn!(
+                debug!(
                     "Point Cloud Material not found for entity {:?}",
                     main_entity
                 );
                 continue;
             };
             let Some(material) = render_materials.get(material_instance.asset_id) else {
-                warn!(
+                debug!(
                     "Render Point Cloud Material not found for asset id {:?}",
                     material_instance.asset_id
                 );
@@ -202,13 +209,15 @@ fn queue_attribute_pass<T: Point, U: GpuPoint>(
 
             let attribute_key = AttributePipelineKey::new(
                 view_key,
+                point_cloud.properties.pointcloud_key.clone(),
                 false,
                 material.properties.material_key.clone(),
             );
 
             let material_pipeline_specializer = AttributePassPipelineSpecializer {
                 pipeline: pipeline.clone(),
-                properties: material.properties.clone(),
+                point_cloud_properties: point_cloud.properties.clone(),
+                material_properties: material.properties.clone(),
             };
 
             let pipeline_id = pipelines.specialize(

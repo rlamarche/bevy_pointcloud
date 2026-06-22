@@ -8,7 +8,6 @@ pub mod material;
 pub mod mesh;
 pub mod normalize_pass;
 pub mod phase;
-pub mod point_cloud;
 pub mod point_cloud_uniform;
 
 use std::marker::PhantomData;
@@ -23,7 +22,6 @@ use bevy_render::{
     camera::extract_cameras,
     extract_component::{ExtractComponentPlugin, UniformComponentPlugin},
     prelude::*,
-    render_asset::RenderAssetPlugin,
     Render, RenderApp, RenderDebugFlags, RenderSystems,
 };
 use bevy_shader::{load_shader_library, Shader};
@@ -32,11 +30,13 @@ use normalize_pass::NormalizePassPlugin;
 use point_cloud_uniform::{prepare_point_cloud_uniform, PointCloudUniformLayout};
 
 use crate::{
-    PointCloudMaterialsPlugin, late_sweep_point_cloud_material_instances, point::{GpuPoint, Point}, point_cloud::PointCloud3d, render::{
-        eye_dome_lighting::{EyeDomeLightingUniform, NeighboursCache, extract_cameras_render_mode},
+    point::Point,
+    point_cloud::PointCloud3d,
+    point_cloud_material::{late_sweep_point_cloud_material_instances, PointCloudMaterialsPlugin},
+    render::{
+        eye_dome_lighting::{extract_cameras_render_mode, EyeDomeLightingUniform, NeighboursCache},
         mesh::PointCloudMesh,
-        point_cloud::RenderPointCloud,
-    }
+    },
 };
 
 pub const POINTCLOUD_SHADER_HANDLE: Handle<Shader> =
@@ -47,14 +47,14 @@ pub const NORMALIZE_SHADER_HANDLE: Handle<Shader> =
 
 pub const MATERIAL_BIND_GROUP_INDEX: usize = 2;
 
-pub struct RenderPipelinePlugin<T: Point, U: GpuPoint> {
+pub struct RenderPipelinePlugin<T: Point> {
     /// Debugging flags that can optionally be set when constructing the renderer.
     pub debug_flags: RenderDebugFlags,
     #[allow(clippy::type_complexity)]
-    _phantom: PhantomData<fn() -> (T, U)>,
+    _phantom: PhantomData<fn() -> T>,
 }
 
-impl<T: Point, U: GpuPoint> Default for RenderPipelinePlugin<T, U> {
+impl<T: Point> Default for RenderPipelinePlugin<T> {
     fn default() -> Self {
         Self {
             debug_flags: Default::default(),
@@ -63,10 +63,7 @@ impl<T: Point, U: GpuPoint> Default for RenderPipelinePlugin<T, U> {
     }
 }
 
-impl<T: Point, U: GpuPoint> Plugin for RenderPipelinePlugin<T, U>
-where
-    for<'a> &'a T: Into<U>,
-{
+impl<T: Point> Plugin for RenderPipelinePlugin<T> {
     fn build(&self, app: &mut App) {
         load_shader_library!(app, "types.wgsl");
         load_shader_library!(app, "bindings.wgsl");
@@ -89,7 +86,6 @@ where
         app.add_plugins(PointCloudMaterialsPlugin {
             debug_flags: self.debug_flags,
         })
-        .add_plugins(RenderAssetPlugin::<RenderPointCloud<T, U>>::default())
         .add_plugins(ExtractComponentPlugin::<PointCloud3d<T>>::default())
         .add_plugins(UniformComponentPlugin::<EyeDomeLightingUniform>::default())
         // compute point cloud aabb **before** [`bevy_render::view::calculate_bounds`] to prevent using mesh's aabb.
@@ -115,8 +111,8 @@ where
             );
 
         app.add_plugins((
-            DepthPassPlugin::<T, U>::default(),
-            AttributePassPlugin::<T, U>::default(),
+            DepthPassPlugin::<T>::default(),
+            AttributePassPlugin::<T>::default(),
             NormalizePassPlugin,
         ));
     }

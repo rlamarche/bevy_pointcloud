@@ -11,7 +11,7 @@ pub trait Point: Clone + Sync + Send + TypePath {
     fn position(&self) -> &Vec3;
 }
 
-pub trait GpuPoint: Sync + Send + Pod + Zeroable + Copy + TypePath {
+pub trait GpuPoint: Point + Pod + Zeroable {
     fn vertex_attributes() -> Vec<VertexAttribute>;
 
     fn vertex_buffer_layout() -> VertexBufferLayout {

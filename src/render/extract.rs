@@ -3,8 +3,10 @@ use bevy_render::extract_component::ExtractComponent;
 use bevy_transform::prelude::GlobalTransform;
 
 use crate::{
-    point::Point, point_cloud::PointCloud3d, render::point_cloud_uniform::PointCloudUniform,
-    PointCloudMaterial, PointCloudMaterial3d,
+    point::Point,
+    point_cloud::PointCloud3d,
+    point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d},
+    render::point_cloud_uniform::PointCloudUniform,
 };
 
 impl<T: Point> ExtractComponent for PointCloud3d<T> {

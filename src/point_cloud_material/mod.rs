@@ -1,4 +1,4 @@
-pub mod resources;
+mod resources;
 mod simple;
 
 use std::{any::TypeId, hash::Hash, marker::PhantomData, sync::Arc};
@@ -36,14 +36,13 @@ use bevy_render::{
 };
 use bevy_shader::{Shader, ShaderDefVal, ShaderRef};
 use derive_more::derive::From;
+pub use resources::*;
 pub use simple::*;
 
 use crate::{
     point::{GpuPoint, Point},
-    point_cloud_material::resources::RenderPointCloudMaterialInstances,
+    point_cloud::PointCloud3d,
     render::POINTCLOUD_SHADER_HANDLE,
-    resources::RenderPointCloudMaterialInstance,
-    PointCloud3d,
 };
 
 pub enum RenderPass {
@@ -242,7 +241,7 @@ where
     })
 }
 
-/// Fills the [`RenderPointCloudMaterialInstances`] resources from the meshes in the
+/// Fills the [`RenderPointCloudMaterialInstances`] resources from the point clouds in the
 /// scene.
 #[allow(clippy::type_complexity)]
 fn extract_point_cloud_materials<M: PointCloudMaterial>(
@@ -274,7 +273,7 @@ fn extract_point_cloud_materials<M: PointCloudMaterial>(
 }
 
 /// Removes point cloud materials from [`RenderPointCloudMaterialInstances`] when their
-/// [`MeshMaterial3d`] components are removed.
+/// [`PointCloudMaterial3d`] components are removed.
 ///
 /// This is tricky because we have to deal with the case in which a material of
 /// type A was removed and replaced with a material of type B in the same frame

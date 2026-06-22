@@ -2,9 +2,12 @@ use bevy_app::Plugin;
 use bevy_asset::{load_internal_asset, uuid_handle, Asset, Handle};
 use bevy_reflect::TypePath;
 use bevy_render::render_resource::AsBindGroup;
-use bevy_shader::{Shader, load_shader_library};
+use bevy_shader::{load_shader_library, Shader};
 
-use crate::{point::RGBPoint, PointCloudMaterial, PointCloudMaterialPlugin, RenderPass};
+use crate::{
+    point::RGBPoint,
+    point_cloud_material::{PointCloudMaterial, PointCloudMaterialPlugin, RenderPass},
+};
 
 const VERTEX_SHADER_HANDLE: Handle<Shader> = uuid_handle!("7664491d-3246-4c96-b716-23786e9d0eb2");
 const FRAGMENT_SHADER_HANDLE: Handle<Shader> = uuid_handle!("a0280d36-f841-42ec-a730-ad1b24e54bca");

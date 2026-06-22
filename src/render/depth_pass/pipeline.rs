@@ -24,13 +24,14 @@ use bevy_utils::default;
 #[cfg(feature = "pointcloud_octree")]
 use crate::pointcloud_octree::extract::{PointCloudNodeDataUniform, PointCloudOctreeUniform};
 use crate::{
-    point::{GpuPoint, Point},
+    point::Point,
+    point_cloud::{ErasedPointCloudKey, PointCloudProperties},
+    point_cloud_material::PointCloudMaterialProperties,
     render::{point_cloud_uniform::PointCloudUniform, MATERIAL_BIND_GROUP_INDEX},
-    PointCloudMaterialProperties,
 };
 
 #[derive(Clone, Resource)]
-pub struct DepthPipeline<T: Point, U: GpuPoint> {
+pub struct DepthPipeline<T: Point> {
     mesh_pipeline: MeshPipeline,
     point_cloud_layout: BindGroupLayoutDescriptor,
     #[cfg(feature = "pointcloud_octree")]
@@ -40,9 +41,9 @@ pub struct DepthPipeline<T: Point, U: GpuPoint> {
     #[cfg(feature = "pointcloud_octree")]
     point_cloud_octree_data_layout: BindGroupLayoutDescriptor,
     #[allow(clippy::type_complexity)]
-    _phantom: PhantomData<fn() -> (T, U)>,
+    _phantom: PhantomData<fn() -> T>,
 }
-impl<T: Point, U: GpuPoint> FromWorld for DepthPipeline<T, U> {
+impl<T: Point> FromWorld for DepthPipeline<T> {
     fn from_world(world: &mut World) -> Self {
         let mesh_pipeline = world.resource::<MeshPipeline>();
         let render_device = world.resource::<RenderDevice>();
@@ -82,14 +83,16 @@ impl<T: Point, U: GpuPoint> FromWorld for DepthPipeline<T, U> {
     }
 }
 
-pub struct DepthPassPipelineSpecializer<T: Point, U: GpuPoint> {
-    pub(crate) pipeline: DepthPipeline<T, U>,
-    pub(crate) properties: Arc<PointCloudMaterialProperties>,
+pub struct DepthPassPipelineSpecializer<T: Point> {
+    pub pipeline: DepthPipeline<T>,
+    pub point_cloud_properties: Arc<PointCloudProperties>,
+    pub material_properties: Arc<PointCloudMaterialProperties>,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct DepthPipelineKey {
     pub mesh_key: MeshPipelineKey,
+    pub point_cloud_key: ErasedPointCloudKey,
     pub use_edl: bool,
     pub is_octree: bool,
     pub material_key: ErasedMaterialKey,
@@ -99,12 +102,14 @@ impl DepthPipelineKey {
     #[inline]
     pub fn new(
         mesh_key: MeshPipelineKey,
+        point_cloud_key: ErasedPointCloudKey,
         use_edl: bool,
         is_octree: bool,
         material_key: ErasedMaterialKey,
     ) -> Self {
         Self {
             mesh_key,
+            point_cloud_key,
             use_edl,
             is_octree,
             material_key,
@@ -112,7 +117,7 @@ impl DepthPipelineKey {
     }
 }
 
-impl<T: Point, U: GpuPoint> SpecializedRenderPipeline for DepthPassPipelineSpecializer<T, U> {
+impl<T: Point> SpecializedRenderPipeline for DepthPassPipelineSpecializer<T> {
     type Key = DepthPipelineKey;
 
     fn specialize(&self, key: Self::Key) -> RenderPipelineDescriptor {
@@ -126,9 +131,9 @@ impl<T: Point, U: GpuPoint> SpecializedRenderPipeline for DepthPassPipelineSpeci
             }],
         };
 
-        let instance_buffer_layout = U::vertex_buffer_layout();
+        let instance_buffer_layout = self.point_cloud_properties.vertex_buffer_layout.clone();
 
-        let mut shader_defs = self.properties.depth_shader_defs.clone();
+        let mut shader_defs = self.material_properties.depth_shader_defs.clone();
         shader_defs.push(ShaderDefVal::UInt(
             "MATERIAL_BIND_GROUP".into(),
             MATERIAL_BIND_GROUP_INDEX as u32,
@@ -152,7 +157,7 @@ impl<T: Point, U: GpuPoint> SpecializedRenderPipeline for DepthPassPipelineSpeci
             // Bind group 1 is our point cloud uniform
             self.pipeline.point_cloud_layout.clone(),
             // Bind group 2 is the point cloud material
-            self.properties
+            self.material_properties
                 .material_layout
                 .as_ref()
                 .expect("Missing Point Cloud Material Layout")
@@ -177,13 +182,19 @@ impl<T: Point, U: GpuPoint> SpecializedRenderPipeline for DepthPassPipelineSpeci
             layout,
             push_constant_ranges: vec![],
             vertex: VertexState {
-                shader: self.properties.depth_pass_vertex_shader_handle.clone(),
+                shader: self
+                    .material_properties
+                    .depth_pass_vertex_shader_handle
+                    .clone(),
                 shader_defs: shader_defs.clone(),
                 entry_point: Some("vertex".into()),
                 buffers: vec![vertex_buffer_layout, instance_buffer_layout],
             },
             fragment: Some(FragmentState {
-                shader: self.properties.depth_pass_fragment_shader_handle.clone(),
+                shader: self
+                    .material_properties
+                    .depth_pass_fragment_shader_handle
+                    .clone(),
                 shader_defs,
                 entry_point: Some("fragment".into()),
                 // The target will store a mask to discard outside pixels in normalize pass

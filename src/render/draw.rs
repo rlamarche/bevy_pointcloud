@@ -5,26 +5,23 @@ use bevy_ecs::system::{
     SystemParamItem,
 };
 use bevy_render::{
-    render_asset::RenderAssets,
+    erased_render_asset::ErasedRenderAssets,
     render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
     render_resource::IndexFormat,
 };
 
 use crate::{
-    point::{GpuPoint, Point},
-    point_cloud::PointCloud3d,
-    render::{mesh::PointCloudMesh, point_cloud::RenderPointCloud},
+    point::Point,
+    point_cloud::{RenderPointCloud, PointCloud3d},
+    render::mesh::PointCloudMesh,
 };
 
-pub struct DrawPointCloud<T: Point, U: GpuPoint>(PhantomData<fn() -> (T, U)>);
+pub struct DrawPointCloud<T: Point>(PhantomData<fn() -> T>);
 
-impl<T: Point, U: GpuPoint, P: PhaseItem> RenderCommand<P> for DrawPointCloud<T, U>
-where
-    for<'a> &'a T: Into<U>,
-{
+impl<T: Point, P: PhaseItem> RenderCommand<P> for DrawPointCloud<T> {
     type Param = (
         SRes<PointCloudMesh>,
-        SRes<RenderAssets<RenderPointCloud<T, U>>>,
+        SRes<ErasedRenderAssets<RenderPointCloud>>,
     );
     type ViewQuery = ();
     type ItemQuery = Read<PointCloud3d<T>>;
@@ -44,7 +41,8 @@ where
         let Some(point_cloud_3d) = point_cloud_3d else {
             return RenderCommandResult::Skip;
         };
-        let Some(render_point_cloud) = render_point_clouds.get(point_cloud_3d) else {
+        let Some(render_point_cloud) = render_point_clouds.get(point_cloud_3d.id().untyped())
+        else {
             return RenderCommandResult::Skip;
         };
 
@@ -56,7 +54,7 @@ where
         pass.draw_indexed(
             0..point_cloud_mesh.index_count,
             0,
-            0..render_point_cloud.length as u32,
+            0..render_point_cloud.point_count as u32,
         );
 
         RenderCommandResult::Success

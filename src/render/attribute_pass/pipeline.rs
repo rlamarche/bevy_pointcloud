@@ -24,13 +24,14 @@ use bevy_utils::default;
 #[cfg(feature = "pointcloud_octree")]
 use crate::pointcloud_octree::extract::{PointCloudNodeDataUniform, PointCloudOctreeUniform};
 use crate::{
-    point::{GpuPoint, Point},
+    point::Point,
+    point_cloud::{ErasedPointCloudKey, PointCloudProperties},
+    point_cloud_material::PointCloudMaterialProperties,
     render::{point_cloud_uniform::PointCloudUniform, MATERIAL_BIND_GROUP_INDEX},
-    PointCloudMaterialProperties,
 };
 
 #[derive(Clone, Resource)]
-pub struct AttributePassPipeline<T: Point, U: GpuPoint> {
+pub struct AttributePassPipeline<T: Point> {
     pub mesh_pipeline: MeshPipeline,
     // vertex_shader_handle: Handle<Shader>,
     // fragment_shader_handle: Handle<Shader>,
@@ -44,10 +45,10 @@ pub struct AttributePassPipeline<T: Point, U: GpuPoint> {
     #[cfg(feature = "pointcloud_octree")]
     pub point_cloud_octree_data_layout: BindGroupLayoutDescriptor,
     #[allow(clippy::type_complexity)]
-    _phantom: PhantomData<fn() -> (T, U)>,
+    _phantom: PhantomData<fn() -> T>,
 }
 
-impl<T: Point, U: GpuPoint> FromWorld for AttributePassPipeline<T, U> {
+impl<T: Point> FromWorld for AttributePassPipeline<T> {
     fn from_world(world: &mut World) -> Self {
         let mesh_pipeline = world.resource::<MeshPipeline>();
         let render_device = world.resource::<RenderDevice>();
@@ -105,14 +106,16 @@ impl<T: Point, U: GpuPoint> FromWorld for AttributePassPipeline<T, U> {
     }
 }
 
-pub struct AttributePassPipelineSpecializer<T: Point, U: GpuPoint> {
-    pub(crate) pipeline: AttributePassPipeline<T, U>,
-    pub(crate) properties: Arc<PointCloudMaterialProperties>,
+pub struct AttributePassPipelineSpecializer<T: Point> {
+    pub pipeline: AttributePassPipeline<T>,
+    pub point_cloud_properties: Arc<PointCloudProperties>,
+    pub material_properties: Arc<PointCloudMaterialProperties>,
 }
 
 #[derive(Clone)]
 pub struct AttributePipelineKey {
     pub mesh_key: MeshPipelineKey,
+    pub point_cloud_key: ErasedPointCloudKey,
     pub is_octree: bool,
     pub material_key: ErasedMaterialKey,
 }
@@ -121,11 +124,13 @@ impl AttributePipelineKey {
     #[inline]
     pub fn new(
         mesh_key: MeshPipelineKey,
+        point_cloud_key: ErasedPointCloudKey,
         is_octree: bool,
         material_key: ErasedMaterialKey,
     ) -> Self {
         Self {
             mesh_key,
+            point_cloud_key,
             is_octree,
             material_key,
         }
@@ -135,6 +140,7 @@ impl AttributePipelineKey {
 impl Hash for AttributePipelineKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.mesh_key.hash(state);
+        self.point_cloud_key.hash(state);
         self.is_octree.hash(state);
         self.material_key.hash(state);
     }
@@ -143,6 +149,7 @@ impl Hash for AttributePipelineKey {
 impl PartialEq for AttributePipelineKey {
     fn eq(&self, other: &Self) -> bool {
         self.mesh_key == other.mesh_key
+            && self.point_cloud_key == other.point_cloud_key
             && self.is_octree == other.is_octree
             && self.material_key == other.material_key
     }
@@ -150,7 +157,7 @@ impl PartialEq for AttributePipelineKey {
 
 impl Eq for AttributePipelineKey {}
 
-impl<T: Point, U: GpuPoint> SpecializedRenderPipeline for AttributePassPipelineSpecializer<T, U> {
+impl<T: Point> SpecializedRenderPipeline for AttributePassPipelineSpecializer<T> {
     type Key = AttributePipelineKey;
 
     fn specialize(&self, key: Self::Key) -> RenderPipelineDescriptor {
@@ -164,9 +171,9 @@ impl<T: Point, U: GpuPoint> SpecializedRenderPipeline for AttributePassPipelineS
             }],
         };
 
-        let instance_buffer_layout = U::vertex_buffer_layout();
+        let instance_buffer_layout = self.point_cloud_properties.vertex_buffer_layout.clone();
 
-        let mut shader_defs = self.properties.attribute_shader_defs.clone();
+        let mut shader_defs = self.material_properties.attribute_shader_defs.clone();
         shader_defs.push(ShaderDefVal::UInt(
             "MATERIAL_BIND_GROUP".into(),
             MATERIAL_BIND_GROUP_INDEX as u32,
@@ -187,7 +194,7 @@ impl<T: Point, U: GpuPoint> SpecializedRenderPipeline for AttributePassPipelineS
             // Bind group 1 is our point cloud uniform
             self.pipeline.point_cloud_layout.clone(),
             // Bind group 2 is the point cloud material
-            self.properties
+            self.material_properties
                 .material_layout
                 .as_ref()
                 .expect("Missing Point Cloud Material Layout")
@@ -212,14 +219,17 @@ impl<T: Point, U: GpuPoint> SpecializedRenderPipeline for AttributePassPipelineS
             layout,
             push_constant_ranges: vec![],
             vertex: VertexState {
-                shader: self.properties.attribute_pass_vertex_shader_handle.clone(),
+                shader: self
+                    .material_properties
+                    .attribute_pass_vertex_shader_handle
+                    .clone(),
                 shader_defs: shader_defs.clone(),
                 entry_point: Some("vertex".into()),
                 buffers: vec![vertex_buffer_layout, instance_buffer_layout],
             },
             fragment: Some(FragmentState {
                 shader: self
-                    .properties
+                    .material_properties
                     .attribute_pass_fragment_shader_handle
                     .clone(),
                 shader_defs,

@@ -20,9 +20,13 @@ use bevy_mesh::{Mesh, Mesh3d, Meshable};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pbr::{MeshMaterial3d, StandardMaterial};
 use bevy_pointcloud::{
-    loader::las::LasLoaderPlugin, point::RGBPoint, render::PointCloudRenderMode, PointCloud,
-    PointCloud3d, PointCloudMaterial3d, PointCloudPlugin, SimplePointCloudMaterial,
-    SimplePointCloudMaterialPlugin,
+    loader::las::LasLoaderPlugin,
+    point::RGBPoint,
+    point_cloud::{PointCloudGpuMapperPlugin, PointCloud, PointCloud3d, PointCloudsPlugin},
+    point_cloud_material::{
+        PointCloudMaterial3d, SimplePointCloudMaterial, SimplePointCloudMaterialPlugin,
+    },
+    render::PointCloudRenderMode,
 };
 use bevy_render::{prelude::*, view::NoIndirectDrawing};
 use bevy_text::{FontSmoothing, TextFont};
@@ -38,7 +42,8 @@ fn main() {
                 ..Default::default()
             }),
             PanOrbitCameraPlugin,
-            PointCloudPlugin::<RGBPoint, RGBPoint>::default(),
+            PointCloudsPlugin::<RGBPoint>::default(),
+            PointCloudGpuMapperPlugin::<RGBPoint>::default(),
             SimplePointCloudMaterialPlugin,
             LasLoaderPlugin::<RGBPoint>::default(),
         ))

@@ -5,6 +5,7 @@ use bevy_render::render_resource::VertexAttribute;
 use bytemuck::{Pod, Zeroable};
 
 use super::{GpuPoint, Point};
+use crate::point_cloud::{PointCloudGpuMapper, PointCloud};
 
 #[derive(Default, Clone, Copy, Debug, TypePath, Pod, Zeroable)]
 #[repr(C)]
@@ -69,5 +70,15 @@ impl From<las::Point> for RGBPoint {
                 1.0,
             ),
         }
+    }
+}
+
+impl PointCloudGpuMapper for RGBPoint {
+    type Point = RGBPoint;
+
+    type GpuPoint = RGBPoint;
+
+    fn convert(point_cloud: PointCloud<Self::Point>) -> Vec<Self::GpuPoint> {
+        point_cloud.points
     }
 }

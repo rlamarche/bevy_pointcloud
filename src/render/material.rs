@@ -5,7 +5,7 @@ use bevy_render::{
     render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
 };
 
-use crate::{resources::RenderPointCloudMaterialInstances, PreparedPointCloudMaterial};
+use crate::point_cloud_material::{PreparedPointCloudMaterial, RenderPointCloudMaterialInstances};
 
 // /// The render world representation of a [`PointCloudMaterial`].
 // pub struct RenderPointCloudMaterial<M: PointCloudMaterial> {
