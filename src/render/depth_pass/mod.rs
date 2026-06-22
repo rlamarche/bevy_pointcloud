@@ -214,7 +214,7 @@ fn queue_depth_pass<T: Point>(
 
             let depth_key = DepthPipelineKey::new(
                 view_key,
-                point_cloud.properties.pointcloud_key.clone(),
+                point_cloud.properties.point_cloud_key.clone(),
                 point_cloud_render_mode.use_edl(),
                 false,
                 material.properties.material_key.clone(),

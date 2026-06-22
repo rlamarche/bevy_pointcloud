@@ -209,7 +209,7 @@ fn queue_attribute_pass<T: Point>(
 
             let attribute_key = AttributePipelineKey::new(
                 view_key,
-                point_cloud.properties.pointcloud_key.clone(),
+                point_cloud.properties.point_cloud_key.clone(),
                 false,
                 material.properties.material_key.clone(),
             );

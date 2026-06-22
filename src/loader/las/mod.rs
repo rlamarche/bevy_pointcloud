@@ -1,7 +1,5 @@
 use std::{
-    fmt::Display,
-    io::{Cursor, Error},
-    marker::PhantomData,
+    fmt::Display, io::{Cursor, Error}, marker::PhantomData, sync::Arc,
 };
 
 use bevy_app::{App, Plugin};
@@ -127,7 +125,9 @@ where
         } else {
             info!("Loaded point cloud with {} points", points.len());
         }
-        Ok(PointCloud { points })
+        Ok(PointCloud {
+            points: Arc::new(points),
+        })
     }
 
     fn extensions(&self) -> &[&str] {

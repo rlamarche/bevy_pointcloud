@@ -1,6 +1,6 @@
 mod gpu_mapper;
 mod resources;
-use std::marker::PhantomData;
+use std::{marker::PhantomData, sync::Arc};
 
 use bevy_app::prelude::*;
 use bevy_asset::{AsAssetId, Asset, AssetApp, AssetId, Handle};
@@ -26,7 +26,7 @@ pub const QUAD_INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
 
 #[derive(Debug, Clone, Asset, TypePath)]
 pub struct PointCloud<T: Point> {
-    pub points: Vec<T>,
+    pub points: Arc<Vec<T>>,
 }
 
 #[derive(Component, Clone, Debug, Default, Deref, DerefMut, TypePath, PartialEq, Eq)]
