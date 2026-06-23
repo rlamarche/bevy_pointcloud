@@ -8,7 +8,7 @@ use component::PointCloudOctree3d;
 
 use crate::{
     octree::{
-        extract::ExtractVisibleOctreeNodesPlugin,
+        extract::{ExtractVisibleOctreeNodesPlugin, OctreeNodesRenderBufferPlugin},
         server::{OctreeServer, OctreeServerPlugin},
         visibility::{
             components::OctreeVisibilitySettings, filter::ScreenPixelRadiusFilter,
@@ -33,6 +33,9 @@ pub type PointCloudOctreeVisibilityPlugin<T> = OctreeVisiblityPlugin<
     ScreenPixelRadiusFilter,
     PointCloudOctreePointBudget,
 >;
+
+pub type PointCloudOctreeRenderBufferPlugin<T> =
+    OctreeNodesRenderBufferPlugin<PointCloudNodeData<T>>;
 
 #[allow(type_alias_bounds)]
 pub type ExtractVisiblePointCloudOctreeNodesPlugin<A: PointCloudGpuMapper> =

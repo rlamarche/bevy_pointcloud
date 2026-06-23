@@ -126,7 +126,7 @@ impl<P: BinnedPhaseItem, T: Point> RenderCommand<P> for DrawPointCloudOctree<T> 
     type Param = (
         SRes<PointCloudMesh>,
         SRes<ErasedRenderOctrees<ErasedRenderPointCloudNode>>,
-        SRes<ErasedRenderOctreesBuffers<ErasedRenderPointCloudNode>>,
+        SRes<ErasedRenderOctreesBuffers<PointCloudNodeData<T>>>,
     );
     type ViewQuery = Read<RenderVisibleOctreeNodes<PointCloudNodeData<T>, PointCloudOctree3d<T>>>;
     type ItemQuery = Read<PointCloudOctree3d<T>>;
@@ -219,7 +219,7 @@ impl<T: Point> Default for DrawPointCloudOctreeIndirect<T> {
 impl<P: BinnedPhaseItem, T: Point> RenderCommand<P> for DrawPointCloudOctreeIndirect<T> {
     type Param = (
         SRes<PointCloudMesh>,
-        SRes<ErasedRenderOctreesBuffers<ErasedRenderPointCloudNode>>,
+        SRes<ErasedRenderOctreesBuffers<PointCloudNodeData<T>>>,
     );
     type ViewQuery = Read<RenderVisibleNodesIndirectBuffers>;
     type ItemQuery = ();

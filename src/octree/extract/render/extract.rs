@@ -12,12 +12,13 @@ use super::{
 use crate::octree::{
     asset::Octree,
     extract::{resources::OctreeNodeAllocations, OctreeNodeExtraction},
+    node::NodeData,
     visibility::components::ViewVisibleOctreeNodes,
 };
 
 /// This add newly added octrees to the [`RenderOctreeIndex`]
 pub fn extract_removed_octrees<E: OctreeNodeExtraction>(
-    octree_node_allocations: Extract<Res<OctreeNodeAllocations<E>>>,
+    octree_node_allocations: Extract<Res<OctreeNodeAllocations<E::NodeData>>>,
     mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,
 ) {
     for (_, render_entity) in &octree_node_allocations.removed_octrees_this_frame {
@@ -26,9 +27,9 @@ pub fn extract_removed_octrees<E: OctreeNodeExtraction>(
 }
 
 /// Clear tracked removed octrees just after processing them
-pub fn clear_removed_octrees<E: OctreeNodeExtraction>(mut main_world: ResMut<MainWorld>) {
+pub fn clear_removed_octrees<T: NodeData>(mut main_world: ResMut<MainWorld>) {
     main_world
-        .resource_mut::<OctreeNodeAllocations<E>>()
+        .resource_mut::<OctreeNodeAllocations<T>>()
         .removed_octrees_this_frame
         .clear();
 }
@@ -50,7 +51,7 @@ pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction>(
         &mut RenderVisibleOctreeNodes<E::NodeData, E::Component>,
         With<ExtractedView>,
     >,
-    octree_node_allocations: Extract<Res<OctreeNodeAllocations<E>>>,
+    octree_node_allocations: Extract<Res<OctreeNodeAllocations<E::NodeData>>>,
     mapper: Extract<Query<&RenderEntity>>,
     mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,
 ) {
@@ -94,7 +95,7 @@ pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction>(
 
 /// This system extract data for octree nodes pre-allocated, and mark for removal octree nodes pre-freed
 pub fn extract_octree_node_allocations<E: OctreeNodeExtraction>(
-    allocations: Extract<Res<OctreeNodeAllocations<E>>>,
+    allocations: Extract<Res<OctreeNodeAllocations<E::NodeData>>>,
     octrees: Extract<Res<Assets<Octree<E::NodeData>>>>,
     mut extracted_octree_nodes: ResMut<ExtractedOctreeNodes<E>>,
     param: StaticSystemParam<E::ExtractParam>,

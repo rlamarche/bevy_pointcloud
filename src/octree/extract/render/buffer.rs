@@ -8,7 +8,7 @@ use bevy_render::{
 };
 use thiserror::Error;
 
-use crate::octree::extract::render::asset::RenderOctreeNodeAllocation;
+use crate::octree::{extract::render::asset::RenderOctreeNodeAllocation, node::NodeData};
 
 /// Describes how an octree node gets extracted and prepared for rendering.
 ///
@@ -24,16 +24,16 @@ pub trait RenderNodeData: Send + Sync {
 /// Stores all GPU representations ([`RenderAsset`])
 /// of [`RenderAsset::SourceAsset`] as long as they exist.
 #[derive(Resource)]
-pub struct ErasedRenderOctreesBuffers<ERA>(HashMap<usize, RenderOctreesBuffer<ERA>>);
+pub struct ErasedRenderOctreesBuffers<T: NodeData>(HashMap<usize, RenderOctreesBuffer<T>>);
 
-impl<ERA> Default for ErasedRenderOctreesBuffers<ERA> {
+impl<T: NodeData> Default for ErasedRenderOctreesBuffers<T> {
     fn default() -> Self {
         Self(HashMap::new())
     }
 }
 
-impl<ERA> ErasedRenderOctreesBuffers<ERA> {
-    pub fn get(&self, index: usize) -> Option<&RenderOctreesBuffer<ERA>> {
+impl<T: NodeData> ErasedRenderOctreesBuffers<T> {
+    pub fn get(&self, index: usize) -> Option<&RenderOctreesBuffer<T>> {
         self.0.get(&index)
     }
 
@@ -42,14 +42,14 @@ impl<ERA> ErasedRenderOctreesBuffers<ERA> {
         index: usize,
         render_device: &RenderDevice,
         size: u64,
-    ) -> &mut RenderOctreesBuffer<ERA> {
+    ) -> &mut RenderOctreesBuffer<T> {
         self.0
             .entry(index)
-            .or_insert_with(|| RenderOctreesBuffer::<ERA>::new(render_device, size))
+            .or_insert_with(|| RenderOctreesBuffer::<T>::new(render_device, size))
     }
 
     #[allow(unused)]
-    pub fn remove(&mut self, index: usize) -> Option<RenderOctreesBuffer<ERA>> {
+    pub fn remove(&mut self, index: usize) -> Option<RenderOctreesBuffer<T>> {
         self.0.remove(&index)
     }
 }
@@ -67,15 +67,15 @@ pub enum WriteOctreeNodeError {
 }
 
 #[derive(Resource)]
-pub struct RenderOctreesBuffer<ERA> {
+pub struct RenderOctreesBuffer<B> {
     pub buffer: Buffer,
     // pub num_points: u64,
     // pub allocator: Allocator,
     // pub allocation_index: HashMap<NodeId, AllocationInfo>,
-    phantom_data: PhantomData<fn() -> ERA>,
+    phantom_data: PhantomData<fn() -> B>,
 }
 
-impl<ERA> RenderOctreesBuffer<ERA> {
+impl<B> RenderOctreesBuffer<B> {
     pub fn new(render_device: &RenderDevice, size: u64) -> Self {
         let buffer = render_device.create_buffer(&BufferDescriptor {
             label: Some("octree_data_buffer"),

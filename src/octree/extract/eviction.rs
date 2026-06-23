@@ -5,18 +5,16 @@ use bevy_time::{Real, Time};
 
 use super::resources::ExtractOctreeNodeEvictionQueue;
 use crate::octree::{
-    extract::{
-        resources::{OctreeNodeAllocations, OctreeNodeEvictionPriority},
-        OctreeNodeExtraction,
-    },
+    extract::resources::{OctreeNodeAllocations, OctreeNodeEvictionPriority},
+    node::NodeData,
     visibility::resources::GlobalVisibleOctreeNodes,
 };
 
 /// This system update the octree node eviction queue with latest informations
-pub fn update_extract_octree_node_eviction_queue<E: OctreeNodeExtraction>(
-    mut octree_node_eviction_queue: ResMut<ExtractOctreeNodeEvictionQueue<E>>,
-    octree_buffer_allocator: Res<OctreeNodeAllocations<E>>,
-    global_visible_octree_nodes: Res<GlobalVisibleOctreeNodes<E::NodeData>>,
+pub fn update_extract_octree_node_eviction_queue<T: NodeData>(
+    mut octree_node_eviction_queue: ResMut<ExtractOctreeNodeEvictionQueue<T>>,
+    octree_buffer_allocator: Res<OctreeNodeAllocations<T>>,
+    global_visible_octree_nodes: Res<GlobalVisibleOctreeNodes<T>>,
     time: Res<Time<Real>>,
 ) {
     let elapsed = time.elapsed().as_millis();

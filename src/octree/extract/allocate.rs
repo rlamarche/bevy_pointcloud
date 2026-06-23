@@ -6,7 +6,10 @@ use crate::{
     octree::{
         asset::Octree,
         extract::{
-            resources::{ExtractOctreeNodeEvictionQueue, NodeAllocation, OctreeNodeAllocations},
+            resources::{
+                ExtractOctreeNodeEvictionQueue, NodeAllocation, OctreeBufferSettings,
+                OctreeNodeAllocations,
+            },
             OctreeNodeExtraction,
         },
         node::NodeData,
@@ -19,7 +22,7 @@ pub fn on_remove_octree<E: OctreeNodeExtraction>(
     trigger: On<Remove, E::Component>,
     query: Query<&RenderEntity>,
     view_visible_octree_nodes: Query<&mut ViewVisibleOctreeNodes<E::NodeData, E::Component>>,
-    mut octree_node_allocations: ResMut<OctreeNodeAllocations<E>>,
+    mut octree_node_allocations: ResMut<OctreeNodeAllocations<E::NodeData>>,
 ) {
     if let Ok(render_entity) = query.get(trigger.entity) {
         octree_node_allocations
@@ -35,13 +38,14 @@ pub fn on_remove_octree<E: OctreeNodeExtraction>(
 /// This system allocates gpu memory for computed visible octree nodes, and trace allocations for later extraction.
 /// It frees gpu memory of nodes that aren't visible, if needed.
 #[cfg_attr(feature = "trace", tracing::instrument(skip_all))]
-pub fn allocate_visible_octree_nodes<E: OctreeNodeExtraction>(
-    global_visible_octree_nodes: Res<GlobalVisibleOctreeNodes<E::NodeData>>,
-    octrees: Res<Assets<Octree<E::NodeData>>>,
-    mut octree_node_allocations: ResMut<OctreeNodeAllocations<E>>,
-    mut extract_octree_node_eviction_queue: ResMut<ExtractOctreeNodeEvictionQueue<E>>,
+pub fn allocate_visible_octree_nodes<T: NodeData>(
+    global_visible_octree_nodes: Res<GlobalVisibleOctreeNodes<T>>,
+    octrees: Res<Assets<Octree<T>>>,
+    octree_buffer_settings: Res<OctreeBufferSettings<T>>,
+    mut octree_node_allocations: ResMut<OctreeNodeAllocations<T>>,
+    mut extract_octree_node_eviction_queue: ResMut<ExtractOctreeNodeEvictionQueue<T>>,
 ) {
-    let instance_size = size_of::<E::GpuData>() as u64;
+    let stride = octree_buffer_settings.stride as u64;
 
     // clear previously allocated nodes
     octree_node_allocations.allocated_nodes_this_frame.clear();
@@ -137,8 +141,8 @@ pub fn allocate_visible_octree_nodes<E: OctreeNodeExtraction>(
 
             let node_allocation = NodeAllocation {
                 octree_node_key: octree_node_key.clone(),
-                offset: allocation.offset as u64 * instance_size,
-                size: instance_count as u64 * instance_size,
+                offset: allocation.offset as u64 * stride,
+                size: instance_count as u64 * stride,
                 start: allocation.offset,
                 count: instance_count as u32,
                 allocation,

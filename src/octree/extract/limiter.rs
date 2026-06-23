@@ -6,17 +6,17 @@ use std::{
 use bevy_ecs::prelude::*;
 use bevy_render::Extract;
 
-use crate::octree::extract::OctreeNodeExtraction;
+use crate::octree::{extract::OctreeNodeExtraction, node::NodeData};
 
-pub fn reset_render_asset_bytes_per_frame<E: OctreeNodeExtraction>(
-    mut bpf_limiter: ResMut<RenderOctreeNodesBytesPerFrameLimiter<E>>,
+pub fn reset_render_asset_bytes_per_frame<T: NodeData>(
+    mut bpf_limiter: ResMut<RenderOctreeNodesBytesPerFrameLimiter<T>>,
 ) {
     bpf_limiter.reset();
 }
 
-pub fn extract_render_asset_bytes_per_frame<E: OctreeNodeExtraction>(
-    bpf: Extract<Res<RenderOctreeNodesBytesPerFrame<E>>>,
-    mut bpf_limiter: ResMut<RenderOctreeNodesBytesPerFrameLimiter<E>>,
+pub fn extract_render_asset_bytes_per_frame<T: NodeData>(
+    bpf: Extract<Res<RenderOctreeNodesBytesPerFrame<T>>>,
+    mut bpf_limiter: ResMut<RenderOctreeNodesBytesPerFrameLimiter<T>>,
 ) {
     bpf_limiter.max_bytes = bpf.max_bytes;
 }
@@ -25,9 +25,9 @@ pub fn extract_render_asset_bytes_per_frame<E: OctreeNodeExtraction>(
 /// each frame, preventing choppy frames at the cost of waiting longer for GPU assets
 /// to become available.
 #[derive(Resource, Default)]
-pub struct RenderOctreeNodesBytesPerFrame<E: OctreeNodeExtraction> {
+pub struct RenderOctreeNodesBytesPerFrame<B> {
     pub max_bytes: Option<usize>,
-    pub(crate) _phantom: PhantomData<E>,
+    pub(crate) _phantom: PhantomData<B>,
 }
 
 impl<E: OctreeNodeExtraction> RenderOctreeNodesBytesPerFrame<E> {
@@ -50,15 +50,15 @@ impl<E: OctreeNodeExtraction> RenderOctreeNodesBytesPerFrame<E> {
 /// each frame, preventing choppy frames at the cost of waiting longer for GPU assets
 /// to become available.
 #[derive(Resource)]
-pub struct RenderOctreeNodesBytesPerFrameLimiter<E: OctreeNodeExtraction> {
+pub struct RenderOctreeNodesBytesPerFrameLimiter<T: NodeData> {
     /// Populated by [`RenderOctreeNodesBytesPerFrame`] during extraction.
     pub max_bytes: Option<usize>,
     /// Bytes written this frame.
     pub bytes_written: AtomicUsize,
-    pub(crate) phantom: PhantomData<E>,
+    pub(crate) phantom: PhantomData<T>,
 }
 
-impl<E: OctreeNodeExtraction> Default for RenderOctreeNodesBytesPerFrameLimiter<E> {
+impl<T: NodeData> Default for RenderOctreeNodesBytesPerFrameLimiter<T> {
     fn default() -> Self {
         Self {
             max_bytes: Default::default(),
@@ -68,7 +68,7 @@ impl<E: OctreeNodeExtraction> Default for RenderOctreeNodesBytesPerFrameLimiter<
     }
 }
 
-impl<E: OctreeNodeExtraction> RenderOctreeNodesBytesPerFrameLimiter<E> {
+impl<T: NodeData> RenderOctreeNodesBytesPerFrameLimiter<T> {
     /// Reset the available bytes. Called once per frame during extraction by [`crate::RenderPlugin`].
     pub fn reset(&mut self) {
         if self.max_bytes.is_none() {

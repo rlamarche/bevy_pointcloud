@@ -63,12 +63,10 @@ pub fn prepare_assets<E: OctreeNodeExtraction>(
     mut extracted_octree_nodes: ResMut<ExtractedOctreeNodes<E>>,
     mut allocated_octree_nodes: ResMut<AllocatedOctreeNodes<E::NodeData>>,
     mut render_octrees: ResMut<ErasedRenderOctrees<E::ErasedRenderOctreeNode>>,
-    mut render_octrees_buffers: ResMut<
-        super::buffer::ErasedRenderOctreesBuffers<E::ErasedRenderOctreeNode>,
-    >,
+    mut render_octrees_buffers: ResMut<super::buffer::ErasedRenderOctreesBuffers<E::NodeData>>,
     mut prepare_next_frame: ResMut<super::resources::PrepareNextFrameOctreeNodes<E>>,
     param: StaticSystemParam<E::PrepareParam>,
-    bpf: Res<RenderOctreeNodesBytesPerFrameLimiter<E>>,
+    bpf: Res<RenderOctreeNodesBytesPerFrameLimiter<E::NodeData>>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
 ) {

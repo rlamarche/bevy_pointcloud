@@ -7,15 +7,13 @@ use offset_allocator::{Allocation, Allocator};
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 
-use crate::octree::{
-    extract::OctreeNodeExtraction,
-    node::{NodeData, OctreeNodeKey},
-};
+use crate::octree::node::{NodeData, OctreeNodeKey};
 
 #[derive(Resource)]
-pub struct OctreeBufferSettings<E: OctreeNodeExtraction> {
+pub struct OctreeBufferSettings<T: NodeData> {
+    pub(crate) stride: usize,
     pub(crate) max_size: usize,
-    pub(crate) _phantom: PhantomData<fn() -> E>,
+    pub(crate) _phantom: PhantomData<fn() -> T>,
 }
 
 pub struct NodeAllocation<T: NodeData> {
@@ -41,23 +39,23 @@ impl<T: NodeData> Clone for NodeAllocation<T> {
 }
 
 #[derive(Resource)]
-pub struct OctreeNodeAllocations<E: OctreeNodeExtraction> {
+pub struct OctreeNodeAllocations<T: NodeData> {
     pub(crate) allocator: Allocator,
     pub max_instances: u32,
     pub(crate) buffer_size: u64,
-    pub(crate) allocations: HashMap<OctreeNodeKey<E::NodeData>, NodeAllocation<E::NodeData>>,
+    pub(crate) allocations: HashMap<OctreeNodeKey<T>, NodeAllocation<T>>,
     pub(crate) removed_octrees_this_frame: Vec<(Entity, RenderEntity)>,
-    pub(crate) freed_nodes_this_frame: Vec<NodeAllocation<E::NodeData>>,
-    pub(crate) allocated_nodes_this_frame: Vec<NodeAllocation<E::NodeData>>,
-    _phantom: PhantomData<fn() -> E>,
+    pub(crate) freed_nodes_this_frame: Vec<NodeAllocation<T>>,
+    pub(crate) allocated_nodes_this_frame: Vec<NodeAllocation<T>>,
+    _phantom: PhantomData<fn() -> T>,
 }
 
-impl<E: OctreeNodeExtraction> FromWorld for OctreeNodeAllocations<E> {
+impl<T: NodeData> FromWorld for OctreeNodeAllocations<T> {
     fn from_world(world: &mut bevy_ecs::world::World) -> Self {
-        let settings = world.resource::<OctreeBufferSettings<E>>();
+        let settings = world.resource::<OctreeBufferSettings<T>>();
 
         // compute the maximum number of instances
-        let max_instances = (settings.max_size / std::mem::size_of::<E::GpuData>()) as u32;
+        let max_instances = (settings.max_size / settings.stride) as u32;
 
         Self {
             allocator: Allocator::new(max_instances),
@@ -75,12 +73,11 @@ impl<E: OctreeNodeExtraction> FromWorld for OctreeNodeAllocations<E> {
 /// This resource contains a priority queue to determine which nodes to evict first.
 /// Nodes that are seen less recently are first in this queue.
 #[derive(Resource)]
-pub struct ExtractOctreeNodeEvictionQueue<E: OctreeNodeExtraction> {
-    pub eviction_queue:
-        PriorityQueue<OctreeNodeKey<E::NodeData>, Reverse<OctreeNodeEvictionPriority>>,
+pub struct ExtractOctreeNodeEvictionQueue<T: NodeData> {
+    pub eviction_queue: PriorityQueue<OctreeNodeKey<T>, Reverse<OctreeNodeEvictionPriority>>,
 }
 
-impl<E: OctreeNodeExtraction> Default for ExtractOctreeNodeEvictionQueue<E> {
+impl<T: NodeData> Default for ExtractOctreeNodeEvictionQueue<T> {
     fn default() -> Self {
         Self {
             eviction_queue: PriorityQueue::new(),
@@ -93,13 +90,3 @@ pub struct OctreeNodeEvictionPriority {
     pub elapsed: u128,
     pub weight: OrderedFloat<f32>,
 }
-
-// impl PartialOrd for OctreeNodeEvictionPriority {
-//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-//         match self.timestamp.partial_cmp(&other.timestamp) {
-//             Some(core::cmp::Ordering::Equal) => {}
-//             ord => return ord,
-//         }
-//         self.weight.partial_cmp(&other.weight)
-//     }
-// }

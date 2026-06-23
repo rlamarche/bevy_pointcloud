@@ -38,19 +38,22 @@ use super::{
     asset::Octree,
     node::{NodeData, OctreeNode},
 };
-use crate::octree::{
-    extract::{
-        allocate::on_remove_octree,
-        render::{
-            asset::RenderOctreeNodeData,
-            extract::{clear_removed_octrees, extract_removed_octrees},
-            node::PrepareOctreeNodeError,
-            prepare::prepare_octrees_uniforms,
-            resources::{AllocatedOctreeNodes, OctreeEntityLayout},
+use crate::{
+    octree::{
+        extract::{
+            allocate::on_remove_octree,
+            render::{
+                asset::RenderOctreeNodeData,
+                extract::{clear_removed_octrees, extract_removed_octrees},
+                node::PrepareOctreeNodeError,
+                prepare::prepare_octrees_uniforms,
+                resources::{AllocatedOctreeNodes, OctreeEntityLayout},
+            },
         },
+        storage::NodeId,
+        visibility::OctreeVisibilitySystems,
     },
-    storage::NodeId,
-    visibility::OctreeVisibilitySystems,
+    point::RGBPoint,
 };
 
 pub trait OctreeNodeExtraction: Send + Sync + TypePath {
@@ -116,6 +119,96 @@ pub trait OctreeNodeExtraction: Send + Sync + TypePath {
     }
 }
 
+pub struct OctreeNodesRenderBufferPlugin<T: NodeData> {
+    stride: usize,
+    size: usize,
+    max_bytes_per_frame: Option<usize>,
+    _phantom: PhantomData<T>,
+}
+
+impl<T: NodeData> Plugin for OctreeNodesRenderBufferPlugin<T> {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(OctreeBufferSettings::<T> {
+            stride: self.stride,
+            max_size: self.size,
+            _phantom: PhantomData,
+        })
+        .insert_resource(RenderOctreeNodesBytesPerFrame::<T> {
+            max_bytes: self.max_bytes_per_frame,
+            _phantom: PhantomData,
+        })
+        .init_resource::<OctreeNodeAllocations<T>>()
+        .init_resource::<ExtractOctreeNodeEvictionQueue<T>>()
+        .add_systems(
+            PostUpdate,
+            (
+                update_extract_octree_node_eviction_queue::<T>,
+                allocate_visible_octree_nodes::<T>
+                    .after(update_extract_octree_node_eviction_queue::<T>),
+            )
+                .in_set(ExtractOctreeNode),
+        )
+        .configure_sets(
+            PostUpdate,
+            ExtractOctreeNode.after(OctreeVisibilitySystems::CheckOctreeNodesVisibility),
+        );
+
+        if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
+            render_app
+                .init_resource::<RenderOctreeNodesBytesPerFrameLimiter<T>>()
+                .init_resource::<ErasedRenderOctreesBuffers<T>>()
+                .init_resource::<AllocatedOctreeNodes<T>>()
+                .add_systems(
+                    ExtractSchedule,
+                    (
+                        extract_render_asset_bytes_per_frame::<T>,
+                        clear_removed_octrees::<T>,
+                    ),
+                )
+                .add_systems(
+                    Render,
+                    reset_render_asset_bytes_per_frame::<T>.in_set(RenderSystems::Cleanup),
+                );
+        }
+    }
+}
+
+impl<T: NodeData> Default for OctreeNodesRenderBufferPlugin<T> {
+    fn default() -> Self {
+        Self {
+            stride: size_of::<RGBPoint>(),
+            size: 512 * 1024 * 1024, // 512 mb
+            max_bytes_per_frame: None,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<T: NodeData> OctreeNodesRenderBufferPlugin<T> {
+    /// Construct with specific max memory size for GPU
+    pub fn with_size(size: usize, stride: usize) -> Self {
+        Self {
+            stride,
+            size,
+            max_bytes_per_frame: None,
+            _phantom: PhantomData,
+        }
+    }
+    /// Construct with specific max memory size for GPU
+    pub fn with_size_and_max_bytes_per_frame(
+        size: usize,
+        stride: usize,
+        max_bytes_per_frame: usize,
+    ) -> Self {
+        Self {
+            stride,
+            size,
+            max_bytes_per_frame: Some(max_bytes_per_frame),
+            _phantom: PhantomData,
+        }
+    }
+}
+
 /// This plugin extracts visible octree nodes from the "app world" into the "render world"
 /// and prepares them for the GPU. They can be accessed from the [`RenderVisibleOctreeNodes`] resource.
 ///
@@ -131,41 +224,11 @@ pub trait OctreeNodeExtraction: Send + Sync + TypePath {
 /// `prepare_assets::<AFTER>` has completed. This allows the [`RenderOctreeNode::prepare_octree_node`] function to depend on another
 /// prepared [`RenderOctreeNode`].
 #[allow(clippy::type_complexity)]
-pub struct ExtractVisibleOctreeNodesPlugin<E, AFTER = ()> {
-    max_size: usize,
-    max_bytes_per_frame: Option<usize>,
-    _phantom: PhantomData<fn() -> (E, AFTER)>,
-}
+pub struct ExtractVisibleOctreeNodesPlugin<E, AFTER = ()>(PhantomData<fn() -> (E, AFTER)>);
 
 impl<E, AFTER> Default for ExtractVisibleOctreeNodesPlugin<E, AFTER> {
     fn default() -> Self {
-        ExtractVisibleOctreeNodesPlugin {
-            max_size: 512 * 1024 * 1024, // 512 mb
-            max_bytes_per_frame: None,
-            _phantom: PhantomData,
-        }
-    }
-}
-
-impl<E, AFTER> ExtractVisibleOctreeNodesPlugin<E, AFTER> {
-    /// Construct with specific max memory size for GPU
-    pub fn with_max_size(max_size: usize) -> Self {
-        Self {
-            max_size,
-            max_bytes_per_frame: None,
-            _phantom: PhantomData,
-        }
-    }
-    /// Construct with specific max memory size for GPU
-    pub fn with_max_size_and_max_bytes_per_frame(
-        max_size: usize,
-        max_bytes_per_frame: usize,
-    ) -> Self {
-        Self {
-            max_size,
-            max_bytes_per_frame: Some(max_bytes_per_frame),
-            _phantom: PhantomData,
-        }
+        Self(Default::default())
     }
 }
 
@@ -178,43 +241,12 @@ where
     AFTER: RenderOctreeDependency + 'static,
 {
     fn build(&self, app: &mut App) {
-        app.insert_resource(OctreeBufferSettings::<E> {
-            max_size: self.max_size,
-            _phantom: PhantomData,
-        })
-        .init_resource::<OctreeNodeAllocations<E>>()
-        .init_resource::<ExtractOctreeNodeEvictionQueue<E>>()
-        .insert_resource(RenderOctreeNodesBytesPerFrame::<E> {
-            max_bytes: self.max_bytes_per_frame,
-            _phantom: PhantomData,
-        })
-        .add_systems(
-            PostUpdate,
-            (
-                update_extract_octree_node_eviction_queue::<E>,
-                allocate_visible_octree_nodes::<E>
-                    .after(update_extract_octree_node_eviction_queue::<E>),
-            )
-                .in_set(ExtractOctreeNode),
-        )
-        .configure_sets(
-            PostUpdate,
-            ExtractOctreeNode.after(OctreeVisibilitySystems::CheckOctreeNodesVisibility),
-        )
-        .add_observer(on_remove_octree::<E>);
+        app.add_observer(on_remove_octree::<E>);
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
-                .init_resource::<RenderOctreeNodesBytesPerFrameLimiter<E>>()
-                .add_systems(ExtractSchedule, extract_render_asset_bytes_per_frame::<E>)
-                .add_systems(
-                    Render,
-                    reset_render_asset_bytes_per_frame::<E>.in_set(RenderSystems::Cleanup),
-                )
                 .init_resource::<ExtractedOctreeNodes<E>>()
-                .init_resource::<AllocatedOctreeNodes<E::NodeData>>()
                 .init_resource::<ErasedRenderOctrees<E::ErasedRenderOctreeNode>>()
-                .init_resource::<ErasedRenderOctreesBuffers<E::ErasedRenderOctreeNode>>()
                 .init_resource::<PrepareNextFrameOctreeNodes<E>>()
                 // Add in [`First`] schedule because it has to run just after the [`ExtractSchedule`] before any observer
                 .add_systems(
@@ -222,8 +254,7 @@ where
                     (
                         extract_visible_octree_nodes::<E>.after(extract_cameras),
                         extract_octree_node_allocations::<E>,
-                        extract_removed_octrees::<E>,
-                        clear_removed_octrees::<E>.after(extract_removed_octrees::<E>),
+                        extract_removed_octrees::<E>.before(clear_removed_octrees::<E::NodeData>),
                     ),
                 )
                 .add_systems(
