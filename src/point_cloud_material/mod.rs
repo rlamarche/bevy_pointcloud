@@ -39,10 +39,7 @@ pub use resources::*;
 pub use simple::*;
 
 use crate::{
-    point::Point,
-    point_cloud::{PointCloud3d, PointCloudGpuMapper, PointCloudGpuMapperPlugin},
-    render::POINTCLOUD_SHADER_HANDLE,
-    render_asset::{
+    point::Point, point_cloud::{PointCloud, PointCloud3d, PointCloudGpuMapper, PointCloudGpuMapperPlugin}, render::POINTCLOUD_SHADER_HANDLE, render_asset::{
         ErasedRenderAssetComponent, ErasedRenderAssetComponentPlugin, PrepareAssetComponentError,
     },
 };
@@ -144,13 +141,13 @@ impl<M: PointCloudMaterial, A: PointCloudGpuMapper> PointCloudGpuMapper
     type Param = A::Param;
 
     fn convert(
-        points: Arc<Vec<Self::Point>>,
+        point_cloud: PointCloud<Self::Point>,
         param: &mut SystemParamItem<Self::Param>,
     ) -> Result<
         Arc<Vec<Self::GpuPoint>>,
         PrepareAssetComponentError<crate::point_cloud::PointCloud<Self::Point>>,
     > {
-        A::convert(points, param)
+        A::convert(point_cloud, param)
     }
 
     fn asset_usage(

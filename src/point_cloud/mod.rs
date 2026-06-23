@@ -4,7 +4,7 @@ use std::{marker::PhantomData, sync::Arc};
 
 use bevy_app::prelude::*;
 use bevy_asset::{AsAssetId, Asset, AssetApp, AssetId, Handle};
-use bevy_camera::visibility::{add_visibility_class, ViewVisibility, Visibility, VisibilityClass};
+use bevy_camera::{primitives::Aabb, visibility::{ViewVisibility, Visibility, VisibilityClass, add_visibility_class}};
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::hash_map::Entry;
@@ -27,6 +27,7 @@ pub const QUAD_INDICES: &[u32] = &[0, 1, 2, 2, 3, 0];
 #[derive(Debug, Clone, Asset, TypePath)]
 pub struct PointCloud<T: Point> {
     pub points: Arc<Vec<T>>,
+    pub aabb: Option<Aabb>,
 }
 
 #[derive(Component, Clone, Debug, Default, Deref, DerefMut, TypePath, PartialEq, Eq)]

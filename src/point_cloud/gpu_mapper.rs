@@ -57,7 +57,7 @@ pub trait PointCloudGpuMapper: Send + Sync + TypePath {
 
     #[allow(clippy::type_complexity)]
     fn convert(
-        points: Arc<Vec<Self::Point>>,
+        point_cloud: PointCloud<Self::Point>,
         param: &mut SystemParamItem<Self::Param>,
     ) -> Result<Arc<Vec<Self::GpuPoint>>, PrepareAssetComponentError<PointCloud<Self::Point>>>;
 
@@ -71,7 +71,7 @@ pub trait PointCloudGpuMapper: Send + Sync + TypePath {
         render_device: &RenderDevice,
         param: &mut SystemParamItem<Self::Param>,
     ) -> Result<Buffer, PrepareAssetComponentError<PointCloud<Self::Point>>> {
-        let data = Self::convert(point_cloud.points, param)?;
+        let data = Self::convert(point_cloud, param)?;
         Ok(
             render_device.create_buffer_with_data(&BufferInitDescriptor {
                 label: Some("point_cloud_buffer"),
@@ -105,10 +105,10 @@ impl<T: GpuPoint> PointCloudGpuMapper for PointCloudIdentityGpuMapper<T> {
     type Param = ();
 
     fn convert(
-        points: Arc<Vec<Self::Point>>,
+        point_cloud: PointCloud<Self::Point>,
         _param: &mut SystemParamItem<Self::Param>,
     ) -> Result<Arc<Vec<Self::GpuPoint>>, PrepareAssetComponentError<PointCloud<Self::Point>>> {
-        Ok(points)
+        Ok(point_cloud.points)
     }
 
     fn prepare_buffer(

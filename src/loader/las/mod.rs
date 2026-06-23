@@ -7,6 +7,7 @@ use std::{
 
 use bevy_app::{App, Plugin};
 use bevy_asset::{io::Reader, AssetApp, AssetLoader, LoadContext};
+use bevy_camera::primitives::Aabb;
 use bevy_log::{info, warn};
 use bevy_math::prelude::*;
 use bevy_reflect::TypePath;
@@ -129,6 +130,7 @@ where
             info!("Loaded point cloud with {} points", points.len());
         }
         Ok(PointCloud {
+            aabb: Aabb::enclosing(points.iter().map(|p| p.position())),
             points: Arc::new(points),
         })
     }

@@ -37,7 +37,6 @@ use bevy_text::{FontSmoothing, TextFont};
 use bevy_transform::prelude::*;
 use bevy_utils::default;
 use bevy_window::{PresentMode, Window};
-use rand::Rng;
 
 fn main() {
     App::new()
@@ -163,30 +162,30 @@ impl PointCloudGpuMapper for MyPointCloudGpuMapper {
     type Param = ();
 
     fn convert(
-        points: std::sync::Arc<Vec<Self::Point>>,
+        point_cloud: PointCloud<Self::Point>,
         _param: &mut bevy_ecs::system::SystemParamItem<Self::Param>,
     ) -> Result<
-        std::sync::Arc<Vec<Self::GpuPoint>>,
+        Arc<Vec<Self::GpuPoint>>,
         bevy_pointcloud::render_asset::PrepareAssetComponentError<PointCloud<Self::Point>>,
     > {
-        let mut rng = rand::rng();
+        let color_start = Vec3A::new(0.0, 0.0, 1.0);
+        let color_end = Vec3A::new(1.0, 0.0, 0.0);
 
-        let points: Vec<_> = points
-            .iter()
-            .map(|p| {
-                RGBPoint::new(
-                    p.position,
-                    Vec4::new(
-                        rng.random_range(0.0..1.0),
-                        rng.random_range(0.0..1.0),
-                        rng.random_range(0.0..1.0),
-                        1.0,
-                    ),
-                )
-            })
-            .collect();
+        if let Some(aabb) = point_cloud.aabb {
+            let points: Vec<_> = point_cloud
+                .points
+                .iter()
+                .map(|p| {
+                    let t = p.position.y.remap(aabb.min().y, aabb.max().y, 0.0, 1.0);
+                    let color = color_start.lerp(color_end, t);
+                    RGBPoint::new(p.position, color.extend(1.0))
+                })
+                .collect();
 
-        Ok(Arc::new(points))
+            Ok(Arc::new(points))
+        } else {
+            Ok(Arc::new(Vec::new()))
+        }
     }
 }
 
@@ -206,6 +205,7 @@ fn load_pointcloud(
     });
     commands.spawn(MyMaterial(my_material.clone()));
     commands.spawn(MyMaterial(my_second_material.clone()));
+    // commands.spawn(MyMaterial(my_third_material.clone()));
 
     let point_cloud =
         asset_server.load::<PointCloud<RGBPoint>>("pointclouds/lion_takanawa.copc.laz");
@@ -217,11 +217,20 @@ fn load_pointcloud(
         // MyPointCloudGpuMapper,
     ));
     commands.spawn((
+        PointCloud3d(point_cloud.clone()),
+        PointCloudMaterial3d::<SimplePointCloudMaterial, MyPointCloudGpuMapper>::from(
+            my_second_material.clone(),
+        ),
+        MainPointCloud(Vec3::new(5.0, 0.0, 0.0)),
+        MyPointCloudGpuMapper,
+    ));
+
+    commands.spawn((
         PointCloud3d(point_cloud),
         PointCloudMaterial3d::<SimplePointCloudMaterial, MyPointCloudGpuMapper>::from(
             my_second_material,
         ),
-        MainPointCloud(Vec3::new(5.0, 0.0, 0.0)),
+        MainPointCloud(Vec3::new(-5.0, 0.0, 0.0)),
         MyPointCloudGpuMapper,
     ));
 

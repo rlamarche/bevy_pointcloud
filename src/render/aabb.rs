@@ -1,11 +1,8 @@
 use bevy_asset::Assets;
-use bevy_camera::{primitives::Aabb, visibility::NoFrustumCulling};
+use bevy_camera::primitives::Aabb;
 use bevy_ecs::prelude::*;
 
 use crate::{point::Point, point_cloud::PointCloud, render::PointCloud3d};
-
-#[derive(Component)]
-pub struct AabbComputed;
 
 /// Compute AABB for point clouds
 ///
@@ -25,11 +22,7 @@ pub struct AabbComputed;
 pub fn compute_point_cloud_aabb<T: Point>(
     point_clouds_without_aabb: Query<
         (Entity, &PointCloud3d<T>),
-        (
-            With<PointCloud3d<T>>,
-            Without<NoFrustumCulling>,
-            Without<AabbComputed>,
-        ),
+        (With<PointCloud3d<T>>, Without<Aabb>),
     >,
     point_clouds: Res<Assets<PointCloud<T>>>,
     mut commands: Commands,
@@ -39,10 +32,12 @@ pub fn compute_point_cloud_aabb<T: Point>(
             continue;
         };
 
-        let Some(aabb) = Aabb::enclosing(point_cloud.points.iter().map(|p| p.position())) else {
-            continue;
-        };
-
-        commands.entity(entity).insert((aabb, AabbComputed));
+        // use pre computed aabb if available
+        if let Some(aabb) = match &point_cloud.aabb {
+            Some(aabb) => Some(*aabb),
+            None => Aabb::enclosing(point_cloud.points.iter().map(|p| p.position())),
+        } {
+            commands.entity(entity).insert(aabb);
+        }
     }
 }
