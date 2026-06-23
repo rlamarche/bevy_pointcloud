@@ -31,7 +31,7 @@ use bevy_render::{
     },
     renderer::RenderDevice,
     sync_world::MainEntity,
-    Extract, ExtractSchedule, RenderApp, RenderDebugFlags, RenderStartup,
+    Extract, ExtractSchedule, RenderApp, RenderStartup,
 };
 use bevy_shader::{Shader, ShaderDefVal, ShaderRef};
 use derive_more::derive::From;
@@ -40,7 +40,7 @@ pub use simple::*;
 
 use crate::{
     point::Point,
-    point_cloud::{PointCloud3d, PointCloudGpuMapper},
+    point_cloud::{PointCloud3d, PointCloudGpuMapper, PointCloudGpuMapperPlugin},
     render::POINTCLOUD_SHADER_HANDLE,
     render_asset::{
         ErasedRenderAssetComponent, ErasedRenderAssetComponentPlugin, PrepareAssetComponentError,
@@ -129,65 +129,60 @@ impl<M: PointCloudMaterial, A: PointCloudGpuMapper> From<&PointCloudMaterial3d<M
     }
 }
 
-#[derive(Default)]
-pub struct PointCloudMaterialsPlugin {
-    /// Debugging flags that can optionally be set when constructing the renderer.
-    pub debug_flags: RenderDebugFlags,
+#[derive(TypePath)]
+pub struct PointCloudMaterial3dGpuMapper<M: PointCloudMaterial, A: PointCloudGpuMapper>(
+    PhantomData<fn() -> (M, A)>,
+);
+
+impl<M: PointCloudMaterial, A: PointCloudGpuMapper> PointCloudGpuMapper
+    for PointCloudMaterial3dGpuMapper<M, A>
+{
+    type Point = A::Point;
+
+    type GpuPoint = A::GpuPoint;
+
+    type Param = A::Param;
+
+    fn convert(
+        points: Arc<Vec<Self::Point>>,
+        param: &mut SystemParamItem<Self::Param>,
+    ) -> Result<
+        Arc<Vec<Self::GpuPoint>>,
+        PrepareAssetComponentError<crate::point_cloud::PointCloud<Self::Point>>,
+    > {
+        A::convert(points, param)
+    }
+
+    fn asset_usage(
+        point_cloud: &crate::point_cloud::PointCloud<Self::Point>,
+    ) -> bevy_asset::RenderAssetUsages {
+        A::asset_usage(point_cloud)
+    }
+
+    fn byte_len(point_cloud: &crate::point_cloud::PointCloud<Self::Point>) -> Option<usize> {
+        A::byte_len(point_cloud)
+    }
+
+    fn prepare_buffer(
+        point_cloud: crate::point_cloud::PointCloud<Self::Point>,
+        asset_id: AssetId<crate::point_cloud::PointCloud<Self::Point>>,
+        render_device: &RenderDevice,
+        param: &mut SystemParamItem<Self::Param>,
+    ) -> Result<
+        bevy_render::render_resource::Buffer,
+        PrepareAssetComponentError<crate::point_cloud::PointCloud<Self::Point>>,
+    > {
+        A::prepare_buffer(point_cloud, asset_id, render_device, param)
+    }
 }
+
+#[derive(Default)]
+pub struct PointCloudMaterialsPlugin;
 
 impl Plugin for PointCloudMaterialsPlugin {
     fn build(&self, app: &mut App) {
-        // app.add_plugins((PrepassPipelinePlugin, PrepassPlugin::new(self.debug_flags)));
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
-            render_app
-                // .init_resource::<EntitySpecializationTicks>()
-                // .init_resource::<SpecializedMaterialPipelineCache>()
-                // .init_resource::<SpecializedMeshPipelines<MaterialPipelineSpecializer>>()
-                // .init_resource::<LightKeyCache>()
-                // .init_resource::<LightSpecializationTicks>()
-                // .init_resource::<SpecializedShadowMaterialPipelineCache>()
-                // .init_resource::<DrawFunctions<Shadow>>()
-                .init_resource::<RenderPointCloudMaterialInstances>()
-                // .init_resource::<MaterialBindGroupAllocators>()
-                // .add_render_command::<Shadow, DrawPrepass>()
-                // .add_render_command::<Transmissive3d, DrawMaterial>()
-                // .add_render_command::<Transparent3d, DrawMaterial>()
-                // .add_render_command::<Opaque3d, DrawMaterial>()
-                // .add_render_command::<AlphaMask3d, DrawMaterial>()
-                // .add_systems(RenderStartup, init_material_pipeline)
-                // .add_systems(
-                //     Render,
-                //     (
-                //         specialize_material_meshes
-                //             .in_set(RenderSystems::PrepareMeshes)
-                //             .after(prepare_assets::<RenderMesh>)
-                //             .after(collect_meshes_for_gpu_building)
-                //             .after(set_mesh_motion_vector_flags),
-                //         queue_material_meshes.in_set(RenderSystems::QueueMeshes),
-                //     ),
-                // )
-                // .add_systems(
-                //     Render,
-                //     (
-                //         prepare_material_bind_groups,
-                //         write_material_bind_group_buffers,
-                //     )
-                //         .chain()
-                //         .in_set(RenderSystems::PrepareBindGroups),
-                // )
-                // .add_systems(
-                //     Render,
-                //     (
-                //         check_views_lights_need_specialization.in_set(RenderSystems::PrepareAssets),
-                //         // specialize_shadows also needs to run after prepare_assets::<PreparedMaterial>,
-                //         // which is fine since ManageViews is after PrepareAssets
-                //         specialize_shadows
-                //             .in_set(RenderSystems::ManageViews)
-                //             .after(prepare_lights),
-                //         queue_shadows.in_set(RenderSystems::QueueMeshes),
-                //     ),
-                // )
-            ;
+            render_app.init_resource::<RenderPointCloudMaterialInstances>();
         }
     }
 }
@@ -211,6 +206,10 @@ where
         app.init_asset::<M>().add_plugins((
             ExtractComponentPlugin::<PointCloudMaterial3d<M, A>>::default(),
             ErasedRenderAssetComponentPlugin::<PointCloudMaterial3d<M, A>>::default(),
+            PointCloudGpuMapperPlugin::<
+                PointCloudMaterial3dGpuMapper<M, A>,
+                PointCloudMaterial3d<M, A>,
+            >::default(),
         ));
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
@@ -424,36 +423,6 @@ impl Default for PointCloudMaterialProperties {
     }
 }
 
-impl PointCloudMaterialProperties {
-    // pub fn get_shader(&self, label: impl ShaderLabel) -> Option<Handle<Shader>> {
-    //     self.shaders
-    //         .iter()
-    //         .find(|(inner_label, _)| inner_label == &label.intern())
-    //         .map(|(_, shader)| shader)
-    //         .cloned()
-    // }
-
-    // pub fn add_shader(&mut self, label: impl ShaderLabel, shader: Handle<Shader>) {
-    //     self.shaders.push((label.intern(), shader));
-    // }
-
-    // pub fn get_draw_function(&self, label: impl DrawFunctionLabel) -> Option<DrawFunctionId> {
-    //     self.draw_functions
-    //         .iter()
-    //         .find(|(inner_label, _)| inner_label == &label.intern())
-    //         .map(|(_, shader)| shader)
-    //         .cloned()
-    // }
-
-    // pub fn add_draw_function(
-    //     &mut self,
-    //     label: impl DrawFunctionLabel,
-    //     draw_function: DrawFunctionId,
-    // ) {
-    //     self.draw_functions.push((label.intern(), draw_function));
-    // }
-}
-
 /// Data prepared for a [`Material`] instance.
 pub struct PreparedPointCloudMaterial {
     pub binding: MaterialBindingId,
@@ -504,90 +473,6 @@ where
             material_param,
         ): &mut SystemParamItem<Self::Param>,
     ) -> Result<Self::ErasedAsset, PrepareAssetComponentError<Self::SourceAsset>> {
-        // let shadows_enabled = M::enable_shadows();
-        // let prepass_enabled = M::enable_prepass();
-
-        // let draw_opaque_pbr = opaque_draw_functions.read().id::<DrawMaterial>();
-        // let draw_alpha_mask_pbr = alpha_mask_draw_functions.read().id::<DrawMaterial>();
-        // let draw_transmissive_pbr = transmissive_draw_functions.read().id::<DrawMaterial>();
-        // let draw_transparent_pbr = transparent_draw_functions.read().id::<DrawMaterial>();
-        // let draw_opaque_prepass = opaque_prepass_draw_functions.read().id::<DrawPrepass>();
-        // let draw_alpha_mask_prepass = alpha_mask_prepass_draw_functions.read().id::<DrawPrepass>();
-        // let draw_opaque_deferred = opaque_deferred_draw_functions.read().id::<DrawPrepass>();
-        // let draw_alpha_mask_deferred = alpha_mask_deferred_draw_functions
-        //     .read()
-        //     .id::<DrawPrepass>();
-        // let draw_shadows = shadow_draw_functions.read().id::<DrawPrepass>();
-
-        // let draw_functions = SmallVec::from_iter([
-        //     (MainPassOpaqueDrawFunction.intern(), draw_opaque_pbr),
-        //     (MainPassAlphaMaskDrawFunction.intern(), draw_alpha_mask_pbr),
-        //     (
-        //         MainPassTransmissiveDrawFunction.intern(),
-        //         draw_transmissive_pbr,
-        //     ),
-        //     (
-        //         MainPassTransparentDrawFunction.intern(),
-        //         draw_transparent_pbr,
-        //     ),
-        //     (PrepassOpaqueDrawFunction.intern(), draw_opaque_prepass),
-        //     (
-        //         PrepassAlphaMaskDrawFunction.intern(),
-        //         draw_alpha_mask_prepass,
-        //     ),
-        //     (DeferredOpaqueDrawFunction.intern(), draw_opaque_deferred),
-        //     (
-        //         DeferredAlphaMaskDrawFunction.intern(),
-        //         draw_alpha_mask_deferred,
-        //     ),
-        //     (ShadowsDrawFunction.intern(), draw_shadows),
-        // ]);
-
-        // let render_method = match material.opaque_render_method() {
-        //     OpaqueRendererMethod::Forward => OpaqueRendererMethod::Forward,
-        //     OpaqueRendererMethod::Deferred => OpaqueRendererMethod::Deferred,
-        //     OpaqueRendererMethod::Auto => OpaqueRendererMethod::Forward,
-        // };
-
-        // let mut mesh_pipeline_key_bits = MeshPipelineKey::empty();
-        // mesh_pipeline_key_bits.set(
-        //     MeshPipelineKey::READS_VIEW_TRANSMISSION_TEXTURE,
-        //     material.reads_view_transmission_texture(),
-        // );
-
-        // let reads_view_transmission_texture =
-        //     mesh_pipeline_key_bits.contains(MeshPipelineKey::READS_VIEW_TRANSMISSION_TEXTURE);
-
-        // let render_phase_type = match material.alpha_mode() {
-        //     AlphaMode::Blend | AlphaMode::Premultiplied | AlphaMode::Add | AlphaMode::Multiply => {
-        //         RenderPhaseType::Transparent
-        //     }
-        //     _ if reads_view_transmission_texture => RenderPhaseType::Transmissive,
-        //     AlphaMode::Opaque | AlphaMode::AlphaToCoverage => RenderPhaseType::Opaque,
-        //     AlphaMode::Mask(_) => RenderPhaseType::AlphaMask,
-        // };
-
-        // let mut shaders = SmallVec::new();
-        // let mut add_shader = |label: InternedShaderLabel, shader_ref: ShaderRef| {
-        //     let mayber_shader = match shader_ref {
-        //         ShaderRef::Default => None,
-        //         ShaderRef::Handle(handle) => Some(handle),
-        //         ShaderRef::Path(path) => Some(asset_server.load(path)),
-        //     };
-        //     if let Some(shader) = mayber_shader {
-        //         shaders.push((label, shader));
-        //     }
-        // };
-        // add_shader(MaterialVertexShader.intern(), M::vertex_shader());
-        // add_shader(MaterialFragmentShader.intern(), M::fragment_shader());
-        // add_shader(PrepassVertexShader.intern(), M::prepass_vertex_shader());
-        // add_shader(PrepassFragmentShader.intern(), M::prepass_fragment_shader());
-        // add_shader(DeferredVertexShader.intern(), M::deferred_vertex_shader());
-        // add_shader(
-        //     DeferredFragmentShader.intern(),
-        //     M::deferred_fragment_shader(),
-        // );
-
         let depth_pass_vertex_shader_handle = match M::vertex_shader(RenderPass::Depth) {
             bevy_shader::ShaderRef::Default => POINTCLOUD_SHADER_HANDLE,
             bevy_shader::ShaderRef::Handle(handle) => handle,

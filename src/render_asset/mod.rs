@@ -9,7 +9,7 @@ use bevy_ecs::{
     component::Component,
     entity::Entity,
     prelude::{Commands, IntoScheduleConfigs, MessageReader, ResMut, Resource},
-    query::{QueryFilter, ROQueryItem, ReadOnlyQueryData, With, Without},
+    query::{QueryFilter, ROQueryItem, ReadOnlyQueryData, Without},
     schedule::ScheduleConfigs,
     system::{
         lifetimeless::Read, Query, Res, ScheduleSystem, StaticSystemParam, SystemParam,
@@ -43,7 +43,7 @@ pub enum PrepareAssetComponentError<E: Send + Sync + 'static> {
 ///
 /// After that in the [`RenderSystems::PrepareAssets`] step the extracted asset
 /// is transformed into its GPU-representation of type [`ErasedRenderAsset`].
-pub trait ErasedRenderAssetComponent: Send + Sync + 'static + Component {
+pub trait ErasedRenderAssetComponent: Send + Sync + 'static {
     /// The representation of the asset in the "main world".
     type SourceAsset: Asset + Clone;
     /// The target representation of the asset in the "render world".
@@ -56,7 +56,7 @@ pub trait ErasedRenderAssetComponent: Send + Sync + 'static + Component {
 
     /// ECS [`ReadOnlyQueryData`] to fetch the components to extract.
     type QueryData: ReadOnlyQueryData;
-    /// Filters the entities with additional constraints.
+    /// Filters the entities.
     type QueryFilter: QueryFilter;
 
     type Key: Send + Sync + TypePath;
@@ -356,7 +356,7 @@ struct CachedExtractErasedRenderAssetComponentSystemState<A: ErasedRenderAssetCo
             'static,
             'static,
             (Entity, Option<Read<RenderEntity>>, A::QueryData),
-            (A::QueryFilter, Without<RenderAssetKey<A::Key>>, With<A>),
+            (A::QueryFilter, Without<RenderAssetKey<A::Key>>),
         >,
         MessageReader<'static, 'static, AssetEvent<A::SourceAsset>>,
         ResMut<'static, Assets<A::SourceAsset>>,

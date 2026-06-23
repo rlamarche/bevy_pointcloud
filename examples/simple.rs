@@ -23,8 +23,8 @@ use bevy_pointcloud::{
     loader::las::LasLoaderPlugin,
     point::RGBPoint,
     point_cloud::{
-        PointCloud, PointCloud3d, PointCloudGpuMapper, PointCloudGpuMapperPlugin,
-        PointCloudIdentityGpuMapper, PointCloudsPlugin,
+        PointCloud, PointCloud3d, PointCloudGpuMapper, PointCloudIdentityGpuMapper,
+        PointCloudsPlugin,
     },
     point_cloud_material::{
         PointCloudMaterial3d, SimplePointCloudMaterial, SimplePointCloudMaterialPlugin,
@@ -48,8 +48,6 @@ fn main() {
             }),
             PanOrbitCameraPlugin,
             PointCloudsPlugin::<RGBPoint>::default(),
-            PointCloudGpuMapperPlugin::<PointCloudIdentityGpuMapper<RGBPoint>>::default(),
-            PointCloudGpuMapperPlugin::<MyPointCloudGpuMapper>::default(),
             SimplePointCloudMaterialPlugin::<PointCloudIdentityGpuMapper<RGBPoint>>::default(),
             SimplePointCloudMaterialPlugin::<MyPointCloudGpuMapper>::default(),
             LasLoaderPlugin::<RGBPoint>::default(),

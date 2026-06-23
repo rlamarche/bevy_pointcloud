@@ -83,21 +83,19 @@ impl<T: Point> Plugin for RenderPipelinePlugin<T> {
         );
 
         // Automatically create uniform from these settings
-        app.add_plugins(PointCloudMaterialsPlugin {
-            debug_flags: self.debug_flags,
-        })
-        .add_plugins(ExtractComponentPlugin::<PointCloud3d<T>>::default())
-        .add_plugins(UniformComponentPlugin::<EyeDomeLightingUniform>::default())
-        // compute point cloud aabb **before** [`bevy_render::view::calculate_bounds`] to prevent using mesh's aabb.
-        .add_systems(
-            PostUpdate,
-            compute_point_cloud_aabb::<T>.before(calculate_bounds),
-        )
-        .sub_app_mut(RenderApp)
-        .add_systems(
-            Render,
-            prepare_point_cloud_uniform.in_set(RenderSystems::PrepareResources),
-        );
+        app.add_plugins(PointCloudMaterialsPlugin)
+            .add_plugins(ExtractComponentPlugin::<PointCloud3d<T>>::default())
+            .add_plugins(UniformComponentPlugin::<EyeDomeLightingUniform>::default())
+            // compute point cloud aabb **before** [`bevy_render::view::calculate_bounds`] to prevent using mesh's aabb.
+            .add_systems(
+                PostUpdate,
+                compute_point_cloud_aabb::<T>.before(calculate_bounds),
+            )
+            .sub_app_mut(RenderApp)
+            .add_systems(
+                Render,
+                prepare_point_cloud_uniform.in_set(RenderSystems::PrepareResources),
+            );
 
         let render_app = app.sub_app_mut(RenderApp);
         render_app

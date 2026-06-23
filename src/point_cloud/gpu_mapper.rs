@@ -31,7 +31,7 @@ pub struct RenderPointCloud {
     pub properties: Arc<PointCloudProperties>,
 }
 
-pub trait PointCloudGpuMapper: Send + Sync + Component + TypePath {
+pub trait PointCloudGpuMapper: Send + Sync + TypePath {
     /// The representation of a point in the "main world" assets
     type Point: Point;
     /// The GPU representation of a point in the "render world"
@@ -132,15 +132,20 @@ impl<T: GpuPoint> PointCloudGpuMapper for PointCloudIdentityGpuMapper<T> {
 //     _phantom: PhantomData<fn() -> A>,
 // }
 
+#[allow(clippy::type_complexity)]
 pub struct PointCloudGpuMapperPlugin<
     A: PointCloudGpuMapper,
+    C: Component,
     AFTER: ErasedRenderAssetComponentDependency + 'static = (),
 > {
-    phantom: PhantomData<fn() -> (A, AFTER)>,
+    phantom: PhantomData<fn() -> (A, C, AFTER)>,
 }
 
-impl<A: PointCloudGpuMapper, AFTER: ErasedRenderAssetComponentDependency + 'static> Default
-    for PointCloudGpuMapperPlugin<A, AFTER>
+impl<
+        A: PointCloudGpuMapper,
+        C: Component,
+        AFTER: ErasedRenderAssetComponentDependency + 'static,
+    > Default for PointCloudGpuMapperPlugin<A, C, AFTER>
 {
     fn default() -> Self {
         Self {
@@ -149,24 +154,36 @@ impl<A: PointCloudGpuMapper, AFTER: ErasedRenderAssetComponentDependency + 'stat
     }
 }
 
-impl<A: PointCloudGpuMapper, AFTER: ErasedRenderAssetComponentDependency + 'static> Plugin
-    for PointCloudGpuMapperPlugin<A, AFTER>
+impl<
+        A: PointCloudGpuMapper,
+        C: Component,
+        AFTER: ErasedRenderAssetComponentDependency + 'static,
+    > Plugin for PointCloudGpuMapperPlugin<A, C, AFTER>
 {
     fn build(&self, app: &mut App) {
-        app.add_plugins(ErasedRenderAssetComponentPlugin::<A, AFTER>::default());
+        app.add_plugins(ErasedRenderAssetComponentPlugin::<
+            ErasedPointCloudGpuMapper<A, C>,
+            AFTER,
+        >::default());
     }
 }
 
 #[derive(TypePath)]
 pub struct PointCloudGpuMapperKey;
 
-impl<A: PointCloudGpuMapper> ErasedRenderAssetComponent for A {
+pub struct ErasedPointCloudGpuMapper<A: PointCloudGpuMapper, C: Component>(
+    PhantomData<fn() -> (A, C)>,
+);
+
+impl<A: PointCloudGpuMapper, C: Component> ErasedRenderAssetComponent
+    for ErasedPointCloudGpuMapper<A, C>
+{
     type SourceAsset = PointCloud<A::Point>;
     type ErasedAsset = RenderPointCloud;
     type Param = (SRes<RenderDevice>, A::Param);
 
     type QueryData = Read<PointCloud3d<A::Point>>;
-    type QueryFilter = ();
+    type QueryFilter = With<C>;
 
     type Key = PointCloudGpuMapperKey;
 
