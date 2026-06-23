@@ -1,7 +1,7 @@
 #[path = "helpers/camera_controller.rs"]
 mod camera_controller;
 
-use std::ops::Neg;
+use std::{ops::Neg, sync::Arc};
 
 use bevy::DefaultPlugins;
 use bevy_app::prelude::*;
@@ -22,17 +22,22 @@ use bevy_pbr::{MeshMaterial3d, StandardMaterial};
 use bevy_pointcloud::{
     loader::las::LasLoaderPlugin,
     point::RGBPoint,
-    point_cloud::{PointCloudGpuMapperPlugin, PointCloud, PointCloud3d, PointCloudsPlugin},
+    point_cloud::{
+        PointCloud, PointCloud3d, PointCloudGpuMapper, PointCloudGpuMapperPlugin,
+        PointCloudIdentityGpuMapper, PointCloudsPlugin,
+    },
     point_cloud_material::{
         PointCloudMaterial3d, SimplePointCloudMaterial, SimplePointCloudMaterialPlugin,
     },
     render::PointCloudRenderMode,
 };
+use bevy_reflect::TypePath;
 use bevy_render::{prelude::*, view::NoIndirectDrawing};
 use bevy_text::{FontSmoothing, TextFont};
 use bevy_transform::prelude::*;
 use bevy_utils::default;
 use bevy_window::{PresentMode, Window};
+use rand::Rng;
 
 fn main() {
     App::new()
@@ -43,8 +48,10 @@ fn main() {
             }),
             PanOrbitCameraPlugin,
             PointCloudsPlugin::<RGBPoint>::default(),
-            PointCloudGpuMapperPlugin::<RGBPoint>::default(),
-            SimplePointCloudMaterialPlugin,
+            PointCloudGpuMapperPlugin::<PointCloudIdentityGpuMapper<RGBPoint>>::default(),
+            PointCloudGpuMapperPlugin::<MyPointCloudGpuMapper>::default(),
+            SimplePointCloudMaterialPlugin::<PointCloudIdentityGpuMapper<RGBPoint>>::default(),
+            SimplePointCloudMaterialPlugin::<MyPointCloudGpuMapper>::default(),
             LasLoaderPlugin::<RGBPoint>::default(),
         ))
         .add_plugins(FpsOverlayPlugin {
@@ -67,7 +74,8 @@ fn main() {
             },
         })
         .add_systems(Startup, (setup_window, setup, load_pointcloud, load_meshes))
-        .add_systems(PreUpdate, (update_material_on_keypress, center_point_cloud))
+        .add_systems(PreUpdate, update_material_on_keypress)
+        .add_systems(PreUpdate, center_point_cloud)
         .run();
 }
 
@@ -144,7 +152,45 @@ fn load_meshes(
 pub struct MyMaterial(Handle<SimplePointCloudMaterial>);
 
 #[derive(Component)]
-struct MainPointCloud;
+struct MainPointCloud(Vec3);
+
+#[derive(Component, TypePath)]
+struct MyPointCloudGpuMapper;
+
+impl PointCloudGpuMapper for MyPointCloudGpuMapper {
+    type Point = RGBPoint;
+
+    type GpuPoint = RGBPoint;
+
+    type Param = ();
+
+    fn convert(
+        points: std::sync::Arc<Vec<Self::Point>>,
+        _param: &mut bevy_ecs::system::SystemParamItem<Self::Param>,
+    ) -> Result<
+        std::sync::Arc<Vec<Self::GpuPoint>>,
+        bevy_pointcloud::render_asset::PrepareAssetComponentError<PointCloud<Self::Point>>,
+    > {
+        let mut rng = rand::rng();
+
+        let points: Vec<_> = points
+            .iter()
+            .map(|p| {
+                RGBPoint::new(
+                    p.position,
+                    Vec4::new(
+                        rng.random_range(0.0..1.0),
+                        rng.random_range(0.0..1.0),
+                        rng.random_range(0.0..1.0),
+                        1.0,
+                    ),
+                )
+            })
+            .collect();
+
+        Ok(Arc::new(points))
+    }
+}
 
 fn load_pointcloud(
     mut commands: Commands,
@@ -161,9 +207,19 @@ fn load_pointcloud(
     let point_cloud =
         asset_server.load::<PointCloud<RGBPoint>>("pointclouds/lion_takanawa.copc.laz");
     commands.spawn((
+        PointCloud3d(point_cloud.clone()),
+        PointCloudMaterial3d::<SimplePointCloudMaterial, PointCloudIdentityGpuMapper<RGBPoint>>::from(my_material.clone()),
+        MainPointCloud(Vec3::ZERO),
+        PointCloudIdentityGpuMapper::<RGBPoint>::default(),
+        // MyPointCloudGpuMapper,
+    ));
+    commands.spawn((
         PointCloud3d(point_cloud),
-        PointCloudMaterial3d(my_material.clone()),
-        MainPointCloud,
+        PointCloudMaterial3d::<SimplePointCloudMaterial, MyPointCloudGpuMapper>::from(
+            my_material.clone(),
+        ),
+        MainPointCloud(Vec3::new(5.0, 0.0, 0.0)),
+        MyPointCloudGpuMapper,
     ));
 
     // Generate a random point cloud
@@ -243,36 +299,31 @@ fn center_point_cloud(
         (With<Camera3d>, Without<PointCloud3d<RGBPoint>>),
     >,
     mut query: Query<
-        (&Aabb, &mut Transform),
-        (
-            With<PointCloud3d<RGBPoint>>,
-            With<MainPointCloud>,
-            Changed<Aabb>,
-        ),
+        (&Aabb, &mut Transform, &MainPointCloud),
+        (With<PointCloud3d<RGBPoint>>, Changed<Aabb>),
     >,
 ) {
-    let Some((aabb, mut transform)) = query.iter_mut().next() else {
-        return;
-    };
+    for (aabb, mut transform, main_pointcloud) in query.iter_mut() {
+        // Center point cloud
+        *transform = Transform::from_translation(
+            (aabb.center.neg() + Vec3A::new(0.0, aabb.half_extents.y, 0.0)).to_vec3()
+                + main_pointcloud.0,
+        );
 
-    // Center point cloud
-    *transform = Transform::from_translation(
-        (aabb.center.neg() + Vec3A::new(0.0, aabb.half_extents.y, 0.0)).into(),
-    );
+        let (camera_transform, mut pan_orbit_camera) = camera.single_mut().unwrap();
 
-    let (camera_transform, mut pan_orbit_camera) = camera.single_mut().unwrap();
+        let target_focus = Vec3::new(0.0, aabb.half_extents.y, 0.0);
+        let (yaw, pitch, radius) = calculate_from_translation_and_focus(
+            camera_transform.translation,
+            target_focus,
+            pan_orbit_camera.axis,
+        );
 
-    let target_focus = Vec3::new(0.0, aabb.half_extents.y, 0.0);
-    let (yaw, pitch, radius) = calculate_from_translation_and_focus(
-        camera_transform.translation,
-        target_focus,
-        pan_orbit_camera.axis,
-    );
-
-    pan_orbit_camera.target_yaw = yaw;
-    pan_orbit_camera.target_pitch = pitch;
-    pan_orbit_camera.target_radius = radius;
-    pan_orbit_camera.target_focus = target_focus;
+        pan_orbit_camera.target_yaw = yaw;
+        pan_orbit_camera.target_pitch = pitch;
+        pan_orbit_camera.target_radius = radius;
+        pan_orbit_camera.target_focus = target_focus;
+    }
 }
 
 fn update_material_on_keypress(

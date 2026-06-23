@@ -12,7 +12,7 @@ use bevy_ecs::{
     prelude::*,
     reflect::ReflectComponent,
     system::{
-        lifetimeless::{SRes, SResMut},
+        lifetimeless::{Read, SRes, SResMut},
         Res, ResMut, SystemParamItem,
     },
 };
@@ -22,9 +22,8 @@ use bevy_pbr::{
     MaterialBindGroupAllocators, MaterialBindingId, MaterialPipeline, RenderMaterialBindings,
 };
 use bevy_platform::collections::hash_map::Entry;
-use bevy_reflect::{std_traits::ReflectDefault, Reflect};
+use bevy_reflect::{std_traits::ReflectDefault, Reflect, TypePath};
 use bevy_render::{
-    erased_render_asset::{ErasedRenderAsset, ErasedRenderAssetPlugin, PrepareAssetError},
     extract_component::ExtractComponentPlugin,
     render_resource::{
         AsBindGroup, AsBindGroupError, BindGroupLayoutDescriptor, PipelineCache,
@@ -40,9 +39,12 @@ pub use resources::*;
 pub use simple::*;
 
 use crate::{
-    point::{GpuPoint, Point},
-    point_cloud::PointCloud3d,
+    point::Point,
+    point_cloud::{PointCloud3d, PointCloudGpuMapper},
     render::POINTCLOUD_SHADER_HANDLE,
+    render_asset::{
+        ErasedRenderAssetComponent, ErasedRenderAssetComponentPlugin, PrepareAssetComponentError,
+    },
 };
 
 pub enum RenderPass {
@@ -68,32 +70,61 @@ pub trait PointCloudMaterial: Asset + AsBindGroup + Clone + Sized {
     }
 }
 
-#[derive(Component, Clone, Debug, Deref, DerefMut, Reflect, From)]
+#[derive(Component, Debug, Deref, DerefMut, Reflect, From)]
 #[reflect(Component, Default, Clone, PartialEq)]
-pub struct PointCloudMaterial3d<M: PointCloudMaterial>(pub Handle<M>);
+pub struct PointCloudMaterial3d<M: PointCloudMaterial, A: PointCloudGpuMapper> {
+    #[deref]
+    pub material_handle: Handle<M>,
+    _phantom: PhantomData<A>,
+}
 
-impl<M: PointCloudMaterial> Default for PointCloudMaterial3d<M> {
+impl<M: PointCloudMaterial, A: PointCloudGpuMapper> From<Handle<M>> for PointCloudMaterial3d<M, A> {
+    fn from(material_handle: Handle<M>) -> Self {
+        Self {
+            material_handle,
+            _phantom: Default::default(),
+        }
+    }
+}
+
+impl<M: PointCloudMaterial, A: PointCloudGpuMapper> Default for PointCloudMaterial3d<M, A> {
     fn default() -> Self {
-        Self(Handle::default())
+        Self {
+            material_handle: Default::default(),
+            _phantom: Default::default(),
+        }
     }
 }
 
-impl<M: PointCloudMaterial> PartialEq for PointCloudMaterial3d<M> {
+impl<M: PointCloudMaterial, A: PointCloudGpuMapper> Clone for PointCloudMaterial3d<M, A> {
+    fn clone(&self) -> Self {
+        Self {
+            material_handle: self.material_handle.clone(),
+            _phantom: self._phantom,
+        }
+    }
+}
+
+impl<M: PointCloudMaterial, A: PointCloudGpuMapper> PartialEq for PointCloudMaterial3d<M, A> {
     fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
+        self.material_handle == other.material_handle && self._phantom == other._phantom
     }
 }
 
-impl<M: PointCloudMaterial> Eq for PointCloudMaterial3d<M> {}
+impl<M: PointCloudMaterial, A: PointCloudGpuMapper> Eq for PointCloudMaterial3d<M, A> {}
 
-impl<M: PointCloudMaterial> From<PointCloudMaterial3d<M>> for AssetId<M> {
-    fn from(point_cloud_material_3d: PointCloudMaterial3d<M>) -> Self {
+impl<M: PointCloudMaterial, A: PointCloudGpuMapper> From<PointCloudMaterial3d<M, A>>
+    for AssetId<M>
+{
+    fn from(point_cloud_material_3d: PointCloudMaterial3d<M, A>) -> Self {
         point_cloud_material_3d.id()
     }
 }
 
-impl<M: PointCloudMaterial> From<&PointCloudMaterial3d<M>> for AssetId<M> {
-    fn from(point_cloud_material_3d: &PointCloudMaterial3d<M>) -> Self {
+impl<M: PointCloudMaterial, A: PointCloudGpuMapper> From<&PointCloudMaterial3d<M, A>>
+    for AssetId<M>
+{
+    fn from(point_cloud_material_3d: &PointCloudMaterial3d<M, A>) -> Self {
         point_cloud_material_3d.id()
     }
 }
@@ -162,30 +193,24 @@ impl Plugin for PointCloudMaterialsPlugin {
 }
 
 #[allow(clippy::type_complexity)]
-pub struct PointCloudMaterialPlugin<T: Point, U: GpuPoint, M: PointCloudMaterial>(
-    PhantomData<fn() -> (T, U, M)>,
-)
-where
-    for<'a> &'a T: Into<U>;
+pub struct PointCloudMaterialPlugin<M: PointCloudMaterial, A: PointCloudGpuMapper>(
+    PhantomData<fn() -> (A, M)>,
+);
 
-impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Default for PointCloudMaterialPlugin<T, U, M>
-where
-    for<'a> &'a T: Into<U>,
-{
+impl<M: PointCloudMaterial, A: PointCloudGpuMapper> Default for PointCloudMaterialPlugin<M, A> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Plugin for PointCloudMaterialPlugin<T, U, M>
+impl<M: PointCloudMaterial, A: PointCloudGpuMapper> Plugin for PointCloudMaterialPlugin<M, A>
 where
     M::Data: PartialEq + Eq + Hash + Clone,
-    for<'a> &'a T: Into<U>,
 {
     fn build(&self, app: &mut App) {
         app.init_asset::<M>().add_plugins((
-            ExtractComponentPlugin::<PointCloudMaterial3d<M>>::default(),
-            ErasedRenderAssetPlugin::<PointCloudMaterial3d<M>>::default(),
+            ExtractComponentPlugin::<PointCloudMaterial3d<M, A>>::default(),
+            ErasedRenderAssetComponentPlugin::<PointCloudMaterial3d<M, A>>::default(),
         ));
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
@@ -194,11 +219,11 @@ where
                 .add_systems(
                     ExtractSchedule,
                     (
-                        extract_point_cloud_materials::<M>
+                        extract_point_cloud_materials::<M, A>
                             .in_set(PointCloudMaterialExtractionSystems),
-                        early_sweep_point_cloud_material_instances::<M>
+                        early_sweep_point_cloud_material_instances::<M, A>
                             .after(PointCloudMaterialExtractionSystems)
-                            .before(late_sweep_point_cloud_material_instances::<T>),
+                            .before(late_sweep_point_cloud_material_instances::<A::Point>),
                     ),
                 );
         }
@@ -244,12 +269,12 @@ where
 /// Fills the [`RenderPointCloudMaterialInstances`] resources from the point clouds in the
 /// scene.
 #[allow(clippy::type_complexity)]
-fn extract_point_cloud_materials<M: PointCloudMaterial>(
+fn extract_point_cloud_materials<M: PointCloudMaterial, A: PointCloudGpuMapper>(
     mut material_instances: ResMut<RenderPointCloudMaterialInstances>,
     changed_meshes_query: Extract<
         Query<
-            (Entity, &ViewVisibility, &PointCloudMaterial3d<M>),
-            Or<(Changed<ViewVisibility>, Changed<PointCloudMaterial3d<M>>)>,
+            (Entity, &ViewVisibility, &PointCloudMaterial3d<M, A>),
+            Or<(Changed<ViewVisibility>, Changed<PointCloudMaterial3d<M, A>>)>,
         >,
     >,
 ) {
@@ -261,6 +286,7 @@ fn extract_point_cloud_materials<M: PointCloudMaterial>(
                 entity.into(),
                 RenderPointCloudMaterialInstance {
                     asset_id: material.id().untyped(),
+                    mapper_type_id: TypeId::of::<A>(),
                     last_change_tick,
                 },
             );
@@ -286,9 +312,9 @@ fn extract_point_cloud_materials<M: PointCloudMaterial>(
 /// This is the first of two sweep phases. Because this phase runs once per
 /// material type, we need a second phase in order to guarantee that we only
 /// bump [`RenderPointCloudMaterialInstances::current_change_tick`] once.
-fn early_sweep_point_cloud_material_instances<M: PointCloudMaterial>(
+fn early_sweep_point_cloud_material_instances<M: PointCloudMaterial, A: PointCloudGpuMapper>(
     mut material_instances: ResMut<RenderPointCloudMaterialInstances>,
-    mut removed_materials_query: Extract<RemovedComponents<PointCloudMaterial3d<M>>>,
+    mut removed_materials_query: Extract<RemovedComponents<PointCloudMaterial3d<M, A>>>,
 ) {
     let last_change_tick = material_instances.current_change_tick;
 
@@ -330,11 +356,26 @@ pub fn late_sweep_point_cloud_material_instances<T: Point>(
         .set(last_change_tick.get() + 1);
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ErasedPointCloudMaterialKey {
+    pub material_key: ErasedMaterialKey,
+    pub mapper_type_id: TypeId,
+}
+
+impl Default for ErasedPointCloudMaterialKey {
+    fn default() -> Self {
+        Self {
+            material_key: Default::default(),
+            mapper_type_id: TypeId::of::<()>(),
+        }
+    }
+}
+
 /// Common [`Material`] properties, calculated for a specific material instance.
-#[derive(Default)]
 #[allow(clippy::type_complexity)]
 pub struct PointCloudMaterialProperties {
     // pub render_phase_type: RenderPhaseType,
+    pub mapper_type_id: TypeId,
     pub material_layout: Option<BindGroupLayoutDescriptor>,
     /// Backing array is a size of 4 because the `StandardMaterial` needs 4 draw functions by default
     // pub draw_functions: SmallVec<[(InternedDrawFunctionLabel, DrawFunctionId); 4]>,
@@ -361,7 +402,26 @@ pub struct PointCloudMaterialProperties {
     >,
     /// The key for this material, typically a bitfield of flags that are used to modify
     /// the pipeline descriptor used for this material.
-    pub material_key: ErasedMaterialKey,
+    pub material_key: ErasedPointCloudMaterialKey,
+}
+
+impl Default for PointCloudMaterialProperties {
+    fn default() -> Self {
+        Self {
+            mapper_type_id: TypeId::of::<()>(),
+            material_layout: Default::default(),
+            depth_pass_vertex_shader_handle: Default::default(),
+            depth_pass_fragment_shader_handle: Default::default(),
+            depth_shader_defs: Default::default(),
+            attribute_pass_vertex_shader_handle: Default::default(),
+            attribute_pass_fragment_shader_handle: Default::default(),
+            attribute_shader_defs: Default::default(),
+            normalize_shader_handle: Default::default(),
+            bindless: Default::default(),
+            specialize: Default::default(),
+            material_key: Default::default(),
+        }
+    }
 }
 
 impl PointCloudMaterialProperties {
@@ -400,7 +460,11 @@ pub struct PreparedPointCloudMaterial {
     pub properties: Arc<PointCloudMaterialProperties>,
 }
 
-impl<M: PointCloudMaterial> ErasedRenderAsset for PointCloudMaterial3d<M>
+#[derive(TypePath)]
+pub struct PointCloudMaterialKey;
+
+impl<M: PointCloudMaterial, A: PointCloudGpuMapper> ErasedRenderAssetComponent
+    for PointCloudMaterial3d<M, A>
 where
     M::Data: PartialEq + Eq + Hash + Clone,
 {
@@ -417,9 +481,20 @@ where
         M::Param,
     );
 
+    type QueryData = Read<PointCloudMaterial3d<M, A>>;
+
+    type QueryFilter = ();
+
+    type Key = PointCloudMaterialKey;
+
+    fn asset_id(data: bevy_ecs::query::ROQueryItem<Self::QueryData>) -> AssetId<Self::SourceAsset> {
+        data.id()
+    }
+
     fn prepare_asset(
         material: Self::SourceAsset,
         material_id: AssetId<Self::SourceAsset>,
+        type_id: TypeId,
         (
             render_device,
             pipeline_cache,
@@ -428,10 +503,7 @@ where
             asset_server,
             material_param,
         ): &mut SystemParamItem<Self::Param>,
-    ) -> Result<
-        Self::ErasedAsset,
-        bevy_render::erased_render_asset::PrepareAssetError<Self::SourceAsset>,
-    > {
+    ) -> Result<Self::ErasedAsset, PrepareAssetComponentError<Self::SourceAsset>> {
         // let shadows_enabled = M::enable_shadows();
         // let prepass_enabled = M::enable_prepass();
 
@@ -549,7 +621,11 @@ where
 
         let bindless = false; // material_uses_bindless_resources::<M>(render_device);
         let bind_group_data = material.bind_group_data();
-        let material_key = ErasedMaterialKey::new(bind_group_data);
+        let material_key = ErasedPointCloudMaterialKey {
+            material_key: ErasedMaterialKey::new(bind_group_data),
+            mapper_type_id: type_id,
+        };
+
         // fn specialize<M: PointCloudMaterial>(
         //     pipeline: &MaterialPipeline,
         //     descriptor: &mut RenderPipelineDescriptor,
@@ -604,6 +680,7 @@ where
                 Ok(PreparedPointCloudMaterial {
                     binding,
                     properties: Arc::new(PointCloudMaterialProperties {
+                        mapper_type_id: type_id,
                         material_layout: Some(material_layout),
                         depth_pass_vertex_shader_handle,
                         depth_pass_fragment_shader_handle,
@@ -621,7 +698,7 @@ where
             }
 
             Err(AsBindGroupError::RetryNextUpdate) => {
-                Err(PrepareAssetError::RetryNextUpdate(material))
+                Err(PrepareAssetComponentError::RetryNextUpdate(material))
             }
 
             Err(AsBindGroupError::CreateBindGroupDirectly) => {
@@ -646,6 +723,7 @@ where
                         Ok(PreparedPointCloudMaterial {
                             binding: material_binding_id,
                             properties: Arc::new(PointCloudMaterialProperties {
+                                mapper_type_id: type_id,
                                 material_layout: Some(material_layout),
                                 depth_pass_vertex_shader_handle,
                                 depth_pass_fragment_shader_handle,
@@ -663,14 +741,14 @@ where
                     }
 
                     Err(AsBindGroupError::RetryNextUpdate) => {
-                        Err(PrepareAssetError::RetryNextUpdate(material))
+                        Err(PrepareAssetComponentError::RetryNextUpdate(material))
                     }
 
-                    Err(other) => Err(PrepareAssetError::AsBindGroupError(other)),
+                    Err(other) => Err(PrepareAssetComponentError::AsBindGroupError(other)),
                 }
             }
 
-            Err(other) => Err(PrepareAssetError::AsBindGroupError(other)),
+            Err(other) => Err(PrepareAssetComponentError::AsBindGroupError(other)),
         }
     }
 }

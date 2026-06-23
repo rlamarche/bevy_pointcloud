@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use bevy_app::Plugin;
 use bevy_asset::{load_internal_asset, uuid_handle, Asset, Handle};
 use bevy_reflect::TypePath;
@@ -5,7 +7,7 @@ use bevy_render::render_resource::AsBindGroup;
 use bevy_shader::{load_shader_library, Shader};
 
 use crate::{
-    point::RGBPoint,
+    point_cloud::PointCloudGpuMapper,
     point_cloud_material::{PointCloudMaterial, PointCloudMaterialPlugin, RenderPass},
 };
 
@@ -46,9 +48,15 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
     }
 }
 
-pub struct SimplePointCloudMaterialPlugin;
+pub struct SimplePointCloudMaterialPlugin<A: PointCloudGpuMapper>(PhantomData<A>);
 
-impl Plugin for SimplePointCloudMaterialPlugin {
+impl<A: PointCloudGpuMapper> Default for SimplePointCloudMaterialPlugin<A> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<A: PointCloudGpuMapper> Plugin for SimplePointCloudMaterialPlugin<A> {
     fn build(&self, app: &mut bevy_app::App) {
         load_shader_library!(app, "binding.wgsl");
         load_internal_asset!(app, VERTEX_SHADER_HANDLE, "vertex.wgsl", Shader::from_wgsl);
@@ -64,10 +72,6 @@ impl Plugin for SimplePointCloudMaterialPlugin {
             "normalize.wgsl",
             Shader::from_wgsl
         );
-        app.add_plugins(PointCloudMaterialPlugin::<
-            RGBPoint,
-            RGBPoint,
-            SimplePointCloudMaterial,
-        >::default());
+        app.add_plugins(PointCloudMaterialPlugin::<SimplePointCloudMaterial, A>::default());
     }
 }

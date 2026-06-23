@@ -4,21 +4,25 @@ use bevy_app::prelude::*;
 use bevy_asset::{prelude::*, RenderAssetUsages};
 use bevy_ecs::{
     prelude::*,
-    system::{lifetimeless::SRes, SystemParam, SystemParamItem},
+    system::{
+        lifetimeless::{Read, SRes},
+        SystemParam, SystemParamItem,
+    },
 };
 use bevy_mesh::VertexBufferLayout;
 use bevy_reflect::TypePath;
 use bevy_render::{
-    erased_render_asset::{
-        ErasedRenderAsset, ErasedRenderAssetDependency, ErasedRenderAssetPlugin, PrepareAssetError,
-    },
     render_resource::{Buffer, BufferInitDescriptor, BufferUsages},
     renderer::RenderDevice,
 };
 
 use crate::{
     point::{GpuPoint, Point},
-    point_cloud::PointCloud,
+    point_cloud::{PointCloud, PointCloud3d},
+    render_asset::{
+        ErasedRenderAssetComponent, ErasedRenderAssetComponentDependency,
+        ErasedRenderAssetComponentPlugin, PrepareAssetComponentError,
+    },
 };
 
 pub struct RenderPointCloud {
@@ -27,7 +31,7 @@ pub struct RenderPointCloud {
     pub properties: Arc<PointCloudProperties>,
 }
 
-pub trait PointCloudGpuMapper: Send + Sync + TypePath {
+pub trait PointCloudGpuMapper: Send + Sync + Component + TypePath {
     /// The representation of a point in the "main world" assets
     type Point: Point;
     /// The GPU representation of a point in the "render world"
@@ -51,10 +55,11 @@ pub trait PointCloudGpuMapper: Send + Sync + TypePath {
         Some(size_of::<Self::GpuPoint>() * point_cloud.points.len())
     }
 
+    #[allow(clippy::type_complexity)]
     fn convert(
-        point_cloud: &PointCloud<Self::Point>,
+        points: Arc<Vec<Self::Point>>,
         param: &mut SystemParamItem<Self::Param>,
-    ) -> Result<Vec<Self::GpuPoint>, PrepareAssetError<PointCloud<Self::Point>>>;
+    ) -> Result<Arc<Vec<Self::GpuPoint>>, PrepareAssetComponentError<PointCloud<Self::Point>>>;
 
     /// Low level override to prepare the buffer to be sent
     ///
@@ -65,8 +70,8 @@ pub trait PointCloudGpuMapper: Send + Sync + TypePath {
         asset_id: AssetId<PointCloud<Self::Point>>,
         render_device: &RenderDevice,
         param: &mut SystemParamItem<Self::Param>,
-    ) -> Result<Buffer, PrepareAssetError<PointCloud<Self::Point>>> {
-        let data = Self::convert(&point_cloud, param)?;
+    ) -> Result<Buffer, PrepareAssetComponentError<PointCloud<Self::Point>>> {
+        let data = Self::convert(point_cloud.points, param)?;
         Ok(
             render_device.create_buffer_with_data(&BufferInitDescriptor {
                 label: Some("point_cloud_buffer"),
@@ -77,7 +82,22 @@ pub trait PointCloudGpuMapper: Send + Sync + TypePath {
     }
 }
 
-impl<T: GpuPoint> PointCloudGpuMapper for T {
+/// This mapper send the point to the gpu using the same type.
+/// So, the point type requires the [`GpuPoint`] trait.
+#[derive(Clone, Debug, Component, TypePath)]
+pub struct PointCloudIdentityGpuMapper<T: GpuPoint> {
+    _phantom: PhantomData<fn() -> T>,
+}
+
+impl<T: GpuPoint> Default for PointCloudIdentityGpuMapper<T> {
+    fn default() -> Self {
+        Self {
+            _phantom: Default::default(),
+        }
+    }
+}
+
+impl<T: GpuPoint> PointCloudGpuMapper for PointCloudIdentityGpuMapper<T> {
     type Point = T;
 
     type GpuPoint = T;
@@ -85,10 +105,10 @@ impl<T: GpuPoint> PointCloudGpuMapper for T {
     type Param = ();
 
     fn convert(
-        _point_cloud: &PointCloud<Self::Point>,
+        points: Arc<Vec<Self::Point>>,
         _param: &mut SystemParamItem<Self::Param>,
-    ) -> Result<Vec<Self::GpuPoint>, PrepareAssetError<PointCloud<Self::Point>>> {
-        unreachable!("prepare_buffer doesn't need this method")
+    ) -> Result<Arc<Vec<Self::GpuPoint>>, PrepareAssetComponentError<PointCloud<Self::Point>>> {
+        Ok(points)
     }
 
     fn prepare_buffer(
@@ -96,7 +116,7 @@ impl<T: GpuPoint> PointCloudGpuMapper for T {
         _asset_id: AssetId<PointCloud<Self::Point>>,
         render_device: &RenderDevice,
         _param: &mut SystemParamItem<Self::Param>,
-    ) -> Result<Buffer, PrepareAssetError<PointCloud<Self::Point>>> {
+    ) -> Result<Buffer, PrepareAssetComponentError<PointCloud<Self::Point>>> {
         Ok(
             render_device.create_buffer_with_data(&BufferInitDescriptor {
                 label: Some("point_cloud_buffer"),
@@ -107,18 +127,19 @@ impl<T: GpuPoint> PointCloudGpuMapper for T {
     }
 }
 
-struct ErasedRenderPointCloudAsset<A: PointCloudGpuMapper> {
-    _phantom: PhantomData<fn() -> A>,
-}
+// #[derive(Component)]
+// struct ErasedRenderPointCloudAsset<A: PointCloudGpuMapper> {
+//     _phantom: PhantomData<fn() -> A>,
+// }
 
 pub struct PointCloudGpuMapperPlugin<
     A: PointCloudGpuMapper,
-    AFTER: ErasedRenderAssetDependency + 'static = (),
+    AFTER: ErasedRenderAssetComponentDependency + 'static = (),
 > {
     phantom: PhantomData<fn() -> (A, AFTER)>,
 }
 
-impl<A: PointCloudGpuMapper, AFTER: ErasedRenderAssetDependency + 'static> Default
+impl<A: PointCloudGpuMapper, AFTER: ErasedRenderAssetComponentDependency + 'static> Default
     for PointCloudGpuMapperPlugin<A, AFTER>
 {
     fn default() -> Self {
@@ -128,27 +149,33 @@ impl<A: PointCloudGpuMapper, AFTER: ErasedRenderAssetDependency + 'static> Defau
     }
 }
 
-impl<A: PointCloudGpuMapper, AFTER: ErasedRenderAssetDependency + 'static> Plugin
+impl<A: PointCloudGpuMapper, AFTER: ErasedRenderAssetComponentDependency + 'static> Plugin
     for PointCloudGpuMapperPlugin<A, AFTER>
 {
     fn build(&self, app: &mut App) {
-        app.add_plugins(ErasedRenderAssetPlugin::<
-            ErasedRenderPointCloudAsset<A>,
-            AFTER,
-        >::default());
+        app.add_plugins(ErasedRenderAssetComponentPlugin::<A, AFTER>::default());
     }
 }
 
-impl<A: PointCloudGpuMapper> ErasedRenderAsset for ErasedRenderPointCloudAsset<A> {
+#[derive(TypePath)]
+pub struct PointCloudGpuMapperKey;
+
+impl<A: PointCloudGpuMapper> ErasedRenderAssetComponent for A {
     type SourceAsset = PointCloud<A::Point>;
     type ErasedAsset = RenderPointCloud;
     type Param = (SRes<RenderDevice>, A::Param);
 
+    type QueryData = Read<PointCloud3d<A::Point>>;
+    type QueryFilter = ();
+
+    type Key = PointCloudGpuMapperKey;
+
     fn prepare_asset(
         source_asset: Self::SourceAsset,
         asset_id: AssetId<Self::SourceAsset>,
+        _type_id: TypeId,
         (render_device, param): &mut SystemParamItem<Self::Param>,
-    ) -> Result<Self::ErasedAsset, PrepareAssetError<Self::SourceAsset>> {
+    ) -> Result<Self::ErasedAsset, PrepareAssetComponentError<Self::SourceAsset>> {
         Ok(RenderPointCloud {
             point_count: source_asset.points.len(),
             buffer: A::prepare_buffer(source_asset, asset_id, render_device, param)?,
@@ -157,6 +184,10 @@ impl<A: PointCloudGpuMapper> ErasedRenderAsset for ErasedRenderPointCloudAsset<A
                 point_cloud_key: ErasedPointCloudKey::new::<A>(),
             }),
         })
+    }
+
+    fn asset_id(data: bevy_ecs::query::ROQueryItem<Self::QueryData>) -> AssetId<Self::SourceAsset> {
+        data.into()
     }
 }
 

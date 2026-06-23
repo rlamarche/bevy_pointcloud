@@ -11,3 +11,4 @@ pub mod point_cloud_material;
 pub mod pointcloud_octree;
 pub mod prelude;
 pub mod render;
+pub mod render_asset;

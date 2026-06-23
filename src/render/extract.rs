@@ -4,7 +4,7 @@ use bevy_transform::prelude::GlobalTransform;
 
 use crate::{
     point::Point,
-    point_cloud::PointCloud3d,
+    point_cloud::{PointCloud3d, PointCloudGpuMapper},
     point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d},
     render::point_cloud_uniform::PointCloudUniform,
 };
@@ -24,10 +24,12 @@ impl<T: Point> ExtractComponent for PointCloud3d<T> {
     }
 }
 
-impl<M: PointCloudMaterial> ExtractComponent for PointCloudMaterial3d<M> {
-    type QueryData = &'static PointCloudMaterial3d<M>;
+impl<M: PointCloudMaterial, A: PointCloudGpuMapper> ExtractComponent
+    for PointCloudMaterial3d<M, A>
+{
+    type QueryData = &'static PointCloudMaterial3d<M, A>;
     type QueryFilter = ();
-    type Out = PointCloudMaterial3d<M>;
+    type Out = PointCloudMaterial3d<M, A>;
 
     fn extract_component(
         point_cloud_material_3d: QueryItem<'_, '_, Self::QueryData>,

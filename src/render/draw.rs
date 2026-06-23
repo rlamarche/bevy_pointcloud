@@ -1,19 +1,22 @@
 use std::marker::PhantomData;
 
-use bevy_ecs::system::{
-    lifetimeless::{Read, SRes},
-    SystemParamItem,
+use bevy_ecs::{
+    query::ROQueryItem,
+    system::{
+        lifetimeless::{Read, SRes},
+        SystemParamItem,
+    },
 };
 use bevy_render::{
-    erased_render_asset::ErasedRenderAssets,
     render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
     render_resource::IndexFormat,
 };
 
 use crate::{
     point::Point,
-    point_cloud::{RenderPointCloud, PointCloud3d},
+    point_cloud::{PointCloud3d, PointCloudGpuMapperKey, RenderPointCloud},
     render::mesh::PointCloudMesh,
+    render_asset::{ErasedRenderAssetsComponent, RenderAssetLoaded},
 };
 
 pub struct DrawPointCloud<T: Point>(PhantomData<fn() -> T>);
@@ -21,16 +24,19 @@ pub struct DrawPointCloud<T: Point>(PhantomData<fn() -> T>);
 impl<T: Point, P: PhaseItem> RenderCommand<P> for DrawPointCloud<T> {
     type Param = (
         SRes<PointCloudMesh>,
-        SRes<ErasedRenderAssets<RenderPointCloud>>,
+        SRes<ErasedRenderAssetsComponent<RenderPointCloud>>,
     );
     type ViewQuery = ();
-    type ItemQuery = Read<PointCloud3d<T>>;
+    type ItemQuery = (
+        Read<PointCloud3d<T>>,
+        Read<RenderAssetLoaded<PointCloudGpuMapperKey>>,
+    );
 
     #[inline]
     fn render<'w>(
         _item: &P,
         _view: (),
-        point_cloud_3d: Option<&'w PointCloud3d<T>>,
+        entity: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         (point_cloud_mesh, render_point_clouds): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
@@ -38,10 +44,11 @@ impl<T: Point, P: PhaseItem> RenderCommand<P> for DrawPointCloud<T> {
         let point_cloud_mesh = point_cloud_mesh.into_inner();
         let render_point_clouds = render_point_clouds.into_inner();
 
-        let Some(point_cloud_3d) = point_cloud_3d else {
+        let Some((point_cloud_3d, point_cloud_loaded)) = entity else {
             return RenderCommandResult::Skip;
         };
-        let Some(render_point_cloud) = render_point_clouds.get(point_cloud_3d.id().untyped())
+        let Some(render_point_cloud) =
+            render_point_clouds.get((point_cloud_3d.id(), point_cloud_loaded.type_id))
         else {
             return RenderCommandResult::Skip;
         };

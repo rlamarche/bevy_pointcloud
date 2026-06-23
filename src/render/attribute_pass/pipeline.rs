@@ -3,7 +3,7 @@ use std::{hash::Hash, marker::PhantomData, sync::Arc};
 use bevy_core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT;
 use bevy_ecs::prelude::*;
 use bevy_mesh::{PrimitiveTopology, VertexBufferLayout, VertexFormat};
-use bevy_pbr::{ErasedMaterialKey, MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey};
+use bevy_pbr::{MeshPipeline, MeshPipelineKey, MeshPipelineViewLayoutKey};
 #[cfg(feature = "pointcloud_octree")]
 use bevy_render::render_resource::binding_types::uniform_buffer;
 use bevy_render::{
@@ -26,7 +26,7 @@ use crate::pointcloud_octree::extract::{PointCloudNodeDataUniform, PointCloudOct
 use crate::{
     point::Point,
     point_cloud::{ErasedPointCloudKey, PointCloudProperties},
-    point_cloud_material::PointCloudMaterialProperties,
+    point_cloud_material::{ErasedPointCloudMaterialKey, PointCloudMaterialProperties},
     render::{point_cloud_uniform::PointCloudUniform, MATERIAL_BIND_GROUP_INDEX},
 };
 
@@ -117,7 +117,7 @@ pub struct AttributePipelineKey {
     pub mesh_key: MeshPipelineKey,
     pub point_cloud_key: ErasedPointCloudKey,
     pub is_octree: bool,
-    pub material_key: ErasedMaterialKey,
+    pub material_key: ErasedPointCloudMaterialKey,
 }
 
 impl AttributePipelineKey {
@@ -126,7 +126,7 @@ impl AttributePipelineKey {
         mesh_key: MeshPipelineKey,
         point_cloud_key: ErasedPointCloudKey,
         is_octree: bool,
-        material_key: ErasedMaterialKey,
+        material_key: ErasedPointCloudMaterialKey,
     ) -> Self {
         Self {
             mesh_key,

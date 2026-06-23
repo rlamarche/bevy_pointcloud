@@ -1,11 +1,19 @@
-use bevy_ecs::system::{lifetimeless::SRes, SystemParamItem};
-use bevy_pbr::MaterialBindGroupAllocators;
-use bevy_render::{
-    erased_render_asset::ErasedRenderAssets,
-    render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
+use bevy_ecs::{
+    query::ROQueryItem,
+    system::{
+        lifetimeless::{Read, SRes},
+        SystemParamItem,
+    },
 };
+use bevy_pbr::MaterialBindGroupAllocators;
+use bevy_render::render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass};
 
-use crate::point_cloud_material::{PreparedPointCloudMaterial, RenderPointCloudMaterialInstances};
+use crate::{
+    point_cloud_material::{
+        PointCloudMaterialKey, PreparedPointCloudMaterial, RenderPointCloudMaterialInstances,
+    },
+    render_asset::{ErasedRenderAssetsComponent, RenderAssetLoaded},
+};
 
 // /// The render world representation of a [`PointCloudMaterial`].
 // pub struct RenderPointCloudMaterial<M: PointCloudMaterial> {
@@ -68,17 +76,17 @@ pub struct SetPointCloudMaterialGroup<const I: usize>;
 
 impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudMaterialGroup<I> {
     type Param = (
-        SRes<ErasedRenderAssets<PreparedPointCloudMaterial>>,
+        SRes<ErasedRenderAssetsComponent<PreparedPointCloudMaterial>>,
         SRes<RenderPointCloudMaterialInstances>,
         SRes<MaterialBindGroupAllocators>,
     );
     type ViewQuery = ();
-    type ItemQuery = (); // Read<PointCloudMaterial3d<M>>;
+    type ItemQuery = Read<RenderAssetLoaded<PointCloudMaterialKey>>;
 
     fn render<'w>(
         item: &P,
         _view: (),
-        _item_query: Option<()>,
+        render_asset_loaded: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         (materials, material_instances, material_bind_group_allocator): SystemParamItem<
             'w,
             '_,
@@ -98,7 +106,12 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudMaterialGro
         else {
             return RenderCommandResult::Skip;
         };
-        let Some(material) = materials.get(material_instance.asset_id) else {
+        let Some(render_asset_loaded) = render_asset_loaded else {
+            return RenderCommandResult::Skip;
+        };
+        let Some(material) =
+            materials.get((material_instance.asset_id, render_asset_loaded.type_id))
+        else {
             return RenderCommandResult::Skip;
         };
         let Some(material_bind_group) = material_bind_group_allocator.get(material.binding.group)

@@ -1,5 +1,8 @@
 use std::{
-    fmt::Display, io::{Cursor, Error}, marker::PhantomData, sync::Arc,
+    fmt::Display,
+    io::{Cursor, Error},
+    marker::PhantomData,
+    sync::Arc,
 };
 
 use bevy_app::{App, Plugin};

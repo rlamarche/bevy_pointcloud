@@ -1,3 +1,5 @@
+use std::any::TypeId;
+
 use bevy_asset::UntypedAssetId;
 use bevy_ecs::{change_detection::Tick, prelude::*};
 use bevy_render::sync_world::MainEntityHashMap;
@@ -41,6 +43,7 @@ pub struct RenderPointCloudMaterialInstances {
 pub struct RenderPointCloudMaterialInstance {
     /// The material asset.
     pub asset_id: UntypedAssetId,
+    pub mapper_type_id: TypeId,
     /// The [`RenderMaterialInstances::current_change_tick`] at which this
     /// material instance was last modified.
     pub last_change_tick: Tick,
