@@ -435,6 +435,7 @@ where
     M::Data: PartialEq + Eq + Hash + Clone,
 {
     type SourceAsset = M;
+    type ExtractedAsset = M;
 
     type ErasedAsset = PreparedPointCloudMaterial;
 
@@ -457,8 +458,12 @@ where
         data.id()
     }
 
+    fn extract_asset(source_asset: &Self::SourceAsset) -> Self::ExtractedAsset {
+        source_asset.clone()
+    }
+
     fn prepare_asset(
-        material: Self::SourceAsset,
+        material: Self::ExtractedAsset,
         material_id: AssetId<Self::SourceAsset>,
         type_id: TypeId,
         (

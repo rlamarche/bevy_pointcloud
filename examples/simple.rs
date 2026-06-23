@@ -225,14 +225,19 @@ fn load_pointcloud(
         MyPointCloudGpuMapper,
     ));
 
-    commands.spawn((
-        PointCloud3d(point_cloud),
-        PointCloudMaterial3d::<SimplePointCloudMaterial, MyPointCloudGpuMapper>::from(
-            my_second_material,
-        ),
-        MainPointCloud(Vec3::new(-5.0, 0.0, 0.0)),
-        MyPointCloudGpuMapper,
-    ));
+    for i in 0..11 {
+        if i == 5 {
+            continue;
+        }
+        commands.spawn((
+            PointCloud3d(point_cloud.clone()),
+            PointCloudMaterial3d::<SimplePointCloudMaterial, MyPointCloudGpuMapper>::from(
+                my_second_material.clone(),
+            ),
+            MainPointCloud(Vec3::new(i as f32 - 5.0, 0.0, 0.0)),
+            MyPointCloudGpuMapper,
+        ));
+    }
 
     // Generate a random point cloud
     // let mut rng = rand::rng();

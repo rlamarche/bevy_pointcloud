@@ -45,7 +45,10 @@ pub enum PrepareAssetComponentError<E: Send + Sync + 'static> {
 /// is transformed into its GPU-representation of type [`ErasedRenderAsset`].
 pub trait ErasedRenderAssetComponent: Send + Sync + 'static {
     /// The representation of the asset in the "main world".
-    type SourceAsset: Asset + Clone;
+    type SourceAsset: Asset;
+
+    type ExtractedAsset: Send + Sync + 'static;
+
     /// The target representation of the asset in the "render world".
     type ErasedAsset: Send + Sync + 'static + Sized;
 
@@ -74,21 +77,23 @@ pub trait ErasedRenderAssetComponent: Send + Sync + 'static {
         unused_variables,
         reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
     )]
-    fn byte_len(erased_asset: &Self::SourceAsset) -> Option<usize> {
+    fn byte_len(erased_asset: &Self::ExtractedAsset) -> Option<usize> {
         None
     }
 
     fn asset_id(data: ROQueryItem<Self::QueryData>) -> AssetId<Self::SourceAsset>;
 
+    fn extract_asset(source_asset: &Self::SourceAsset) -> Self::ExtractedAsset;
+
     /// Prepares the [`ErasedRenderAsset::SourceAsset`] for the GPU by transforming it into a [`ErasedRenderAsset`].
     ///
     /// ECS data may be accessed via `param`.
     fn prepare_asset(
-        source_asset: Self::SourceAsset,
+        extracted_asset: Self::ExtractedAsset,
         asset_id: AssetId<Self::SourceAsset>,
         type_id: TypeId,
         param: &mut SystemParamItem<Self::Param>,
-    ) -> Result<Self::ErasedAsset, PrepareAssetComponentError<Self::SourceAsset>>;
+    ) -> Result<Self::ErasedAsset, PrepareAssetComponentError<Self::ExtractedAsset>>;
 
     /// Called whenever the [`ErasedRenderAsset::SourceAsset`] has been removed.
     ///
@@ -195,7 +200,7 @@ pub struct ExtractedAssets<A: ErasedRenderAssetComponent> {
     /// The assets extracted this frame.
     ///
     /// These are assets that were either added or modified this frame.
-    pub extracted: Vec<(AssetId<A::SourceAsset>, A::SourceAsset)>,
+    pub extracted: Vec<(AssetId<A::SourceAsset>, A::ExtractedAsset)>,
 
     /// IDs of the assets that were removed this frame.
     ///
@@ -448,11 +453,11 @@ pub(crate) fn extract_erased_render_asset<A: ErasedRenderAssetComponent>(
                     if asset_usage.contains(RenderAssetUsages::RENDER_WORLD) {
                         if asset_usage == RenderAssetUsages::RENDER_WORLD {
                             if let Some(asset) = assets.remove(id) {
-                                extracted_assets.push((id, asset));
+                                extracted_assets.push((id, A::extract_asset(&asset)));
                                 added.insert(id);
                             }
                         } else {
-                            extracted_assets.push((id, asset.clone()));
+                            extracted_assets.push((id, A::extract_asset(asset)));
                             added.insert(id);
                         }
                     }
@@ -496,7 +501,7 @@ pub(crate) fn extract_erased_render_asset<A: ErasedRenderAssetComponent>(
 /// All assets that should be prepared next frame.
 #[derive(Resource)]
 pub struct PrepareNextFrameAssets<A: ErasedRenderAssetComponent> {
-    assets: Vec<(AssetId<A::SourceAsset>, A::SourceAsset)>,
+    assets: Vec<(AssetId<A::SourceAsset>, A::ExtractedAsset)>,
 }
 
 impl<A: ErasedRenderAssetComponent> Default for PrepareNextFrameAssets<A> {

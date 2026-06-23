@@ -179,6 +179,7 @@ impl<A: PointCloudGpuMapper, C: Component> ErasedRenderAssetComponent
     for ErasedPointCloudGpuMapper<A, C>
 {
     type SourceAsset = PointCloud<A::Point>;
+    type ExtractedAsset = Self::SourceAsset;
     type ErasedAsset = RenderPointCloud;
     type Param = (SRes<RenderDevice>, A::Param);
 
@@ -187,15 +188,19 @@ impl<A: PointCloudGpuMapper, C: Component> ErasedRenderAssetComponent
 
     type Key = PointCloudGpuMapperKey;
 
+    fn extract_asset(source_asset: &Self::SourceAsset) -> Self::ExtractedAsset {
+        source_asset.clone()
+    }
+
     fn prepare_asset(
-        source_asset: Self::SourceAsset,
+        extracted_asset: Self::ExtractedAsset,
         asset_id: AssetId<Self::SourceAsset>,
         _type_id: TypeId,
         (render_device, param): &mut SystemParamItem<Self::Param>,
     ) -> Result<Self::ErasedAsset, PrepareAssetComponentError<Self::SourceAsset>> {
         Ok(RenderPointCloud {
-            point_count: source_asset.points.len(),
-            buffer: A::prepare_buffer(source_asset, asset_id, render_device, param)?,
+            point_count: extracted_asset.points.len(),
+            buffer: A::prepare_buffer(extracted_asset, asset_id, render_device, param)?,
             properties: Arc::new(PointCloudProperties {
                 vertex_buffer_layout: A::GpuPoint::vertex_buffer_layout(),
                 point_cloud_key: ErasedPointCloudKey::new::<A>(),
