@@ -1,7 +1,7 @@
 #[path = "helpers/camera_controller.rs"]
 mod camera_controller;
 
-use std::ops::Mul;
+use std::{ops::Mul, sync::Arc};
 
 use bevy::DefaultPlugins;
 use bevy_app::prelude::*;
@@ -19,10 +19,25 @@ use bevy_gizmos::prelude::*;
 use bevy_math::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pointcloud::{
-    PointCloudMaterial3d, PointCloudPlugin, SimplePointCloudMaterial, SimplePointCloudMaterialPlugin, octree::visibility::components::{SkipOctreeVisibility, ViewVisibleOctreeNodes}, octree_loader::potree::loader::PotreeLoader, point::RGBPoint, pointcloud_octree::{
-        ExtractVisiblePointCloudOctreeNodesPlugin, PointCloudOctreeAssetPlugin, PointCloudOctreeServer, PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin, PointCloudOctreeVisibilitySettings, RenderPointCloudRGBOctreePlugin, asset::{PointCloudOctree, data::PointCloudNodeData}, component::PointCloudOctree3d
-    }, render::PointCloudRenderMode
+    octree::visibility::components::{SkipOctreeVisibility, ViewVisibleOctreeNodes},
+    octree_loader::potree::loader::PotreeLoader,
+    point::RGBPoint,
+    point_cloud::{
+        PointCloud, PointCloudGpuMapper, PointCloudIdentityGpuMapper, PointCloudsPlugin,
+    },
+    point_cloud_material::{
+        PointCloudMaterial3d, SimplePointCloudMaterial, SimplePointCloudMaterialPlugin,
+    },
+    pointcloud_octree::{
+        asset::{data::PointCloudNodeData, PointCloudOctree},
+        component::PointCloudOctree3d,
+        ExtractVisiblePointCloudOctreeNodesPlugin, PointCloudOctreeAssetPlugin,
+        PointCloudOctreeServer, PointCloudOctreeServerPlugin, PointCloudOctreeVisibilityPlugin,
+        PointCloudOctreeVisibilitySettings, RenderPointCloudRGBOctreePlugin,
+    },
+    render::PointCloudRenderMode,
 };
+use bevy_reflect::TypePath;
 use bevy_render::prelude::*;
 use bevy_text::{FontSmoothing, TextFont};
 use bevy_transform::prelude::*;
@@ -30,18 +45,64 @@ use bevy_utils::default;
 use bevy_window::{PresentMode, Window};
 use potree::asset::fs::PotreeFsAsset;
 
+#[derive(Component, TypePath)]
+struct MyPointCloudGpuMapper;
+
+impl PointCloudGpuMapper for MyPointCloudGpuMapper {
+    type Point = RGBPoint;
+
+    type GpuPoint = RGBPoint;
+
+    type Param = ();
+
+    fn convert(
+        point_cloud: PointCloud<Self::Point>,
+        _param: &mut bevy_ecs::system::SystemParamItem<Self::Param>,
+    ) -> Result<
+        Arc<Vec<Self::GpuPoint>>,
+        bevy_pointcloud::render_asset::PrepareAssetComponentError<PointCloud<Self::Point>>,
+    > {
+        let color_start = Vec3A::new(0.0, 0.0, 1.0);
+        let color_end = Vec3A::new(1.0, 0.0, 0.0);
+
+        if let Some(aabb) = point_cloud.aabb {
+            let points: Vec<_> = point_cloud
+                .points
+                .iter()
+                .map(|p| {
+                    let t = p.position.z.remap(aabb.min().z, aabb.max().z, 0.0, 1.0);
+                    let color = color_start.lerp(color_end, t);
+                    RGBPoint::new(p.position, color.extend(1.0))
+                })
+                .collect();
+
+            Ok(Arc::new(points))
+        } else {
+            Ok(Arc::new(Vec::new()))
+        }
+    }
+}
+
 fn main() {
     let mut app = App::new();
+
     app.add_plugins((
         DefaultPlugins,
         EguiPlugin::default(),
         // WorldInspectorPlugin::default(),
         PanOrbitCameraPlugin,
-        PointCloudPlugin::<RGBPoint, RGBPoint>::default(),
-        SimplePointCloudMaterialPlugin,
+        PointCloudsPlugin::<RGBPoint>::default(),
+        SimplePointCloudMaterialPlugin::<PointCloudIdentityGpuMapper<RGBPoint>>::default(),
+        SimplePointCloudMaterialPlugin::<MyPointCloudGpuMapper>::default(),
         PointCloudOctreeAssetPlugin::<RGBPoint>::default(),
         PointCloudOctreeVisibilityPlugin::<RGBPoint>::default(),
-        ExtractVisiblePointCloudOctreeNodesPlugin::<RGBPoint, RGBPoint>::with_max_size_and_max_bytes_per_frame(
+        ExtractVisiblePointCloudOctreeNodesPlugin::<PointCloudIdentityGpuMapper<RGBPoint>>::with_max_size_and_max_bytes_per_frame(
+            // limit to 1 mb of gpu memory
+            512 * 1024 * 1024,
+            // 100 MB max uploaded per frame
+            100 * 1024 * 1024,
+        ),
+        ExtractVisiblePointCloudOctreeNodesPlugin::<MyPointCloudGpuMapper>::with_max_size_and_max_bytes_per_frame(
             // limit to 1 mb of gpu memory
             512 * 1024 * 1024,
             // 100 MB max uploaded per frame
@@ -138,16 +199,27 @@ fn load_pointcloud(
         max_point_size: 50.0,
         ..Default::default()
     });
+
     commands.spawn(MyMaterial(my_material.clone()));
 
     let octree_handle = octree_server
         .load_octree::<PotreeLoader<_>>(PotreeFsAsset::from_path("assets/potree/heidentor"));
 
     commands.spawn((
-        PointCloudOctree3d(octree_handle),
+        PointCloudOctree3d(octree_handle.clone()),
         Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2)),
-        PointCloudMaterial3d(my_material.clone()),
+        PointCloudMaterial3d::<SimplePointCloudMaterial, PointCloudIdentityGpuMapper<RGBPoint>>::from(my_material.clone()),
     ));
+
+    commands.spawn((
+        PointCloudOctree3d(octree_handle),
+        Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2))
+            .with_translation(vec3(5.0, 0.0, 0.0)),
+        PointCloudMaterial3d::<SimplePointCloudMaterial, MyPointCloudGpuMapper>::from(
+            my_material.clone(),
+        ),
+    ));
+
 }
 
 #[allow(unused)]

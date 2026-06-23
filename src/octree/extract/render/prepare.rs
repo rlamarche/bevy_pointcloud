@@ -13,10 +13,11 @@ use super::{
         limiter::RenderOctreeNodesBytesPerFrameLimiter, ExtractedOctreeNodes, OctreeNodeExtraction,
     },
     asset::RenderOctreeNodeData,
-    node::{PrepareOctreeNodeError, RenderOctreeNode},
-    resources::RenderOctrees,
+    node::PrepareOctreeNodeError,
+    resources::ErasedRenderOctrees,
 };
 use crate::octree::extract::render::{
+    buffer::RenderNodeData,
     components::RenderOctreeEntityUniform,
     resources::{AllocatedOctreeNodes, OctreeEntityLayout, RenderOctreeIndex},
     uniforms::OctreeEntityUniform,
@@ -58,25 +59,24 @@ pub fn prepare_octrees_uniforms<E: OctreeNodeExtraction>(
 /// which where extracted this frame for the GPU.
 #[cfg_attr(feature = "trace", tracing::instrument(skip_all))]
 #[allow(clippy::too_many_arguments)]
-pub fn prepare_assets<E, A>(
+pub fn prepare_assets<E: OctreeNodeExtraction>(
     mut extracted_octree_nodes: ResMut<ExtractedOctreeNodes<E>>,
-    mut allocated_octree_nodes: ResMut<AllocatedOctreeNodes<E>>,
-    mut render_octrees: ResMut<RenderOctrees<A>>,
-    mut render_octrees_buffers: ResMut<super::buffer::RenderOctreesBuffers<A>>,
-    mut prepare_next_frame: ResMut<super::resources::PrepareNextFrameOctreeNodes<A>>,
-    param: StaticSystemParam<<A as RenderOctreeNode>::Param>,
+    mut allocated_octree_nodes: ResMut<AllocatedOctreeNodes<E::NodeData>>,
+    mut render_octrees: ResMut<ErasedRenderOctrees<E::ErasedRenderOctreeNode>>,
+    mut render_octrees_buffers: ResMut<
+        super::buffer::ErasedRenderOctreesBuffers<E::ErasedRenderOctreeNode>,
+    >,
+    mut prepare_next_frame: ResMut<super::resources::PrepareNextFrameOctreeNodes<E>>,
+    param: StaticSystemParam<E::PrepareParam>,
     bpf: Res<RenderOctreeNodesBytesPerFrameLimiter<E>>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
-) where
-    E: OctreeNodeExtraction,
-    A: RenderOctreeNode<SourceOctreeNode = E::NodeData, ExtractedOctreeNode = E::ExtractedNodeData>,
-{
-    // one single buffer for all octrees, make max_points customizable
+) {
+    // one single buffer for all octrees
     let octrees_buffer = render_octrees_buffers.get_or_insert_mut(
         0,
         &render_device,
-        extracted_octree_nodes.max_instances,
+        extracted_octree_nodes.buffer_size,
     );
 
     let mut wrote_asset_count = 0;
@@ -99,7 +99,7 @@ pub fn prepare_assets<E, A>(
             continue;
         }
 
-        let write_bytes = if let Some(size) = A::byte_len(&extracted_octree_node) {
+        let write_bytes = if let Some(size) = E::byte_len(&extracted_octree_node) {
             // we could check if available bytes > byte_len here, but we want to make some
             // forward progress even if the asset is larger than the max bytes per frame.
             // this way we always write at least one (sized) asset per frame.
@@ -133,7 +133,7 @@ pub fn prepare_assets<E, A>(
         // write node data into buffer
         if let Err(error) = octrees_buffer.write(
             &render_queue,
-            &extracted_octree_node.data,
+            extracted_octree_node.data.data(),
             &extracted_octree_node.allocation,
         ) {
             bevy_log::warn!(
@@ -150,9 +150,9 @@ pub fn prepare_assets<E, A>(
         let allocated_nodes = allocated_octree_nodes.get_or_create_mut(asset_id);
         allocated_nodes.insert(cloned_node.id, extracted_octree_node.allocation.clone());
 
-        match A::prepare_octree_node(extracted_octree_node, asset_id, &mut param) {
+        match E::prepare_octree_node(extracted_octree_node, asset_id, &mut param) {
             Ok(prepared_octree_node) => {
-                let render_octree_node = RenderOctreeNodeData::<A> {
+                let render_octree_node = RenderOctreeNodeData::<E::ErasedRenderOctreeNode> {
                     id: cloned_node.id,
                     parent_id: cloned_node.parent_id,
                     child_index: cloned_node.child_index,
@@ -176,7 +176,7 @@ pub fn prepare_assets<E, A>(
             Err(PrepareOctreeNodeError::AsBindGroupError(e)) => {
                 error!(
                     "{} Bind group construction failed: {e}",
-                    core::any::type_name::<A>()
+                    core::any::type_name::<E>()
                 );
                 // TODO notify main world through a channel ?
             }
@@ -192,7 +192,7 @@ pub fn prepare_assets<E, A>(
             render_octree.nodes.remove(&node_id);
             allocated_nodes.remove(&node_id);
 
-            A::unload_octree_node(asset_id, node_id, &mut param);
+            E::unload_octree_node(asset_id, node_id, &mut param);
         }
     }
 
@@ -205,7 +205,7 @@ pub fn prepare_assets<E, A>(
         let render_asset = render_octrees.get_or_insert_mut(asset_id);
 
         for (node_id, extracted_octree_node) in extracted_octree_nodes {
-            let write_bytes = if let Some(size) = A::byte_len(&extracted_octree_node) {
+            let write_bytes = if let Some(size) = E::byte_len(&extracted_octree_node) {
                 if bpf.exhausted() {
                     prepare_next_frame
                         .assets
@@ -233,7 +233,7 @@ pub fn prepare_assets<E, A>(
             // write node data into buffer
             if let Err(error) = octrees_buffer.write(
                 &render_queue,
-                &extracted_octree_node.data,
+                extracted_octree_node.data.data(),
                 &extracted_octree_node.allocation,
             ) {
                 bevy_log::warn!(
@@ -248,9 +248,9 @@ pub fn prepare_assets<E, A>(
 
             allocated_nodes.insert(cloned_node.id, extracted_octree_node.allocation.clone());
 
-            match A::prepare_octree_node(extracted_octree_node, asset_id, &mut param) {
+            match E::prepare_octree_node(extracted_octree_node, asset_id, &mut param) {
                 Ok(prepared_octree_node) => {
-                    let render_octree_node = RenderOctreeNodeData::<A> {
+                    let render_octree_node = RenderOctreeNodeData::<E::ErasedRenderOctreeNode> {
                         id: cloned_node.id,
                         parent_id: cloned_node.parent_id,
                         child_index: cloned_node.child_index,
@@ -274,7 +274,7 @@ pub fn prepare_assets<E, A>(
                 Err(PrepareOctreeNodeError::AsBindGroupError(e)) => {
                     error!(
                         "{} Bind group construction failed: {e}",
-                        core::any::type_name::<A>()
+                        core::any::type_name::<E>()
                     );
                     // TODO notify main world ?
                 }
@@ -286,7 +286,7 @@ pub fn prepare_assets<E, A>(
     if bpf.exhausted() && !prepare_next_frame.assets.is_empty() {
         debug!(
             "{} write budget exhausted with {} assets remaining (wrote {})",
-            core::any::type_name::<A>(),
+            core::any::type_name::<E>(),
             prepare_next_frame.assets.len(),
             wrote_asset_count
         );

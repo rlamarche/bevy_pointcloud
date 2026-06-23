@@ -8,11 +8,13 @@ use bevy_render::{
 
 use crate::{
     bevy::prelude::*,
-    octree::extract::render::{components::RenderVisibleOctreeNodes, resources::RenderOctrees},
-    point::{GpuPoint, Point},
+    octree::extract::render::{
+        components::RenderVisibleOctreeNodes, resources::ErasedRenderOctrees,
+    },
+    point::Point,
     pointcloud_octree::{
         asset::data::PointCloudNodeData, component::PointCloudOctree3d,
-        extract::RenderPointCloudNodeData, render::prepare::MAX_NODES,
+        extract::ErasedRenderPointCloudNode, render::prepare::MAX_NODES,
     },
     render::mesh::PointCloudMesh,
 };
@@ -46,7 +48,7 @@ impl RenderVisibleNodesIndirectBuffers {
 }
 
 #[allow(clippy::type_complexity)]
-pub fn prepare_indirect_buffer<T: Point, U: GpuPoint>(
+pub fn prepare_indirect_buffer<T: Point>(
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
     views_3d: Query<
@@ -56,7 +58,7 @@ pub fn prepare_indirect_buffer<T: Point, U: GpuPoint>(
         ),
         With<Camera3d>,
     >,
-    render_octrees: Res<RenderOctrees<RenderPointCloudNodeData<T, U>>>,
+    render_octrees: Res<ErasedRenderOctrees<ErasedRenderPointCloudNode>>,
     point_cloud_mesh: Res<PointCloudMesh>,
     mut removed_entities: Local<HashSet<Entity>>,
 ) {

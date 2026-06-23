@@ -75,7 +75,7 @@ pub trait PointCloudGpuMapper: Send + Sync + TypePath {
         Ok(
             render_device.create_buffer_with_data(&BufferInitDescriptor {
                 label: Some("point_cloud_buffer"),
-                contents: bytemuck::cast_slice(&data),
+                contents: bytemuck::cast_slice(data.as_slice()),
                 usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
             }),
         )
@@ -126,11 +126,6 @@ impl<T: GpuPoint> PointCloudGpuMapper for PointCloudIdentityGpuMapper<T> {
         )
     }
 }
-
-// #[derive(Component)]
-// struct ErasedRenderPointCloudAsset<A: PointCloudGpuMapper> {
-//     _phantom: PhantomData<fn() -> A>,
-// }
 
 #[allow(clippy::type_complexity)]
 pub struct PointCloudGpuMapperPlugin<

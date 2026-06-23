@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 
+use bevy_asset::AssetId;
 use bevy_ecs::{
     query::ROQueryItem,
     system::{lifetimeless::*, SystemParamItem},
@@ -15,34 +16,32 @@ use crate::pointcloud_octree::render::indirect::RenderVisibleNodesIndirectBuffer
 use crate::{
     octree::{
         extract::render::{
-            buffer::RenderOctreesBuffers,
+            buffer::ErasedRenderOctreesBuffers,
             components::{RenderOctreeEntityUniform, RenderVisibleOctreeNodes},
-            resources::RenderOctrees,
+            resources::ErasedRenderOctrees,
         },
         visibility::components::VisibleOctreeNode,
     },
-    point::{GpuPoint, Point},
+    point::Point,
     pointcloud_octree::{
         asset::data::PointCloudNodeData, component::PointCloudOctree3d,
-        extract::RenderPointCloudNodeData,
+        extract::ErasedRenderPointCloudNode,
     },
     render::mesh::PointCloudMesh,
 };
 
-pub struct DrawPointCloudOctreeNode<T: Point, U: GpuPoint>(PhantomData<fn() -> (T, U)>);
+pub struct DrawPointCloudOctreeNode<T: Point>(PhantomData<fn() -> T>);
 
-impl<T: Point, U: GpuPoint> Default for DrawPointCloudOctreeNode<T, U> {
+impl<T: Point> Default for DrawPointCloudOctreeNode<T> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<P: BinnedPhaseItem, T: Point, U: GpuPoint> RenderCommand<P>
-    for DrawPointCloudOctreeNode<T, U>
-{
+impl<P: BinnedPhaseItem, T: Point> RenderCommand<P> for DrawPointCloudOctreeNode<T> {
     type Param = (
         SRes<PointCloudMesh>,
-        SRes<RenderOctrees<RenderPointCloudNodeData<T, U>>>,
+        SRes<ErasedRenderOctrees<ErasedRenderPointCloudNode>>,
     );
     type ViewQuery = Read<RenderVisibleOctreeNodes<PointCloudNodeData<T>, PointCloudOctree3d<T>>>;
     type ItemQuery = Read<PointCloudOctree3d<T>>;
@@ -67,7 +66,8 @@ impl<P: BinnedPhaseItem, T: Point, U: GpuPoint> RenderCommand<P>
             return RenderCommandResult::Skip;
         };
 
-        let Some(octree) = render_octrees.get(point_cloud_octree_3d) else {
+        let asset_id: AssetId<_> = point_cloud_octree_3d.into();
+        let Some(octree) = render_octrees.get(asset_id) else {
             debug!("Missing octree when render");
             return RenderCommandResult::Skip;
         };
@@ -114,19 +114,19 @@ impl<P: BinnedPhaseItem, T: Point, U: GpuPoint> RenderCommand<P>
     }
 }
 
-pub struct DrawPointCloudOctree<T: Point, U: GpuPoint>(PhantomData<fn() -> (T, U)>);
+pub struct DrawPointCloudOctree<T: Point>(PhantomData<fn() -> T>);
 
-impl<T: Point, U: GpuPoint> Default for DrawPointCloudOctree<T, U> {
+impl<T: Point> Default for DrawPointCloudOctree<T> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<P: BinnedPhaseItem, T: Point, U: GpuPoint> RenderCommand<P> for DrawPointCloudOctree<T, U> {
+impl<P: BinnedPhaseItem, T: Point> RenderCommand<P> for DrawPointCloudOctree<T> {
     type Param = (
         SRes<PointCloudMesh>,
-        SRes<RenderOctrees<RenderPointCloudNodeData<T, U>>>,
-        SRes<RenderOctreesBuffers<RenderPointCloudNodeData<T, U>>>,
+        SRes<ErasedRenderOctrees<ErasedRenderPointCloudNode>>,
+        SRes<ErasedRenderOctreesBuffers<ErasedRenderPointCloudNode>>,
     );
     type ViewQuery = Read<RenderVisibleOctreeNodes<PointCloudNodeData<T>, PointCloudOctree3d<T>>>;
     type ItemQuery = Read<PointCloudOctree3d<T>>;
@@ -161,7 +161,8 @@ impl<P: BinnedPhaseItem, T: Point, U: GpuPoint> RenderCommand<P> for DrawPointCl
             return RenderCommandResult::Skip;
         };
 
-        let Some(render_octree) = render_octrees.get(point_cloud_octree_3d) else {
+        let asset_id: AssetId<_> = point_cloud_octree_3d.into();
+        let Some(render_octree) = render_octrees.get(asset_id) else {
             debug!("Missing octree when render");
             return RenderCommandResult::Skip;
         };
@@ -205,22 +206,20 @@ impl<P: BinnedPhaseItem, T: Point, U: GpuPoint> RenderCommand<P> for DrawPointCl
 }
 
 #[cfg(not(feature = "webgl"))]
-pub struct DrawPointCloudOctreeIndirect<T: Point, U: GpuPoint>(PhantomData<fn() -> (T, U)>);
+pub struct DrawPointCloudOctreeIndirect<T: Point>(PhantomData<fn() -> T>);
 
 #[cfg(not(feature = "webgl"))]
-impl<T: Point, U: GpuPoint> Default for DrawPointCloudOctreeIndirect<T, U> {
+impl<T: Point> Default for DrawPointCloudOctreeIndirect<T> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
 #[cfg(not(feature = "webgl"))]
-impl<P: BinnedPhaseItem, T: Point, U: GpuPoint> RenderCommand<P>
-    for DrawPointCloudOctreeIndirect<T, U>
-{
+impl<P: BinnedPhaseItem, T: Point> RenderCommand<P> for DrawPointCloudOctreeIndirect<T> {
     type Param = (
         SRes<PointCloudMesh>,
-        SRes<RenderOctreesBuffers<RenderPointCloudNodeData<T, U>>>,
+        SRes<ErasedRenderOctreesBuffers<ErasedRenderPointCloudNode>>,
     );
     type ViewQuery = Read<RenderVisibleNodesIndirectBuffers>;
     type ItemQuery = ();
@@ -276,23 +275,19 @@ impl<P: BinnedPhaseItem, T: Point, U: GpuPoint> RenderCommand<P>
     }
 }
 
-pub struct SetPointCloudOctreeNodeUniformGroup<const I: usize, T: Point, U: GpuPoint>(
-    PhantomData<fn() -> (T, U)>,
-);
+pub struct SetPointCloudOctreeNodeUniformGroup<const I: usize, T: Point>(PhantomData<fn() -> T>);
 
-impl<const I: usize, T: Point, U: GpuPoint> Default
-    for SetPointCloudOctreeNodeUniformGroup<I, T, U>
-{
+impl<const I: usize, T: Point> Default for SetPointCloudOctreeNodeUniformGroup<I, T> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<P: BinnedPhaseItem, const I: usize, T: Point, U: GpuPoint> RenderCommand<P>
-    for SetPointCloudOctreeNodeUniformGroup<I, T, U>
+impl<P: BinnedPhaseItem, const I: usize, T: Point> RenderCommand<P>
+    for SetPointCloudOctreeNodeUniformGroup<I, T>
 {
     type Param = (
-        SRes<RenderOctrees<RenderPointCloudNodeData<T, U>>>,
+        SRes<ErasedRenderOctrees<ErasedRenderPointCloudNode>>,
         SRes<RenderQueue>,
     );
     type ViewQuery = Read<RenderVisibleOctreeNodes<PointCloudNodeData<T>, PointCloudOctree3d<T>>>;
@@ -315,7 +310,8 @@ impl<P: BinnedPhaseItem, const I: usize, T: Point, U: GpuPoint> RenderCommand<P>
             return RenderCommandResult::Skip;
         };
 
-        let Some(octree) = render_octrees.get(point_cloud_octree_3d) else {
+        let asset_id: AssetId<_> = point_cloud_octree_3d.into();
+        let Some(octree) = render_octrees.get(asset_id) else {
             debug!("Missing octree when render");
             return RenderCommandResult::Skip;
         };
@@ -342,18 +338,16 @@ impl<P: BinnedPhaseItem, const I: usize, T: Point, U: GpuPoint> RenderCommand<P>
     }
 }
 
-pub struct SetRenderOctreeUniformGroup<const I: usize, T: Point, U: GpuPoint>(
-    PhantomData<fn() -> (T, U)>,
-);
+pub struct SetRenderOctreeUniformGroup<const I: usize, T: Point>(PhantomData<fn() -> T>);
 
-impl<const I: usize, T: Point, U: GpuPoint> Default for SetRenderOctreeUniformGroup<I, T, U> {
+impl<const I: usize, T: Point> Default for SetRenderOctreeUniformGroup<I, T> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<P: BinnedPhaseItem, const I: usize, T: Point, U: GpuPoint> RenderCommand<P>
-    for SetRenderOctreeUniformGroup<I, T, U>
+impl<P: BinnedPhaseItem, const I: usize, T: Point> RenderCommand<P>
+    for SetRenderOctreeUniformGroup<I, T>
 {
     type Param = ();
     type ViewQuery = ();

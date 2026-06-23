@@ -3,7 +3,6 @@ pub mod draw;
 // pub mod nodes_mapping;
 pub mod phase;
 pub mod prepare;
-pub mod render_node;
 
 pub mod attribute_pass;
 pub mod depth_pass;
@@ -26,27 +25,17 @@ use prepare::{
 };
 
 use super::asset::extract::PointCloudOctreeNodeUniformLayout;
-use crate::{
-    point::{GpuPoint, Point},
-    PointCloudMaterial,
-};
+use crate::point::Point;
 
-pub struct RenderPointCloudOctreePlugin<T: Point, U: GpuPoint, M: PointCloudMaterial>(
-    #[allow(clippy::type_complexity)] PhantomData<fn() -> (T, U, M)>,
-);
+pub struct RenderPointCloudOctreePlugin<T: Point>(PhantomData<fn() -> T>);
 
-impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Default
-    for RenderPointCloudOctreePlugin<T, U, M>
-{
+impl<T: Point> Default for RenderPointCloudOctreePlugin<T> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<T: Point, U: GpuPoint, M: PointCloudMaterial> Plugin for RenderPointCloudOctreePlugin<T, U, M>
-where
-    for<'a> &'a T: Into<U>,
-{
+impl<T: Point> Plugin for RenderPointCloudOctreePlugin<T> {
     fn build(&self, app: &mut App) {
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
@@ -61,8 +50,8 @@ where
             Render,
             (
                 #[cfg(not(feature = "webgl"))]
-                prepare_indirect_buffer::<T, U>.in_set(RenderSystems::PrepareResources),
-                prepare_visible_nodes_texture::<T, U>.in_set(RenderSystems::PrepareResources),
+                prepare_indirect_buffer::<T>.in_set(RenderSystems::PrepareResources),
+                prepare_visible_nodes_texture::<T>.in_set(RenderSystems::PrepareResources),
                 // nodes_mapping::prepare_octree_nodes_mapping_buffers.in_set(RenderSystems::PrepareBindGroups),
                 prepare_visible_nodes_texture_bind_group.in_set(RenderSystems::PrepareBindGroups),
                 prepare_point_cloud_octree_3d_uniform.in_set(RenderSystems::PrepareResources),
@@ -70,8 +59,8 @@ where
         );
 
         app.add_plugins((
-            depth_pass::DepthPassPlugin::<T, U>::default(),
-            attribute_pass::AttributePassPlugin::<T, U>::default(),
+            depth_pass::DepthPassPlugin::<T>::default(),
+            attribute_pass::AttributePassPlugin::<T>::default(),
         ));
     }
 

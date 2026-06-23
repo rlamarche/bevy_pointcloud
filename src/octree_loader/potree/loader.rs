@@ -83,7 +83,7 @@ where
             spacing: node.data.0.spacing,
             level: node.data.0.level,
             offset,
-            num_points: node.data.0.num_points as usize,
+            point_count: node.data.0.num_points as usize,
             points: Arc::new(convert_potree_points_to_points(&buffer)),
         })
     }

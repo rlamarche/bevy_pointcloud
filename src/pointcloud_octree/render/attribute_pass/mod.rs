@@ -11,7 +11,6 @@ use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
 use bevy_platform::collections::HashSet;
 use bevy_render::{
     batching::gpu_preprocessing::GpuPreprocessingSupport,
-    erased_render_asset::ErasedRenderAssets,
     prelude::*,
     render_graph::{RenderGraphExt, ViewNodeRunner},
     render_phase::{AddRenderCommand, DrawFunctions, SetItemPipeline},
@@ -31,7 +30,10 @@ use crate::pointcloud_octree::render::draw::DrawPointCloudOctree;
 use crate::pointcloud_octree::render::draw::DrawPointCloudOctreeIndirect;
 use crate::{
     octree::extract::render::components::RenderVisibleOctreeNodes,
-    point::{GpuPoint, Point},
+    point::Point,
+    point_cloud_material::{
+        PointCloudMaterialKey, PreparedPointCloudMaterial, RenderPointCloudMaterialInstances,
+    },
     pointcloud_octree::{
         asset::data::PointCloudNodeData,
         component::PointCloudOctree3d,
@@ -53,21 +55,18 @@ use crate::{
         normalize_pass::node::NormalizePassLabel,
         phase::PointCloud3dBatchSetKey,
     },
-    resources::RenderPointCloudMaterialInstances,
-    PreparedPointCloudMaterial,
+    render_asset::{ErasedRenderAssetsComponent, RenderAssetKey},
 };
 
-pub struct AttributePassPlugin<T: Point, U: GpuPoint>(
-    #[allow(clippy::type_complexity)] PhantomData<fn() -> (T, U)>,
-);
+pub struct AttributePassPlugin<T: Point>(#[allow(clippy::type_complexity)] PhantomData<fn() -> T>);
 
-impl<T: Point, U: GpuPoint> Default for AttributePassPlugin<T, U> {
+impl<T: Point> Default for AttributePassPlugin<T> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<T: Point, U: GpuPoint> Plugin for AttributePassPlugin<T, U> {
+impl<T: Point> Plugin for AttributePassPlugin<T> {
     fn build(&self, app: &mut App) {
         // We need to get the render app from the main app
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -76,14 +75,13 @@ impl<T: Point, U: GpuPoint> Plugin for AttributePassPlugin<T, U> {
         render_app
             .init_resource::<DrawFunctions<PointCloudOctree3dNodePhase<T>>>()
             .init_resource::<ViewOctreeNodesRenderAttributePhases<PointCloudOctree3dNodePhase<T>>>()
-            .add_render_command::<PointCloudOctree3dNodePhase<T>, DrawAttributePass<T, U>>()
+            .add_render_command::<PointCloudOctree3dNodePhase<T>, DrawAttributePass<T>>()
             .add_systems(ExtractSchedule, extract_camera_phases::<T>)
             .add_systems(
                 Render,
                 (
-                    prepare_attribute_pass_bind_groups::<T, U>
-                        .in_set(RenderSystems::PrepareResources),
-                    queue_attribute_pass::<T, U>.in_set(RenderSystems::QueueMeshes),
+                    prepare_attribute_pass_bind_groups::<T>.in_set(RenderSystems::PrepareResources),
+                    queue_attribute_pass::<T>.in_set(RenderSystems::QueueMeshes),
                 ),
             );
 
@@ -100,27 +98,27 @@ impl<T: Point, U: GpuPoint> Plugin for AttributePassPlugin<T, U> {
 // We will reuse render commands already defined by bevy to draw a 3d mesh
 
 #[cfg(not(feature = "webgl"))]
-type DrawAttributePass<T, U> = (
+type DrawAttributePass<T> = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetPointCloudOctree3dUniformGroup<1>,
     SetPointCloudMaterialGroup<2>,
     SetVisibleNodesTexture<3>,
-    SetPointCloudOctreeNodeUniformGroup<4, T, U>,
-    SetRenderOctreeUniformGroup<5, T, U>,
-    DrawPointCloudOctreeIndirect<T, U>,
+    SetPointCloudOctreeNodeUniformGroup<4, T>,
+    SetRenderOctreeUniformGroup<5, T>,
+    DrawPointCloudOctreeIndirect<T>,
 );
 
 #[cfg(feature = "webgl")]
-type DrawAttributePass<T, U> = (
+type DrawAttributePass<T> = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetPointCloudOctree3dUniformGroup<1>,
     SetPointCloudMaterialGroup<2>,
     SetVisibleNodesTexture<3>,
-    SetPointCloudOctreeNodeUniformGroup<4, T, U>,
-    SetRenderOctreeUniformGroup<5, T, U>,
-    DrawPointCloudOctree<T, U>,
+    SetPointCloudOctreeNodeUniformGroup<4, T>,
+    SetRenderOctreeUniformGroup<5, T>,
+    DrawPointCloudOctree<T>,
 );
 
 fn extract_camera_phases<T: Point>(
@@ -153,14 +151,19 @@ fn extract_camera_phases<T: Point>(
 
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
-fn queue_attribute_pass<T: Point, U: GpuPoint>(
+fn queue_attribute_pass<T: Point>(
     custom_draw_functions: Res<DrawFunctions<PointCloudOctree3dNodePhase<T>>>,
-    render_materials: Res<ErasedRenderAssets<PreparedPointCloudMaterial>>,
+    render_materials: Res<
+        ErasedRenderAssetsComponent<PreparedPointCloudMaterial, PointCloudMaterialKey>,
+    >,
     render_point_cloud_material_instances: Res<RenderPointCloudMaterialInstances>,
-    mut pipelines: ResMut<SpecializedRenderPipelines<AttributePassPipelineSpecializer<T, U>>>,
+    mut pipelines: ResMut<SpecializedRenderPipelines<AttributePassPipelineSpecializer<T>>>,
     pipeline_cache: Res<PipelineCache>,
-    pipeline: Res<AttributePassPipeline<T, U>>,
-    point_cloud_octrees_3d: Query<&PointCloudOctree3d<T>>,
+    pipeline: Res<AttributePassPipeline<T>>,
+    items: Query<(
+        &PointCloudOctree3d<T>,
+        &RenderAssetKey<PointCloudMaterialKey>,
+    )>,
     mut custom_render_phases: ResMut<
         ViewOctreeNodesRenderAttributePhases<PointCloudOctree3dNodePhase<T>>,
     >,
@@ -176,7 +179,7 @@ fn queue_attribute_pass<T: Point, U: GpuPoint>(
         let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
-        let draw_custom = custom_draw_functions.read().id::<DrawAttributePass<T, U>>();
+        let draw_custom = custom_draw_functions.read().id::<DrawAttributePass<T>>();
 
         // Create the key based on the view.
         // In this case we only care about MSAA and HDR
@@ -186,22 +189,32 @@ fn queue_attribute_pass<T: Point, U: GpuPoint>(
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
         for (render_entity, _) in &visible_entities.octrees {
             let Ok(main_entity) = main_entities.get(*render_entity) else {
-                warn!("Render entity not found, skipping.");
+                debug!("point_cloud_octree_3d not ready (main entity missing)");
                 continue;
             };
+            let Ok((point_cloud_octree_3d, render_point_cloud_material_key)) =
+                items.get(*render_entity)
+            else {
+                debug!("point_cloud_octree_3d not ready");
+                continue;
+            };
+
             let Some(material_instance) = render_point_cloud_material_instances
                 .instances
                 .get(main_entity)
             else {
-                warn!(
+                debug!(
                     "Point Cloud Material not found for entity {:?}",
                     main_entity
                 );
                 continue;
             };
 
-            let Some(material) = render_materials.get(material_instance.asset_id) else {
-                warn!(
+            let Some(material) = render_materials.get((
+                material_instance.asset_id,
+                render_point_cloud_material_key.clone(),
+            )) else {
+                debug!(
                     "Render Point Cloud Material not found for asset id {:?}",
                     material_instance.asset_id
                 );
@@ -213,7 +226,7 @@ fn queue_attribute_pass<T: Point, U: GpuPoint>(
 
             let material_pipeline_specializer = AttributePassPipelineSpecializer {
                 pipeline: pipeline.clone(),
-                properties: material.properties.clone(),
+                material_properties: material.properties.clone(),
             };
 
             let pipeline_id = pipelines.specialize(
@@ -221,11 +234,6 @@ fn queue_attribute_pass<T: Point, U: GpuPoint>(
                 &material_pipeline_specializer,
                 attribute_key,
             );
-
-            let Ok(point_cloud_octree_3d) = point_cloud_octrees_3d.get(*render_entity) else {
-                warn!("point_cloud_octree_3d missing");
-                continue;
-            };
 
             // Bump the change tick in order to force Bevy to rebuild the bin.
             let this_tick = next_tick.get() + 1;

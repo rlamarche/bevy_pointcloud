@@ -41,6 +41,8 @@ pub fn allocate_visible_octree_nodes<E: OctreeNodeExtraction>(
     mut octree_node_allocations: ResMut<OctreeNodeAllocations<E>>,
     mut extract_octree_node_eviction_queue: ResMut<ExtractOctreeNodeEvictionQueue<E>>,
 ) {
+    let instance_size = size_of::<E::GpuData>() as u64;
+
     // clear previously allocated nodes
     octree_node_allocations.allocated_nodes_this_frame.clear();
     octree_node_allocations.freed_nodes_this_frame.clear();
@@ -132,13 +134,14 @@ pub fn allocate_visible_octree_nodes<E: OctreeNodeExtraction>(
 
         if let Some(allocation) = allocation {
             debug!("Allocated node {}", node.hierarchy.name);
-            let start = allocation.offset;
 
             let node_allocation = NodeAllocation {
                 octree_node_key: octree_node_key.clone(),
-                allocation,
-                start,
+                offset: allocation.offset as u64 * instance_size,
+                size: instance_count as u64 * instance_size,
+                start: allocation.offset,
                 count: instance_count as u32,
+                allocation,
             };
 
             // store the allocation infos

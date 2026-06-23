@@ -4,7 +4,6 @@ pub mod extract;
 pub mod render;
 pub mod visibility;
 
-use asset::extract::PointCloudOctreeExtraction;
 use component::PointCloudOctree3d;
 
 use crate::{
@@ -18,14 +17,15 @@ use crate::{
         OctreeAssetPlugin,
     },
     point::RGBPoint,
+    point_cloud::PointCloudGpuMapper,
     pointcloud_octree::{
-        asset::data::PointCloudNodeData, extract::RenderPointCloudNodeData,
+        asset::{data::PointCloudNodeData, extract::PointCloudOctreeGpuMapper},
         visibility::PointCloudOctreePointBudget,
     },
-    SimplePointCloudMaterial,
 };
 
-pub type PointCloudOctreeAssetPlugin<T> = OctreeAssetPlugin<PointCloudNodeData<T>>;
+pub type PointCloudOctreeAssetPlugin<T> =
+    OctreeAssetPlugin<PointCloudNodeData<T>, PointCloudOctree3d<T>>;
 
 pub type PointCloudOctreeVisibilityPlugin<T> = OctreeVisiblityPlugin<
     PointCloudNodeData<T>,
@@ -34,10 +34,9 @@ pub type PointCloudOctreeVisibilityPlugin<T> = OctreeVisiblityPlugin<
     PointCloudOctreePointBudget,
 >;
 
-pub type ExtractVisiblePointCloudOctreeNodesPlugin<T, U> = ExtractVisibleOctreeNodesPlugin<
-    PointCloudOctreeExtraction<T, U>,
-    RenderPointCloudNodeData<T, U>,
->;
+#[allow(type_alias_bounds)]
+pub type ExtractVisiblePointCloudOctreeNodesPlugin<A: PointCloudGpuMapper> =
+    ExtractVisibleOctreeNodesPlugin<PointCloudOctreeGpuMapper<A>>;
 
 pub type PointCloudOctreeVisibilitySettings<T> = OctreeVisibilitySettings<
     PointCloudNodeData<T>,
@@ -45,8 +44,7 @@ pub type PointCloudOctreeVisibilitySettings<T> = OctreeVisibilitySettings<
     PointCloudOctreePointBudget,
 >;
 
-pub type RenderPointCloudRGBOctreePlugin =
-    render::RenderPointCloudOctreePlugin<RGBPoint, RGBPoint, SimplePointCloudMaterial>;
+pub type RenderPointCloudRGBOctreePlugin = render::RenderPointCloudOctreePlugin<RGBPoint>;
 
 // plugin_group! {
 //     /// This plugin group will add all the default plugins for a *Bevy* application:

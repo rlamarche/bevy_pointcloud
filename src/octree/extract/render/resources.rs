@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use bevy_asset::AssetId;
+use bevy_asset::{AssetId, UntypedAssetId};
 use bevy_ecs::prelude::*;
 use bevy_platform::collections::HashMap;
 use bevy_render::{
@@ -13,15 +13,13 @@ use bevy_render::{
 };
 use slab::Slab;
 
-use super::{
-    asset::{RenderOctree, RenderOctreeNodeData},
-    node::RenderOctreeNode,
-};
+use super::asset::{RenderOctree, RenderOctreeNodeData};
 use crate::octree::{
     asset::Octree,
     extract::{
         render::asset::RenderOctreeNodeAllocation, resources::NodeAllocation, OctreeNodeExtraction,
     },
+    node::NodeData,
     storage::NodeId,
 };
 
@@ -106,14 +104,14 @@ impl<C: Component> RenderOctreeIndex<C> {
 /// All assets that should be prepared next frame.
 #[derive(Resource)]
 #[allow(clippy::type_complexity)]
-pub struct PrepareNextFrameOctreeNodes<A: RenderOctreeNode> {
+pub struct PrepareNextFrameOctreeNodes<E: OctreeNodeExtraction> {
     pub(crate) assets: Vec<(
-        AssetId<Octree<A::SourceOctreeNode>>,
-        RenderOctreeNodeData<A::ExtractedOctreeNode>,
+        AssetId<Octree<E::NodeData>>,
+        RenderOctreeNodeData<E::ExtractedNodeData>,
     )>,
 }
 
-impl<A: RenderOctreeNode> Default for PrepareNextFrameOctreeNodes<A> {
+impl<E: OctreeNodeExtraction> Default for PrepareNextFrameOctreeNodes<E> {
     fn default() -> Self {
         Self {
             assets: Default::default(),
@@ -124,35 +122,24 @@ impl<A: RenderOctreeNode> Default for PrepareNextFrameOctreeNodes<A> {
 /// Stores all GPU representations ([`RenderAsset`])
 /// of [`RenderAsset::SourceAsset`] as long as they exist.
 #[derive(Resource)]
-pub struct RenderOctrees<A: RenderOctreeNode>(
-    HashMap<AssetId<Octree<A::SourceOctreeNode>>, RenderOctree<A>>,
-);
+pub struct ErasedRenderOctrees<ERA>(HashMap<UntypedAssetId, RenderOctree<ERA>>);
 
-impl<A: RenderOctreeNode> Default for RenderOctrees<A> {
+impl<ERA> Default for ErasedRenderOctrees<ERA> {
     fn default() -> Self {
         Self(HashMap::new())
     }
 }
 
-impl<A: RenderOctreeNode> RenderOctrees<A> {
-    pub fn get(
-        &self,
-        id: impl Into<AssetId<Octree<A::SourceOctreeNode>>>,
-    ) -> Option<&RenderOctree<A>> {
+impl<ERA> ErasedRenderOctrees<ERA> {
+    pub fn get(&self, id: impl Into<UntypedAssetId>) -> Option<&RenderOctree<ERA>> {
         self.0.get(&id.into())
     }
 
-    pub fn get_or_insert_mut(
-        &mut self,
-        id: impl Into<AssetId<Octree<A::SourceOctreeNode>>>,
-    ) -> &mut RenderOctree<A> {
+    pub fn get_or_insert_mut(&mut self, id: impl Into<UntypedAssetId>) -> &mut RenderOctree<ERA> {
         self.0.entry(id.into()).or_default()
     }
 
-    pub fn remove(
-        &mut self,
-        id: impl Into<AssetId<Octree<A::SourceOctreeNode>>>,
-    ) -> Option<RenderOctree<A>> {
+    pub fn remove(&mut self, id: impl Into<UntypedAssetId>) -> Option<RenderOctree<ERA>> {
         self.0.remove(&id.into())
     }
 }
@@ -163,7 +150,7 @@ pub type RenderOctreesNodeData<T, A> =
 /// Contains all extracted octree nodes for preparing
 #[derive(Resource)]
 pub struct ExtractedOctreeNodes<E: OctreeNodeExtraction> {
-    pub(crate) max_instances: u32,
+    pub(crate) buffer_size: u64,
     pub(crate) octrees: RenderOctreesNodeData<E::NodeData, E::ExtractedNodeData>,
 
     pub(crate) removed_octrees: Vec<(Entity, RenderEntity)>,
@@ -189,7 +176,7 @@ pub struct ExtractedOctreeNodes<E: OctreeNodeExtraction> {
 impl<E: OctreeNodeExtraction> Default for ExtractedOctreeNodes<E> {
     fn default() -> Self {
         Self {
-            max_instances: 0,
+            buffer_size: 0,
             octrees: HashMap::new(),
             removed_octrees: Default::default(),
             // removed_assets: Default::default(),
@@ -228,12 +215,12 @@ impl<E: OctreeNodeExtraction> ExtractedOctreeNodes<E> {
 
 /// Contains all allocated octree nodes ready for render
 #[derive(Resource)]
-pub struct AllocatedOctreeNodes<E: OctreeNodeExtraction> {
+pub struct AllocatedOctreeNodes<T: NodeData> {
     pub(crate) allocations:
-        HashMap<AssetId<Octree<E::NodeData>>, HashMap<NodeId, RenderOctreeNodeAllocation>>,
+        HashMap<AssetId<Octree<T>>, HashMap<NodeId, RenderOctreeNodeAllocation>>,
 }
 
-impl<E: OctreeNodeExtraction> Default for AllocatedOctreeNodes<E> {
+impl<T: NodeData> Default for AllocatedOctreeNodes<T> {
     fn default() -> Self {
         Self {
             allocations: HashMap::new(),
@@ -241,10 +228,10 @@ impl<E: OctreeNodeExtraction> Default for AllocatedOctreeNodes<E> {
     }
 }
 
-impl<E: OctreeNodeExtraction> AllocatedOctreeNodes<E> {
+impl<T: NodeData> AllocatedOctreeNodes<T> {
     pub fn get_or_create_mut(
         &mut self,
-        id: impl Into<AssetId<Octree<E::NodeData>>>,
+        id: impl Into<AssetId<Octree<T>>>,
     ) -> &mut HashMap<NodeId, RenderOctreeNodeAllocation> {
         self.allocations.entry(id.into()).or_default()
     }

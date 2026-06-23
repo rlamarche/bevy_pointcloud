@@ -9,27 +9,27 @@ use std::marker::PhantomData;
 use allocate::allocate_visible_octree_nodes;
 use bevy_app::prelude::*;
 use bevy_asset::AssetId;
-use bevy_ecs::{prelude::*, schedule::ScheduleConfigs, system::ScheduleSystem};
+use bevy_ecs::{
+    prelude::*,
+    schedule::ScheduleConfigs,
+    system::{ScheduleSystem, SystemParam, SystemParamItem},
+};
 use bevy_reflect::TypePath;
 use bevy_render::{
-    camera::extract_cameras,
-    extract_component::{ExtractComponent, ExtractComponentPlugin},
-    view::ExtractedView,
-    ExtractSchedule, Render, RenderApp, RenderSystems,
+    camera::extract_cameras, extract_component::ExtractComponent, ExtractSchedule, Render,
+    RenderApp, RenderSystems,
 };
+use bytemuck::{Pod, Zeroable};
 use eviction::update_extract_octree_node_eviction_queue;
 use limiter::{
     extract_render_asset_bytes_per_frame, reset_render_asset_bytes_per_frame,
     RenderOctreeNodesBytesPerFrame, RenderOctreeNodesBytesPerFrameLimiter,
 };
 use render::{
-    buffer::{RenderNodeData, RenderOctreesBuffers},
+    buffer::{ErasedRenderOctreesBuffers, RenderNodeData},
     extract::{extract_octree_node_allocations, extract_visible_octree_nodes},
-    node::RenderOctreeNode,
     prepare::prepare_assets,
-    resources::{
-        ExtractedOctreeNodes, PrepareNextFrameOctreeNodes, RenderOctreeIndex, RenderOctrees,
-    },
+    resources::{ErasedRenderOctrees, ExtractedOctreeNodes, PrepareNextFrameOctreeNodes},
 };
 use resources::{ExtractOctreeNodeEvictionQueue, OctreeBufferSettings, OctreeNodeAllocations};
 
@@ -41,24 +41,77 @@ use crate::octree::{
     extract::{
         allocate::on_remove_octree,
         render::{
-            components::RenderVisibleOctreeNodes,
+            asset::RenderOctreeNodeData,
             extract::{clear_removed_octrees, extract_removed_octrees},
+            node::PrepareOctreeNodeError,
             prepare::prepare_octrees_uniforms,
             resources::{AllocatedOctreeNodes, OctreeEntityLayout},
         },
     },
+    storage::NodeId,
     visibility::OctreeVisibilitySystems,
 };
 
 pub trait OctreeNodeExtraction: Send + Sync + TypePath {
     type NodeData: NodeData;
-
-    type Component: Component + ExtractComponent;
-
+    type GpuData: Pod + Zeroable;
+    type Component: ExtractComponent;
     type ExtractedNodeData: RenderNodeData;
+    type ErasedRenderOctreeNode: Send + Sync + 'static;
+
+    /// Specifies all ECS data required by [`OctreeNodeExtraction::extract_octree_node`].
+    ///
+    /// For convenience use the [`lifetimeless`](bevy_ecs::system::lifetimeless) [`SystemParam`].
+    type ExtractParam: SystemParam;
+
+    /// Specifies all ECS data required by [`OctreeNodeExtraction::prepare_octree_node`].
+    ///
+    /// For convenience use the [`lifetimeless`](bevy_ecs::system::lifetimeless) [`SystemParam`].
+    type PrepareParam: SystemParam;
 
     /// Defines how the component is transferred into the "render world".
-    fn extract_octree_node(node: &OctreeNode<Self::NodeData>) -> Option<Self::ExtractedNodeData>;
+    fn extract_octree_node(
+        node: &OctreeNode<Self::NodeData>,
+        param: &mut SystemParamItem<Self::ExtractParam>,
+    ) -> Result<Option<Self::ExtractedNodeData>, BevyError>;
+
+    /// Size of the data the asset will upload to the gpu. Specifying a return value
+    /// will allow the asset to be throttled via [`RenderOctreeNodesBytesPerFrame`].
+    #[inline]
+    #[expect(
+        unused_variables,
+        reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
+    )]
+    fn byte_len(source_node: &RenderOctreeNodeData<Self::ExtractedNodeData>) -> Option<usize> {
+        None
+    }
+
+    /// Prepares the [`RenderAsset::SourceAsset`] for the GPU by transforming it into a [`RenderAsset`].
+    ///
+    /// ECS data may be accessed via `param`.
+    #[allow(clippy::result_large_err)]
+    fn prepare_octree_node(
+        source_node: RenderOctreeNodeData<Self::ExtractedNodeData>,
+        asset_id: AssetId<Octree<Self::NodeData>>,
+        param: &mut SystemParamItem<Self::PrepareParam>,
+    ) -> Result<Self::ErasedRenderOctreeNode, PrepareOctreeNodeError<Self::ExtractedNodeData>>;
+
+    /// Called whenever the [`RenderOctreeNode::SourceOctreeNode`] has been removed.
+    ///
+    /// You can implement this method if you need to access ECS data (via
+    /// `_param`) in order to perform cleanup tasks when the asset is removed.
+    ///
+    /// The default implementation does nothing.
+    #[expect(
+        unused_variables,
+        reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
+    )]
+    fn unload_octree_node(
+        source_asset: AssetId<Octree<Self::NodeData>>,
+        node_id: NodeId,
+        param: &mut SystemParamItem<Self::PrepareParam>,
+    ) {
+    }
 }
 
 /// This plugin extracts visible octree nodes from the "app world" into the "render world"
@@ -76,13 +129,13 @@ pub trait OctreeNodeExtraction: Send + Sync + TypePath {
 /// `prepare_assets::<AFTER>` has completed. This allows the [`RenderOctreeNode::prepare_octree_node`] function to depend on another
 /// prepared [`RenderOctreeNode`].
 #[allow(clippy::type_complexity)]
-pub struct ExtractVisibleOctreeNodesPlugin<E, A, AFTER = ()> {
+pub struct ExtractVisibleOctreeNodesPlugin<E, AFTER = ()> {
     max_size: usize,
     max_bytes_per_frame: Option<usize>,
-    _phantom: PhantomData<fn() -> (E, A, AFTER)>,
+    _phantom: PhantomData<fn() -> (E, AFTER)>,
 }
 
-impl<E, A, AFTER> Default for ExtractVisibleOctreeNodesPlugin<E, A, AFTER> {
+impl<E, AFTER> Default for ExtractVisibleOctreeNodesPlugin<E, AFTER> {
     fn default() -> Self {
         ExtractVisibleOctreeNodesPlugin {
             max_size: 512 * 1024 * 1024, // 512 mb
@@ -92,7 +145,7 @@ impl<E, A, AFTER> Default for ExtractVisibleOctreeNodesPlugin<E, A, AFTER> {
     }
 }
 
-impl<E, A, AFTER> ExtractVisibleOctreeNodesPlugin<E, A, AFTER> {
+impl<E, AFTER> ExtractVisibleOctreeNodesPlugin<E, AFTER> {
     /// Construct with specific max memory size for GPU
     pub fn with_max_size(max_size: usize) -> Self {
         Self {
@@ -117,13 +170,10 @@ impl<E, A, AFTER> ExtractVisibleOctreeNodesPlugin<E, A, AFTER> {
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ExtractOctreeNode;
 
-impl<E, A, AFTER> Plugin for ExtractVisibleOctreeNodesPlugin<E, A, AFTER>
+impl<E, AFTER> Plugin for ExtractVisibleOctreeNodesPlugin<E, AFTER>
 where
     E: OctreeNodeExtraction,
-    for<'a> &'a E::Component: Into<AssetId<Octree<E::NodeData>>>,
-    A: RenderOctreeNode<SourceOctreeNode = E::NodeData, ExtractedOctreeNode = E::ExtractedNodeData>,
     AFTER: RenderOctreeDependency + 'static,
-    A::ExtractedOctreeNode: RenderNodeData,
 {
     fn build(&self, app: &mut App) {
         app.insert_resource(OctreeBufferSettings::<E> {
@@ -132,7 +182,6 @@ where
         })
         .init_resource::<OctreeNodeAllocations<E>>()
         .init_resource::<ExtractOctreeNodeEvictionQueue<E>>()
-        .add_plugins(ExtractComponentPlugin::<E::Component>::default())
         .insert_resource(RenderOctreeNodesBytesPerFrame::<E> {
             max_bytes: self.max_bytes_per_frame,
             _phantom: PhantomData,
@@ -152,46 +201,39 @@ where
         )
         .add_observer(on_remove_octree::<E>);
 
-        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
-            return;
-        };
+        if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
+            render_app
+                .init_resource::<RenderOctreeNodesBytesPerFrameLimiter<E>>()
+                .add_systems(ExtractSchedule, extract_render_asset_bytes_per_frame::<E>)
+                .add_systems(
+                    Render,
+                    reset_render_asset_bytes_per_frame::<E>.in_set(RenderSystems::Cleanup),
+                )
+                .init_resource::<ExtractedOctreeNodes<E>>()
+                .init_resource::<AllocatedOctreeNodes<E::NodeData>>()
+                .init_resource::<ErasedRenderOctrees<E::ErasedRenderOctreeNode>>()
+                .init_resource::<ErasedRenderOctreesBuffers<E::ErasedRenderOctreeNode>>()
+                .init_resource::<PrepareNextFrameOctreeNodes<E>>()
+                // Add in [`First`] schedule because it has to run just after the [`ExtractSchedule`] before any observer
+                .add_systems(
+                    ExtractSchedule,
+                    (
+                        extract_visible_octree_nodes::<E>.after(extract_cameras),
+                        extract_octree_node_allocations::<E>,
+                        extract_removed_octrees::<E>,
+                        clear_removed_octrees::<E>.after(extract_removed_octrees::<E>),
+                    ),
+                )
+                .add_systems(
+                    Render,
+                    prepare_octrees_uniforms::<E>.in_set(RenderSystems::PrepareBindGroups),
+                );
 
-        render_app
-            .world_mut()
-            .register_required_components::<ExtractedView, RenderVisibleOctreeNodes::<E::NodeData, E::Component>>();
-
-        render_app
-            .init_resource::<RenderOctreeNodesBytesPerFrameLimiter<E>>()
-            .add_systems(ExtractSchedule, extract_render_asset_bytes_per_frame::<E>)
-            .add_systems(
-                Render,
-                reset_render_asset_bytes_per_frame::<E>.in_set(RenderSystems::Cleanup),
-            )
-            .init_resource::<ExtractedOctreeNodes<E>>()
-            .init_resource::<AllocatedOctreeNodes<E>>()
-            .init_resource::<RenderOctrees<A>>()
-            .init_resource::<RenderOctreesBuffers<A>>()
-            .init_resource::<PrepareNextFrameOctreeNodes<A>>()
-            .init_resource::<RenderOctreeIndex<E::Component>>()
-            // Add in [`First`] schedule because it has to run just after the [`ExtractSchedule`] before any observer
-            .add_systems(
-                ExtractSchedule,
-                (
-                    extract_visible_octree_nodes::<E, A>.after(extract_cameras),
-                    extract_octree_node_allocations::<E>,
-                    extract_removed_octrees::<E>,
-                    clear_removed_octrees::<E>.after(extract_removed_octrees::<E>),
-                ),
-            )
-            .add_systems(
-                Render,
-                prepare_octrees_uniforms::<E>.in_set(RenderSystems::PrepareBindGroups),
+            AFTER::register_system(
+                render_app,
+                prepare_assets::<E>.in_set(RenderSystems::PrepareAssets),
             );
-
-        AFTER::register_system(
-            render_app,
-            prepare_assets::<E, A>.in_set(RenderSystems::PrepareAssets),
-        );
+        }
     }
 
     fn finish(&self, app: &mut App) {

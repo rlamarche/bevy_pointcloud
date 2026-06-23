@@ -38,6 +38,45 @@ use bevy_transform::prelude::*;
 use bevy_utils::default;
 use bevy_window::{PresentMode, Window};
 
+
+#[derive(Component, TypePath)]
+struct MyPointCloudGpuMapper;
+
+impl PointCloudGpuMapper for MyPointCloudGpuMapper {
+    type Point = RGBPoint;
+
+    type GpuPoint = RGBPoint;
+
+    type Param = ();
+
+    fn convert(
+        point_cloud: PointCloud<Self::Point>,
+        _param: &mut bevy_ecs::system::SystemParamItem<Self::Param>,
+    ) -> Result<
+        Arc<Vec<Self::GpuPoint>>,
+        bevy_pointcloud::render_asset::PrepareAssetComponentError<PointCloud<Self::Point>>,
+    > {
+        let color_start = Vec3A::new(0.0, 0.0, 1.0);
+        let color_end = Vec3A::new(1.0, 0.0, 0.0);
+
+        if let Some(aabb) = point_cloud.aabb {
+            let points: Vec<_> = point_cloud
+                .points
+                .iter()
+                .map(|p| {
+                    let t = p.position.y.remap(aabb.min().y, aabb.max().y, 0.0, 1.0);
+                    let color = color_start.lerp(color_end, t);
+                    RGBPoint::new(p.position, color.extend(1.0))
+                })
+                .collect();
+
+            Ok(Arc::new(points))
+        } else {
+            Ok(Arc::new(Vec::new()))
+        }
+    }
+}
+
 fn main() {
     App::new()
         .add_plugins((
@@ -150,44 +189,6 @@ pub struct MyMaterial(Handle<SimplePointCloudMaterial>);
 
 #[derive(Component)]
 struct MainPointCloud(Vec3);
-
-#[derive(Component, TypePath)]
-struct MyPointCloudGpuMapper;
-
-impl PointCloudGpuMapper for MyPointCloudGpuMapper {
-    type Point = RGBPoint;
-
-    type GpuPoint = RGBPoint;
-
-    type Param = ();
-
-    fn convert(
-        point_cloud: PointCloud<Self::Point>,
-        _param: &mut bevy_ecs::system::SystemParamItem<Self::Param>,
-    ) -> Result<
-        Arc<Vec<Self::GpuPoint>>,
-        bevy_pointcloud::render_asset::PrepareAssetComponentError<PointCloud<Self::Point>>,
-    > {
-        let color_start = Vec3A::new(0.0, 0.0, 1.0);
-        let color_end = Vec3A::new(1.0, 0.0, 0.0);
-
-        if let Some(aabb) = point_cloud.aabb {
-            let points: Vec<_> = point_cloud
-                .points
-                .iter()
-                .map(|p| {
-                    let t = p.position.y.remap(aabb.min().y, aabb.max().y, 0.0, 1.0);
-                    let color = color_start.lerp(color_end, t);
-                    RGBPoint::new(p.position, color.extend(1.0))
-                })
-                .collect();
-
-            Ok(Arc::new(points))
-        } else {
-            Ok(Arc::new(Vec::new()))
-        }
-    }
-}
 
 fn load_pointcloud(
     mut commands: Commands,

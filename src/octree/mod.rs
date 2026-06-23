@@ -14,20 +14,38 @@ use asset::Octree;
 use bevy_app::{App, First, Plugin};
 use bevy_asset::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_render::{
+    extract_component::{ExtractComponent, ExtractComponentPlugin},
+    view::ExtractedView,
+    RenderApp,
+};
 use node::NodeData;
 
-pub struct OctreeAssetPlugin<T>(PhantomData<fn() -> T>);
+use crate::octree::extract::render::{
+    components::RenderVisibleOctreeNodes, resources::RenderOctreeIndex,
+};
 
-impl<T> Default for OctreeAssetPlugin<T> {
+pub struct OctreeAssetPlugin<T, C>(PhantomData<fn() -> (T, C)>);
+
+impl<T, C> Default for OctreeAssetPlugin<T, C> {
     fn default() -> Self {
         OctreeAssetPlugin(PhantomData)
     }
 }
-impl<T: NodeData> Plugin for OctreeAssetPlugin<T> {
+impl<T: NodeData, C: ExtractComponent> Plugin for OctreeAssetPlugin<T, C> {
     fn build(&self, app: &mut App) {
-        app.init_asset::<Octree<T>>()
+        app.add_plugins(ExtractComponentPlugin::<C>::default())
+            .init_asset::<Octree<T>>()
             .init_resource::<OctreeTotalSize<T>>()
             .add_systems(First, reset_octree_nodes_tracking::<T>);
+
+        if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
+            render_app
+                .world_mut()
+                .register_required_components::<ExtractedView, RenderVisibleOctreeNodes<T, C>>();
+
+            render_app.init_resource::<RenderOctreeIndex<C>>();
+        }
     }
 }
 

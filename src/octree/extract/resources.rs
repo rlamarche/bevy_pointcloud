@@ -8,7 +8,7 @@ use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 
 use crate::octree::{
-    extract::{render::buffer::RenderNodeData, OctreeNodeExtraction},
+    extract::OctreeNodeExtraction,
     node::{NodeData, OctreeNodeKey},
 };
 
@@ -20,7 +20,9 @@ pub struct OctreeBufferSettings<E: OctreeNodeExtraction> {
 
 pub struct NodeAllocation<T: NodeData> {
     pub octree_node_key: OctreeNodeKey<T>,
-    pub(crate) allocation: Allocation,
+    pub allocation: Allocation,
+    pub offset: u64,
+    pub size: u64,
     pub start: u32,
     pub count: u32,
 }
@@ -30,6 +32,8 @@ impl<T: NodeData> Clone for NodeAllocation<T> {
         Self {
             octree_node_key: self.octree_node_key.clone(),
             allocation: self.allocation,
+            offset: self.offset,
+            size: self.size,
             start: self.start,
             count: self.count,
         }
@@ -39,7 +43,8 @@ impl<T: NodeData> Clone for NodeAllocation<T> {
 #[derive(Resource)]
 pub struct OctreeNodeAllocations<E: OctreeNodeExtraction> {
     pub(crate) allocator: Allocator,
-    pub(crate) max_instances: u32,
+    pub max_instances: u32,
+    pub(crate) buffer_size: u64,
     pub(crate) allocations: HashMap<OctreeNodeKey<E::NodeData>, NodeAllocation<E::NodeData>>,
     pub(crate) removed_octrees_this_frame: Vec<(Entity, RenderEntity)>,
     pub(crate) freed_nodes_this_frame: Vec<NodeAllocation<E::NodeData>>,
@@ -52,13 +57,12 @@ impl<E: OctreeNodeExtraction> FromWorld for OctreeNodeAllocations<E> {
         let settings = world.resource::<OctreeBufferSettings<E>>();
 
         // compute the maximum number of instances
-        let max_instances = (settings.max_size
-            / std::mem::size_of::<<E::ExtractedNodeData as RenderNodeData>::InstanceData>())
-            as u32;
+        let max_instances = (settings.max_size / std::mem::size_of::<E::GpuData>()) as u32;
 
         Self {
             allocator: Allocator::new(max_instances),
             max_instances,
+            buffer_size: settings.max_size as u64,
             allocations: HashMap::new(),
             removed_octrees_this_frame: Vec::new(),
             freed_nodes_this_frame: Vec::new(),

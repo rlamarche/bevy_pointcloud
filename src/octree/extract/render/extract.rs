@@ -1,13 +1,12 @@
 use bevy_asset::Assets;
 use bevy_camera::Camera;
-use bevy_ecs::prelude::*;
+use bevy_ecs::{prelude::*, system::StaticSystemParam};
 use bevy_log::prelude::*;
 use bevy_render::{sync_world::RenderEntity, view::ExtractedView, Extract, MainWorld};
 
 use super::{
     asset::{RenderOctreeNodeAllocation, RenderOctreeNodeData},
     components::RenderVisibleOctreeNodes,
-    node::RenderOctreeNode,
     resources::{ExtractedOctreeNodes, RenderOctreeIndex},
 };
 use crate::octree::{
@@ -37,10 +36,7 @@ pub fn clear_removed_octrees<E: OctreeNodeExtraction>(mut main_world: ResMut<Mai
 /// This system extracts computed visible octree nodes and add them in the render world, for each view (camera)
 #[cfg_attr(feature = "trace", tracing::instrument(skip_all))]
 #[allow(clippy::type_complexity)]
-pub fn extract_visible_octree_nodes<
-    E: OctreeNodeExtraction,
-    A: RenderOctreeNode<SourceOctreeNode = E::NodeData>,
->(
+pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction>(
     views: Extract<
         Query<
             (
@@ -101,10 +97,13 @@ pub fn extract_octree_node_allocations<E: OctreeNodeExtraction>(
     allocations: Extract<Res<OctreeNodeAllocations<E>>>,
     octrees: Extract<Res<Assets<Octree<E::NodeData>>>>,
     mut extracted_octree_nodes: ResMut<ExtractedOctreeNodes<E>>,
+    param: StaticSystemParam<E::ExtractParam>,
 ) {
-    if extracted_octree_nodes.max_instances == 0 {
+    let mut param = param.into_inner();
+
+    if extracted_octree_nodes.buffer_size == 0 {
         // TODO handle if value changed
-        extracted_octree_nodes.max_instances = allocations.max_instances;
+        extracted_octree_nodes.buffer_size = allocations.buffer_size;
     }
     // clear tracking
     // clear previously computed data
@@ -160,7 +159,14 @@ pub fn extract_octree_node_allocations<E: OctreeNodeExtraction>(
             extracted_octree_nodes.get_or_create_mut(allocated_node.octree_node_key.octree_id);
 
         // extract octree node data
-        if let Some(data) = E::extract_octree_node(octree_node) {
+        if let Some(data) = match E::extract_octree_node(octree_node, &mut param) {
+            Ok(data) => data,
+            Err(e) => {
+                // TODO better error handling
+                warn!("An error occured when extracting octree node: {:#}", e);
+                None
+            }
+        } {
             // store extracted data in render octree
             render_octree.insert(
                 allocated_node.octree_node_key.node_id,
@@ -174,6 +180,8 @@ pub fn extract_octree_node_allocations<E: OctreeNodeExtraction>(
                     bounding_box: octree_node.hierarchy.bounding_box,
                     data,
                     allocation: RenderOctreeNodeAllocation {
+                        offset: allocated_node.offset,
+                        size: allocated_node.size,
                         start: allocated_node.start,
                         count: allocated_node.count,
                     },

@@ -25,9 +25,9 @@ pub enum PrepareOctreeNodeError<T: Send + Sync> {
 /// After that in the [`RenderSystems::PrepareAssets`] step the extracted octree nodes
 /// are transformed into their GPU-representation of type [`RenderOctreeNode`].
 pub trait RenderOctreeNode: Send + Sync + Sized + 'static {
-    type SourceOctreeNode: NodeData;
+    type NodeData: NodeData;
 
-    type ExtractedOctreeNode: RenderNodeData;
+    type ExtractedNodeData: RenderNodeData;
 
     /// Specifies all ECS data required by [`RenderAsset::prepare_asset`].
     ///
@@ -41,7 +41,7 @@ pub trait RenderOctreeNode: Send + Sync + Sized + 'static {
         unused_variables,
         reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
     )]
-    fn byte_len(source_node: &RenderOctreeNodeData<Self::ExtractedOctreeNode>) -> Option<usize> {
+    fn byte_len(source_node: &RenderOctreeNodeData<Self::ExtractedNodeData>) -> Option<usize> {
         None
     }
 
@@ -50,10 +50,10 @@ pub trait RenderOctreeNode: Send + Sync + Sized + 'static {
     /// ECS data may be accessed via `param`.
     #[allow(clippy::result_large_err)]
     fn prepare_octree_node(
-        source_node: RenderOctreeNodeData<Self::ExtractedOctreeNode>,
-        asset_id: AssetId<Octree<Self::SourceOctreeNode>>,
+        source_node: RenderOctreeNodeData<Self::ExtractedNodeData>,
+        asset_id: AssetId<Octree<Self::NodeData>>,
         param: &mut SystemParamItem<Self::Param>,
-    ) -> Result<Self, PrepareOctreeNodeError<Self::ExtractedOctreeNode>>;
+    ) -> Result<Self, PrepareOctreeNodeError<Self::ExtractedNodeData>>;
 
     /// Called whenever the [`RenderOctreeNode::SourceOctreeNode`] has been removed.
     ///
@@ -66,7 +66,7 @@ pub trait RenderOctreeNode: Send + Sync + Sized + 'static {
         reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
     )]
     fn unload_octree_node(
-        source_asset: AssetId<Octree<Self::SourceOctreeNode>>,
+        source_asset: AssetId<Octree<Self::NodeData>>,
         node_id: NodeId,
         param: &mut SystemParamItem<Self::Param>,
     ) {

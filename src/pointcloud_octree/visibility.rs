@@ -42,7 +42,7 @@ impl<T: Point> OctreeNodesBudget<PointCloudNodeData<T>> for PointCloudOctreePoin
             return false;
         };
 
-        self.total_points += data.num_points;
+        self.total_points += data.point_count;
         self.total_nodes += 1;
 
         true

@@ -22,16 +22,16 @@ use crate::{
     octree::{
         extract::render::{
             components::RenderVisibleOctreeNodes,
-            resources::{AllocatedOctreeNodes, RenderOctreeIndex, RenderOctrees},
+            resources::{AllocatedOctreeNodes, ErasedRenderOctrees, RenderOctreeIndex},
         },
         storage::NodeId,
         visibility::iter_one_bits,
     },
-    point::{GpuPoint, Point},
+    point::Point,
     pointcloud_octree::{
-        asset::{data::PointCloudNodeData, extract::PointCloudOctreeExtraction},
+        asset::data::PointCloudNodeData,
         component::PointCloudOctree3d,
-        extract::RenderPointCloudNodeData,
+        extract::ErasedRenderPointCloudNode,
         render::phase::{
             PointCloudOctree3dNodePhase, ViewOctreeNodesRenderAttributePhases,
             ViewOctreeNodesRenderDepthPhases,
@@ -79,7 +79,7 @@ pub struct PreparedVisibleOctreeNode {
 
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
-pub fn prepare_visible_nodes_texture<T: Point, U: GpuPoint>(
+pub fn prepare_visible_nodes_texture<T: Point>(
     mut commands: Commands,
     mut texture_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
@@ -98,11 +98,9 @@ pub fn prepare_visible_nodes_texture<T: Point, U: GpuPoint>(
         &RenderVisibleOctreeNodes<PointCloudNodeData<T>, PointCloudOctree3d<T>>,
     )>,
     mut visible_nodes_buffer: Local<Vec<VisibleOctreeNodeUniform>>,
-    render_octrees: Res<RenderOctrees<RenderPointCloudNodeData<T, U>>>,
-    allocated_octree_nodes: Res<AllocatedOctreeNodes<PointCloudOctreeExtraction<T, U>>>,
-) where
-    for<'a> &'a T: Into<U>,
-{
+    render_octrees: Res<ErasedRenderOctrees<ErasedRenderPointCloudNode>>,
+    allocated_octree_nodes: Res<AllocatedOctreeNodes<PointCloudNodeData<T>>>,
+) {
     // for each camera
     for (entity, extracted_view, _msaa, visible_nodes) in &views_3d {
         // skip if no phases

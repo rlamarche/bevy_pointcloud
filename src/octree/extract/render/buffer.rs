@@ -6,10 +6,8 @@ use bevy_render::{
     render_resource::{Buffer, BufferDescriptor, BufferUsages},
     renderer::{RenderDevice, RenderQueue},
 };
-use bytemuck::Pod;
 use thiserror::Error;
 
-use super::node::RenderOctreeNode;
 use crate::octree::extract::render::asset::RenderOctreeNodeAllocation;
 
 /// Describes how an octree node gets extracted and prepared for rendering.
@@ -20,26 +18,22 @@ use crate::octree::extract::render::asset::RenderOctreeNodeAllocation;
 /// After that in the [`RenderSystems::PrepareAssets`] step the extracted octree nodes
 /// are transformed into their GPU-representation of type [`RenderOctreeNode`].
 pub trait RenderNodeData: Send + Sync {
-    type InstanceData: Pod;
-
-    fn instances(&self) -> &[Self::InstanceData];
+    fn data(&self) -> &[u8];
 }
 
 /// Stores all GPU representations ([`RenderAsset`])
 /// of [`RenderAsset::SourceAsset`] as long as they exist.
 #[derive(Resource)]
-pub struct RenderOctreesBuffers<A>(HashMap<usize, RenderOctreesBuffer<A::ExtractedOctreeNode>>)
-where
-    A: RenderOctreeNode;
+pub struct ErasedRenderOctreesBuffers<ERA>(HashMap<usize, RenderOctreesBuffer<ERA>>);
 
-impl<A: RenderOctreeNode> Default for RenderOctreesBuffers<A> {
+impl<ERA> Default for ErasedRenderOctreesBuffers<ERA> {
     fn default() -> Self {
         Self(HashMap::new())
     }
 }
 
-impl<A: RenderOctreeNode> RenderOctreesBuffers<A> {
-    pub fn get(&self, index: usize) -> Option<&RenderOctreesBuffer<A::ExtractedOctreeNode>> {
+impl<ERA> ErasedRenderOctreesBuffers<ERA> {
+    pub fn get(&self, index: usize) -> Option<&RenderOctreesBuffer<ERA>> {
         self.0.get(&index)
     }
 
@@ -47,15 +41,15 @@ impl<A: RenderOctreeNode> RenderOctreesBuffers<A> {
         &mut self,
         index: usize,
         render_device: &RenderDevice,
-        max_instances: u32,
-    ) -> &mut RenderOctreesBuffer<A::ExtractedOctreeNode> {
-        self.0.entry(index).or_insert_with(|| {
-            RenderOctreesBuffer::<A::ExtractedOctreeNode>::new(render_device, max_instances)
-        })
+        size: u64,
+    ) -> &mut RenderOctreesBuffer<ERA> {
+        self.0
+            .entry(index)
+            .or_insert_with(|| RenderOctreesBuffer::<ERA>::new(render_device, size))
     }
 
     #[allow(unused)]
-    pub fn remove(&mut self, index: usize) -> Option<RenderOctreesBuffer<A::ExtractedOctreeNode>> {
+    pub fn remove(&mut self, index: usize) -> Option<RenderOctreesBuffer<ERA>> {
         self.0.remove(&index)
     }
 }
@@ -73,20 +67,20 @@ pub enum WriteOctreeNodeError {
 }
 
 #[derive(Resource)]
-pub struct RenderOctreesBuffer<A: RenderNodeData> {
+pub struct RenderOctreesBuffer<ERA> {
     pub buffer: Buffer,
     // pub num_points: u64,
     // pub allocator: Allocator,
     // pub allocation_index: HashMap<NodeId, AllocationInfo>,
-    phantom_data: PhantomData<fn() -> A>,
+    phantom_data: PhantomData<fn() -> ERA>,
 }
 
-impl<A: RenderNodeData> RenderOctreesBuffer<A> {
-    pub fn new(render_device: &RenderDevice, max_instances: u32) -> Self {
+impl<ERA> RenderOctreesBuffer<ERA> {
+    pub fn new(render_device: &RenderDevice, size: u64) -> Self {
         let buffer = render_device.create_buffer(&BufferDescriptor {
             label: Some("octree_data_buffer"),
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-            size: max_instances as u64 * size_of::<A::InstanceData>() as u64,
+            size,
             mapped_at_creation: false,
         });
 
@@ -103,7 +97,7 @@ impl<A: RenderNodeData> RenderOctreesBuffer<A> {
         &mut self,
         render_queue: &RenderQueue,
         // node_id: NodeId,
-        node: &A,
+        data: &[u8],
         allocation: &RenderOctreeNodeAllocation,
     ) -> Result<(), WriteOctreeNodeError> {
         // do not reallocate the same node
@@ -112,8 +106,6 @@ impl<A: RenderNodeData> RenderOctreesBuffer<A> {
         //     bevy_log::warn!("Tried to allocate twice the same node");
         //     return Ok(());
         // }
-
-        let instances = node.instances();
 
         // let num_points = instances.len() as u32;
 
@@ -131,7 +123,7 @@ impl<A: RenderNodeData> RenderOctreesBuffer<A> {
 
         // self.num_points = self.num_points.max(offset + allocation_size);
 
-        let instance_size = size_of::<A::InstanceData>() as u64;
+        // let instance_size = size_of::<A::InstanceData>() as u64;
 
         // bevy_log::debug!(
         //     "Allocated {} at offset {} with size {} (instance size = {})",
@@ -141,12 +133,8 @@ impl<A: RenderNodeData> RenderOctreesBuffer<A> {
         //     instance_size,
         // );
 
-        let data: &[u8] = bytemuck::cast_slice(instances);
-        render_queue.write_buffer(
-            &self.buffer,
-            allocation.start as u64 * instance_size as u64,
-            data,
-        );
+        // let data: &[u8] = bytemuck::cast_slice(instances);
+        render_queue.write_buffer(&self.buffer, allocation.offset, data);
 
         // self.allocation_index.insert(
         //     node_id,
