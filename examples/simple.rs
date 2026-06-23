@@ -202,13 +202,18 @@ fn load_pointcloud(
         point_size: 30.0,
         ..default()
     });
+    let my_second_material = point_cloud_materials.add(SimplePointCloudMaterial {
+        point_size: 15.0,
+        ..default()
+    });
     commands.spawn(MyMaterial(my_material.clone()));
+    commands.spawn(MyMaterial(my_second_material.clone()));
 
     let point_cloud =
         asset_server.load::<PointCloud<RGBPoint>>("pointclouds/lion_takanawa.copc.laz");
     commands.spawn((
         PointCloud3d(point_cloud.clone()),
-        PointCloudMaterial3d::<SimplePointCloudMaterial, PointCloudIdentityGpuMapper<RGBPoint>>::from(my_material.clone()),
+        PointCloudMaterial3d::<SimplePointCloudMaterial, PointCloudIdentityGpuMapper<RGBPoint>>::from(my_material),
         MainPointCloud(Vec3::ZERO),
         PointCloudIdentityGpuMapper::<RGBPoint>::default(),
         // MyPointCloudGpuMapper,
@@ -216,7 +221,7 @@ fn load_pointcloud(
     commands.spawn((
         PointCloud3d(point_cloud),
         PointCloudMaterial3d::<SimplePointCloudMaterial, MyPointCloudGpuMapper>::from(
-            my_material.clone(),
+            my_second_material,
         ),
         MainPointCloud(Vec3::new(5.0, 0.0, 0.0)),
         MyPointCloudGpuMapper,
@@ -332,16 +337,21 @@ fn update_material_on_keypress(
     mut point_cloud_materials: ResMut<Assets<SimplePointCloudMaterial>>,
     mut point_cloud_render_mode: Query<&mut PointCloudRenderMode>,
 ) {
-    let my_material = my_material.single().unwrap();
-    let point_cloud_material = point_cloud_materials.get_mut(&my_material.0).unwrap();
+    if key_input.pressed(KeyCode::NumpadAdd) || key_input.pressed(KeyCode::NumpadSubtract) {
+        for my_material in my_material.iter() {
+            let point_cloud_material = point_cloud_materials.get_mut(&my_material.0).unwrap();
+
+            if key_input.pressed(KeyCode::NumpadAdd) {
+                point_cloud_material.point_size += 1.0;
+            }
+            if key_input.pressed(KeyCode::NumpadSubtract) {
+                point_cloud_material.point_size -= 1.0;
+            }
+        }
+    }
+
     let mut point_cloud_render_mode = point_cloud_render_mode.single_mut().unwrap();
 
-    if key_input.pressed(KeyCode::NumpadAdd) {
-        point_cloud_material.point_size += 1.0;
-    }
-    if key_input.pressed(KeyCode::NumpadSubtract) {
-        point_cloud_material.point_size -= 1.0;
-    }
     if key_input.just_pressed(KeyCode::KeyP) {
         point_cloud_render_mode.use_edl = !point_cloud_render_mode.use_edl;
     }

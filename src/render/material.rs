@@ -12,7 +12,7 @@ use crate::{
     point_cloud_material::{
         PointCloudMaterialKey, PreparedPointCloudMaterial, RenderPointCloudMaterialInstances,
     },
-    render_asset::{ErasedRenderAssetsComponent, RenderAssetLoaded},
+    render_asset::{ErasedRenderAssetsComponent, RenderAssetKey},
 };
 
 // /// The render world representation of a [`PointCloudMaterial`].
@@ -76,17 +76,17 @@ pub struct SetPointCloudMaterialGroup<const I: usize>;
 
 impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudMaterialGroup<I> {
     type Param = (
-        SRes<ErasedRenderAssetsComponent<PreparedPointCloudMaterial>>,
+        SRes<ErasedRenderAssetsComponent<PreparedPointCloudMaterial, PointCloudMaterialKey>>,
         SRes<RenderPointCloudMaterialInstances>,
         SRes<MaterialBindGroupAllocators>,
     );
     type ViewQuery = ();
-    type ItemQuery = Read<RenderAssetLoaded<PointCloudMaterialKey>>;
+    type ItemQuery = Read<RenderAssetKey<PointCloudMaterialKey>>;
 
     fn render<'w>(
         item: &P,
         _view: (),
-        render_asset_loaded: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
+        render_material_key: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         (materials, material_instances, material_bind_group_allocator): SystemParamItem<
             'w,
             '_,
@@ -106,11 +106,11 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudMaterialGro
         else {
             return RenderCommandResult::Skip;
         };
-        let Some(render_asset_loaded) = render_asset_loaded else {
+        let Some(render_material_key) = render_material_key else {
             return RenderCommandResult::Skip;
         };
         let Some(material) =
-            materials.get((material_instance.asset_id, render_asset_loaded.type_id))
+            materials.get((material_instance.asset_id, render_material_key.clone()))
         else {
             return RenderCommandResult::Skip;
         };

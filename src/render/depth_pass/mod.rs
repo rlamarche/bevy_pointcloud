@@ -46,7 +46,7 @@ use crate::{
         point_cloud_uniform::SetPointCloudUniformGroup,
         PointCloudRenderMode, PointCloudRenderModeOpt,
     },
-    render_asset::{ErasedRenderAssetsComponent, RenderAssetLoaded},
+    render_asset::{ErasedRenderAssetsComponent, RenderAssetKey},
 };
 
 pub struct DepthPassPlugin<T: Point>(#[allow(clippy::type_complexity)] PhantomData<fn() -> T>);
@@ -151,17 +151,19 @@ fn extract_camera_phases<T: Point>(
 #[allow(clippy::too_many_arguments)]
 fn queue_depth_pass<T: Point>(
     custom_draw_functions: Res<DrawFunctions<PointCloud3dDepthPhase<T>>>,
-    render_point_clouds: Res<ErasedRenderAssetsComponent<RenderPointCloud>>,
+    render_point_clouds: Res<ErasedRenderAssetsComponent<RenderPointCloud, PointCloudGpuMapperKey>>,
     render_point_cloud_instances: Res<RenderPointCloudInstances<T>>,
-    render_materials: Res<ErasedRenderAssetsComponent<PreparedPointCloudMaterial>>,
+    render_materials: Res<
+        ErasedRenderAssetsComponent<PreparedPointCloudMaterial, PointCloudMaterialKey>,
+    >,
     render_point_cloud_material_instances: Res<RenderPointCloudMaterialInstances>,
     mut pipelines: ResMut<SpecializedRenderPipelines<DepthPassPipelineSpecializer<T>>>,
     pipeline_cache: Res<PipelineCache>,
     pipeline: Res<DepthPipeline<T>>,
     items: Query<(
         &PointCloud3d<T>,
-        &RenderAssetLoaded<PointCloudGpuMapperKey>,
-        &RenderAssetLoaded<PointCloudMaterialKey>,
+        &RenderAssetKey<PointCloudGpuMapperKey>,
+        &RenderAssetKey<PointCloudMaterialKey>,
     )>,
     mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dDepthPhase<T>>>,
     mut views: Query<(
@@ -185,7 +187,7 @@ fn queue_depth_pass<T: Point>(
 
         // Since our phase can work on any 3d mesh we can reuse the default mesh 3d filter
         for (render_entity, main_entity) in visible_entities.iter::<PointCloud3d<T>>() {
-            let Ok((point_cloud_3d, point_cloud_loaded, material_loaded)) =
+            let Ok((point_cloud_3d, render_point_cloud_key, render_material_key)) =
                 items.get(*render_entity)
             else {
                 debug!("point_cloud_3d not ready");
@@ -203,7 +205,7 @@ fn queue_depth_pass<T: Point>(
                 continue;
             };
             let Some(material) =
-                render_materials.get((material_instance.asset_id, material_loaded.type_id))
+                render_materials.get((material_instance.asset_id, render_material_key.clone()))
             else {
                 debug!(
                     "Render Point Cloud Material not found for asset id {:?}",
@@ -217,8 +219,8 @@ fn queue_depth_pass<T: Point>(
                 debug!("Point Cloud not found for entity {:?}", main_entity);
                 continue;
             };
-            let Some(point_cloud) =
-                render_point_clouds.get((pointcloud_instance.asset_id, point_cloud_loaded.type_id))
+            let Some(point_cloud) = render_point_clouds
+                .get((pointcloud_instance.asset_id, render_point_cloud_key.clone()))
             else {
                 debug!(
                     "Render Point Cloud not found for asset id {:?}",

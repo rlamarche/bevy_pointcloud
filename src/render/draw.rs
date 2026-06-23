@@ -16,7 +16,7 @@ use crate::{
     point::Point,
     point_cloud::{PointCloud3d, PointCloudGpuMapperKey, RenderPointCloud},
     render::mesh::PointCloudMesh,
-    render_asset::{ErasedRenderAssetsComponent, RenderAssetLoaded},
+    render_asset::{ErasedRenderAssetsComponent, RenderAssetKey},
 };
 
 pub struct DrawPointCloud<T: Point>(PhantomData<fn() -> T>);
@@ -24,12 +24,12 @@ pub struct DrawPointCloud<T: Point>(PhantomData<fn() -> T>);
 impl<T: Point, P: PhaseItem> RenderCommand<P> for DrawPointCloud<T> {
     type Param = (
         SRes<PointCloudMesh>,
-        SRes<ErasedRenderAssetsComponent<RenderPointCloud>>,
+        SRes<ErasedRenderAssetsComponent<RenderPointCloud, PointCloudGpuMapperKey>>,
     );
     type ViewQuery = ();
     type ItemQuery = (
         Read<PointCloud3d<T>>,
-        Read<RenderAssetLoaded<PointCloudGpuMapperKey>>,
+        Read<RenderAssetKey<PointCloudGpuMapperKey>>,
     );
 
     #[inline]
@@ -44,11 +44,11 @@ impl<T: Point, P: PhaseItem> RenderCommand<P> for DrawPointCloud<T> {
         let point_cloud_mesh = point_cloud_mesh.into_inner();
         let render_point_clouds = render_point_clouds.into_inner();
 
-        let Some((point_cloud_3d, point_cloud_loaded)) = entity else {
+        let Some((point_cloud_3d, render_point_cloud_key)) = entity else {
             return RenderCommandResult::Skip;
         };
         let Some(render_point_cloud) =
-            render_point_clouds.get((point_cloud_3d.id(), point_cloud_loaded.type_id))
+            render_point_clouds.get((point_cloud_3d.id(), render_point_cloud_key.clone()))
         else {
             return RenderCommandResult::Skip;
         };
