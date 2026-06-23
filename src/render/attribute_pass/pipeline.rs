@@ -25,7 +25,6 @@ use bevy_utils::default;
 use crate::pointcloud_octree::extract::{PointCloudNodeDataUniform, PointCloudOctreeUniform};
 use crate::{
     point::Point,
-    point_cloud::{ErasedPointCloudKey, PointCloudProperties},
     point_cloud_material::{ErasedPointCloudMaterialKey, PointCloudMaterialProperties},
     render::{point_cloud_uniform::PointCloudUniform, MATERIAL_BIND_GROUP_INDEX},
 };
@@ -108,14 +107,12 @@ impl<T: Point> FromWorld for AttributePassPipeline<T> {
 
 pub struct AttributePassPipelineSpecializer<T: Point> {
     pub pipeline: AttributePassPipeline<T>,
-    pub point_cloud_properties: Arc<PointCloudProperties>,
     pub material_properties: Arc<PointCloudMaterialProperties>,
 }
 
 #[derive(Clone)]
 pub struct AttributePipelineKey {
     pub mesh_key: MeshPipelineKey,
-    pub point_cloud_key: ErasedPointCloudKey,
     pub is_octree: bool,
     pub material_key: ErasedPointCloudMaterialKey,
 }
@@ -124,13 +121,11 @@ impl AttributePipelineKey {
     #[inline]
     pub fn new(
         mesh_key: MeshPipelineKey,
-        point_cloud_key: ErasedPointCloudKey,
         is_octree: bool,
         material_key: ErasedPointCloudMaterialKey,
     ) -> Self {
         Self {
             mesh_key,
-            point_cloud_key,
             is_octree,
             material_key,
         }
@@ -140,7 +135,6 @@ impl AttributePipelineKey {
 impl Hash for AttributePipelineKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.mesh_key.hash(state);
-        self.point_cloud_key.hash(state);
         self.is_octree.hash(state);
         self.material_key.hash(state);
     }
@@ -149,7 +143,6 @@ impl Hash for AttributePipelineKey {
 impl PartialEq for AttributePipelineKey {
     fn eq(&self, other: &Self) -> bool {
         self.mesh_key == other.mesh_key
-            && self.point_cloud_key == other.point_cloud_key
             && self.is_octree == other.is_octree
             && self.material_key == other.material_key
     }
@@ -171,7 +164,7 @@ impl<T: Point> SpecializedRenderPipeline for AttributePassPipelineSpecializer<T>
             }],
         };
 
-        let instance_buffer_layout = self.point_cloud_properties.vertex_buffer_layout.clone();
+        let instance_buffer_layout = self.material_properties.vertex_buffer_layout.clone();
 
         let mut shader_defs = self.material_properties.attribute_shader_defs.clone();
         shader_defs.push(ShaderDefVal::UInt(

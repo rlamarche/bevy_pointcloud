@@ -16,7 +16,7 @@ use bevy_ecs::{
         Res, ResMut, SystemParamItem,
     },
 };
-use bevy_mesh::MeshVertexBufferLayoutRef;
+use bevy_mesh::{MeshVertexBufferLayoutRef, VertexBufferLayout};
 use bevy_pbr::{
     ErasedMaterialKey, ErasedMaterialPipelineKey, MaterialBindGroupAllocator,
     MaterialBindGroupAllocators, MaterialBindingId, MaterialPipeline, RenderMaterialBindings,
@@ -39,7 +39,10 @@ pub use resources::*;
 pub use simple::*;
 
 use crate::{
-    point::Point, point_cloud::{PointCloud, PointCloud3d, PointCloudGpuMapper, PointCloudGpuMapperPlugin}, render::POINTCLOUD_SHADER_HANDLE, render_asset::{
+    point::{GpuPoint, Point},
+    point_cloud::{PointCloud, PointCloud3d, PointCloudGpuMapper, PointCloudGpuMapperPlugin},
+    render::POINTCLOUD_SHADER_HANDLE,
+    render_asset::{
         ErasedRenderAssetComponent, ErasedRenderAssetComponentPlugin, PrepareAssetComponentError,
     },
 };
@@ -372,6 +375,7 @@ impl Default for ErasedPointCloudMaterialKey {
 pub struct PointCloudMaterialProperties {
     // pub render_phase_type: RenderPhaseType,
     pub mapper_type_id: TypeId,
+    pub vertex_buffer_layout: VertexBufferLayout,
     pub material_layout: Option<BindGroupLayoutDescriptor>,
     /// Backing array is a size of 4 because the `StandardMaterial` needs 4 draw functions by default
     // pub draw_functions: SmallVec<[(InternedDrawFunctionLabel, DrawFunctionId); 4]>,
@@ -404,6 +408,7 @@ pub struct PointCloudMaterialProperties {
 impl Default for PointCloudMaterialProperties {
     fn default() -> Self {
         Self {
+            vertex_buffer_layout: Default::default(),
             mapper_type_id: TypeId::of::<()>(),
             material_layout: Default::default(),
             depth_pass_vertex_shader_handle: Default::default(),
@@ -536,6 +541,7 @@ where
 
         let material_layout = M::bind_group_layout_descriptor(render_device);
         let actual_material_layout = pipeline_cache.get_bind_group_layout(&material_layout);
+        let vertex_buffer_layout = <A::GpuPoint as GpuPoint>::vertex_buffer_layout();
 
         match material.unprepared_bind_group(
             &actual_material_layout,
@@ -568,6 +574,7 @@ where
                     binding,
                     properties: Arc::new(PointCloudMaterialProperties {
                         mapper_type_id: type_id,
+                        vertex_buffer_layout,
                         material_layout: Some(material_layout),
                         depth_pass_vertex_shader_handle,
                         depth_pass_fragment_shader_handle,
@@ -611,6 +618,7 @@ where
                             binding: material_binding_id,
                             properties: Arc::new(PointCloudMaterialProperties {
                                 mapper_type_id: type_id,
+                                vertex_buffer_layout,
                                 material_layout: Some(material_layout),
                                 depth_pass_vertex_shader_handle,
                                 depth_pass_fragment_shader_handle,

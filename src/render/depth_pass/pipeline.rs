@@ -25,7 +25,6 @@ use bevy_utils::default;
 use crate::pointcloud_octree::extract::{PointCloudNodeDataUniform, PointCloudOctreeUniform};
 use crate::{
     point::Point,
-    point_cloud::{ErasedPointCloudKey, PointCloudProperties},
     point_cloud_material::{ErasedPointCloudMaterialKey, PointCloudMaterialProperties},
     render::{point_cloud_uniform::PointCloudUniform, MATERIAL_BIND_GROUP_INDEX},
 };
@@ -85,14 +84,12 @@ impl<T: Point> FromWorld for DepthPipeline<T> {
 
 pub struct DepthPassPipelineSpecializer<T: Point> {
     pub pipeline: DepthPipeline<T>,
-    pub point_cloud_properties: Arc<PointCloudProperties>,
     pub material_properties: Arc<PointCloudMaterialProperties>,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct DepthPipelineKey {
     pub mesh_key: MeshPipelineKey,
-    pub point_cloud_key: ErasedPointCloudKey,
     pub use_edl: bool,
     pub is_octree: bool,
     pub material_key: ErasedPointCloudMaterialKey,
@@ -102,14 +99,12 @@ impl DepthPipelineKey {
     #[inline]
     pub fn new(
         mesh_key: MeshPipelineKey,
-        point_cloud_key: ErasedPointCloudKey,
         use_edl: bool,
         is_octree: bool,
         material_key: ErasedPointCloudMaterialKey,
     ) -> Self {
         Self {
             mesh_key,
-            point_cloud_key,
             use_edl,
             is_octree,
             material_key,
@@ -131,7 +126,7 @@ impl<T: Point> SpecializedRenderPipeline for DepthPassPipelineSpecializer<T> {
             }],
         };
 
-        let instance_buffer_layout = self.point_cloud_properties.vertex_buffer_layout.clone();
+        let instance_buffer_layout = self.material_properties.vertex_buffer_layout.clone();
 
         let mut shader_defs = self.material_properties.depth_shader_defs.clone();
         shader_defs.push(ShaderDefVal::UInt(
