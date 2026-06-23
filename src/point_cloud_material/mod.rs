@@ -372,9 +372,8 @@ impl Default for ErasedPointCloudMaterialKey {
 
 /// Common [`Material`] properties, calculated for a specific material instance.
 #[allow(clippy::type_complexity)]
+#[derive(Default)]
 pub struct PointCloudMaterialProperties {
-    // pub render_phase_type: RenderPhaseType,
-    pub mapper_type_id: TypeId,
     pub vertex_buffer_layout: VertexBufferLayout,
     pub material_layout: Option<BindGroupLayoutDescriptor>,
     /// Backing array is a size of 4 because the `StandardMaterial` needs 4 draw functions by default
@@ -403,26 +402,6 @@ pub struct PointCloudMaterialProperties {
     /// The key for this material, typically a bitfield of flags that are used to modify
     /// the pipeline descriptor used for this material.
     pub material_key: ErasedPointCloudMaterialKey,
-}
-
-impl Default for PointCloudMaterialProperties {
-    fn default() -> Self {
-        Self {
-            vertex_buffer_layout: Default::default(),
-            mapper_type_id: TypeId::of::<()>(),
-            material_layout: Default::default(),
-            depth_pass_vertex_shader_handle: Default::default(),
-            depth_pass_fragment_shader_handle: Default::default(),
-            depth_shader_defs: Default::default(),
-            attribute_pass_vertex_shader_handle: Default::default(),
-            attribute_pass_fragment_shader_handle: Default::default(),
-            attribute_shader_defs: Default::default(),
-            normalize_shader_handle: Default::default(),
-            bindless: Default::default(),
-            specialize: Default::default(),
-            material_key: Default::default(),
-        }
-    }
 }
 
 /// Data prepared for a [`Material`] instance.
@@ -573,7 +552,6 @@ where
                 Ok(PreparedPointCloudMaterial {
                     binding,
                     properties: Arc::new(PointCloudMaterialProperties {
-                        mapper_type_id: type_id,
                         vertex_buffer_layout,
                         material_layout: Some(material_layout),
                         depth_pass_vertex_shader_handle,
@@ -617,7 +595,6 @@ where
                         Ok(PreparedPointCloudMaterial {
                             binding: material_binding_id,
                             properties: Arc::new(PointCloudMaterialProperties {
-                                mapper_type_id: type_id,
                                 vertex_buffer_layout,
                                 material_layout: Some(material_layout),
                                 depth_pass_vertex_shader_handle,
