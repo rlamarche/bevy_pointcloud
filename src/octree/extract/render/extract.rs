@@ -16,9 +16,9 @@ use crate::octree::{
     visibility::components::ViewVisibleOctreeNodes,
 };
 
-pub fn extract_removed_octrees<E: OctreeNodeExtraction>(
-    octree_node_allocations: Extract<Res<OctreeNodeAllocations<E::NodeData>>>,
-    mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,
+pub fn extract_removed_octrees<T: NodeData, C: Component>(
+    octree_node_allocations: Extract<Res<OctreeNodeAllocations<T>>>,
+    mut render_octree_index: ResMut<RenderOctreeIndex<C>>,
 ) {
     for (_, render_entity) in &octree_node_allocations.removed_octrees_this_frame {
         render_octree_index.remove_octree(render_entity.id());
@@ -36,23 +36,12 @@ pub fn clear_removed_octrees<T: NodeData>(mut main_world: ResMut<MainWorld>) {
 /// This system extracts computed visible octree nodes and add them in the render world, for each view (camera)
 #[cfg_attr(feature = "trace", tracing::instrument(skip_all))]
 #[allow(clippy::type_complexity)]
-pub fn extract_visible_octree_nodes<E: OctreeNodeExtraction>(
-    views: Extract<
-        Query<
-            (
-                RenderEntity,
-                &ViewVisibleOctreeNodes<E::NodeData, E::Component>,
-            ),
-            With<Camera>,
-        >,
-    >,
-    mut extracted_views: Query<
-        &mut RenderVisibleOctreeNodes<E::NodeData, E::Component>,
-        With<ExtractedView>,
-    >,
-    octree_node_allocations: Extract<Res<OctreeNodeAllocations<E::NodeData>>>,
+pub fn extract_visible_octree_nodes<T: NodeData, C: Component>(
+    views: Extract<Query<(RenderEntity, &ViewVisibleOctreeNodes<T, C>), With<Camera>>>,
+    mut extracted_views: Query<&mut RenderVisibleOctreeNodes<T, C>, With<ExtractedView>>,
+    octree_node_allocations: Extract<Res<OctreeNodeAllocations<T>>>,
     mapper: Extract<Query<&RenderEntity>>,
-    mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,
+    mut render_octree_index: ResMut<RenderOctreeIndex<C>>,
 ) {
     for (render_entity, visible_point_cloud_octree_3d_nodes) in views.iter() {
         let Ok(mut render_visible_octree_nodes) = extracted_views.get_mut(render_entity) else {

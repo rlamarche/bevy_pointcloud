@@ -1,18 +1,29 @@
 pub mod asset;
 pub mod component;
 pub mod extract;
+pub mod gpu_mapper;
 pub mod render;
 pub mod visibility;
-pub mod gpu_mapper;
 
 use component::PointCloudOctree3d;
 
 use crate::{
     octree::{
-        OctreeAssetPlugin, extract::{ExtractVisibleOctreeNodesPlugin, OctreeNodesRenderBufferPlugin}, server::{OctreeServer, OctreeServerPlugin}, visibility::{
-            OctreeVisiblityPlugin, components::OctreeVisibilitySettings, filter::ScreenPixelRadiusFilter,
+        extract::{
+            ExtractVisibleOctreeNodesPlugin, OctreeNodesRenderBufferPlugin,
+            PrepareRenderOctreeNodesPlugin,
         },
-    }, point::RGBPoint, point_cloud::PointCloudGpuMapper, point_cloud_material::PointCloudMaterial, pointcloud_octree::{
+        server::{OctreeServer, OctreeServerPlugin},
+        visibility::{
+            components::OctreeVisibilitySettings, filter::ScreenPixelRadiusFilter,
+            OctreeVisiblityPlugin,
+        },
+        OctreeAssetPlugin,
+    },
+    point::{Point, RGBPoint},
+    point_cloud::PointCloudGpuMapper,
+    point_cloud_material::PointCloudMaterial,
+    pointcloud_octree::{
         asset::{data::PointCloudNodeData, extract::PointCloudOctreeGpuMapper},
         visibility::PointCloudOctreePointBudget,
     },
@@ -32,8 +43,12 @@ pub type PointCloudOctreeRenderBufferPlugin<T> =
     OctreeNodesRenderBufferPlugin<PointCloudNodeData<T>>;
 
 #[allow(type_alias_bounds)]
-pub type ExtractVisiblePointCloudOctreeNodesPlugin<M: PointCloudMaterial, A: PointCloudGpuMapper> =
-    ExtractVisibleOctreeNodesPlugin<PointCloudOctreeGpuMapper<M, A>>;
+pub type ExtractVisiblePointCloudOctreeNodesPlugin<T: Point> =
+    ExtractVisibleOctreeNodesPlugin<PointCloudNodeData<T>, PointCloudOctree3d<T>>;
+
+#[allow(type_alias_bounds)]
+pub type PrepareRenderPointCloudOctreeNodesPlugin<M: PointCloudMaterial, A: PointCloudGpuMapper> =
+    PrepareRenderOctreeNodesPlugin<PointCloudOctreeGpuMapper<M, A>>;
 
 pub type PointCloudOctreeVisibilitySettings<T> = OctreeVisibilitySettings<
     PointCloudNodeData<T>,

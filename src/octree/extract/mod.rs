@@ -10,7 +10,11 @@ use allocate::allocate_visible_octree_nodes;
 use bevy_app::prelude::*;
 use bevy_asset::AssetId;
 use bevy_ecs::{
-    self, prelude::*, query::QueryFilter, schedule::ScheduleConfigs, system::{ScheduleSystem, SystemParam, SystemParamItem},
+    self,
+    prelude::*,
+    query::QueryFilter,
+    schedule::ScheduleConfigs,
+    system::{ScheduleSystem, SystemParam, SystemParamItem},
 };
 use bevy_reflect::TypePath;
 use bevy_render::{
@@ -38,12 +42,48 @@ use super::{
 use crate::{
     octree::{
         extract::{
-            allocate::on_remove_octree, render::{
-                asset::RenderOctreeNodeData, extract::{clear_removed_octrees, extract_removed_octrees}, node::PrepareOctreeNodeError, prepare::prepare_octrees_uniforms, resources::{AllocatedOctreeNodes, OctreeEntityLayout, RenderOctreeIndex},
+            allocate::on_remove_octree,
+            render::{
+                asset::RenderOctreeNodeData,
+                extract::{clear_removed_octrees, extract_removed_octrees},
+                node::PrepareOctreeNodeError,
+                prepare::prepare_octrees_uniforms,
+                resources::{AllocatedOctreeNodes, OctreeEntityLayout},
             },
-        }, storage::NodeId, visibility::OctreeVisibilitySystems,
-    }, point::RGBPoint,
+        },
+        storage::NodeId,
+        visibility::OctreeVisibilitySystems,
+    },
+    point::RGBPoint,
 };
+
+pub struct ExtractVisibleOctreeNodesPlugin<T: NodeData, C: Component>(PhantomData<fn() -> (T, C)>);
+
+impl<T: NodeData, C: Component> Default for ExtractVisibleOctreeNodesPlugin<T, C> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<T: NodeData, C: Component> Plugin for ExtractVisibleOctreeNodesPlugin<T, C> {
+    fn build(&self, app: &mut App) {
+        if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
+            render_app
+                .add_systems(
+                    ExtractSchedule,
+                    (
+                        extract_visible_octree_nodes::<T, C>.after(extract_cameras),
+                        extract_removed_octrees::<T, C>.before(clear_removed_octrees::<T>),
+                        clear_removed_octrees::<T>,
+                    ),
+                )
+                .add_systems(
+                    Render,
+                    prepare_octrees_uniforms::<T, C>.in_set(RenderSystems::PrepareBindGroups),
+                );
+        }
+    }
+}
 
 pub trait OctreeNodeExtraction: Send + Sync + TypePath {
     type NodeData: NodeData;
@@ -150,13 +190,7 @@ impl<T: NodeData> Plugin for OctreeNodesRenderBufferPlugin<T> {
                 .init_resource::<RenderOctreeNodesBytesPerFrameLimiter<T>>()
                 .init_resource::<ErasedRenderOctreesBuffers<T>>()
                 .init_resource::<AllocatedOctreeNodes<T>>()
-                .add_systems(
-                    ExtractSchedule,
-                    (
-                        extract_render_asset_bytes_per_frame::<T>,
-                        clear_removed_octrees::<T>,
-                    ),
-                )
+                .add_systems(ExtractSchedule, extract_render_asset_bytes_per_frame::<T>)
                 .add_systems(
                     Render,
                     reset_render_asset_bytes_per_frame::<T>.in_set(RenderSystems::Cleanup),
@@ -216,9 +250,9 @@ impl<T: NodeData> OctreeNodesRenderBufferPlugin<T> {
 /// `prepare_assets::<AFTER>` has completed. This allows the [`RenderOctreeNode::prepare_octree_node`] function to depend on another
 /// prepared [`RenderOctreeNode`].
 #[allow(clippy::type_complexity)]
-pub struct ExtractVisibleOctreeNodesPlugin<E, AFTER = ()>(PhantomData<fn() -> (E, AFTER)>);
+pub struct PrepareRenderOctreeNodesPlugin<E, AFTER = ()>(PhantomData<fn() -> (E, AFTER)>);
 
-impl<E, AFTER> Default for ExtractVisibleOctreeNodesPlugin<E, AFTER> {
+impl<E, AFTER> Default for PrepareRenderOctreeNodesPlugin<E, AFTER> {
     fn default() -> Self {
         Self(Default::default())
     }
@@ -227,7 +261,7 @@ impl<E, AFTER> Default for ExtractVisibleOctreeNodesPlugin<E, AFTER> {
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ExtractOctreeNode;
 
-impl<E, AFTER> Plugin for ExtractVisibleOctreeNodesPlugin<E, AFTER>
+impl<E, AFTER> Plugin for PrepareRenderOctreeNodesPlugin<E, AFTER>
 where
     E: OctreeNodeExtraction,
     AFTER: RenderOctreeDependency + 'static,
@@ -240,18 +274,7 @@ where
                 .init_resource::<ExtractedOctreeNodes<E>>()
                 .init_resource::<ErasedRenderOctrees<E::ErasedRenderOctreeNode>>()
                 .init_resource::<PrepareNextFrameOctreeNodes<E>>()
-                .add_systems(
-                    ExtractSchedule,
-                    (
-                        extract_visible_octree_nodes::<E>.after(extract_cameras),
-                        extract_octree_node_allocations::<E>,
-                        extract_removed_octrees::<E>.before(clear_removed_octrees::<E::NodeData>),
-                    ),
-                )
-                .add_systems(
-                    Render,
-                    prepare_octrees_uniforms::<E>.in_set(RenderSystems::PrepareBindGroups),
-                );
+                .add_systems(ExtractSchedule, extract_octree_node_allocations::<E>);
 
             AFTER::register_system(
                 render_app,

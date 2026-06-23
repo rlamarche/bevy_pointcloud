@@ -16,15 +16,18 @@ use super::{
     node::PrepareOctreeNodeError,
     resources::ErasedRenderOctrees,
 };
-use crate::octree::extract::render::{
-    buffer::RenderNodeData,
-    components::RenderOctreeEntityUniform,
-    resources::{AllocatedOctreeNodes, OctreeEntityLayout, RenderOctreeIndex},
-    uniforms::OctreeEntityUniform,
+use crate::octree::{
+    extract::render::{
+        buffer::RenderNodeData,
+        components::RenderOctreeEntityUniform,
+        resources::{AllocatedOctreeNodes, OctreeEntityLayout, RenderOctreeIndex},
+        uniforms::OctreeEntityUniform,
+    },
+    node::NodeData,
 };
 
-pub fn prepare_octrees_uniforms<E: OctreeNodeExtraction>(
-    mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,
+pub fn prepare_octrees_uniforms<T: NodeData, C: Component>(
+    mut render_octree_index: ResMut<RenderOctreeIndex<C>>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
     octree_entity_layout: Res<OctreeEntityLayout>,
@@ -48,7 +51,7 @@ pub fn prepare_octrees_uniforms<E: OctreeNodeExtraction>(
 
         commands
             .entity(entity)
-            .insert(RenderOctreeEntityUniform::<E::NodeData, E::Component> {
+            .insert(RenderOctreeEntityUniform::<T, C> {
                 bind_group,
                 _phantom: PhantomData,
             });
@@ -70,9 +73,7 @@ pub fn prepare_assets<E: OctreeNodeExtraction>(
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
 ) {
-    let type_name = std::any::type_name::<E::Key>();
     let type_id = TypeId::of::<E::Key>();
-    info!("type name : {} type id : {:?}", type_name, type_id);
 
     // one single buffer for all octrees
     let octrees_buffer = render_octrees_buffers.get_or_insert_mut(

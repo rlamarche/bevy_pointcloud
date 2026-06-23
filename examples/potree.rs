@@ -35,7 +35,7 @@ use bevy_pointcloud::{
         ExtractVisiblePointCloudOctreeNodesPlugin, PointCloudOctreeAssetPlugin,
         PointCloudOctreeRenderBufferPlugin, PointCloudOctreeServer, PointCloudOctreeServerPlugin,
         PointCloudOctreeVisibilityPlugin, PointCloudOctreeVisibilitySettings,
-        RenderPointCloudRGBOctreePlugin,
+        PrepareRenderPointCloudOctreeNodesPlugin, RenderPointCloudRGBOctreePlugin,
     },
     render::PointCloudRenderMode,
 };
@@ -93,11 +93,16 @@ fn main() {
         EguiPlugin::default(),
         // WorldInspectorPlugin::default(),
         PanOrbitCameraPlugin,
+    ));
+    app.add_plugins((
         PointCloudsPlugin::<RGBPoint>::default(),
         SimplePointCloudMaterialPlugin::<PointCloudIdentityGpuMapper<RGBPoint>>::default(),
         SimplePointCloudMaterialPlugin::<MyPointCloudGpuMapper>::default(),
+    ));
+    app.add_plugins((
         PointCloudOctreeAssetPlugin::<RGBPoint>::default(),
         PointCloudOctreeVisibilityPlugin::<RGBPoint>::default(),
+        ExtractVisiblePointCloudOctreeNodesPlugin::<RGBPoint>::default(),
         PointCloudOctreeGpuMapperPlugin::<
             SimplePointCloudMaterial,
             PointCloudIdentityGpuMapper<RGBPoint>,
@@ -113,9 +118,9 @@ fn main() {
             // 100 MB max uploaded per frame
             100 * 1024 * 1024,
         ),
-        ExtractVisiblePointCloudOctreeNodesPlugin::<SimplePointCloudMaterial, PointCloudIdentityGpuMapper<RGBPoint>>::default(
+        PrepareRenderPointCloudOctreeNodesPlugin::<SimplePointCloudMaterial, PointCloudIdentityGpuMapper<RGBPoint>>::default(
         ),
-        ExtractVisiblePointCloudOctreeNodesPlugin::<SimplePointCloudMaterial, MyPointCloudGpuMapper>::default(),
+        PrepareRenderPointCloudOctreeNodesPlugin::<SimplePointCloudMaterial, MyPointCloudGpuMapper>::default(),
         RenderPointCloudRGBOctreePlugin::default(),
         PointCloudOctreeServerPlugin::<RGBPoint>::with_max_size(
             // limit to 512 mb of cpu memory

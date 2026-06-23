@@ -24,6 +24,7 @@ use bevy_ecs::prelude::*;
 use bevy_log::prelude::*;
 use bevy_math::prelude::*;
 use bevy_platform::{collections::HashMap, time::Instant};
+use bevy_render::RenderApp;
 use bevy_time::{Real, Time};
 use bevy_transform::prelude::*;
 use budget::OctreeNodesBudget;
