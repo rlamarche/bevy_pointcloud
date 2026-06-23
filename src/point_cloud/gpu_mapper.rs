@@ -181,7 +181,7 @@ impl<A: PointCloudGpuMapper, C: Component> ErasedRenderAssetComponent
     type QueryData = Read<PointCloud3d<A::Point>>;
     type QueryFilter = With<C>;
 
-    type Key = PointCloudGpuMapperKey;
+    type KeyMarker = PointCloudGpuMapperKey;
 
     fn extract_asset(source_asset: &Self::SourceAsset) -> Self::ExtractedAsset {
         source_asset.clone()

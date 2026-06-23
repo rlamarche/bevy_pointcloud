@@ -19,7 +19,6 @@ use bevy_ecs::{
 };
 use bevy_log::{debug, error};
 use bevy_platform::collections::{HashMap, HashSet};
-use bevy_reflect::TypePath;
 use bevy_render::{
     erased_render_asset::AssetExtractionSystems, render_resource::AsBindGroupError,
     sync_world::RenderEntity, ExtractSchedule, MainWorld, Render, RenderApp, RenderSystems,
@@ -62,7 +61,7 @@ pub trait ErasedRenderAssetComponent: Send + Sync + 'static {
     /// Filters the entities.
     type QueryFilter: QueryFilter;
 
-    type Key: Send + Sync + TypePath;
+    type KeyMarker: Send + Sync + 'static;
 
     /// Whether or not to unload the asset after extracting it to the render world.
     #[inline]
@@ -163,7 +162,7 @@ impl<A: ErasedRenderAssetComponent, AFTER: ErasedRenderAssetComponentDependency 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 .init_resource::<ExtractedAssets<A>>()
-                .init_resource::<ErasedRenderAssetsComponent<A::ErasedAsset, A::Key>>()
+                .init_resource::<ErasedRenderAssetsComponent<A::ErasedAsset, A::KeyMarker>>()
                 .init_resource::<PrepareNextFrameAssets<A>>()
                 .add_systems(
                     ExtractSchedule,
@@ -361,7 +360,7 @@ struct CachedExtractErasedRenderAssetComponentSystemState<A: ErasedRenderAssetCo
             'static,
             'static,
             (Entity, Option<Read<RenderEntity>>, A::QueryData),
-            (A::QueryFilter, Without<RenderAssetKey<A::Key>>),
+            (A::QueryFilter, Without<RenderAssetKey<A::KeyMarker>>),
         >,
         MessageReader<'static, 'static, AssetEvent<A::SourceAsset>>,
         ResMut<'static, Assets<A::SourceAsset>>,
@@ -387,7 +386,7 @@ pub(crate) fn extract_erased_render_asset<A: ErasedRenderAssetComponent>(
     main_world.resource_scope(
         |world, mut cached_state: Mut<CachedExtractErasedRenderAssetComponentSystemState<A>>| {
             let type_id = TypeId::of::<A>();
-            let key = RenderAssetKey::<A::Key>::from(type_id);
+            let key = RenderAssetKey::<A::KeyMarker>::from(type_id);
 
             let (
                 mut commands,
@@ -516,13 +515,13 @@ impl<A: ErasedRenderAssetComponent> Default for PrepareNextFrameAssets<A> {
 /// which where extracted this frame for the GPU.
 pub fn prepare_erased_assets<A: ErasedRenderAssetComponent>(
     mut extracted_assets: ResMut<ExtractedAssets<A>>,
-    mut render_assets: ResMut<ErasedRenderAssetsComponent<A::ErasedAsset, A::Key>>,
+    mut render_assets: ResMut<ErasedRenderAssetsComponent<A::ErasedAsset, A::KeyMarker>>,
     mut prepare_next_frame: ResMut<PrepareNextFrameAssets<A>>,
     param: StaticSystemParam<<A as ErasedRenderAssetComponent>::Param>,
     bpf: Res<RenderAssetBytesPerFrameLimiter>,
 ) {
     let type_id = TypeId::of::<A>();
-    let key = RenderAssetKey::<A::Key>::from(type_id);
+    let key = RenderAssetKey::<A::KeyMarker>::from(type_id);
 
     let mut wrote_asset_count = 0;
 

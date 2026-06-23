@@ -436,7 +436,7 @@ where
 
     type QueryFilter = ();
 
-    type Key = PointCloudMaterialKey;
+    type KeyMarker = PointCloudMaterialKey;
 
     fn asset_id(data: bevy_ecs::query::ROQueryItem<Self::QueryData>) -> AssetId<Self::SourceAsset> {
         data.id()

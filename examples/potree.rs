@@ -31,6 +31,7 @@ use bevy_pointcloud::{
     pointcloud_octree::{
         asset::{data::PointCloudNodeData, PointCloudOctree},
         component::PointCloudOctree3d,
+        gpu_mapper::PointCloudOctreeGpuMapperPlugin,
         ExtractVisiblePointCloudOctreeNodesPlugin, PointCloudOctreeAssetPlugin,
         PointCloudOctreeRenderBufferPlugin, PointCloudOctreeServer, PointCloudOctreeServerPlugin,
         PointCloudOctreeVisibilityPlugin, PointCloudOctreeVisibilitySettings,
@@ -97,6 +98,14 @@ fn main() {
         SimplePointCloudMaterialPlugin::<MyPointCloudGpuMapper>::default(),
         PointCloudOctreeAssetPlugin::<RGBPoint>::default(),
         PointCloudOctreeVisibilityPlugin::<RGBPoint>::default(),
+        PointCloudOctreeGpuMapperPlugin::<
+            SimplePointCloudMaterial,
+            PointCloudIdentityGpuMapper<RGBPoint>,
+        >::default(),
+        PointCloudOctreeGpuMapperPlugin::<
+            SimplePointCloudMaterial,
+            MyPointCloudGpuMapper,
+        >::default(),
         PointCloudOctreeRenderBufferPlugin::<RGBPoint>::with_size_and_max_bytes_per_frame(
             // limit to 512 mb of gpu memory
             512 * 1024 * 1024,
@@ -104,9 +113,9 @@ fn main() {
             // 100 MB max uploaded per frame
             100 * 1024 * 1024,
         ),
-        ExtractVisiblePointCloudOctreeNodesPlugin::<PointCloudIdentityGpuMapper<RGBPoint>>::default(
+        ExtractVisiblePointCloudOctreeNodesPlugin::<SimplePointCloudMaterial, PointCloudIdentityGpuMapper<RGBPoint>>::default(
         ),
-        ExtractVisiblePointCloudOctreeNodesPlugin::<MyPointCloudGpuMapper>::default(),
+        ExtractVisiblePointCloudOctreeNodesPlugin::<SimplePointCloudMaterial, MyPointCloudGpuMapper>::default(),
         RenderPointCloudRGBOctreePlugin::default(),
         PointCloudOctreeServerPlugin::<RGBPoint>::with_max_size(
             // limit to 512 mb of cpu memory

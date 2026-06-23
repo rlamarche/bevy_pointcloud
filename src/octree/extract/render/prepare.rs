@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{any::TypeId, marker::PhantomData};
 
 use bevy_ecs::{prelude::*, system::StaticSystemParam};
 use bevy_log::prelude::*;
@@ -70,6 +70,10 @@ pub fn prepare_assets<E: OctreeNodeExtraction>(
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
 ) {
+    let type_name = std::any::type_name::<E::Key>();
+    let type_id = TypeId::of::<E::Key>();
+    info!("type name : {} type id : {:?}", type_name, type_id);
+
     // one single buffer for all octrees
     let octrees_buffer = render_octrees_buffers.get_or_insert_mut(
         0,
@@ -113,7 +117,7 @@ pub fn prepare_assets<E: OctreeNodeExtraction>(
             0
         };
 
-        let render_asset = render_octrees.get_or_insert_mut(asset_id);
+        let render_asset = render_octrees.get_or_insert_mut(asset_id, type_id);
 
         // clone node metadata
         let cloned_node = RenderOctreeNodeData::<()> {
@@ -183,7 +187,7 @@ pub fn prepare_assets<E: OctreeNodeExtraction>(
 
     // remove removed nodes from gpu
     for (asset_id, node_ids) in extracted_octree_nodes.removed_nodes.drain() {
-        let render_octree = render_octrees.get_or_insert_mut(asset_id);
+        let render_octree = render_octrees.get_or_insert_mut(asset_id, type_id);
         let allocated_nodes = allocated_octree_nodes.get_or_create_mut(asset_id);
 
         for node_id in node_ids {
@@ -200,7 +204,7 @@ pub fn prepare_assets<E: OctreeNodeExtraction>(
         let allocated_nodes = allocated_octree_nodes.get_or_create_mut(asset_id);
 
         let mut prepared_nodes = Vec::new();
-        let render_asset = render_octrees.get_or_insert_mut(asset_id);
+        let render_asset = render_octrees.get_or_insert_mut(asset_id, type_id);
 
         for (node_id, extracted_octree_node) in extracted_octree_nodes {
             let write_bytes = if let Some(size) = E::byte_len(&extracted_octree_node) {

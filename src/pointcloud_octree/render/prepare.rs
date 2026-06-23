@@ -28,6 +28,7 @@ use crate::{
         visibility::iter_one_bits,
     },
     point::Point,
+    point_cloud::PointCloudGpuMapperKey,
     pointcloud_octree::{
         asset::data::PointCloudNodeData,
         component::PointCloudOctree3d,
@@ -37,6 +38,7 @@ use crate::{
             ViewOctreeNodesRenderDepthPhases,
         },
     },
+    render_asset::RenderAssetKey,
 };
 
 /// Stores visible nodes and mapping textures for each view
@@ -97,6 +99,7 @@ pub fn prepare_visible_nodes_texture<T: Point>(
         &Msaa,
         &RenderVisibleOctreeNodes<PointCloudNodeData<T>, PointCloudOctree3d<T>>,
     )>,
+    render_point_cloud_keys: Query<&RenderAssetKey<PointCloudGpuMapperKey>>,
     mut visible_nodes_buffer: Local<Vec<VisibleOctreeNodeUniform>>,
     render_octrees: Res<ErasedRenderOctrees<ErasedRenderPointCloudNode>>,
     allocated_octree_nodes: Res<AllocatedOctreeNodes<PointCloudNodeData<T>>>,
@@ -160,7 +163,13 @@ pub fn prepare_visible_nodes_texture<T: Point>(
 
             let base_offset = octree_index * MAX_NODES;
 
-            let Some(render_octree) = render_octrees.get(*asset_id) else {
+            let Ok(render_point_cloud_key) = render_point_cloud_keys.get(*entity) else {
+                warn!("render_point_cloud_key not found");
+                continue;
+            };
+
+            let Some(render_octree) = render_octrees.get(*asset_id, render_point_cloud_key.type_id)
+            else {
                 debug!(
                     "Render Point Cloud octree {} not found in RenderOctrees, skip",
                     entity

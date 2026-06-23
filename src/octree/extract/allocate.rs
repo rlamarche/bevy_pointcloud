@@ -33,6 +33,8 @@ pub fn on_remove_octree<E: OctreeNodeExtraction>(
     for mut view_visible_octree_node in view_visible_octree_nodes {
         view_visible_octree_node.octrees.remove(&trigger.entity);
     }
+
+    // TODO check this cleanup
 }
 
 /// This system allocates gpu memory for computed visible octree nodes, and trace allocations for later extraction.

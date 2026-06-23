@@ -22,7 +22,6 @@ use crate::{
 
 #[derive(Default)]
 pub struct RenderPointCloudOctree {
-    pub point_count: usize,
     pub bounding_box: Aabb,
     pub properties: Arc<PointCloudProperties>,
 }
@@ -42,7 +41,7 @@ impl<A: PointCloudGpuMapper, C: Component> ErasedRenderAssetComponent
     type QueryData = Read<PointCloudOctree3d<A::Point>>;
     type QueryFilter = With<C>;
 
-    type Key = PointCloudGpuMapperKey;
+    type KeyMarker = PointCloudGpuMapperKey;
 
     fn extract_asset(source_asset: &Self::SourceAsset) -> Self::ExtractedAsset {
         let Some(root_node) = source_asset.node_root() else {
@@ -50,7 +49,6 @@ impl<A: PointCloudGpuMapper, C: Component> ErasedRenderAssetComponent
         };
 
         RenderPointCloudOctree {
-            point_count: 0, // TODO
             bounding_box: root_node.hierarchy.bounding_box,
             properties: Arc::new(PointCloudProperties {
                 vertex_buffer_layout: A::GpuPoint::vertex_buffer_layout(),

@@ -16,21 +16,13 @@ use bevy_render::{
 
 use crate::{
     octree::{
-        asset::Octree,
-        extract::{
-            render::{asset::RenderOctreeNodeData, node::PrepareOctreeNodeError},
-            OctreeNodeExtraction,
-        },
-        node::OctreeNode,
-    },
-    point::Point,
-    point_cloud::{PointCloud, PointCloudGpuMapper},
-    pointcloud_octree::{
-        asset::data::PointCloudNodeData,
-        component::PointCloudOctree3d,
-        extract::{
+        asset::Octree, extract::{
+            OctreeNodeExtraction, render::{asset::RenderOctreeNodeData, node::PrepareOctreeNodeError},
+        }, node::OctreeNode,
+    }, point::Point, point_cloud::{PointCloud, PointCloudGpuMapper}, point_cloud_material::{PointCloudMaterial, PointCloudMaterial3d}, pointcloud_octree::{
+        asset::data::PointCloudNodeData, component::PointCloudOctree3d, extract::{
             ErasedRenderPointCloudNode, PointCloudNodeDataUniform, RenderPointCloudNodeData,
-        },
+        }, gpu_mapper::ErasedPointCloudOctreeGpuMapper,
     },
 };
 
@@ -44,11 +36,11 @@ impl<T: Point> Default for PointCloudOctreeExtraction<T> {
 }
 
 #[derive(TypePath)]
-pub struct PointCloudOctreeGpuMapper<A: PointCloudGpuMapper> {
-    phantom: PhantomData<fn() -> A>,
+pub struct PointCloudOctreeGpuMapper<M: PointCloudMaterial, A: PointCloudGpuMapper> {
+    phantom: PhantomData<fn() -> (M, A)>,
 }
 
-impl<A: PointCloudGpuMapper> Default for PointCloudOctreeGpuMapper<A> {
+impl<M: PointCloudMaterial, A: PointCloudGpuMapper> Default for PointCloudOctreeGpuMapper<M, A> {
     fn default() -> Self {
         Self {
             phantom: Default::default(),
@@ -56,10 +48,11 @@ impl<A: PointCloudGpuMapper> Default for PointCloudOctreeGpuMapper<A> {
     }
 }
 
-impl<A: PointCloudGpuMapper> OctreeNodeExtraction for PointCloudOctreeGpuMapper<A> {
+impl<M: PointCloudMaterial, A: PointCloudGpuMapper> OctreeNodeExtraction for PointCloudOctreeGpuMapper<M, A> {
     type NodeData = PointCloudNodeData<A::Point>;
     type GpuData = A::GpuPoint;
     type Component = PointCloudOctree3d<A::Point>;
+    type QueryFilter = With<PointCloudMaterial3d<M, A>>;
     type ExtractedNodeData = RenderPointCloudNodeData;
     type ExtractParam = A::Param;
     type PrepareParam = (
@@ -68,6 +61,7 @@ impl<A: PointCloudGpuMapper> OctreeNodeExtraction for PointCloudOctreeGpuMapper<
         SRes<PointCloudOctreeNodeUniformLayout>,
     );
     type ErasedRenderOctreeNode = ErasedRenderPointCloudNode;
+    type Key = ErasedPointCloudOctreeGpuMapper<A, PointCloudMaterial3d<M, A>>;
 
     fn extract_octree_node(
         asset: &Octree<Self::NodeData>,

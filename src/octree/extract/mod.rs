@@ -10,10 +10,7 @@ use allocate::allocate_visible_octree_nodes;
 use bevy_app::prelude::*;
 use bevy_asset::AssetId;
 use bevy_ecs::{
-    self,
-    prelude::*,
-    schedule::ScheduleConfigs,
-    system::{ScheduleSystem, SystemParam, SystemParamItem},
+    self, prelude::*, query::QueryFilter, schedule::ScheduleConfigs, system::{ScheduleSystem, SystemParam, SystemParamItem},
 };
 use bevy_reflect::TypePath;
 use bevy_render::{
@@ -41,25 +38,18 @@ use super::{
 use crate::{
     octree::{
         extract::{
-            allocate::on_remove_octree,
-            render::{
-                asset::RenderOctreeNodeData,
-                extract::{clear_removed_octrees, extract_removed_octrees},
-                node::PrepareOctreeNodeError,
-                prepare::prepare_octrees_uniforms,
-                resources::{AllocatedOctreeNodes, OctreeEntityLayout},
+            allocate::on_remove_octree, render::{
+                asset::RenderOctreeNodeData, extract::{clear_removed_octrees, extract_removed_octrees}, node::PrepareOctreeNodeError, prepare::prepare_octrees_uniforms, resources::{AllocatedOctreeNodes, OctreeEntityLayout, RenderOctreeIndex},
             },
-        },
-        storage::NodeId,
-        visibility::OctreeVisibilitySystems,
-    },
-    point::RGBPoint,
+        }, storage::NodeId, visibility::OctreeVisibilitySystems,
+    }, point::RGBPoint,
 };
 
 pub trait OctreeNodeExtraction: Send + Sync + TypePath {
     type NodeData: NodeData;
     type GpuData: Pod + Zeroable;
     type Component: ExtractComponent;
+    type QueryFilter: QueryFilter;
     type ExtractedNodeData: RenderNodeData;
     type ErasedRenderOctreeNode: Send + Sync + 'static;
 
@@ -72,6 +62,8 @@ pub trait OctreeNodeExtraction: Send + Sync + TypePath {
     ///
     /// For convenience use the [`lifetimeless`](bevy_ecs::system::lifetimeless) [`SystemParam`].
     type PrepareParam: SystemParam;
+
+    type Key: Send + Sync + 'static;
 
     /// Defines how the component is transferred into the "render world".
     fn extract_octree_node(
@@ -248,7 +240,6 @@ where
                 .init_resource::<ExtractedOctreeNodes<E>>()
                 .init_resource::<ErasedRenderOctrees<E::ErasedRenderOctreeNode>>()
                 .init_resource::<PrepareNextFrameOctreeNodes<E>>()
-                // Add in [`First`] schedule because it has to run just after the [`ExtractSchedule`] before any observer
                 .add_systems(
                     ExtractSchedule,
                     (

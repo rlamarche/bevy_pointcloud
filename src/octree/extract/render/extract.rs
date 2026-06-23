@@ -16,7 +16,6 @@ use crate::octree::{
     visibility::components::ViewVisibleOctreeNodes,
 };
 
-/// This add newly added octrees to the [`RenderOctreeIndex`]
 pub fn extract_removed_octrees<E: OctreeNodeExtraction>(
     octree_node_allocations: Extract<Res<OctreeNodeAllocations<E::NodeData>>>,
     mut render_octree_index: ResMut<RenderOctreeIndex<E::Component>>,

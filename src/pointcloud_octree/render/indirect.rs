@@ -12,11 +12,13 @@ use crate::{
         components::RenderVisibleOctreeNodes, resources::ErasedRenderOctrees,
     },
     point::Point,
+    point_cloud::PointCloudGpuMapperKey,
     pointcloud_octree::{
         asset::data::PointCloudNodeData, component::PointCloudOctree3d,
         extract::ErasedRenderPointCloudNode, render::prepare::MAX_NODES,
     },
     render::mesh::PointCloudMesh,
+    render_asset::RenderAssetKey,
 };
 
 /// Stores multi draw indirect buffer for each view
@@ -60,6 +62,7 @@ pub fn prepare_indirect_buffer<T: Point>(
     >,
     render_octrees: Res<ErasedRenderOctrees<ErasedRenderPointCloudNode>>,
     point_cloud_mesh: Res<PointCloudMesh>,
+    render_point_cloud_keys: Query<&RenderAssetKey<PointCloudGpuMapperKey>>,
     mut removed_entities: Local<HashSet<Entity>>,
 ) {
     // for each camera
@@ -76,8 +79,13 @@ pub fn prepare_indirect_buffer<T: Point>(
             removed_entities.insert(*entity);
         }
 
+        // for each octree
         for (entity, (asset_id, visible_nodes)) in &visible_octree_nodes.octrees {
-            let Some(render_octree) = render_octrees.get(*asset_id) else {
+            let Ok(render_point_cloud_key) = render_point_cloud_keys.get(*entity) else {
+                warn!("render_point_cloud_key not found");
+                continue;
+            };
+            let Some(render_octree) = render_octrees.get(*asset_id, render_point_cloud_key.type_id) else {
                 continue;
             };
 

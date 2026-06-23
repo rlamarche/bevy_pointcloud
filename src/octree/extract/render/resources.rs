@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{any::TypeId, marker::PhantomData};
 
 use bevy_asset::{AssetId, UntypedAssetId};
 use bevy_ecs::prelude::*;
@@ -52,9 +52,7 @@ impl FromWorld for OctreeEntityLayout {
 
 /// This resource stores the octree mapping to index in render world.
 #[derive(Debug, Resource)]
-pub struct RenderOctreeIndex<C>
-where
-    C: Component,
+pub struct RenderOctreeIndex<C: Component>
 {
     pub(crate) octrees_slab: Slab<Entity>,
     pub(crate) octrees_index: HashMap<Entity, usize>,
@@ -122,7 +120,7 @@ impl<E: OctreeNodeExtraction> Default for PrepareNextFrameOctreeNodes<E> {
 /// Stores all GPU representations ([`RenderAsset`])
 /// of [`RenderAsset::SourceAsset`] as long as they exist.
 #[derive(Resource)]
-pub struct ErasedRenderOctrees<ERA>(HashMap<UntypedAssetId, RenderOctree<ERA>>);
+pub struct ErasedRenderOctrees<ERA>(HashMap<(UntypedAssetId, TypeId), RenderOctree<ERA>>);
 
 impl<ERA> Default for ErasedRenderOctrees<ERA> {
     fn default() -> Self {
@@ -131,16 +129,28 @@ impl<ERA> Default for ErasedRenderOctrees<ERA> {
 }
 
 impl<ERA> ErasedRenderOctrees<ERA> {
-    pub fn get(&self, id: impl Into<UntypedAssetId>) -> Option<&RenderOctree<ERA>> {
-        self.0.get(&id.into())
+    pub fn get(
+        &self,
+        id: impl Into<UntypedAssetId>,
+        type_id: TypeId,
+    ) -> Option<&RenderOctree<ERA>> {
+        self.0.get(&(id.into(), type_id))
     }
 
-    pub fn get_or_insert_mut(&mut self, id: impl Into<UntypedAssetId>) -> &mut RenderOctree<ERA> {
-        self.0.entry(id.into()).or_default()
+    pub fn get_or_insert_mut(
+        &mut self,
+        id: impl Into<UntypedAssetId>,
+        type_id: TypeId,
+    ) -> &mut RenderOctree<ERA> {
+        self.0.entry((id.into(), type_id)).or_default()
     }
 
-    pub fn remove(&mut self, id: impl Into<UntypedAssetId>) -> Option<RenderOctree<ERA>> {
-        self.0.remove(&id.into())
+    pub fn remove(
+        &mut self,
+        id: impl Into<UntypedAssetId>,
+        type_id: TypeId,
+    ) -> Option<RenderOctree<ERA>> {
+        self.0.remove(&(id.into(), type_id))
     }
 }
 

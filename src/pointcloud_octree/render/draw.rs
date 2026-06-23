@@ -23,11 +23,13 @@ use crate::{
         visibility::components::VisibleOctreeNode,
     },
     point::Point,
+    point_cloud::PointCloudGpuMapperKey,
     pointcloud_octree::{
         asset::data::PointCloudNodeData, component::PointCloudOctree3d,
         extract::ErasedRenderPointCloudNode,
     },
     render::mesh::PointCloudMesh,
+    render_asset::RenderAssetKey,
 };
 
 pub struct DrawPointCloudOctreeNode<T: Point>(PhantomData<fn() -> T>);
@@ -44,7 +46,10 @@ impl<P: BinnedPhaseItem, T: Point> RenderCommand<P> for DrawPointCloudOctreeNode
         SRes<ErasedRenderOctrees<ErasedRenderPointCloudNode>>,
     );
     type ViewQuery = Read<RenderVisibleOctreeNodes<PointCloudNodeData<T>, PointCloudOctree3d<T>>>;
-    type ItemQuery = Read<PointCloudOctree3d<T>>;
+    type ItemQuery = (
+        Read<PointCloudOctree3d<T>>,
+        Read<RenderAssetKey<PointCloudGpuMapperKey>>,
+    );
 
     #[inline]
     fn render<'w>(
@@ -53,7 +58,7 @@ impl<P: BinnedPhaseItem, T: Point> RenderCommand<P> for DrawPointCloudOctreeNode
             PointCloudNodeData<T>,
             PointCloudOctree3d<T>,
         >,
-        point_cloud_octree_3d: Option<&PointCloudOctree3d<T>>,
+        entity: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         (point_cloud_mesh, render_octrees): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
@@ -61,13 +66,13 @@ impl<P: BinnedPhaseItem, T: Point> RenderCommand<P> for DrawPointCloudOctreeNode
         let point_cloud_mesh = point_cloud_mesh.into_inner();
         let render_octrees = render_octrees.into_inner();
 
-        let Some(point_cloud_octree_3d) = point_cloud_octree_3d else {
+        let Some((point_cloud_octree_3d, render_point_cloud_key)) = entity else {
             warn!("Missing point cloud octree 3d item");
             return RenderCommandResult::Skip;
         };
 
         let asset_id: AssetId<_> = point_cloud_octree_3d.into();
-        let Some(octree) = render_octrees.get(asset_id) else {
+        let Some(octree) = render_octrees.get(asset_id, render_point_cloud_key.type_id) else {
             debug!("Missing octree when render");
             return RenderCommandResult::Skip;
         };
@@ -129,7 +134,10 @@ impl<P: BinnedPhaseItem, T: Point> RenderCommand<P> for DrawPointCloudOctree<T> 
         SRes<ErasedRenderOctreesBuffers<PointCloudNodeData<T>>>,
     );
     type ViewQuery = Read<RenderVisibleOctreeNodes<PointCloudNodeData<T>, PointCloudOctree3d<T>>>;
-    type ItemQuery = Read<PointCloudOctree3d<T>>;
+    type ItemQuery = (
+        Read<PointCloudOctree3d<T>>,
+        Read<RenderAssetKey<PointCloudGpuMapperKey>>,
+    );
 
     #[inline]
     fn render<'w>(
@@ -138,7 +146,7 @@ impl<P: BinnedPhaseItem, T: Point> RenderCommand<P> for DrawPointCloudOctree<T> 
             PointCloudNodeData<T>,
             PointCloudOctree3d<T>,
         >,
-        point_cloud_octree_3d: Option<&PointCloudOctree3d<T>>,
+        entity: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         (point_cloud_mesh, render_octrees, render_octrees_buffers): SystemParamItem<
             'w,
             '_,
@@ -151,7 +159,7 @@ impl<P: BinnedPhaseItem, T: Point> RenderCommand<P> for DrawPointCloudOctree<T> 
         let render_octrees = render_octrees.into_inner();
         let render_octrees_buffers = render_octrees_buffers.into_inner();
 
-        let Some(point_cloud_octree_3d) = point_cloud_octree_3d else {
+        let Some((point_cloud_octree_3d, render_point_cloud_key)) = entity else {
             warn!("Missing point cloud octree 3d item");
             return RenderCommandResult::Skip;
         };
@@ -162,7 +170,8 @@ impl<P: BinnedPhaseItem, T: Point> RenderCommand<P> for DrawPointCloudOctree<T> 
         };
 
         let asset_id: AssetId<_> = point_cloud_octree_3d.into();
-        let Some(render_octree) = render_octrees.get(asset_id) else {
+        let Some(render_octree) = render_octrees.get(asset_id, render_point_cloud_key.type_id)
+        else {
             debug!("Missing octree when render");
             return RenderCommandResult::Skip;
         };
@@ -291,7 +300,10 @@ impl<P: BinnedPhaseItem, const I: usize, T: Point> RenderCommand<P>
         SRes<RenderQueue>,
     );
     type ViewQuery = Read<RenderVisibleOctreeNodes<PointCloudNodeData<T>, PointCloudOctree3d<T>>>;
-    type ItemQuery = Read<PointCloudOctree3d<T>>;
+    type ItemQuery = (
+        Read<PointCloudOctree3d<T>>,
+        Read<RenderAssetKey<PointCloudGpuMapperKey>>,
+    );
 
     fn render<'w>(
         item: &P,
@@ -299,19 +311,19 @@ impl<P: BinnedPhaseItem, const I: usize, T: Point> RenderCommand<P>
             PointCloudNodeData<T>,
             PointCloudOctree3d<T>,
         >,
-        point_cloud_octree_3d: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
+        entity: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         (render_octrees, _render_queue): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         let render_octrees = render_octrees.into_inner();
 
-        let Some(point_cloud_octree_3d) = point_cloud_octree_3d else {
+        let Some((point_cloud_octree_3d, render_point_cloud_key)) = entity else {
             warn!("Missing point cloud octree 3d item");
             return RenderCommandResult::Skip;
         };
 
         let asset_id: AssetId<_> = point_cloud_octree_3d.into();
-        let Some(octree) = render_octrees.get(asset_id) else {
+        let Some(octree) = render_octrees.get(asset_id, render_point_cloud_key.type_id) else {
             debug!("Missing octree when render");
             return RenderCommandResult::Skip;
         };
