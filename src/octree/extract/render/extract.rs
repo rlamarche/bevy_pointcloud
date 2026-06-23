@@ -159,7 +159,7 @@ pub fn extract_octree_node_allocations<E: OctreeNodeExtraction>(
             extracted_octree_nodes.get_or_create_mut(allocated_node.octree_node_key.octree_id);
 
         // extract octree node data
-        if let Some(data) = match E::extract_octree_node(octree_node, &mut param) {
+        if let Some(data) = match E::extract_octree_node(octree, octree_node, &mut param) {
             Ok(data) => data,
             Err(e) => {
                 // TODO better error handling

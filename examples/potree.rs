@@ -219,7 +219,6 @@ fn load_pointcloud(
             my_material.clone(),
         ),
     ));
-
 }
 
 #[allow(unused)]

@@ -10,6 +10,7 @@ use allocate::allocate_visible_octree_nodes;
 use bevy_app::prelude::*;
 use bevy_asset::AssetId;
 use bevy_ecs::{
+    self,
     prelude::*,
     schedule::ScheduleConfigs,
     system::{ScheduleSystem, SystemParam, SystemParamItem},
@@ -71,6 +72,7 @@ pub trait OctreeNodeExtraction: Send + Sync + TypePath {
 
     /// Defines how the component is transferred into the "render world".
     fn extract_octree_node(
+        asset: &Octree<Self::NodeData>,
         node: &OctreeNode<Self::NodeData>,
         param: &mut SystemParamItem<Self::ExtractParam>,
     ) -> Result<Option<Self::ExtractedNodeData>, BevyError>;

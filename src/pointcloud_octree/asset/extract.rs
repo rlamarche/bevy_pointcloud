@@ -70,13 +70,14 @@ impl<A: PointCloudGpuMapper> OctreeNodeExtraction for PointCloudOctreeGpuMapper<
     type ErasedRenderOctreeNode = ErasedRenderPointCloudNode;
 
     fn extract_octree_node(
+        asset: &Octree<Self::NodeData>,
         node: &OctreeNode<Self::NodeData>,
         param: &mut SystemParamItem<Self::ExtractParam>,
     ) -> Result<Option<Self::ExtractedNodeData>, BevyError> {
         if let Some(data) = &node.data {
             let point_cloud = PointCloud {
                 points: data.points.clone(),
-                aabb: Some(node.hierarchy.bounding_box),
+                aabb: asset.node_root().map(|root| root.hierarchy.bounding_box),
             };
             let points = match A::convert(point_cloud, param) {
                 Ok(points) => points,

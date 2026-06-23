@@ -192,7 +192,7 @@ impl<A: PointCloudGpuMapper, C: Component> ErasedRenderAssetComponent
         asset_id: AssetId<Self::SourceAsset>,
         _type_id: TypeId,
         (render_device, param): &mut SystemParamItem<Self::Param>,
-    ) -> Result<Self::ErasedAsset, PrepareAssetComponentError<Self::SourceAsset>> {
+    ) -> Result<Self::ErasedAsset, PrepareAssetComponentError<Self::ExtractedAsset>> {
         Ok(RenderPointCloud {
             point_count: extracted_asset.points.len(),
             buffer: A::prepare_buffer(extracted_asset, asset_id, render_device, param)?,
