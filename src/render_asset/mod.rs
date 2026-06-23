@@ -409,9 +409,7 @@ pub(crate) fn extract_erased_render_asset<A: ErasedRenderAssetComponent>(
                 )]
                 match event {
                     AssetEvent::Added { id } => {
-                        bevy_log::info!("Added asset {}", id);
                         if let Some(entities) = entities_per_asset.remove(id) {
-                            bevy_log::info!("Added asset {} needs extracting", id);
                             needs_extracting.insert(*id, entities);
                         }
                     }
