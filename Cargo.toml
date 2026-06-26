@@ -1,0 +1,92 @@
+[package]
+name = "bevy_pointcloud"
+version = "0.1.0"
+edition = "2024"
+categories = ["graphics", "rendering", "pointcloud", "lidar"]
+description = "A Bevy plugin to render point clouds."
+exclude = ["assets/", "tools/", ".github/", "crates/", "examples/wasm/assets/"]
+keywords = ["game", "engine", "gamedev", "graphics", "bevy"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/rlamarche/bevy_pointcloud"
+documentation = "https://docs.rs/bevy_pointcloud"
+rust-version = "1.95.0"
+
+# see: https://github.com/bevyengine/bevy/pull/15375#issuecomment-2366966219
+too_long_first_doc_paragraph = "allow"
+
+std_instead_of_core = "warn"
+std_instead_of_alloc = "warn"
+alloc_instead_of_core = "warn"
+
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(docsrs_dep)'] }
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "warn"
+unused_qualifications = "warn"
+
+[lints.clippy]
+doc_markdown = "warn"
+manual_let_else = "warn"
+match_same_arms = "warn"
+redundant_closure_for_method_calls = "warn"
+redundant_else = "warn"
+semicolon_if_nothing_returned = "warn"
+type_complexity = "allow"
+undocumented_unsafe_blocks = "warn"
+unwrap_or_default = "warn"
+needless_lifetimes = "allow"
+too_many_arguments = "allow"
+nonstandard_macro_braces = "warn"
+
+ptr_as_ptr = "warn"
+ptr_cast_constness = "warn"
+ref_as_ptr = "warn"
+
+too_long_first_doc_paragraph = "allow"
+
+std_instead_of_core = "allow"
+std_instead_of_alloc = "allow"
+alloc_instead_of_core = "allow"
+
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+
+[lints.rust]
+missing_docs = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(docsrs_dep)'] }
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "warn"
+unused_qualifications = "warn"
+
+
+[features]
+default = []
+
+[dependencies.bevy]
+version = "0.19"
+default-features = false
+features = [
+  "bevy_asset",
+  "bevy_camera",
+  "bevy_core_pipeline",
+  "bevy_log",
+  "bevy_pbr",
+  "bevy_render",
+  "bevy_winit",
+  "bevy_camera_controller",
+  "serialize",
+  "std",
+  "zstd_rust",
+  "x11",
+  "debug",
+]
+
+
+[dev-dependencies]
+bevy = { version = "0.19.0" }
+bevy_camera_controller = { version = "0.19.0", features = ["free_camera", "pan_camera"] }
+bytemuck = "1"
