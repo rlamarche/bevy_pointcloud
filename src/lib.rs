@@ -1,57 +1,141 @@
 #![expect(missing_docs, reason = "Not all docs are written yet.")]
 
+
 use bevy::{
     app::{App, Plugin},
-    asset::embedded_asset,
-    camera::visibility::{self, Visibility, VisibilityClass},
-    core_pipeline::core_3d::Opaque3d,
-    ecs::schedule::IntoScheduleConfigs,
-    pbr::MeshPipelineSystems,
-    render::{
-        extract_component::ExtractComponentPlugin, render_phase::AddRenderCommand,
-        render_resource::SpecializedRenderPipelines, Render, RenderApp, RenderStartup,
-        RenderSystems,
-    },
-    transform::components::Transform,
+    asset::AssetApp,
+    ecs::{lifecycle::HookContext, world::DeferredWorld},
+    log::{info, warn},
 };
 
-mod draw;
-mod phase;
-mod pipeline;
+mod components;
+#[cfg(feature = "server")]
+mod loader;
 mod point_cloud;
 pub mod prelude;
+mod render;
+mod resources;
+#[cfg(feature = "server")]
+mod server;
+mod visibility;
 
-use draw::*;
-use phase::*;
-use pipeline::*;
-use point_cloud::*;
+pub use components::*;
+#[cfg(feature = "server")]
+pub use loader::*;
+pub use point_cloud::*;
+pub use render::*;
+pub use resources::*;
+#[cfg(feature = "server")]
+pub use server::*;
+pub use visibility::*;
 
-pub struct PointCloudPlugin;
+#[derive(Default)]
+pub struct PointCloudPlugin {
+    #[cfg(feature = "server")]
+    settings: PointCloudServerSettings,
+}
 
 impl Plugin for PointCloudPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "shaders/point_cloud.wgsl");
-        app.register_required_components::<PointCloud, Visibility>()
-            .register_required_components::<PointCloud, VisibilityClass>()
-            .register_required_components::<PointCloud, Transform>()
-            .add_plugins(ExtractComponentPlugin::<PointCloud>::default());
+        app.init_asset::<PointCloud>()
+            .init_asset::<PointCloudChunk>()
+            .register_asset_reflect::<PointCloud>()
+            .register_asset_reflect::<PointCloudChunk>()
+            .init_resource::<PointCloudInstances>();
 
         app.world_mut()
-            .register_component_hooks::<PointCloud>()
-            .on_add(visibility::add_visibility_class::<PointCloud>);
+            .register_component_hooks::<PointCloud3d>()
+            .on_insert(on_insert_point_cloud_3d)
+            .on_discard(on_discard_point_cloud_3d);
 
-        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
-            return;
-        };
+        app.world_mut()
+            .register_component_hooks::<PointCloudChunk3d>()
+            .on_insert(on_insert_point_cloud_chunk_3d)
+            .on_discard(on_discard_point_cloud_chunk_3d);
 
-        render_app
-            .add_render_command::<Opaque3d, DrawPointCloud>()
-            .init_resource::<SpecializedRenderPipelines<PointCloudPipeline>>()
-            .init_resource::<PendingPointCloudPhaseItemQueues>()
-            .add_systems(
-                RenderStartup,
-                init_point_cloud_pipeline.after(MeshPipelineSystems),
-            )
-            .add_systems(Render, queue_point_clouds.in_set(RenderSystems::Queue));
+        #[cfg(feature = "server")]
+        app.add_plugins(PointCloudServerPlugin {
+            settings: self.settings.clone(),
+        });
+        app.add_plugins(PointCloudVisiblityPlugin);
+        app.add_plugins(RenderPointCloudPlugin);
+    }
+}
+
+pub fn on_insert_point_cloud_3d(
+    mut world: DeferredWorld<'_>,
+    HookContext { entity, .. }: HookContext,
+) {
+    // then add point cloud asset tracking
+    if let Some(PointCloud3d(handle)) = world.get::<PointCloud3d>(entity).cloned() {
+        let mut instances = world.resource_mut::<PointCloudInstances>();
+        let entities = instances.entry(handle.id()).or_default();
+        entities.insert(entity, PointCloudChunks::default());
+
+        info!("on_insert_point_cloud_3d: {:#?}", instances);
+    }
+}
+
+pub fn on_discard_point_cloud_3d(
+    mut world: DeferredWorld<'_>,
+    HookContext { entity, .. }: HookContext,
+) {
+    // remove previous point cloud asset tracking
+    if let Some(PointCloud3d(handle)) = world.get::<PointCloud3d>(entity).cloned() {
+        let mut instances = world.resource_mut::<PointCloudInstances>();
+        let entities = instances.entry(handle.id()).or_default();
+        entities.remove(&entity);
+
+        info!("on_discard_point_cloud_3d: {:#?}", instances);
+    }
+}
+
+pub fn on_insert_point_cloud_chunk_3d(
+    mut world: DeferredWorld<'_>,
+    HookContext { entity, .. }: HookContext,
+) {
+    // add point cloud asset tracking
+    if let (Some(PointCloudChunk3d(chunk_handle)), Some(&ChildChunkOf(parent_entity))) = (
+        world.get::<PointCloudChunk3d>(entity).cloned(),
+        world.get::<ChildChunkOf>(entity),
+    ) && let Some(PointCloud3d(point_cloud_handle)) =
+        world.get::<PointCloud3d>(parent_entity).cloned()
+    {
+        let mut instances = world.resource_mut::<PointCloudInstances>();
+        let entities = instances.entry(point_cloud_handle.id()).or_default();
+        let chunk_entities = entities.entry(parent_entity).or_default();
+        chunk_entities.insert(chunk_handle.id(), entity);
+
+        info!("on_insert_point_cloud_chunk_3d: {:#?}", instances);
+    } else {
+        warn!(
+            "on_insert_point_cloud_chunk_3d: some entities not found for entity {:?}",
+            entity
+        );
+    }
+}
+
+pub fn on_discard_point_cloud_chunk_3d(
+    mut world: DeferredWorld<'_>,
+    HookContext { entity, .. }: HookContext,
+) {
+    // remove previous point cloud asset tracking
+    if let (Some(PointCloudChunk3d(chunk_handle)), Some(&ChildChunkOf(parent_entity))) = (
+        world.get::<PointCloudChunk3d>(entity).cloned(),
+        world.get::<ChildChunkOf>(entity),
+    ) && let Some(PointCloud3d(point_cloud_handle)) =
+        world.get::<PointCloud3d>(parent_entity).cloned()
+    {
+        let mut instances = world.resource_mut::<PointCloudInstances>();
+        let entities = instances.entry(point_cloud_handle.id()).or_default();
+        let chunk_entities = entities.entry(parent_entity).or_default();
+        chunk_entities.remove(&chunk_handle.id());
+
+        info!("on_discard_point_cloud_chunk_3d: {:#?}", instances);
+    } else {
+        warn!(
+            "on_discard_point_cloud_chunk_3d: some entities not found for entity {:?}",
+            entity
+        );
     }
 }

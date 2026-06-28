@@ -6,12 +6,14 @@ struct VertexInput {
 }
 
 struct InstanceInput {
-    @location(10) instance_position: vec3<f32>,
+    @location(10) position: vec3<f32>,
+    @location(11) color: vec4<f32>,
 }
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) uv: vec2<f32>,
+    @location(1) color: vec4<f32>,
 }
 
 @vertex
@@ -30,13 +32,14 @@ fn vertex(
     let point_size = 0.1;
 
     // Compute world position
-    let world_position = instance.instance_position
+    let world_position = instance.position
                        + right * (vertex.position.x * point_size)
                        + up    * (vertex.position.y * point_size);
 
     // Compute clip position from world position
     out.clip_position = view.clip_from_world * vec4<f32>(world_position, 1.0);
     out.uv = vertex.uv;
+    out.color = instance.color;
 
     return out;
 }
@@ -53,5 +56,5 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
 #endif // DEBUG
     }
 
-    return vec4<f32>(1.0, 1.0, 1.0, 1.0);
+    return in.color;
 }

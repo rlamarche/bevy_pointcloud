@@ -1,1 +1,1 @@
-pub use crate::{point_cloud::PointCloud, PointCloudPlugin};
+pub use crate::{components::PointCloudChunk3d, PointCloudPlugin};

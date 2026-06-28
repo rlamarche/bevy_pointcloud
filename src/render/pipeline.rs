@@ -65,7 +65,10 @@ impl SpecializedRenderPipeline for PointCloudPipeline {
 
         let mut points_layout = points_layout_ref
             .0
-            .get_layout(&[Mesh::ATTRIBUTE_POSITION.at_shader_location(10)])
+            .get_layout(&[
+                Mesh::ATTRIBUTE_POSITION.at_shader_location(10),
+                Mesh::ATTRIBUTE_COLOR.at_shader_location(11),
+            ])
             .unwrap();
         points_layout.step_mode = VertexStepMode::Instance; // On change le step_mode ici !
 

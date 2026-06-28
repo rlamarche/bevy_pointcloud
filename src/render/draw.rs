@@ -13,7 +13,7 @@ use bevy::{
     },
 };
 
-use crate::PointCloud;
+use crate::{PointCloudChunk3d, PointMeshes, RenderPointCloudChunk};
 
 pub type DrawPointCloud = (
     SetItemPipeline,
@@ -24,38 +24,49 @@ pub type DrawPointCloud = (
 pub struct DrawPointCloudInstanced;
 
 impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
-    type Param = (SRes<RenderAssets<RenderMesh>>, SRes<MeshAllocator>);
+    type Param = (
+        SRes<RenderAssets<RenderPointCloudChunk>>,
+        SRes<RenderAssets<RenderMesh>>,
+        SRes<MeshAllocator>,
+        SRes<PointMeshes>,
+    );
     type ViewQuery = ();
-    type ItemQuery = Read<PointCloud>;
+    type ItemQuery = Read<PointCloudChunk3d>;
 
     fn render<'w>(
         _item: &P,
         _view: (),
-        point_cloud: Option<&'w PointCloud>,
-        (meshes, mesh_allocator): SystemParamItem<'w, '_, Self::Param>,
+        point_cloud: Option<&'w PointCloudChunk3d>,
+        (chunks, meshes, mesh_allocator, point_meshes): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let meshes = meshes.into_inner();
         let mesh_allocator = mesh_allocator.into_inner();
 
         let Some(point_cloud) = point_cloud else {
             return RenderCommandResult::Failure("point cloud missing");
         };
 
-        let Some(quad_mesh) = meshes.get(&point_cloud.quad_mesh) else {
+        let Some(quad_mesh) = meshes.get(&point_meshes.quad_mesh) else {
             return RenderCommandResult::Failure("quad missing");
         };
         let Some(quad_vertex_buffer_slice) =
-            mesh_allocator.mesh_vertex_slice(&point_cloud.quad_mesh.id())
+            mesh_allocator.mesh_vertex_slice(&point_meshes.quad_mesh.id())
         else {
             return RenderCommandResult::Failure("unable to get quad vertex slice");
         };
 
-        let Some(points_mesh) = meshes.get(&point_cloud.points_mesh) else {
+        let Some(chunk) = chunks.get(point_cloud) else {
+            return RenderCommandResult::Failure("chunk missing");
+        };
+
+        let Some(mesh_handle) = &chunk.mesh else {
+            return RenderCommandResult::Failure("mesh missing in chunk");
+        };
+
+        let Some(points_mesh) = meshes.get(mesh_handle.id()) else {
             return RenderCommandResult::Failure("points missing");
         };
-        let Some(points_vertex_buffer_slice) =
-            mesh_allocator.mesh_vertex_slice(&point_cloud.points_mesh.id())
+        let Some(points_vertex_buffer_slice) = mesh_allocator.mesh_vertex_slice(&mesh_handle.id())
         else {
             return RenderCommandResult::Failure("unable to get points vertex slice");
         };
@@ -69,7 +80,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
                 index_format,
             } => {
                 let Some(index_buffer_slice) =
-                    mesh_allocator.mesh_index_slice(&point_cloud.quad_mesh.id())
+                    mesh_allocator.mesh_index_slice(&point_meshes.quad_mesh.id())
                 else {
                     return RenderCommandResult::Skip;
                 };
