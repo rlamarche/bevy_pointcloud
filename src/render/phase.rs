@@ -17,7 +17,7 @@ use bevy::{
 
 use crate::{
     DrawPointCloud, PendingPointCloudPhaseItemQueues, PointCloudChunk3d, PointCloudPipeline,
-    PointMeshes, RenderPointCloudChunk, RenderVisiblePointCloudEntities,
+    ShapeMeshes, RenderPointCloudChunk, RenderVisiblePointCloudEntities,
 };
 
 #[expect(
@@ -41,7 +41,7 @@ pub fn queue_point_clouds(
     render_meshes: Res<RenderAssets<RenderMesh>>,
     dirty_specializations: Res<DirtySpecializations>,
     mut pending_point_cloud_phase_item_queues: ResMut<PendingPointCloudPhaseItemQueues>,
-    point_meshes: Res<PointMeshes>,
+    point_meshes: Res<ShapeMeshes>,
 ) {
     let draw_function = opaque_3d_draw_functions.read().id::<DrawPointCloud>();
 

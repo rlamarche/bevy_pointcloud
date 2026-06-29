@@ -6,6 +6,7 @@ use std::{
 
 use bevy::{
     asset::{AssetId, Assets, InvalidGenerationError},
+    camera::visibility::NoCpuCulling,
     ecs::{
         component::Component,
         hierarchy::ChildOf,
@@ -353,15 +354,20 @@ pub fn handle_internal_point_cloud_events(
                             };
                             commands.spawn((
                                 PointCloudChunk3d(chunk_handle.clone()),
-                                ChildOf(parent_chunk_entity),
-                                ChildChunkOf(point_cloud_entity),
+                                // the parent is the point cloud entity (direct link to root)
+                                ChildOf(point_cloud_entity),
+                                // but also a link to the parent chunk
+                                ChildChunkOf(parent_chunk_entity),
+                                // we disable cpu culling for this because we do it using the
+                                // octree structure
+                                NoCpuCulling,
                             ));
                         } else {
-                            // this is the root chunk
-                            commands.spawn((
-                                PointCloudChunk3d(chunk_handle.clone()),
-                                ChildChunkOf(point_cloud_entity),
-                            ));
+                            // this is the root chunk, add it to the root component (the one with
+                            // the [`PointCloud3d`] component)
+                            commands
+                                .entity(point_cloud_entity)
+                                .insert(PointCloudChunk3d(chunk_handle.clone()));
                         }
                     }
                 } else {

@@ -2,14 +2,15 @@
 
 use bevy::{
     app::{App, Plugin},
-    asset::AssetApp,
-    ecs::{lifecycle::HookContext, world::DeferredWorld},
+    asset::{embedded_asset, AssetApp},
+    ecs::{hierarchy::ChildOf, lifecycle::HookContext, world::DeferredWorld},
     log::{info, warn},
 };
 
 mod components;
 #[cfg(feature = "server")]
 mod loader;
+mod material;
 mod point_cloud;
 pub mod prelude;
 mod render;
@@ -21,6 +22,7 @@ mod visibility;
 pub use components::*;
 #[cfg(feature = "server")]
 pub use loader::*;
+pub use material::*;
 pub use point_cloud::*;
 pub use render::*;
 pub use resources::*;
@@ -36,6 +38,8 @@ pub struct PointCloudPlugin {
 
 impl Plugin for PointCloudPlugin {
     fn build(&self, app: &mut App) {
+        embedded_asset!(app, "assets/shaders/point_cloud.wgsl");
+
         app.init_asset::<PointCloud>()
             .init_asset::<PointCloudChunk>()
             .register_asset_reflect::<PointCloud>()
@@ -58,6 +62,7 @@ impl Plugin for PointCloudPlugin {
         });
         app.add_plugins(PointCloudVisiblityPlugin);
         app.add_plugins(RenderPointCloudPlugin);
+        app.add_plugins(MaterialPlugin::<StandardPointCloudMaterial>::default());
     }
 }
 
@@ -94,18 +99,29 @@ pub fn on_insert_point_cloud_chunk_3d(
     HookContext { entity, .. }: HookContext,
 ) {
     // add point cloud asset tracking
-    if let (Some(PointCloudChunk3d(chunk_handle)), Some(&ChildChunkOf(parent_entity))) = (
+    if let (Some(PointCloudChunk3d(chunk_handle)), maybe_parent) = (
         world.get::<PointCloudChunk3d>(entity).cloned(),
-        world.get::<ChildChunkOf>(entity),
-    ) && let Some(PointCloud3d(point_cloud_handle)) =
-        world.get::<PointCloud3d>(parent_entity).cloned()
-    {
-        let mut instances = world.resource_mut::<PointCloudInstances>();
-        let entities = instances.entry(point_cloud_handle.id()).or_default();
-        let chunk_entities = entities.entry(parent_entity).or_default();
-        chunk_entities.insert(chunk_handle.id(), entity);
+        world.get::<ChildOf>(entity),
+    ) {
+        let point_cloud_entity = {
+            if let Some(&ChildOf(parent_entity)) = maybe_parent {
+                parent_entity
+            } else {
+                entity
+            }
+        };
+        if let Some(PointCloud3d(point_cloud_handle)) =
+            world.get::<PointCloud3d>(point_cloud_entity).cloned()
+        {
+            let mut instances = world.resource_mut::<PointCloudInstances>();
+            let entities = instances.entry(point_cloud_handle.id()).or_default();
+            let chunk_entities = entities.entry(point_cloud_entity).or_default();
+            chunk_entities.insert(chunk_handle.id(), entity);
 
-        info!("on_insert_point_cloud_chunk_3d: {:#?}", instances);
+            info!("on_insert_point_cloud_chunk_3d: {:#?}", instances);
+        } else {
+            warn!("on_insert_point_cloud_chunk_3d: PointCloud3d entity not found.");
+        }
     } else {
         warn!(
             "on_insert_point_cloud_chunk_3d: some entities not found for entity {:?}",
@@ -119,18 +135,34 @@ pub fn on_discard_point_cloud_chunk_3d(
     HookContext { entity, .. }: HookContext,
 ) {
     // remove previous point cloud asset tracking
-    if let (Some(PointCloudChunk3d(chunk_handle)), Some(&ChildChunkOf(parent_entity))) = (
+    if let (Some(PointCloudChunk3d(chunk_handle)), maybe_parent) = (
         world.get::<PointCloudChunk3d>(entity).cloned(),
-        world.get::<ChildChunkOf>(entity),
-    ) && let Some(PointCloud3d(point_cloud_handle)) =
-        world.get::<PointCloud3d>(parent_entity).cloned()
-    {
-        let mut instances = world.resource_mut::<PointCloudInstances>();
-        let entities = instances.entry(point_cloud_handle.id()).or_default();
-        let chunk_entities = entities.entry(parent_entity).or_default();
-        chunk_entities.remove(&chunk_handle.id());
+        world.get::<ChildOf>(entity),
+    ) {
+        let point_cloud_entity = {
+            if let Some(&ChildOf(parent_entity)) = maybe_parent {
+                parent_entity
+            } else {
+                entity
+            }
+        };
+        if let Some(PointCloud3d(point_cloud_handle)) =
+            world.get::<PointCloud3d>(point_cloud_entity).cloned()
+        {
+            let mut instances = world.resource_mut::<PointCloudInstances>();
+            let entities = instances.entry(point_cloud_handle.id()).or_default();
+            let chunk_entities = entities.entry(point_cloud_entity).or_default();
+            chunk_entities.insert(chunk_handle.id(), entity);
 
-        info!("on_discard_point_cloud_chunk_3d: {:#?}", instances);
+            let mut instances = world.resource_mut::<PointCloudInstances>();
+            let entities = instances.entry(point_cloud_handle.id()).or_default();
+            let chunk_entities = entities.entry(point_cloud_entity).or_default();
+            chunk_entities.remove(&chunk_handle.id());
+
+            info!("on_discard_point_cloud_chunk_3d: {:#?}", instances);
+        } else {
+            warn!("on_insert_point_cloud_chunk_3d: PointCloud3d entity not found.");
+        }
     } else {
         warn!(
             "on_discard_point_cloud_chunk_3d: some entities not found for entity {:?}",

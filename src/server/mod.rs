@@ -13,11 +13,14 @@ use bevy::{
     app::{Plugin, PostUpdate},
     asset::{AssetHandleProvider, AssetId, Assets, Handle},
     ecs::{
-        error::BevyError, resource::Resource, schedule::IntoScheduleConfigs, system::ResMut,
+        error::BevyError,
+        resource::Resource,
+        schedule::IntoScheduleConfigs,
+        system::{Commands, Res, ResMut},
         world::FromWorld,
     },
     log::{error, info, warn},
-    mesh::Mesh,
+    mesh::{Mesh, Mesh3d},
     platform::{collections::HashMap, sync::RwLock},
     prelude::{Deref, DerefMut},
     reflect::Reflect,
@@ -28,8 +31,8 @@ use priority_queue::PriorityQueue;
 use thiserror::Error;
 
 use crate::{
-    InsertNode, NodeId, PointCloud, PointCloudChunk, PointCloudNode, PointCloudNodeKey,
-    PointCloudNodeStatus, PointCloudVisibilitySystems,
+    InsertNode, NodeId, PointCloud, PointCloudChunk, PointCloudInstances, PointCloudNode,
+    PointCloudNodeKey, PointCloudNodeStatus, PointCloudVisibilitySystems,
 };
 
 pub use byte_source::*;
@@ -495,18 +498,32 @@ fn build_hierarchy_children(nodes: &[ErasedLoadedPointCloudNode]) -> (Vec<Vec<us
 }
 
 /// Loads the chunk's meshes in the meshes asset, so later in the GPU.
+/// Then add [`Mesh3d`] to all chunks using it.
 fn load_chunk_meshes(
     mut meshes: ResMut<Assets<Mesh>>,
     mut chunks: ResMut<Assets<PointCloudChunk>>,
+    point_cloud_instances: Res<PointCloudInstances>,
     mut point_cloud_total_size: ResMut<PointCloudTotalSize>,
     mut tracking: ResMut<PointCloudTracking>,
+    mut commands: Commands,
 ) {
     for (key, mesh) in tracking.loaded_chunks.drain(..) {
         let Some(mut chunk) = chunks.get_mut(key.chunk_id) else {
             continue;
         };
-        point_cloud_total_size.total_size += chunk.vertex_buffer_size;
         let mesh_handle = meshes.add(mesh.clone());
-        chunk.mesh_handle = Some(mesh_handle);
+        point_cloud_total_size.total_size += chunk.vertex_buffer_size;
+
+        chunk.mesh_handle = Some(mesh_handle.clone());
+
+        if let Some(point_cloud_entities) = point_cloud_instances.get(&key.id) {
+            for (_, chunks) in point_cloud_entities.iter() {
+                if let Some(&chunk_entity) = chunks.get(&key.chunk_id) {
+                    commands
+                        .entity(chunk_entity)
+                        .insert(Mesh3d(mesh_handle.clone()));
+                }
+            }
+        }
     }
 }

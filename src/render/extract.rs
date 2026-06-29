@@ -1,24 +1,21 @@
-use std::any::TypeId;
-
 use bevy::{
     camera::Camera,
     ecs::{
-        entity::Entity,
         query::With,
-        system::{Local, Query, ResMut},
+        system::{Query, ResMut},
     },
     log::warn,
     platform::collections::HashMap,
     render::{
         sync_world::{MainEntity, RenderEntity},
-        view::{ExtractedView, RenderVisibleEntities},
+        view::ExtractedView,
         Extract,
     },
 };
 
 use crate::{
-    ChildrenMask, NodeId, PointCloudChunk3d, RenderPointCloudInstanceIndex,
-    RenderVisiblePointCloudChunkEntity, RenderVisiblePointCloudEntities, VisiblePointCloudEntities,
+    ChildrenMask, NodeId, RenderPointCloudInstanceIndex, RenderVisiblePointCloudChunkEntity,
+    RenderVisiblePointCloudEntities, VisiblePointCloudEntities,
 };
 
 pub fn extract_visible_point_cloud_chunks(
@@ -58,7 +55,11 @@ pub fn extract_visible_point_cloud_chunks(
 
             // get the render entry
             let render_visible_point_cloud_chunk_entity = render_visible_point_cloud_entities
-                .get_mut((render_entity.id(), MainEntity::from(main_entity)));
+                .get_or_insert_mut(
+                    MainEntity::from(main_entity),
+                    render_entity,
+                    point_cloud_entity.asset_id,
+                );
 
             // reset parent/child index
             render_node_index.clear();
@@ -114,46 +115,46 @@ pub fn extract_visible_point_cloud_chunks(
     }
 }
 
-pub fn collect_visible_cpu_culled_point_cloud_chunk_entities(
-    mut extracted_views: Query<
-        (&mut RenderVisibleEntities, &RenderVisiblePointCloudEntities),
-        With<ExtractedView>,
-    >,
-    // to preserve allocations
-    mut visible_entities: Local<Vec<(Entity, MainEntity)>>,
-) {
-    for (mut render_visible_entities, render_visible_point_cloud_entities) in
-        extracted_views.iter_mut()
-    {
-        // clear the visible entities for each view
-        visible_entities.clear();
+// pub fn collect_visible_cpu_culled_point_cloud_chunk_entities(
+//     mut extracted_views: Query<
+//         (&mut RenderVisibleEntities, &RenderVisiblePointCloudEntities),
+//         With<ExtractedView>,
+//     >,
+//     // to preserve allocations
+//     mut visible_entities: Local<Vec<(Entity, MainEntity)>>,
+// ) {
+//     for (mut render_visible_entities, render_visible_point_cloud_entities) in
+//         extracted_views.iter_mut()
+//     {
+//         // clear the visible entities for each view
+//         visible_entities.clear();
 
-        for (_, render_visible_point_cloud_entity) in &render_visible_point_cloud_entities.entities
-        {
-            for render_visible_point_cloud_chunk_entity in
-                &render_visible_point_cloud_entity.chunk_entities
-            {
-                visible_entities.push((
-                    render_visible_point_cloud_chunk_entity.entity,
-                    render_visible_point_cloud_chunk_entity.main_entity,
-                ));
-            }
-        }
+//         for (_, render_visible_point_cloud_entity) in
+// &render_visible_point_cloud_entities.entities         {
+//             for render_visible_point_cloud_chunk_entity in
+//                 &render_visible_point_cloud_entity.chunk_entities
+//             {
+//                 visible_entities.push((
+//                     render_visible_point_cloud_chunk_entity.entity,
+//                     render_visible_point_cloud_chunk_entity.main_entity,
+//                 ));
+//             }
+//         }
 
-        // now update [`RenderVisibleEntities`] component of the extracted view
+//         // now update [`RenderVisibleEntities`] component of the extracted view
 
-        // prepare render visible entities
-        let entities = render_visible_entities
-            .classes
-            .entry(TypeId::of::<PointCloudChunk3d>())
-            .or_default();
+//         // prepare render visible entities
+//         let entities = render_visible_entities
+//             .classes
+//             .entry(TypeId::of::<PointCloudChunk3d>())
+//             .or_default();
 
-        entities.prepare_for_new_frame();
+//         entities.prepare_for_new_frame();
 
-        // Make sure the entity list is sorted, as this is a requirement for
-        // [`RenderVisibleEntitiesClass::update_from_cpu`].
-        visible_entities.sort_unstable_by_key(|(_, main_entity)| *main_entity);
+//         // Make sure the entity list is sorted, as this is a requirement for
+//         // [`RenderVisibleEntitiesClass::update_from_cpu`].
+//         visible_entities.sort_unstable_by_key(|(_, main_entity)| *main_entity);
 
-        entities.update_cpu_culled_entities(&visible_entities);
-    }
-}
+//         entities.update_cpu_culled_entities(&visible_entities);
+//     }
+// }

@@ -22,4 +22,4 @@ Cargo.lock
 .zed
 
 # Assets
-assets
+/assets

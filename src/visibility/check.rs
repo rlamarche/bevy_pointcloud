@@ -5,21 +5,23 @@ use crate::{
         budget::PointCloudPointBudget, heap_guard::HeapGuard, stack::StackedPointCloudNodeEntity,
     },
     ChildrenMask, GlobalVisiblePointCloudNodes, LoadRequestType, PointCloud, PointCloud3d,
-    PointCloudInstances, PointCloudLoadTasks, PointCloudNodeStatus, PointCloudVisibilitySettings,
-    PointCloudVisiblityPlugin, ScreenPixelRadiusFilter, SkipPointCloudVisibility,
-    VisiblePointCloudEntities,
+    PointCloudChunk3d, PointCloudInstances, PointCloudLoadTasks, PointCloudNodeStatus,
+    PointCloudVisibilitySettings, PointCloudVisiblityPlugin, ScreenPixelRadiusFilter,
+    SkipPointCloudVisibility, VisiblePointCloudEntities,
 };
 use bevy::{
     asset::Assets,
     camera::{
         primitives::{Aabb, Frustum},
-        visibility::{NoAutoAabb, NoFrustumCulling, VisibleEntities},
+        visibility::{
+            NoAutoAabb, NoFrustumCulling, SetViewVisibility, ViewVisibility, VisibleEntities,
+        },
         Camera, Projection,
     },
     diagnostic::Diagnostics,
     ecs::{
         entity::Entity,
-        query::{Changed, Without},
+        query::{Changed, With, Without},
         system::{Commands, Local, Query, Res, ResMut},
     },
     log::warn,
@@ -30,7 +32,7 @@ use bevy::{
 };
 
 /// Computes and adds an [`Aabb`] component to entities with a
-/// [`PoiintCloud3d`] component and without a [`NoFrustumCulling`] component.
+/// [`PointCloud3d`] component and without a [`NoFrustumCulling`] component.
 pub fn calculate_bounds(
     mut commands: Commands,
     point_clouds: Res<Assets<PointCloud>>,
@@ -484,6 +486,32 @@ fn compute_visible_nodes_stack(
 
                         parent.children[child_index] = current_index;
                         parent.children_mask |= ChildrenMask::from(node.child_index);
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn set_visible_point_cloud_chunk_visibility(
+    mut views: Query<(&VisiblePointCloudEntities, &mut VisibleEntities), With<Camera>>,
+    mut entities: Query<&mut ViewVisibility>,
+) {
+    for (visible_point_cloud_entities, mut visible_entities) in &mut views {
+        let visible_entities = visible_entities.get_mut(TypeId::of::<PointCloudChunk3d>());
+
+        // for each point cloud entity
+        for (_, point_cloud_entity) in &visible_point_cloud_entities.entities {
+            // for each point cloud node
+            for node_entity in &point_cloud_entity.node_entities {
+                // keep only nodes with a chunk (which can be rendered)
+                if let Some(chunk_entity) = node_entity.entity {
+                    // add the visible entity
+                    visible_entities.push(chunk_entity);
+
+                    if let Ok(mut view_visibility) = entities.get_mut(chunk_entity) {
+                        // set the visible status on the entity itself
+                        view_visibility.set_visible();
                     }
                 }
             }

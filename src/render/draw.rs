@@ -1,9 +1,6 @@
 use bevy::{
-    ecs::system::{
-        lifetimeless::{Read, SRes},
-        SystemParamItem,
-    },
-    pbr::SetMeshViewBindGroup,
+    ecs::system::{lifetimeless::SRes, SystemParamItem},
+    pbr::{RenderMeshInstances, SetMeshViewBindGroup},
     render::{
         mesh::{allocator::MeshAllocator, RenderMesh, RenderMeshBufferInfo},
         render_asset::RenderAssets,
@@ -13,9 +10,23 @@ use bevy::{
     },
 };
 
-use crate::{PointCloudChunk3d, PointMeshes, RenderPointCloudChunk};
+use crate::ShapeMeshes;
 
 pub type DrawPointCloud = (
+    SetItemPipeline,
+    SetMeshViewBindGroup<0>,
+    DrawPointCloudInstanced,
+);
+
+// TODO fix
+pub type DrawPointCloudPrepass = (
+    SetItemPipeline,
+    SetMeshViewBindGroup<0>,
+    DrawPointCloudInstanced,
+);
+
+// TODO fix
+pub type DrawPointCloudDepthOnlyPrepass = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     DrawPointCloudInstanced,
@@ -25,54 +36,51 @@ pub struct DrawPointCloudInstanced;
 
 impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
     type Param = (
-        SRes<RenderAssets<RenderPointCloudChunk>>,
         SRes<RenderAssets<RenderMesh>>,
+        SRes<RenderMeshInstances>,
         SRes<MeshAllocator>,
-        SRes<PointMeshes>,
+        SRes<ShapeMeshes>,
     );
     type ViewQuery = ();
-    type ItemQuery = Read<PointCloudChunk3d>;
+    type ItemQuery = ();
 
     fn render<'w>(
-        _item: &P,
+        item: &P,
         _view: (),
-        point_cloud: Option<&'w PointCloudChunk3d>,
-        (chunks, meshes, mesh_allocator, point_meshes): SystemParamItem<'w, '_, Self::Param>,
+        _item_query: Option<()>,
+        (meshes, mesh_instances, mesh_allocator, shape_meshes): SystemParamItem<
+            'w,
+            '_,
+            Self::Param,
+        >,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
+        let meshes = meshes.into_inner();
+        let mesh_instances = mesh_instances.into_inner();
         let mesh_allocator = mesh_allocator.into_inner();
 
-        let Some(point_cloud) = point_cloud else {
-            return RenderCommandResult::Failure("point cloud missing");
+        let Some(mesh_asset_id) = mesh_instances.mesh_asset_id(item.main_entity()) else {
+            return RenderCommandResult::Skip;
+        };
+        let Some(gpu_mesh) = meshes.get(mesh_asset_id) else {
+            return RenderCommandResult::Skip;
+        };
+        let Some(vertex_buffer_slice) = mesh_allocator.mesh_vertex_slice(&mesh_asset_id) else {
+            return RenderCommandResult::Skip;
         };
 
-        let Some(quad_mesh) = meshes.get(&point_meshes.quad_mesh) else {
+        // TODO load from a configuration ?
+        let Some(quad_mesh) = meshes.get(&shape_meshes.quad_mesh) else {
             return RenderCommandResult::Failure("quad missing");
         };
         let Some(quad_vertex_buffer_slice) =
-            mesh_allocator.mesh_vertex_slice(&point_meshes.quad_mesh.id())
+            mesh_allocator.mesh_vertex_slice(&shape_meshes.quad_mesh.id())
         else {
             return RenderCommandResult::Failure("unable to get quad vertex slice");
         };
 
-        let Some(chunk) = chunks.get(point_cloud) else {
-            return RenderCommandResult::Failure("chunk missing");
-        };
-
-        let Some(mesh_handle) = &chunk.mesh else {
-            return RenderCommandResult::Failure("mesh missing in chunk");
-        };
-
-        let Some(points_mesh) = meshes.get(mesh_handle.id()) else {
-            return RenderCommandResult::Failure("points missing");
-        };
-        let Some(points_vertex_buffer_slice) = mesh_allocator.mesh_vertex_slice(&mesh_handle.id())
-        else {
-            return RenderCommandResult::Failure("unable to get points vertex slice");
-        };
-
         pass.set_vertex_buffer(0, quad_vertex_buffer_slice.buffer.slice(..));
-        pass.set_vertex_buffer(1, points_vertex_buffer_slice.buffer.slice(..));
+        pass.set_vertex_buffer(1, vertex_buffer_slice.buffer.slice(..));
 
         match &quad_mesh.buffer_info {
             RenderMeshBufferInfo::Indexed {
@@ -80,7 +88,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
                 index_format,
             } => {
                 let Some(index_buffer_slice) =
-                    mesh_allocator.mesh_index_slice(&point_meshes.quad_mesh.id())
+                    mesh_allocator.mesh_index_slice(&shape_meshes.quad_mesh.id())
                 else {
                     return RenderCommandResult::Skip;
                 };
@@ -89,11 +97,11 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
                 pass.draw_indexed(
                     index_buffer_slice.range.start..(index_buffer_slice.range.start + count),
                     quad_vertex_buffer_slice.range.start as i32,
-                    0..points_mesh.vertex_count,
+                    0..gpu_mesh.vertex_count,
                 );
             }
             RenderMeshBufferInfo::NonIndexed => {
-                pass.draw(quad_vertex_buffer_slice.range, 0..points_mesh.vertex_count);
+                pass.draw(quad_vertex_buffer_slice.range, 0..gpu_mesh.vertex_count);
             }
         }
 

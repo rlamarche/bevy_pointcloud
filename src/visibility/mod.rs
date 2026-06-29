@@ -25,12 +25,13 @@ pub use filter::*;
 pub use resources::*;
 use stack::*;
 
-use crate::PointCloud3d;
+use crate::{PointCloud3d, PointCloudChunk3d};
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
 pub enum PointCloudVisibilitySystems {
     CalculateBounds,
     CheckPointCloudNodesVisibility,
+    UpdateViewVisibility,
 }
 
 pub struct PointCloudVisiblityPlugin;
@@ -60,6 +61,8 @@ impl Plugin for PointCloudVisiblityPlugin {
 
         app.register_required_components::<PointCloud3d, Visibility>()
             .register_required_components::<PointCloud3d, VisibilityClass>()
+            .register_required_components::<PointCloudChunk3d, Visibility>()
+            .register_required_components::<PointCloudChunk3d, VisibilityClass>()
             .register_required_components::<Camera, VisiblePointCloudEntities>()
             .register_required_components::<Camera, PointCloudVisibilitySettings>()
             .init_resource::<GlobalVisiblePointCloudNodes>()
@@ -69,11 +72,19 @@ impl Plugin for PointCloudVisiblityPlugin {
                     calculate_bounds.in_set(PointCloudVisibilitySystems::CalculateBounds),
                     check_point_cloud_nodes_visibility
                         .in_set(PointCloudVisibilitySystems::CheckPointCloudNodesVisibility),
+                    set_visible_point_cloud_chunk_visibility
+                        .in_set(PointCloudVisibilitySystems::UpdateViewVisibility),
                 ),
             )
             .configure_sets(
                 PostUpdate,
-                PointCloudVisibilitySystems::CheckPointCloudNodesVisibility.after(CheckVisibility),
+                (
+                    PointCloudVisibilitySystems::CalculateBounds,
+                    CheckVisibility,
+                    PointCloudVisibilitySystems::CheckPointCloudNodesVisibility,
+                    PointCloudVisibilitySystems::UpdateViewVisibility,
+                )
+                    .chain(),
             )
             .configure_sets(
                 PostUpdate,
@@ -86,5 +97,9 @@ impl Plugin for PointCloudVisiblityPlugin {
         app.world_mut()
             .register_component_hooks::<PointCloud3d>()
             .on_add(add_visibility_class::<PointCloud3d>);
+
+        app.world_mut()
+            .register_component_hooks::<PointCloudChunk3d>()
+            .on_add(add_visibility_class::<PointCloudChunk3d>);
     }
 }

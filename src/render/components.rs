@@ -4,7 +4,7 @@ use bevy::{
     asset::AssetId,
     ecs::{component::Component, entity::Entity},
     platform::collections::HashMap,
-    render::sync_world::MainEntity,
+    render::sync_world::{MainEntity, RenderEntity},
 };
 
 use crate::{ChildIndex, ChildrenMask, NodeId, PointCloud, PointCloudChunk};
@@ -13,16 +13,32 @@ use crate::{ChildIndex, ChildrenMask, NodeId, PointCloud, PointCloudChunk};
 /// world".
 #[derive(Debug, Component, Default, Clone)]
 pub struct RenderVisiblePointCloudEntities {
-    pub entities: HashMap<(Entity, MainEntity), RenderVisiblePointCloudEntity>,
+    pub entities: HashMap<MainEntity, RenderVisiblePointCloudEntity>,
     pub changed_this_frame: bool,
 }
 
 impl RenderVisiblePointCloudEntities {
-    pub fn get_mut(
+    pub fn get(&mut self, main_entity: MainEntity) -> Option<&RenderVisiblePointCloudEntity> {
+        self.entities.get(&main_entity)
+    }
+
+    pub fn get_or_insert_mut(
         &mut self,
-        (entity, main_entity): (Entity, MainEntity),
+        main_entity: MainEntity,
+        render_entity: RenderEntity,
+        asset_id: AssetId<PointCloud>,
     ) -> &mut RenderVisiblePointCloudEntity {
-        self.entities.entry((entity, main_entity)).or_default()
+        let entry =
+            self.entities
+                .entry(main_entity)
+                .or_insert_with(|| RenderVisiblePointCloudEntity {
+                    entity: render_entity.id(),
+                    asset_id,
+                    chunk_entities: Vec::new(),
+                });
+        entry.entity = render_entity.id();
+        entry.asset_id = asset_id;
+        entry
     }
 
     pub fn clear_all(&mut self) {
@@ -35,8 +51,10 @@ impl RenderVisiblePointCloudEntities {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct RenderVisiblePointCloudEntity {
+    /// a render entity
+    pub entity: Entity,
     pub asset_id: AssetId<PointCloud>,
     pub chunk_entities: Vec<RenderVisiblePointCloudChunkEntity>,
 }
