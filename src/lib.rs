@@ -1,6 +1,5 @@
 #![expect(missing_docs, reason = "Not all docs are written yet.")]
 
-
 use bevy::{
     app::{App, Plugin},
     asset::AssetApp,

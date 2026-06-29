@@ -1,4 +1,4 @@
-use crate::HierarchyNode;
+use crate::PointCloudNode;
 
 // TODO define elsewhere
 pub const MAX_NODES: usize = 2048;
@@ -10,7 +10,7 @@ pub struct PointCloudPointBudget {
 }
 
 impl PointCloudPointBudget {
-    pub fn add_node(&mut self, node: &HierarchyNode) -> bool {
+    pub fn add_node(&mut self, node: &PointCloudNode) -> bool {
         if node.chunk.is_none() {
             return false;
         }

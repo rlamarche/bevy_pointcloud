@@ -1,6 +1,6 @@
 use bevy::transform::components::GlobalTransform;
 
-use crate::HierarchyNode;
+use crate::PointCloudNode;
 
 use super::CameraView;
 
@@ -11,7 +11,7 @@ pub struct ScreenPixelRadiusFilter {
 impl ScreenPixelRadiusFilter {
     pub fn filter(
         &self,
-        _node: &HierarchyNode,
+        _node: &PointCloudNode,
         _global_transform: &GlobalTransform,
         _camera_view: &CameraView,
         screen_pixel_radius: Option<f32>,

@@ -1,7 +1,13 @@
 use std::{any::TypeId, collections::BinaryHeap};
 
 use crate::{
-    ChildrenMask, GlobalVisiblePointCloudNodes, HierarchyNodeStatus, LoadRequestType, PointCloud, PointCloud3d, PointCloudInstances, PointCloudLoadTasks, PointCloudVisibilitySettings, PointCloudVisiblityPlugin, ScreenPixelRadiusFilter, SkipPointCloudVisibility, VisiblePointCloudEntities, visibility::{budget::PointCloudPointBudget, heap_guard::HeapGuard, stack::StackedPointCloudNodeEntity},
+    visibility::{
+        budget::PointCloudPointBudget, heap_guard::HeapGuard, stack::StackedPointCloudNodeEntity,
+    },
+    ChildrenMask, GlobalVisiblePointCloudNodes, LoadRequestType, PointCloud, PointCloud3d,
+    PointCloudInstances, PointCloudLoadTasks, PointCloudNodeStatus, PointCloudVisibilitySettings,
+    PointCloudVisiblityPlugin, ScreenPixelRadiusFilter, SkipPointCloudVisibility,
+    VisiblePointCloudEntities,
 };
 use bevy::{
     asset::Assets,
@@ -47,7 +53,7 @@ pub fn calculate_bounds(
 ) {
     for (entity, asset_handle) in &new_aabb {
         if let Some(point_cloud) = point_clouds.get(asset_handle)
-            && let Some(aabb) = point_cloud.hierarchy.get_root().and_then(|root| root.aabb)
+            && let Some(aabb) = point_cloud.get_root().and_then(|root| root.aabb)
         {
             commands.entity(entity).try_insert(aabb);
         }
@@ -58,7 +64,7 @@ pub fn calculate_bounds(
         .for_each(|(point_cloud_3d, mut old_aabb)| {
             if let Some(aabb) = point_clouds
                 .get(point_cloud_3d)
-                .and_then(|point_cloud| point_cloud.hierarchy.get_root().and_then(|root| root.aabb))
+                .and_then(|point_cloud| point_cloud.get_root().and_then(|root| root.aabb))
             {
                 *old_aabb = aabb;
             }
@@ -169,12 +175,12 @@ pub fn check_point_cloud_nodes_visibility(
             // update the asset id
             visible_point_cloud_entity.asset_id = component.into();
 
-            let Some(_) = asset.hierarchy.root else {
+            let Some(_) = asset.root else {
                 warn!("Point cloud node has not yet hierarchy root loaded.");
                 continue;
             };
 
-            let Some(node_root) = asset.hierarchy.get_root() else {
+            let Some(node_root) = asset.get_root() else {
                 warn!("Point cloud node has not yet hierarchy root loaded.");
                 continue;
             };
@@ -398,7 +404,7 @@ fn compute_visible_nodes_stack(
                 let _span =
                     info_span!("compute_visible_nodes_stack", name = "hierarchy_only").entered();
                 match node.status {
-                    HierarchyNodeStatus::Proxy => {
+                    PointCloudNodeStatus::Proxy => {
                         load_tasks.queue_load_request(
                             asset_id,
                             node.id,
@@ -406,10 +412,10 @@ fn compute_visible_nodes_stack(
                             LoadRequestType::Hierarchy,
                         );
                     }
-                    HierarchyNodeStatus::Loading => {
+                    PointCloudNodeStatus::Loading => {
                         // the node hierarchy is already loading, nothing to do
                     }
-                    HierarchyNodeStatus::Loaded => {
+                    PointCloudNodeStatus::Loaded => {
                         load_tasks.queue_load_request(
                             asset_id,
                             node.id,
@@ -433,7 +439,7 @@ fn compute_visible_nodes_stack(
                     // useless visibility checks
                     for i in node.children_mask.iter_one_bits() {
                         let child_id = &node.children[i as usize];
-                        let Some(child) = point_cloud.hierarchy.get_node(*child_id) else {
+                        let Some(child) = point_cloud.get_node(*child_id) else {
                             warn!("missing node in hierarchy, shouldn't happen");
                             continue;
                         };
@@ -483,8 +489,4 @@ fn compute_visible_nodes_stack(
             }
         }
     }
-}
-
-pub fn iter_one_bits(mask: u8) -> impl Iterator<Item = u8> {
-    (0_u8..8).filter(move |&i| (mask & (1 << i)) != 0)
 }

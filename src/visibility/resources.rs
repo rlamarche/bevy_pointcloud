@@ -2,7 +2,7 @@ use bevy::{asset::AssetId, ecs::prelude::*};
 use indexmap::IndexMap;
 use ordered_float::OrderedFloat;
 
-use crate::{HierarchyNode, PointCloud, PointCloudNodeKey};
+use crate::{PointCloud, PointCloudNode, PointCloudNodeKey};
 
 /// This resource contains all visible octree nodes in the current iteration, across all cameras
 #[derive(Resource)]
@@ -26,7 +26,7 @@ impl GlobalVisiblePointCloudNodes {
     pub fn add_visible_node(
         &mut self,
         id: AssetId<PointCloud>,
-        node: &HierarchyNode,
+        node: &PointCloudNode,
         weight: OrderedFloat<f32>,
     ) {
         self.visible_nodes.insert(

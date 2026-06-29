@@ -7,16 +7,13 @@ use bevy::{
     render::sync_world::MainEntity,
 };
 
-use crate::{
-    ChildIndex, ChildrenMask, NodeId, PointCloud, PointCloudChunk,
-};
+use crate::{ChildIndex, ChildrenMask, NodeId, PointCloud, PointCloudChunk};
 
 /// This component stores the visible nodes for each point cloud at view level (camera) in "render
 /// world".
 #[derive(Debug, Component, Default, Clone)]
 pub struct RenderVisiblePointCloudEntities {
-    pub entities:
-        HashMap<(Entity, MainEntity), RenderVisiblePointCloudEntity>,
+    pub entities: HashMap<(Entity, MainEntity), RenderVisiblePointCloudEntity>,
     pub changed_this_frame: bool,
 }
 

@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use bevy::{asset::AssetId, ecs::entity::Entity};
 use ordered_float::OrderedFloat;
 
-use crate::{HierarchyNode, PointCloud};
+use crate::{PointCloud, PointCloudNode};
 
 #[derive(Clone, Debug)]
 pub struct StackedPointCloudNodeEntity<'a> {
@@ -11,7 +11,7 @@ pub struct StackedPointCloudNodeEntity<'a> {
     pub entity: Entity,
     pub asset_id: AssetId<PointCloud>,
     pub octree: &'a PointCloud,
-    pub node: &'a HierarchyNode,
+    pub node: &'a PointCloudNode,
     pub screen_pixel_radius: Option<f32>,
     pub weight: OrderedFloat<f32>,
     pub completely_visible: bool,

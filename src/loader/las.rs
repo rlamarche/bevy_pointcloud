@@ -1,13 +1,19 @@
 use std::io::Cursor;
 
 use bevy::{
-    app::{App, Plugin}, asset::RenderAssetUsages, camera::primitives::Aabb, log::warn, math::Vec3, mesh::{Mesh, VertexAttributeValues}, reflect::TypePath,
+    app::{App, Plugin},
+    asset::RenderAssetUsages,
+    camera::primitives::Aabb,
+    log::warn,
+    math::Vec3,
+    mesh::{Mesh, VertexAttributeValues},
+    reflect::TypePath,
 };
 use thiserror::Error;
 
 use crate::{
-    ByteSource, ByteSourceError, ChildIndex, HierarchyNodeStatus, LoadedHierarchyNode,
-    PointCloudLoader,
+    ByteSource, ByteSourceError, ChildIndex, LoadedPointCloudNode, PointCloudLoader,
+    PointCloudNodeStatus,
 };
 
 /// Naive implementation of a las loader because it loads the las file completely in memory
@@ -51,7 +57,7 @@ impl<S: ByteSource> PointCloudLoader for LasLoader<S> {
 
     async fn load_initial_hierarchy(
         &self,
-    ) -> Result<Vec<LoadedHierarchyNode<Self::Hierarchy>>, Self::Error> {
+    ) -> Result<Vec<LoadedPointCloudNode<Self::Hierarchy>>, Self::Error> {
         // TODO find an async las impl that doesn't need to own the data
         let data = self.source.read_to_end(0).await?;
         let cursor = Cursor::new(data);
@@ -72,10 +78,10 @@ impl<S: ByteSource> PointCloudLoader for LasLoader<S> {
 
         let aabb = Aabb::from_min_max(min, max);
 
-        Ok(vec![LoadedHierarchyNode {
-            status: HierarchyNodeStatus::Loaded,
+        Ok(vec![LoadedPointCloudNode {
+            status: PointCloudNodeStatus::Loaded,
             child_index: ChildIndex::ROOT,
-            parent_id: None,
+            parent_index: None,
             aabb: Some(aabb),
             data: point_count,
             point_count,

@@ -18,9 +18,9 @@ use bevy::{
 use ordered_float::OrderedFloat;
 
 use crate::{
-    server::build_hierarchy_children, ChildChunkOf, HierarchyNodeStatus, InternalPointCloudEvent,
-    NodeId, PointCloud, PointCloudChunk, PointCloudChunk3d, PointCloudChunkKey,
-    PointCloudInstances, PointCloudNodeKey, PointCloudServer, PointCloudServerSettings,
+    server::build_hierarchy_children, ChildChunkOf, InsertNode, InternalPointCloudEvent, NodeId,
+    PointCloud, PointCloudChunk, PointCloudChunk3d, PointCloudChunkKey, PointCloudInstances,
+    PointCloudNodeKey, PointCloudNodeStatus, PointCloudServer, PointCloudServerSettings,
     PointCloudTotalSize, PointCloudTracking,
 };
 
@@ -223,7 +223,7 @@ pub fn handle_internal_point_cloud_events(
                 let mut inserted_nodes: Vec<Option<NodeId>> = vec![None; hierarchy_nodes.len()];
 
                 let hierarchy_node = std::mem::take(&mut hierarchy_nodes[root_idx]);
-                match point_cloud.hierarchy.get_node_mut(node_id) {
+                match point_cloud.get_node_mut(node_id) {
                     Some(node) => {
                         node.status = hierarchy_node.status;
                         node.data = hierarchy_node.data;
@@ -247,22 +247,22 @@ pub fn handle_internal_point_cloud_events(
                     .map(|&child_idx| (child_idx, node_id))
                     .collect();
 
-                while let Some((idx, parent)) = stack.pop() {
+                while let Some((idx, parent_id)) = stack.pop() {
                     if inserted_nodes[idx].is_some() {
                         continue;
                     }
 
-                    let hierarchy_node = std::mem::take(&mut hierarchy_nodes[idx]);
+                    let node = std::mem::take(&mut hierarchy_nodes[idx]);
 
-                    let new_id = match point_cloud.hierarchy.insert_hierarchy_node(
-                        Some(parent),
-                        hierarchy_node.child_index,
-                        hierarchy_node.status,
-                        hierarchy_node.point_count,
-                        hierarchy_node.data,
-                        hierarchy_node.aabb,
-                        None,
-                    ) {
+                    let new_id = match point_cloud.insert_node(InsertNode {
+                        parent_id: Some(parent_id),
+                        child_index: node.child_index,
+                        status: node.status,
+                        point_count: node.point_count,
+                        data: node.data,
+                        aabb: node.aabb,
+                        chunk: None,
+                    }) {
                         Ok(node_id) => node_id,
                         Err(error) => {
                             warn!(
@@ -289,9 +289,9 @@ pub fn handle_internal_point_cloud_events(
                 warn!("An error occured loading sub hierarchy: {:#}", error);
 
                 if let Some(mut point_cloud) = point_clouds.get_mut(id)
-                    && let Some(hierarchy_node) = point_cloud.hierarchy.get_node_mut(node_id)
+                    && let Some(hierarchy_node) = point_cloud.get_node_mut(node_id)
                 {
-                    hierarchy_node.status = HierarchyNodeStatus::Proxy;
+                    hierarchy_node.status = PointCloudNodeStatus::Proxy;
                 } else {
                     debug!(
                         "No asset found for {:?}, unable to append loaded hierarchy nodes.",
@@ -311,7 +311,7 @@ pub fn handle_internal_point_cloud_events(
                     continue;
                 };
 
-                let Some(node) = point_cloud.hierarchy.get_node_mut(node_id) else {
+                let Some(node) = point_cloud.get_node_mut(node_id) else {
                     warn!(
                         "Hierarchy node {:?} not found for asset {:?} when storing chunk.",
                         node_id, id
@@ -337,13 +337,13 @@ pub fn handle_internal_point_cloud_events(
                 node.chunk = Some(chunk_handle.clone());
 
                 // get again the node immutably
-                let node = point_cloud.hierarchy.get_node(node_id).unwrap(); // was valid just above
+                let node = point_cloud.get_node(node_id).unwrap(); // was valid just above
 
                 if let Some(point_cloud_entities) = point_cloud_instances.get(&id) {
                     for (&point_cloud_entity, chunks) in point_cloud_entities.iter() {
                         if let Some(parent_node_id) = node.parent_id
                             && let Some(parent_hierarchy_node) =
-                                point_cloud.hierarchy.get_node(parent_node_id)
+                                point_cloud.get_node(parent_node_id)
                             && let Some(parent_handle_id) = &parent_hierarchy_node.chunk
                         {
                             let Some(&parent_chunk_entity) = chunks.get(&parent_handle_id.id())
@@ -452,7 +452,7 @@ fn process_hierarchy_loads(
             continue;
         };
 
-        let Some(node) = point_cloud.hierarchy.get_node(task.node_id) else {
+        let Some(node) = point_cloud.get_node(task.node_id) else {
             warn!(
                 "Node not found in point_cloud when loading hierarchy: {:?}",
                 task.node_id
@@ -461,7 +461,7 @@ fn process_hierarchy_loads(
         };
 
         // Check that we still need to load this node
-        let should_load = matches!(node.status, HierarchyNodeStatus::Proxy);
+        let should_load = matches!(node.status, PointCloudNodeStatus::Proxy);
 
         if !should_load {
             continue;
@@ -517,7 +517,7 @@ fn process_chunk_loads(
             continue;
         };
 
-        let Some(node) = point_cloud.hierarchy.get_node(task.node_id) else {
+        let Some(node) = point_cloud.get_node(task.node_id) else {
             warn!(
                 "Node not found in point_cloud when loading chunk: {:?}",
                 task.node_id

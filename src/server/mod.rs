@@ -28,8 +28,8 @@ use priority_queue::PriorityQueue;
 use thiserror::Error;
 
 use crate::{
-    HierarchyNode, HierarchyNodeStatus, NodeId, PointCloud, PointCloudChunk, PointCloudNodeKey,
-    PointCloudVisibilitySystems,
+    InsertNode, NodeId, PointCloud, PointCloudChunk, PointCloudNode, PointCloudNodeKey,
+    PointCloudNodeStatus, PointCloudVisibilitySystems,
 };
 
 pub use byte_source::*;
@@ -153,11 +153,10 @@ impl PointCloudServer {
         node_id: NodeId,
     ) -> Result<(), PointCloudServerError> {
         let hierarchy_node = asset
-            .hierarchy
             .get_node_mut(node_id)
             .ok_or(PointCloudServerError::HierarchyNodeNotFound)?;
 
-        hierarchy_node.status = HierarchyNodeStatus::Loading;
+        hierarchy_node.status = PointCloudNodeStatus::Loading;
 
         let Some(loader) = ({
             let loaders = self.read_loaders();
@@ -212,7 +211,6 @@ impl PointCloudServer {
         drop(infos);
 
         let hierarchy_node = asset
-            .hierarchy
             .get_node(node_id)
             .ok_or(PointCloudServerError::HierarchyNodeNotFound)?;
 
@@ -312,7 +310,7 @@ impl PointCloudServerData {
             .map_err(Into::into)?
             .into_iter()
             .map(Into::into)
-            .collect::<Vec<ErasedHierarchyNode>>();
+            .collect::<Vec<ErasedLoadedPointCloudNode>>();
 
         let (children, roots) = build_hierarchy_children(&initial_hierarchy);
 
@@ -342,17 +340,17 @@ impl PointCloudServerData {
                 continue;
             }
 
-            let hierarchy_node = std::mem::take(&mut initial_hierarchy[idx]);
+            let node = std::mem::take(&mut initial_hierarchy[idx]);
 
-            let node_id = point_cloud.hierarchy.insert_hierarchy_node(
+            let node_id = point_cloud.insert_node(InsertNode {
                 parent_id,
-                hierarchy_node.child_index,
-                hierarchy_node.status,
-                hierarchy_node.point_count,
-                hierarchy_node.data,
-                hierarchy_node.aabb,
-                None,
-            )?;
+                child_index: node.child_index,
+                status: node.status,
+                point_count: node.point_count,
+                data: node.data,
+                aabb: node.aabb,
+                chunk: None,
+            })?;
             inserted_nodes[idx] = Some(node_id);
 
             for &child_idx in children[idx].iter().rev() {
@@ -376,7 +374,7 @@ impl PointCloudServerData {
         &self,
         id: AssetId<PointCloud>,
         loader: Arc<dyn ErasedPointCloudLoader>,
-        hierarchy_node: &HierarchyNode,
+        hierarchy_node: &PointCloudNode,
     ) -> Result<(), BevyError> {
         match loader.load_hierarchy(hierarchy_node).await {
             Ok(hierarchy_nodes) => {
@@ -407,7 +405,7 @@ impl PointCloudServerData {
         &self,
         id: AssetId<PointCloud>,
         loader: Arc<dyn ErasedPointCloudLoader>,
-        hierarchy_node: &HierarchyNode,
+        hierarchy_node: &PointCloudNode,
     ) -> Result<(), BevyError> {
         info!("load chunk internal");
         match loader.load_chunk(hierarchy_node).await {
@@ -445,7 +443,7 @@ pub(crate) enum InternalPointCloudEvent {
     SubHierarchyLoaded {
         id: AssetId<PointCloud>,
         node_id: NodeId,
-        hierarchy_nodes: Vec<ErasedHierarchyNode>,
+        hierarchy_nodes: Vec<ErasedLoadedPointCloudNode>,
     },
     SubHierarchyLoadFailed {
         id: AssetId<PointCloud>,
@@ -472,12 +470,12 @@ pub struct PointCloudEvictionQueue {
 }
 
 /// Build a child adjacency list and collect root indices for hierarchy vectors.
-fn build_hierarchy_children(nodes: &[ErasedHierarchyNode]) -> (Vec<Vec<usize>>, Vec<usize>) {
+fn build_hierarchy_children(nodes: &[ErasedLoadedPointCloudNode]) -> (Vec<Vec<usize>>, Vec<usize>) {
     let mut children: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
     let mut roots = Vec::new();
 
     for (idx, node) in nodes.iter().enumerate() {
-        if let Some(parent) = node.parent_id {
+        if let Some(parent) = node.parent_index {
             if parent < nodes.len() {
                 children[parent].push(idx);
             } else {

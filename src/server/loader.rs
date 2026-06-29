@@ -7,7 +7,7 @@ use bevy::{
     tasks::{BoxedFuture, ConditionalSendFuture},
 };
 
-use crate::{ChildIndex, HierarchyData, HierarchyNode, HierarchyNodeStatus};
+use crate::{ChildIndex, NodeData, PointCloudNode, PointCloudNodeStatus};
 
 pub trait PointCloudLoader: Send + Sync + Sized + 'static {
     type Hierarchy: Send + Sync + 'static;
@@ -20,7 +20,7 @@ pub trait PointCloudLoader: Send + Sync + Sized + 'static {
     fn load_initial_hierarchy(
         &self,
     ) -> impl ConditionalSendFuture<
-        Output = Result<Vec<LoadedHierarchyNode<Self::Hierarchy>>, Self::Error>,
+        Output = Result<Vec<LoadedPointCloudNode<Self::Hierarchy>>, Self::Error>,
     >;
 
     /// This method must load the provided node sub hierarchy.
@@ -33,7 +33,7 @@ pub trait PointCloudLoader: Send + Sync + Sized + 'static {
         &self,
         node: &Self::Hierarchy,
     ) -> impl ConditionalSendFuture<
-        Output = Result<Vec<LoadedHierarchyNode<Self::Hierarchy>>, Self::Error>,
+        Output = Result<Vec<LoadedPointCloudNode<Self::Hierarchy>>, Self::Error>,
     > {
         Box::pin(async move { Ok(vec![]) })
     }
@@ -47,56 +47,58 @@ pub trait PointCloudLoader: Send + Sync + Sized + 'static {
 }
 
 #[derive(Clone, Debug)]
-pub struct LoadedHierarchyNode<H> {
-    pub status: HierarchyNodeStatus,
+pub struct LoadedPointCloudNode<T> {
+    /// The parent index in the returned vec
+    pub parent_index: Option<usize>,
+    pub status: PointCloudNodeStatus,
     pub point_count: usize,
     pub child_index: ChildIndex,
-    pub parent_id: Option<usize>,
     pub aabb: Option<Aabb>,
-    pub data: H,
+    pub data: T,
 }
 
 pub trait ErasedPointCloudLoader: Send + Sync + 'static {
     /// Erased version of [`PointCloudLoader::load_initial_hierarchy`]
     fn load_initial_hierarchy<'a>(
         &'a self,
-    ) -> BoxedFuture<'a, Result<Vec<ErasedHierarchyNode>, BevyError>>;
+    ) -> BoxedFuture<'a, Result<Vec<ErasedLoadedPointCloudNode>, BevyError>>;
 
     /// Erased version of [`PointCloudLoader::load_hierarchy`]
     fn load_hierarchy<'a>(
         &'a self,
-        node: &'a HierarchyNode,
-    ) -> BoxedFuture<'a, Result<Vec<ErasedHierarchyNode>, BevyError>>;
+        node: &'a PointCloudNode,
+    ) -> BoxedFuture<'a, Result<Vec<ErasedLoadedPointCloudNode>, BevyError>>;
 
     /// Erased version of [`PointCloudLoader::load_chunk`]
     fn load_chunk<'a>(
         &'a self,
-        node: &'a HierarchyNode,
+        node: &'a PointCloudNode,
     ) -> BoxedFuture<'a, Result<Mesh, BevyError>>;
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct ErasedHierarchyNode {
-    pub status: HierarchyNodeStatus,
+pub struct ErasedLoadedPointCloudNode {
+    /// The parent index in the returned vec
+    pub parent_index: Option<usize>,
+    pub status: PointCloudNodeStatus,
     pub point_count: usize,
     pub child_index: ChildIndex,
-    pub parent_id: Option<usize>,
     pub aabb: Option<Aabb>,
-    pub data: HierarchyData,
+    pub data: NodeData,
 }
 
-impl<H> From<LoadedHierarchyNode<H>> for ErasedHierarchyNode
+impl<T> From<LoadedPointCloudNode<T>> for ErasedLoadedPointCloudNode
 where
-    H: Send + Sync + 'static,
+    T: Send + Sync + 'static,
 {
-    fn from(value: LoadedHierarchyNode<H>) -> Self {
+    fn from(value: LoadedPointCloudNode<T>) -> Self {
         Self {
             status: value.status,
             point_count: value.point_count,
             child_index: value.child_index,
-            parent_id: value.parent_id,
+            parent_index: value.parent_index,
             aabb: value.aabb,
-            data: HierarchyData::new(value.data),
+            data: NodeData::new(value.data),
         }
     }
 }
@@ -104,7 +106,7 @@ where
 impl<L: PointCloudLoader> ErasedPointCloudLoader for L {
     fn load_initial_hierarchy<'a>(
         &'a self,
-    ) -> BoxedFuture<'a, Result<Vec<ErasedHierarchyNode>, BevyError>> {
+    ) -> BoxedFuture<'a, Result<Vec<ErasedLoadedPointCloudNode>, BevyError>> {
         Box::pin(async move {
             let initial_hierarchy = <Self as PointCloudLoader>::load_initial_hierarchy(self)
                 .await
@@ -112,15 +114,15 @@ impl<L: PointCloudLoader> ErasedPointCloudLoader for L {
 
             Ok(initial_hierarchy
                 .into_iter()
-                .map(ErasedHierarchyNode::from)
+                .map(ErasedLoadedPointCloudNode::from)
                 .collect())
         })
     }
 
     fn load_hierarchy<'a>(
         &'a self,
-        node: &'a HierarchyNode,
-    ) -> BoxedFuture<'a, Result<Vec<ErasedHierarchyNode>, BevyError>> {
+        node: &'a PointCloudNode,
+    ) -> BoxedFuture<'a, Result<Vec<ErasedLoadedPointCloudNode>, BevyError>> {
         Box::pin(async move {
             let Ok(node) = node
                 .data
@@ -135,14 +137,14 @@ impl<L: PointCloudLoader> ErasedPointCloudLoader for L {
 
             Ok(loaded_nodes
                 .into_iter()
-                .map(ErasedHierarchyNode::from)
+                .map(ErasedLoadedPointCloudNode::from)
                 .collect())
         })
     }
 
     fn load_chunk<'a>(
         &'a self,
-        node: &'a HierarchyNode,
+        node: &'a PointCloudNode,
     ) -> BoxedFuture<'a, Result<Mesh, BevyError>> {
         Box::pin(async move {
             let Ok(loaded_hierarchy) = node

@@ -1,5 +1,8 @@
 use bevy::{
-    ecs::{entity::Entity, resource::Resource}, platform::collections::HashMap, prelude::{Deref, DerefMut}, render::camera::PendingQueues,
+    ecs::{entity::Entity, resource::Resource},
+    platform::collections::HashMap,
+    prelude::{Deref, DerefMut},
+    render::camera::PendingQueues,
 };
 use slotmap::{new_key_type, Key, SlotMap};
 
@@ -8,7 +11,6 @@ use slotmap::{new_key_type, Key, SlotMap};
 /// See the documentation of [`PendingQueues`] for more information.
 #[derive(Default, Deref, DerefMut, Resource)]
 pub struct PendingPointCloudPhaseItemQueues(pub PendingQueues);
-
 
 new_key_type! { pub struct PointCloudInstanceIndex; }
 

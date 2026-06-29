@@ -7,7 +7,7 @@ use bevy::{
     reflect::Reflect,
 };
 
-use crate::{ChildIndex, ChildrenMask, HierarchyNode, NodeId, PointCloud, PointCloudChunk};
+use crate::{ChildIndex, ChildrenMask, NodeId, PointCloud, PointCloudChunk, PointCloudNode};
 
 #[derive(Clone, Debug, Component, Reflect)]
 pub struct PointCloudVisibilitySettings {
@@ -67,8 +67,8 @@ pub struct VisiblePointCloudNodeEntity {
     pub entity: Option<Entity>,
 }
 
-impl From<&HierarchyNode> for VisiblePointCloudNodeEntity {
-    fn from(value: &HierarchyNode) -> Self {
+impl From<&PointCloudNode> for VisiblePointCloudNodeEntity {
+    fn from(value: &PointCloudNode) -> Self {
         VisiblePointCloudNodeEntity {
             id: value.id,
             chunk_id: value.chunk.as_ref().map(Handle::id),

@@ -5,8 +5,6 @@ use std::{
 
 use super::StackedPointCloudNodeEntity;
 
-
-
 /// A RAII guard to safely use a 'static [`BinaryHeap`] with short-lived references.
 pub struct HeapGuard<'a, 'b> {
     // We hold a mutable reference to the heap, casted to the shorter lifetime.
@@ -24,7 +22,7 @@ impl<'a, 'b> HeapGuard<'a, 'b> {
     /// This is safe because the Drop implementation ensures the heap is cleared
     /// before the references inside it (lifetime 'a) become invalid.
     pub fn new(storage: &'b mut BinaryHeap<StackedPointCloudNodeEntity<'static>>) -> Self {
-        // SAFETY: [`inner`] is clear on drop
+        // SAFETY: [`inner`] is clear on drop (see [`<HeapGuard as Drop>::drop`])
         unsafe {
             // Memory layout of Node<'static> and Node<'a> is identical (pointer erasure).
             let transmuted = std::mem::transmute::<

@@ -1,11 +1,14 @@
 use std::cmp::Reverse;
 
 use bevy::{
-    asset::AssetEvent, ecs::{
+    asset::AssetEvent,
+    ecs::{
         message::MessageReader,
         resource::Resource,
         system::{Res, ResMut},
-    }, mesh::Mesh, time::{Real, Time},
+    },
+    mesh::Mesh,
+    time::{Real, Time},
 };
 use priority_queue::PriorityQueue;
 
