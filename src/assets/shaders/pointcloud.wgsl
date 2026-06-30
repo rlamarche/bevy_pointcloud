@@ -9,6 +9,8 @@
 }
 
 #import bevy_pointcloud::{
+    forward_io::{ShapeInput, InstanceInput, VertexOutput, FragmentOutput},
+    functions,
     pointcloud_bindings::pointcloud,
     pointcloud_functions,
 }
@@ -26,66 +28,6 @@
 // }
 // #endif
 
-struct ShapeInput {
-    @builtin(instance_index) instance_index: u32,
-#ifdef SHAPE_POSITIONS
-    @location(0) position: vec3<f32>,
-#endif
-#ifdef SHAPE_NORMALS
-    @location(1) normal: vec3<f32>,
-#endif
-#ifdef SHAPE_UVS_A
-    @location(2) uv: vec2<f32>,
-#endif
-}
-
-struct InstanceInput {
-#ifdef VERTEX_POSITIONS
-    @location(3) position: vec3<f32>,
-#endif
-#ifdef VERTEX_NORMALS
-    @location(4) normal: vec3<f32>,
-#endif
-#ifdef VERTEX_UVS
-    @location(5) uv: vec2<f32>,
-#endif
-#ifdef VERTEX_UVS_B
-    @location(6) uv_b: vec2<f32>,
-#endif
-#ifdef VERTEX_TANGENTS
-    @location(7) tangent: vec4<f32>,
-#endif
-#ifdef VERTEX_COLORS
-    @location(8) color: vec4<f32>,
-#endif
-}
-
-// struct VertexOutput {
-//     @builtin(position) clip_position: vec4<f32>,
-//     @location(0) uv: vec2<f32>,
-//     @location(1) color: vec4<f32>,
-// }
-
-struct VertexOutput {
-    // This is `clip position` when the struct is used as a vertex stage output
-    // and `frag coord` when used as a fragment stage input
-    @builtin(position) position: vec4<f32>,
-    @location(0) world_position: vec4<f32>,
-    @location(1) world_normal: vec3<f32>,
-#ifdef VERTEX_UVS_A
-    @location(2) uv: vec2<f32>,
-#endif
-#ifdef VERTEX_UVS_B
-    @location(3) uv_b: vec2<f32>,
-#endif
-#ifdef VERTEX_TANGENTS
-    @location(4) world_tangent: vec4<f32>,
-#endif
-#ifdef VERTEX_COLORS
-    @location(5) color: vec4<f32>,
-#endif
-    @location(6) shape_uv: vec2<f32>,
-}
 
 @vertex
 fn vertex(
@@ -147,7 +89,13 @@ fn vertex(
 }
 
 @fragment
-fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
+fn fragment(
+    vertex_output: VertexOutput,
+    @builtin(front_facing) is_front: bool,
+) -> FragmentOutput {
+    var in = vertex_output;
+    var out: FragmentOutput;
+
     #ifdef SHAPE_UVS_A
         // Perfect circle (TODO make this parametrized in the material)
         let dist = distance(in.shape_uv, vec2<f32>(0.5, 0.5));
@@ -162,8 +110,10 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     #endif SHAPE_UVS_A
 
     #ifdef VERTEX_COLORS
-        return in.color;
+        out.color = vec4<f32>(functions::srgb_to_rgb_simple(in.color.xyz), 1.0);
     #else
-        return vec4<f32>(1.0, 1.0, 1.0, 1.0);
+        out.color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
     #endif
+
+    return out;
 }
