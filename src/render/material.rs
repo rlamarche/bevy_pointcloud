@@ -36,8 +36,8 @@ use bevy::{
         alpha_mode_pipeline_key, collect_meshes_for_gpu_building, set_mesh_motion_vector_flags,
         FallbackBindlessResources, MaterialBindGroupAllocator, MaterialBindGroupAllocators,
         MaterialBindingId, MeshInputUniform, MeshPipelineKey, MeshUniform, RenderMeshInstanceFlags,
-        RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup,
-        SetMeshViewBindingArrayBindGroup, Shadow, Transmissive3d, ViewKeyCache,
+        RenderMeshInstances, SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup, Shadow,
+        Transmissive3d, ViewKeyCache,
     },
     platform::{
         collections::{hash_map::Entry, HashMap, HashSet},
@@ -78,7 +78,8 @@ use std::sync::Arc;
 use crate::{
     DrawPointCloudDepthOnlyPrepass, DrawPointCloudInstanced, DrawPointCloudPrepass, PointCloud3d,
     PointCloudChunk3d, PointCloudMaterial3d, PointCloudPipeline, PointCloudPipelineSystems,
-    ShapeMeshes, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
+    SetPointCloudUniformGroup, ShapeMeshes, SpecializedPointCloudPipeline,
+    SpecializedPointCloudPipelines,
 };
 
 pub const MATERIAL_BIND_GROUP_INDEX: usize = 3;
@@ -532,7 +533,7 @@ pub type DrawMaterial = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetMeshViewBindingArrayBindGroup<1>,
-    SetMeshBindGroup<2>,
+    SetPointCloudUniformGroup<2>,
     SetMaterialBindGroup<MATERIAL_BIND_GROUP_INDEX>,
     // TODO change
     DrawPointCloudInstanced,
@@ -599,6 +600,14 @@ pub struct RenderMaterialInstances {
     /// components are removed.
     pub current_change_tick: Tick,
 }
+
+// /// A dummy [`AssetId`] that we use as a placeholder whenever a mesh doesn't
+// /// have a material.
+// ///
+// /// See the comments in [`RenderMaterialInstances::mesh_material`] for more
+// /// information.
+// pub(crate) static DUMMY_MESH_MATERIAL: AssetId<StandardPointCloudMaterial> =
+//     AssetId::<StandardPointCloudMaterial>::invalid();
 
 // impl RenderMaterialInstances {
 //     /// Returns the mesh material ID for the entity with the given mesh, or a
@@ -1352,12 +1361,14 @@ pub fn queue_material_meshes(
                     opaque_phase.add(
                         batch_set_key,
                         bin_key,
-                        (Entity::PLACEHOLDER, *visible_entity),
+                        (*render_entity, *visible_entity),
                         mesh_instance.current_uniform_index,
-                        BinnedRenderPhaseType::mesh(
-                            mesh_instance.should_batch(),
-                            &gpu_preprocessing_support,
-                        ),
+                        BinnedRenderPhaseType::UnbatchableMesh,
+                        // BinnedRenderPhaseType::mesh(
+                        //     mesh_instance.should_batch(),
+                        //     // false,
+                        //     &gpu_preprocessing_support,
+                        // ),
                     );
                 }
                 // Alpha mask

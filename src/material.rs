@@ -133,9 +133,9 @@ impl From<&StandardPointCloudMaterial> for StandardPointCloudMaterialKey {
 
 impl Material for StandardPointCloudMaterial {
     fn vertex_shader() -> bevy::shader::ShaderRef {
-        "embedded://bevy_pointcloud/assets/shaders/point_cloud.wgsl".into()
+        "embedded://bevy_pointcloud/assets/shaders/pointcloud.wgsl".into()
     }
     fn fragment_shader() -> bevy::shader::ShaderRef {
-        "embedded://bevy_pointcloud/assets/shaders/point_cloud.wgsl".into()
+        "embedded://bevy_pointcloud/assets/shaders/pointcloud.wgsl".into()
     }
 }

@@ -4,7 +4,8 @@ use bevy::{
     app::{App, Plugin},
     asset::{embedded_asset, AssetApp},
     ecs::{hierarchy::ChildOf, lifecycle::HookContext, world::DeferredWorld},
-    log::{info, warn},
+    log::warn,
+    shader::load_shader_library,
 };
 
 mod components;
@@ -38,8 +39,10 @@ pub struct PointCloudPlugin {
 
 impl Plugin for PointCloudPlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "assets/shaders/point_cloud.wgsl");
-
+        load_shader_library!(app, "assets/shaders/pointcloud_types.wgsl");
+        load_shader_library!(app, "assets/shaders/pointcloud_bindings.wgsl");
+        load_shader_library!(app, "assets/shaders/pointcloud_functions.wgsl");
+        embedded_asset!(app, "assets/shaders/pointcloud.wgsl");
         app.init_asset::<PointCloud>()
             .init_asset::<PointCloudChunk>()
             .register_asset_reflect::<PointCloud>()
@@ -76,7 +79,7 @@ pub fn on_insert_point_cloud_3d(
         let entities = instances.entry(handle.id()).or_default();
         entities.insert(entity, PointCloudChunks::default());
 
-        info!("on_insert_point_cloud_3d: {:#?}", instances);
+        // info!("on_insert_point_cloud_3d: {:#?}", instances);
     }
 }
 
@@ -90,7 +93,7 @@ pub fn on_discard_point_cloud_3d(
         let entities = instances.entry(handle.id()).or_default();
         entities.remove(&entity);
 
-        info!("on_discard_point_cloud_3d: {:#?}", instances);
+        // info!("on_discard_point_cloud_3d: {:#?}", instances);
     }
 }
 
@@ -118,7 +121,7 @@ pub fn on_insert_point_cloud_chunk_3d(
             let chunk_entities = entities.entry(point_cloud_entity).or_default();
             chunk_entities.insert(chunk_handle.id(), entity);
 
-            info!("on_insert_point_cloud_chunk_3d: {:#?}", instances);
+            // info!("on_insert_point_cloud_chunk_3d: {:#?}", instances);
         } else {
             warn!("on_insert_point_cloud_chunk_3d: PointCloud3d entity not found.");
         }
@@ -159,7 +162,7 @@ pub fn on_discard_point_cloud_chunk_3d(
             let chunk_entities = entities.entry(point_cloud_entity).or_default();
             chunk_entities.remove(&chunk_handle.id());
 
-            info!("on_discard_point_cloud_chunk_3d: {:#?}", instances);
+            // info!("on_discard_point_cloud_chunk_3d: {:#?}", instances);
         } else {
             warn!("on_insert_point_cloud_chunk_3d: PointCloud3d entity not found.");
         }

@@ -1,5 +1,5 @@
 use bevy::{
-    asset::{load_embedded_asset, AssetServer, Handle},
+    asset::{AssetServer, Handle},
     core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT,
     ecs::{
         resource::Resource,
@@ -7,24 +7,27 @@ use bevy::{
         world::{FromWorld, World},
     },
     material::{
-        descriptor::{FragmentState, RenderPipelineDescriptor, VertexState},
+        descriptor::{
+            BindGroupLayoutDescriptor, FragmentState, RenderPipelineDescriptor, VertexState,
+        },
         specialize::SpecializedMeshPipelineError,
     },
     mesh::{Mesh, MeshVertexBufferLayoutRef},
     pbr::{
-        setup_morph_and_skinning_defs, MeshPipeline, MeshPipelineKey,
-        TONEMAPPING_LUT_SAMPLER_BINDING_INDEX, TONEMAPPING_LUT_TEXTURE_BINDING_INDEX,
+        MeshPipeline, MeshPipelineKey, TONEMAPPING_LUT_SAMPLER_BINDING_INDEX,
+        TONEMAPPING_LUT_TEXTURE_BINDING_INDEX,
     },
     render::render_resource::{
-        BlendComponent, BlendFactor, BlendOperation, BlendState, ColorTargetState, ColorWrites,
-        CompareFunction, DepthBiasState, DepthStencilState, Face, MultisampleState, PrimitiveState,
-        StencilFaceState, StencilState, VertexStepMode,
+        binding_types::uniform_buffer, BindGroupLayoutEntries, BlendComponent, BlendFactor,
+        BlendOperation, BlendState, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
+        DepthStencilState, Face, MultisampleState, PrimitiveState, ShaderStages, StencilFaceState,
+        StencilState, VertexStepMode,
     },
     shader::{Shader, ShaderDefVal},
     utils::default,
 };
 
-use crate::render::pipeline_specializer::SpecializedPointCloudPipeline;
+use crate::{render::pipeline_specializer::SpecializedPointCloudPipeline, PointCloudUniform};
 
 pub(crate) const IRRADIANCE_VOLUMES_ARE_USABLE: bool = cfg!(not(target_arch = "wasm32"));
 
@@ -36,18 +39,24 @@ pub fn init_point_cloud_pipeline(mut commands: Commands) {
 pub struct PointCloudPipeline {
     shader: Handle<Shader>,
     mesh_pipeline: MeshPipeline,
+    pub point_cloud_uniform_layout: BindGroupLayoutDescriptor,
 }
 
 impl FromWorld for PointCloudPipeline {
     fn from_world(world: &mut World) -> Self {
         let asset_server = world.resource::<AssetServer>();
-        let shader = load_embedded_asset!(asset_server, "shaders/point_cloud.wgsl");
-
         let mesh_pipeline = world.resource::<MeshPipeline>();
 
         Self {
-            shader,
+            shader: asset_server.load("embedded://bevy_pointcloud/assets/shaders/pointcloud.wgsl"),
             mesh_pipeline: mesh_pipeline.clone(),
+            point_cloud_uniform_layout: BindGroupLayoutDescriptor::new(
+                "point_cloud_uniform_layout",
+                &BindGroupLayoutEntries::single(
+                    ShaderStages::VERTEX,
+                    uniform_buffer::<PointCloudUniform>(false),
+                ),
+            ),
         }
     }
 }
@@ -141,25 +150,25 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
         // Let the shader code know that it's running in a mesh pipeline.
         shader_defs.push("MESH_PIPELINE".into());
 
-        shader_defs.push("VERTEX_OUTPUT_INSTANCE_INDEX".into());
+        // shader_defs.push("VERTEX_OUTPUT_INSTANCE_INDEX".into());
 
         // construct the shape layout vertex buffer layout
 
         let mut shape_vertex_attributes = Vec::new();
         if shape_layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
-            shader_defs.push("VERTEX_POSITIONS".into());
+            shader_defs.push("SHAPE_POSITIONS".into());
             // TODO find the best position
             shape_vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
         }
         if shape_layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
-            shader_defs.push("VERTEX_NORMALS".into());
+            shader_defs.push("SHAPE_NORMALS".into());
             // TODO find the best position
             shape_vertex_attributes.push(Mesh::ATTRIBUTE_NORMAL.at_shader_location(1));
         }
 
         if shape_layout.0.contains(Mesh::ATTRIBUTE_UV_0) {
-            shader_defs.push("VERTEX_UVS".into());
-            shader_defs.push("VERTEX_UVS_A".into());
+            shader_defs.push("SHAPE_UVS".into());
+            shader_defs.push("SHAPE_UVS_A".into());
             shape_vertex_attributes.push(Mesh::ATTRIBUTE_UV_0.at_shader_location(2));
         }
 
@@ -170,36 +179,36 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
         let mut vertex_attributes = Vec::new();
 
         if layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
-            shader_defs.push("INSTANCE_POSITIONS".into());
+            shader_defs.push("VERTEX_POSITIONS".into());
             // TODO find the best position
             vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(3));
         }
 
         if layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
-            shader_defs.push("INSTANCE_NORMALS".into());
+            shader_defs.push("VERTEX_NORMALS".into());
             // TODO find the best position
             vertex_attributes.push(Mesh::ATTRIBUTE_NORMAL.at_shader_location(4));
         }
 
         if layout.0.contains(Mesh::ATTRIBUTE_UV_0) {
-            shader_defs.push("INSTANCE_UVS".into());
-            shader_defs.push("INSTANCE_UVS_A".into());
+            shader_defs.push("VERTEX_UVS".into());
+            shader_defs.push("VERTEX_UVS_A".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_UV_0.at_shader_location(5));
         }
 
         if layout.0.contains(Mesh::ATTRIBUTE_UV_1) {
-            shader_defs.push("INSTANCE_UVS".into());
-            shader_defs.push("INSTANCE_UVS_B".into());
+            shader_defs.push("VERTEX_UVS".into());
+            shader_defs.push("VERTEX_UVS_B".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_UV_1.at_shader_location(6));
         }
 
         if layout.0.contains(Mesh::ATTRIBUTE_TANGENT) {
-            shader_defs.push("INSTANCE_TANGENTS".into());
+            shader_defs.push("VERTEX_TANGENTS".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_TANGENT.at_shader_location(7));
         }
 
         if layout.0.contains(Mesh::ATTRIBUTE_COLOR) {
-            shader_defs.push("INSTANCE_COLORS".into());
+            shader_defs.push("VERTEX_COLORS".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_COLOR.at_shader_location(8));
         }
 
@@ -235,15 +244,16 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             shader_defs.push("MULTISAMPLED".into());
         };
 
-        bind_group_layout.push(setup_morph_and_skinning_defs(
-            &self.mesh_pipeline.mesh_layouts,
-            layout,
-            6,
-            &key,
-            &mut shader_defs,
-            &mut vertex_attributes,
-            self.mesh_pipeline.skins_use_uniform_buffers,
-        ));
+        bind_group_layout.push(self.point_cloud_uniform_layout.clone());
+        // bind_group_layout.push(setup_morph_and_skinning_defs(
+        //     &self.mesh_pipeline.mesh_layouts,
+        //     layout,
+        //     6,
+        //     &key,
+        //     &mut shader_defs,
+        //     &mut vertex_attributes,
+        //     self.mesh_pipeline.skins_use_uniform_buffers,
+        // ));
 
         if key.contains(MeshPipelineKey::SCREEN_SPACE_AMBIENT_OCCLUSION) {
             shader_defs.push("SCREEN_SPACE_AMBIENT_OCCLUSION".into());

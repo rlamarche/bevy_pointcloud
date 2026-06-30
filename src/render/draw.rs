@@ -1,6 +1,13 @@
 use bevy::{
-    ecs::system::{lifetimeless::SRes, SystemParamItem},
-    pbr::{RenderMeshInstances, SetMeshViewBindGroup},
+    ecs::{
+        query::ROQueryItem,
+        system::{
+            lifetimeless::{Read, SRes},
+            SystemParamItem,
+        },
+    },
+    log::warn,
+    pbr::{RenderMeshInstances, SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup},
     render::{
         mesh::{allocator::MeshAllocator, RenderMesh, RenderMeshBufferInfo},
         render_asset::RenderAssets,
@@ -10,11 +17,13 @@ use bevy::{
     },
 };
 
-use crate::ShapeMeshes;
+use crate::{PreparedPointCloudUniform, ShapeMeshes};
 
 pub type DrawPointCloud = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
+    SetMeshViewBindingArrayBindGroup<1>,
+    SetPointCloudUniformGroup<2>,
     DrawPointCloudInstanced,
 );
 
@@ -31,6 +40,30 @@ pub type DrawPointCloudDepthOnlyPrepass = (
     SetMeshViewBindGroup<0>,
     DrawPointCloudInstanced,
 );
+
+pub struct SetPointCloudUniformGroup<const I: usize>;
+impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudUniformGroup<I> {
+    type Param = ();
+    type ViewQuery = ();
+    type ItemQuery = Read<PreparedPointCloudUniform>;
+
+    fn render<'w>(
+        _item: &P,
+        _view: ROQueryItem<'w, '_, Self::ViewQuery>,
+        prepared_custom_uniform: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
+        _param: SystemParamItem<'w, '_, Self::Param>,
+        pass: &mut TrackedRenderPass<'w>,
+    ) -> RenderCommandResult {
+        let Some(prepared_point_cloud_uniform) = prepared_custom_uniform else {
+            warn!("prepared_point_cloud_uniform missing");
+            return RenderCommandResult::Skip;
+        };
+
+        pass.set_bind_group(I, &prepared_point_cloud_uniform.bind_group, &[]);
+
+        RenderCommandResult::Success
+    }
+}
 
 pub struct DrawPointCloudInstanced;
 
@@ -60,9 +93,6 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
         let mesh_allocator = mesh_allocator.into_inner();
 
         let Some(mesh_asset_id) = mesh_instances.mesh_asset_id(item.main_entity()) else {
-            return RenderCommandResult::Skip;
-        };
-        let Some(gpu_mesh) = meshes.get(mesh_asset_id) else {
             return RenderCommandResult::Skip;
         };
         let Some(vertex_buffer_slice) = mesh_allocator.mesh_vertex_slice(&mesh_asset_id) else {
@@ -97,11 +127,11 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
                 pass.draw_indexed(
                     index_buffer_slice.range.start..(index_buffer_slice.range.start + count),
                     quad_vertex_buffer_slice.range.start as i32,
-                    0..gpu_mesh.vertex_count,
+                    vertex_buffer_slice.range,
                 );
             }
             RenderMeshBufferInfo::NonIndexed => {
-                pass.draw(quad_vertex_buffer_slice.range, 0..gpu_mesh.vertex_count);
+                pass.draw(quad_vertex_buffer_slice.range, vertex_buffer_slice.range);
             }
         }
 

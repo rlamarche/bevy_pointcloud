@@ -1,3 +1,5 @@
+pub mod mesh;
+
 #[cfg(feature = "las")]
 pub mod las;
 

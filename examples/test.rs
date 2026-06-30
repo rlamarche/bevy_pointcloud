@@ -7,8 +7,8 @@ use bevy::{
     render::view::NoIndirectDrawing,
 };
 use bevy_pointcloud::{
-    las::LasLoader, prelude::*, FileSource, PointCloud3d, PointCloudMaterial3d, PointCloudServer,
-    StandardPointCloudMaterial,
+    las::LasLoader, mesh::PointCloudMeshLoader, prelude::*, FileSource, PointCloud3d,
+    PointCloudMaterial3d, PointCloudServer, StandardPointCloudMaterial,
 };
 
 fn main() {
@@ -44,7 +44,7 @@ fn load_point_cloud(
     //     ..default()
     // });
 
-    let debug_pc_material = pc_materials.add(StandardPointCloudMaterial {
+    let material = pc_materials.add(StandardPointCloudMaterial {
         base_color: Color::WHITE,
         // base_color_texture: Some(images.add(uv_debug_texture())),
         ..default()
@@ -57,7 +57,30 @@ fn load_point_cloud(
         PointCloud3d(point_cloud_handle),
         Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2)),
         // MeshMaterial3d(debug_material.clone()),
-        PointCloudMaterial3d(debug_pc_material.clone()),
+        PointCloudMaterial3d(material.clone()),
+    ));
+
+    commands.spawn((
+        PointCloud3d(point_cloud_server.load::<PointCloudMeshLoader>(
+            Sphere::default().mesh().uv(32, 18)
+        )),
+        PointCloudMaterial3d(material.clone()),
+    ));
+
+    commands.spawn((
+        PointCloud3d(point_cloud_server.load::<PointCloudMeshLoader>(
+            Sphere::default().mesh().ico(5)?
+        )),
+        Transform::from_translation(Vec3::new(1.0, 0.0, 0.0)),
+        PointCloudMaterial3d(material.clone()),
+    ));
+
+    commands.spawn((
+        PointCloud3d(point_cloud_server.load::<PointCloudMeshLoader>(
+            Torus::default().mesh().build()
+        )),
+        Transform::from_translation(Vec3::new(2.5, 0.0, 0.0)),
+        PointCloudMaterial3d(material.clone()),
     ));
 
     Ok(())

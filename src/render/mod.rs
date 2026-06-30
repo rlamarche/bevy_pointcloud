@@ -6,11 +6,12 @@ mod pipeline;
 mod pipeline_specializer;
 mod point_cloud;
 mod point_cloud_bindings;
+mod prepare;
 mod resources;
 
 use bevy::{
     app::Plugin,
-    asset::{embedded_asset, Assets, Handle},
+    asset::{Assets, Handle},
     core_pipeline::core_3d::Opaque3d,
     ecs::{
         resource::Resource,
@@ -30,7 +31,7 @@ use bevy::{
         render_asset::RenderAssetPlugin,
         render_phase::AddRenderCommand,
         view::ExtractedView,
-        ExtractSchedule, GpuResourceAppExt, RenderApp, RenderStartup,
+        ExtractSchedule, GpuResourceAppExt, Render, RenderApp, RenderStartup, RenderSystems,
     },
 };
 pub use components::*;
@@ -41,6 +42,7 @@ pub use pipeline::*;
 pub use pipeline_specializer::*;
 pub use point_cloud::*;
 pub use point_cloud_bindings::*;
+pub use prepare::*;
 pub use resources::*;
 
 use crate::{PointCloud3d, PointCloudChunk3d};
@@ -52,7 +54,6 @@ pub struct PointCloudPipelineSystems;
 
 impl Plugin for RenderPointCloudPlugin {
     fn build(&self, app: &mut bevy::app::App) {
-        embedded_asset!(app, "shaders/point_cloud.wgsl");
         app.add_plugins(MaterialsPlugin::default()) // TODO add debug flags opt
             .add_plugins(ExtractComponentPlugin::<PointCloud3d>::default())
             .add_plugins(ExtractComponentPlugin::<PointCloudChunk3d>::default())
@@ -69,6 +70,7 @@ impl Plugin for RenderPointCloudPlugin {
                 RenderStartup,
                 PointCloudPipelineSystems.after(MeshPipelineSystems),
             )
+            .init_resource::<RenderPointCloudInstances>()
             .init_resource::<RenderPointCloudInstanceIndex>()
             .add_render_command::<Opaque3d, DrawPointCloud>()
             .init_resource::<SpecializedPointCloudPipelines<PointCloudPipeline>>()
@@ -79,7 +81,14 @@ impl Plugin for RenderPointCloudPlugin {
             )
             .add_systems(
                 ExtractSchedule,
-                extract_visible_point_cloud_chunks.after(extract_cameras),
+                (
+                    extract_visible_point_cloud_chunks.after(extract_cameras),
+                    extract_pointcloud_chunks,
+                ),
+            )
+            .add_systems(
+                Render,
+                prepare_point_cloud_uniforms.in_set(RenderSystems::PrepareBindGroups),
             )
             // .add_systems(
             //     Render,

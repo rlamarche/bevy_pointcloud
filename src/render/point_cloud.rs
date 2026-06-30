@@ -1,9 +1,15 @@
 use bevy::{
-    asset::Handle,
-    ecs::component::Component,
+    asset::{AssetId, Handle},
+    camera::visibility::RenderLayers,
+    ecs::{component::Component, resource::Resource},
     math::{Affine3, Affine3Ext, Vec4},
     mesh::Mesh,
-    render::{render_asset::RenderAsset, render_resource::ShaderType},
+    prelude::{Deref, DerefMut},
+    render::{
+        render_asset::RenderAsset,
+        render_resource::{BindGroup, ShaderType},
+        sync_world::MainEntityHashMap,
+    },
 };
 
 use crate::PointCloudChunk;
@@ -20,7 +26,7 @@ impl RenderAsset for RenderPointCloudChunk {
 
     fn prepare_asset(
         source_asset: Self::SourceAsset,
-        _asset_id: bevy::asset::AssetId<Self::SourceAsset>,
+        _asset_id: AssetId<Self::SourceAsset>,
         _param: &mut bevy::ecs::system::SystemParamItem<Self::Param>,
         _previous_asset: Option<&Self>,
     ) -> Result<Self, bevy::render::render_asset::PrepareAssetError<Self::SourceAsset>> {
@@ -30,11 +36,31 @@ impl RenderAsset for RenderPointCloudChunk {
     }
 }
 
+/// Information that the render world keeps about each entity that contains a
+/// mesh.
+///
+/// The set of information needed is different depending on whether CPU or GPU
+/// [`MeshUniform`] building is in use.
+#[derive(Resource, Default, Deref, DerefMut)]
+pub struct RenderPointCloudInstances(MainEntityHashMap<RenderPointCloudInstance>);
+
+/// CPU data that the render world keeps for each entity, when *not* using GPU
+/// mesh uniform building.
+pub struct RenderPointCloudInstance {
+    pub mesh_id: AssetId<Mesh>,
+    pub asset_id: AssetId<PointCloudChunk>,
+    /// The transform of the mesh.
+    ///
+    /// This will be written into the [`MeshUniform`] at the appropriate time.
+    pub transforms: PointCloudTransforms,
+    /// The set of render layers that this mesh belongs to.
+    pub render_layers: Option<RenderLayers>,
+}
+
 #[derive(Component)]
 pub struct PointCloudTransforms {
     pub world_from_local: Affine3,
     pub previous_world_from_local: Affine3,
-    pub flags: u32,
 }
 
 #[derive(ShaderType, Clone)]
@@ -48,36 +74,25 @@ pub struct PointCloudUniform {
     //   [2].z
     pub local_from_world_transpose_a: [Vec4; 2],
     pub local_from_world_transpose_b: f32,
-    pub flags: u32,
     pub first_vertex_index: u32,
-    /// User supplied tag to identify this mesh instance.
-    pub tag: u32,
 }
 
 impl PointCloudUniform {
-    pub fn new(
-        mesh_transforms: &PointCloudTransforms,
-        first_vertex_index: u32,
-        // material_bind_group_slot: MaterialBindGroupSlot,
-        tag: Option<u32>,
-    ) -> Self {
+    pub fn new(mesh_transforms: &PointCloudTransforms, first_vertex_index: u32) -> Self {
         let (local_from_world_transpose_a, local_from_world_transpose_b) =
             mesh_transforms.world_from_local.inverse_transpose_3x3();
-
-        // let material_slot = u32::from(material_bind_group_slot);
-        // debug_assert!(
-        //     material_slot <= 0xFFFF,
-        //     "Material bind group slot {material_slot} overflowed"
-        // );
 
         Self {
             world_from_local: mesh_transforms.world_from_local.to_transpose(),
             previous_world_from_local: mesh_transforms.previous_world_from_local.to_transpose(),
             local_from_world_transpose_a,
             local_from_world_transpose_b,
-            flags: mesh_transforms.flags,
             first_vertex_index,
-            tag: tag.unwrap_or(0),
         }
     }
+}
+
+#[derive(Clone, Component)]
+pub struct PreparedPointCloudUniform {
+    pub bind_group: BindGroup,
 }

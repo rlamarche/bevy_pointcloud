@@ -1,20 +1,18 @@
 use bevy::{
-    camera::Camera,
-    ecs::{
+    camera::{
+        Camera, visibility::{RenderLayers, ViewVisibility},
+    }, ecs::{
+        entity::Entity,
         query::With,
-        system::{Query, ResMut},
-    },
-    log::warn,
-    platform::collections::HashMap,
-    render::{
-        sync_world::{MainEntity, RenderEntity},
-        view::ExtractedView,
-        Extract,
-    },
+        system::{Local, Query, ResMut},
+    }, log::warn, mesh::Mesh3d, pbr::PreviousGlobalTransform, platform::collections::HashMap, render::{
+        Extract, sync_world::{MainEntity, RenderEntity}, view::ExtractedView,
+    }, transform::components::GlobalTransform, utils::Parallel,
 };
 
 use crate::{
-    ChildrenMask, NodeId, RenderPointCloudInstanceIndex, RenderVisiblePointCloudChunkEntity,
+    ChildrenMask, NodeId, PointCloudChunk3d, PointCloudTransforms, RenderPointCloudInstance,
+    RenderPointCloudInstanceIndex, RenderPointCloudInstances, RenderVisiblePointCloudChunkEntity,
     RenderVisiblePointCloudEntities, VisiblePointCloudEntities,
 };
 
@@ -111,6 +109,64 @@ pub fn extract_visible_point_cloud_chunks(
                     );
                 }
             }
+        }
+    }
+}
+
+/// Extracts meshes from the main world into the render world, populating the
+/// [`RenderMeshInstances`].
+///
+/// This is the variant of the system that runs when we're *not* using GPU
+/// [`MeshUniform`] building.
+pub fn extract_pointcloud_chunks(
+    mut render_mesh_instances: ResMut<RenderPointCloudInstances>,
+    mut render_mesh_instance_queues: Local<Parallel<Vec<(Entity, RenderPointCloudInstance)>>>,
+    meshes_query: Extract<
+        Query<
+            (
+                Entity,
+                &ViewVisibility,
+                &GlobalTransform,
+                &Mesh3d,
+                &PointCloudChunk3d,
+                Option<&PreviousGlobalTransform>,
+                Option<&RenderLayers>,
+            ),
+        >,
+    >,
+) {
+    meshes_query.par_iter().for_each_init(
+        || render_mesh_instance_queues.borrow_local_mut(),
+        |queue, (entity, view_visibility, transform, mesh, chunk, previous_transform, render_layers)| {
+            if !view_visibility.get() {
+                return;
+            }
+
+            let world_from_local = transform.affine();
+            let previous_world_from_local = previous_transform
+                .map(|previous_transform| previous_transform.0)
+                .unwrap_or(world_from_local);
+
+            queue.push((
+                entity,
+                RenderPointCloudInstance {
+                    mesh_id: mesh.id(),
+                    asset_id: chunk.id(),
+                    transforms: PointCloudTransforms {
+                        world_from_local: world_from_local.into(),
+                        previous_world_from_local: previous_world_from_local.into(),
+                    },
+                    render_layers: render_layers.cloned(),
+                },
+            ));
+        },
+    );
+
+    // Collect the render mesh instances.
+    render_mesh_instances.clear();
+    for queue in render_mesh_instance_queues.iter_mut() {
+        for (entity, render_mesh_instance) in queue.drain(..) {
+            render_mesh_instances.insert(entity.into(), render_mesh_instance);
         }
     }
 }
