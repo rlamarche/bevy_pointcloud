@@ -1,10 +1,5 @@
 use bevy::{
-    asset::{Asset, Handle},
-    color::{Color, ColorToComponents, LinearRgba},
-    image::Image,
-    math::Vec4,
-    reflect::{std_traits::ReflectDefault, Reflect},
-    render::{
+    asset::{Asset, Handle}, color::{Color, ColorToComponents, LinearRgba}, image::Image, log::info, math::Vec4, reflect::{Reflect, std_traits::ReflectDefault}, render::{
         render_asset::RenderAssets,
         render_resource::{AsBindGroup, AsBindGroupShaderType, ShaderType},
         texture::GpuImage,
@@ -25,8 +20,8 @@ use crate::Material;
 /// be found in the Bevy examples.
 #[derive(Asset, AsBindGroup, Reflect, Debug, Clone)]
 #[bind_group_data(StandardPointCloudMaterialKey)]
-#[data(0, StandardPointCloudMaterialUniform, binding_array(10))]
-#[bindless(index_table(range(0..31)))]
+#[data(0, StandardPointCloudMaterialUniform, binding_array(0))]
+// #[bindless(index_table(range(0..31)))]
 #[reflect(Default, Debug, Clone)]
 pub struct StandardPointCloudMaterial {
     /// The color of the surface of the material before lighting.
@@ -37,6 +32,9 @@ pub struct StandardPointCloudMaterial {
     ///
     /// Defaults to [`Color::WHITE`].
     pub base_color: Color,
+    pub base_color_up: Option<Color>,
+
+    pub point_size: f32,
 
     /// The texture component of the material's color before lighting.
     /// The actual pre-lighting color is `base_color * this_texture`.
@@ -63,6 +61,8 @@ impl Default for StandardPointCloudMaterial {
             // White because it gets multiplied with texture values if someone uses
             // a texture.
             base_color: Color::WHITE,
+            base_color_up: None,
+            point_size: 1.0,
             base_color_texture: None,
         }
     }
@@ -74,6 +74,9 @@ pub struct StandardPointCloudMaterialUniform {
     /// Doubles as diffuse albedo for non-metallic, specular for metallic and a mix for everything
     /// in between.
     pub base_color: Vec4,
+    pub base_color_up: Vec4,
+
+    pub point_size: f32,
 }
 
 impl AsBindGroupShaderType<StandardPointCloudMaterialUniform> for StandardPointCloudMaterial {
@@ -83,6 +86,9 @@ impl AsBindGroupShaderType<StandardPointCloudMaterialUniform> for StandardPointC
     ) -> StandardPointCloudMaterialUniform {
         StandardPointCloudMaterialUniform {
             base_color: LinearRgba::from(self.base_color).to_vec4(),
+            base_color_up: LinearRgba::from(self.base_color_up.unwrap_or(self.base_color))
+                .to_vec4(),
+            point_size: self.point_size,
         }
     }
 }
@@ -92,38 +98,43 @@ bitflags! {
     #[repr(C)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash)]
     pub struct StandardPointCloudMaterialKey: u64 {
-        const CULL_FRONT               = 0x000001;
-        const CULL_BACK                = 0x000002;
-        const NORMAL_MAP               = 0x000004;
-        const RELIEF_MAPPING           = 0x000008;
-        const DIFFUSE_TRANSMISSION     = 0x000010;
-        const SPECULAR_TRANSMISSION    = 0x000020;
-        const CLEARCOAT                = 0x000040;
-        const CLEARCOAT_NORMAL_MAP     = 0x000080;
-        const ANISOTROPY               = 0x000100;
-        const BASE_COLOR_UV            = 0x000200;
-        const EMISSIVE_UV              = 0x000400;
-        const METALLIC_ROUGHNESS_UV    = 0x000800;
-        const OCCLUSION_UV             = 0x001000;
-        const SPECULAR_TRANSMISSION_UV = 0x002000;
-        const THICKNESS_UV             = 0x004000;
-        const DIFFUSE_TRANSMISSION_UV  = 0x008000;
-        const NORMAL_MAP_UV            = 0x010000;
-        const ANISOTROPY_UV            = 0x020000;
-        const CLEARCOAT_UV             = 0x040000;
-        const CLEARCOAT_ROUGHNESS_UV   = 0x080000;
-        const CLEARCOAT_NORMAL_UV      = 0x100000;
-        const SPECULAR_UV              = 0x200000;
-        const SPECULAR_TINT_UV         = 0x400000;
-        const DEPTH_BIAS               = 0xffffffff_00000000;
+        const ELEVATION_GRADIENT = 0x000001;
+        // const CULL_FRONT               = 0x000001;
+        // const CULL_BACK                = 0x000002;
+        // const NORMAL_MAP               = 0x000004;
+        // const RELIEF_MAPPING           = 0x000008;
+        // const DIFFUSE_TRANSMISSION     = 0x000010;
+        // const SPECULAR_TRANSMISSION    = 0x000020;
+        // const CLEARCOAT                = 0x000040;
+        // const CLEARCOAT_NORMAL_MAP     = 0x000080;
+        // const ANISOTROPY               = 0x000100;
+        // const BASE_COLOR_UV            = 0x000200;
+        // const EMISSIVE_UV              = 0x000400;
+        // const METALLIC_ROUGHNESS_UV    = 0x000800;
+        // const OCCLUSION_UV             = 0x001000;
+        // const SPECULAR_TRANSMISSION_UV = 0x002000;
+        // const THICKNESS_UV             = 0x004000;
+        // const DIFFUSE_TRANSMISSION_UV  = 0x008000;
+        // const NORMAL_MAP_UV            = 0x010000;
+        // const ANISOTROPY_UV            = 0x020000;
+        // const CLEARCOAT_UV             = 0x040000;
+        // const CLEARCOAT_ROUGHNESS_UV   = 0x080000;
+        // const CLEARCOAT_NORMAL_UV      = 0x100000;
+        // const SPECULAR_UV              = 0x200000;
+        // const SPECULAR_TINT_UV         = 0x400000;
+        // const DEPTH_BIAS               = 0xffffffff_00000000;
     }
 }
 
 // const STANDARD_MATERIAL_KEY_DEPTH_BIAS_SHIFT: u64 = 32;
 
 impl From<&StandardPointCloudMaterial> for StandardPointCloudMaterialKey {
-    fn from(_material: &StandardPointCloudMaterial) -> Self {
-        let key = StandardPointCloudMaterialKey::empty();
+    fn from(material: &StandardPointCloudMaterial) -> Self {
+        let mut key = StandardPointCloudMaterialKey::empty();
+
+        if material.base_color_up.is_some() {
+            key |= StandardPointCloudMaterialKey::ELEVATION_GRADIENT;
+        }
 
         // TODO add here fields that changes the render phases / pipeline, ... (eg: blending)
 
@@ -137,5 +148,32 @@ impl Material for StandardPointCloudMaterial {
     }
     fn fragment_shader() -> bevy::shader::ShaderRef {
         "embedded://bevy_pointcloud/assets/shaders/pointcloud.wgsl".into()
+    }
+    fn specialize(
+        _pipeline: &crate::MaterialPipeline,
+        descriptor: &mut bevy::material::descriptor::RenderPipelineDescriptor,
+        _shape_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
+        _instance_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
+        key: crate::MaterialPipelineKey<Self>,
+    ) -> bevy::ecs::error::Result<(), bevy::material::specialize::SpecializedMeshPipelineError>
+    {
+        if key
+            .bind_group_data
+            .contains(StandardPointCloudMaterialKey::ELEVATION_GRADIENT)
+        {
+            if let Some(fragment) = &mut descriptor.fragment {
+                fragment.shader_defs.push("ELEVATION_GRADIENT".into());
+            }
+            descriptor
+                .vertex
+                .shader_defs
+                .push("ELEVATION_GRADIENT".into());
+
+            info!("pipeline specialized with elevation gradient");
+        } else {
+            info!("pipeline NOT specialized with elevation gradient");
+        }
+
+        Ok(())
     }
 }

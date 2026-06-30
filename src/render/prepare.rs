@@ -12,13 +12,16 @@ use bevy::{
 };
 
 use crate::{
-    PointCloudPipeline, PointCloudUniform, PreparedPointCloudUniform, RenderPointCloudInstances,
+    PointCloudPipeline, PointCloudUniform, PreparedPointCloudUniform, RenderMaterialBindings,
+    RenderMaterialInstances, RenderPointCloudInstances,
 };
 
 /// Creates batches for a render phase that uses bins, when GPU batch data
 /// building isn't in use.
 pub fn prepare_point_cloud_uniforms(
-    mesh_instances: Res<RenderPointCloudInstances>,
+    point_cloud_instances: Res<RenderPointCloudInstances>,
+    mesh_material_ids: Res<RenderMaterialInstances>,
+    render_material_bindings: Res<RenderMaterialBindings>,
     mesh_allocator: Res<MeshAllocator>,
     items: Query<(Entity, &MainEntity)>,
     render_device: Res<RenderDevice>,
@@ -30,16 +33,28 @@ pub fn prepare_point_cloud_uniforms(
     let mut batch_insert = Vec::new();
 
     for (render_entity, main_entity) in items {
-        let Some(mesh_instance) = mesh_instances.get(main_entity) else {
+        let Some(point_cloud_instance) = point_cloud_instances.get(main_entity) else {
             continue;
         };
-        let first_vertex_index = match mesh_allocator.mesh_vertex_slice(&mesh_instance.mesh_id) {
-            Some(mesh_vertex_slice) => mesh_vertex_slice.range.start,
-            None => 0,
-        };
 
-        let point_cloud_uniform =
-            PointCloudUniform::new(&mesh_instance.transforms, first_vertex_index);
+        let mesh_material = mesh_material_ids.mesh_material(*main_entity);
+        let material_bindings_index = render_material_bindings
+            .get(&mesh_material)
+            .copied()
+            .unwrap_or_default();
+
+        let first_vertex_index =
+            match mesh_allocator.mesh_vertex_slice(&point_cloud_instance.mesh_id) {
+                Some(mesh_vertex_slice) => mesh_vertex_slice.range.start,
+                None => 0,
+            };
+
+        let point_cloud_uniform = PointCloudUniform::new(
+            &point_cloud_instance.aabb,
+            &point_cloud_instance.transforms,
+            first_vertex_index,
+            material_bindings_index.slot,
+        );
 
         let mut buffer = UniformBuffer::from(point_cloud_uniform);
         buffer.write_buffer(&render_device, &render_queue);

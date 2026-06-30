@@ -66,6 +66,8 @@ webgl = []
 webgpu = []
 experimental_pbr_pcss = []
 pbr_light_textures = []
+potree = ["dep:potree", "potree/async"]
+potree_fs = ["potree", "potree/fs"]
 
 [dependencies]
 slotmap = { version = "1.0.7", default-features = false }
@@ -78,6 +80,9 @@ crossbeam-channel = { version = "0.5.0", optional = true }
 priority-queue = { version = "2.7.0", optional = true }
 indexmap = { version = "2.5.0", default-features = false }
 
+smallvec = { version = "1", default-features = false }
+nonmax = "0.5"
+
 futures = { version = "0.3" }
 ordered-float = "5.3.0"
 
@@ -87,8 +92,8 @@ ehttp = { version = "0.5", optional = true }
 
 las = { version = "0.9", features = ["laz"], optional = true }
 
-smallvec = { version = "1", default-features = false }
-nonmax = "0.5"
+potree = { git = "https://github.com/rlamarche/potree-rs.git", branch = "main", default-features = false, optional = true }
+
 
 [dependencies.bevy]
 version = "0.19"
@@ -107,7 +112,6 @@ features = [
   "x11",
   "debug",
 ]
-
 
 [dev-dependencies]
 bevy = { version = "0.19.0", features = [

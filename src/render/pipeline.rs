@@ -53,7 +53,7 @@ impl FromWorld for PointCloudPipeline {
             point_cloud_uniform_layout: BindGroupLayoutDescriptor::new(
                 "point_cloud_uniform_layout",
                 &BindGroupLayoutEntries::single(
-                    ShaderStages::VERTEX,
+                    ShaderStages::VERTEX | ShaderStages::FRAGMENT,
                     uniform_buffer::<PointCloudUniform>(false),
                 ),
             ),

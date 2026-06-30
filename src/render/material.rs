@@ -76,10 +76,7 @@ use smallvec::SmallVec;
 use std::sync::Arc;
 
 use crate::{
-    DrawPointCloudDepthOnlyPrepass, DrawPointCloudInstanced, DrawPointCloudPrepass, PointCloud3d,
-    PointCloudChunk3d, PointCloudMaterial3d, PointCloudPipeline, PointCloudPipelineSystems,
-    SetPointCloudUniformGroup, ShapeMeshes, SpecializedPointCloudPipeline,
-    SpecializedPointCloudPipelines,
+    DrawPointCloudDepthOnlyPrepass, DrawPointCloudInstanced, DrawPointCloudPrepass, PointCloud3d, PointCloudChunk3d, PointCloudMaterial3d, PointCloudPipeline, PointCloudPipelineSystems, SetPointCloudUniformGroup, ShapeMeshes, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines, StandardPointCloudMaterial,
 };
 
 pub const MATERIAL_BIND_GROUP_INDEX: usize = 3;
@@ -500,16 +497,15 @@ impl SpecializedPointCloudPipeline for MaterialPipelineSpecializer {
             .layout
             .insert(3, self.properties.material_layout.as_ref().unwrap().clone());
 
-        // TODO
-        // if let Some(specialize) = self.properties.user_specialize {
-        //     specialize(
-        //         &self.pipeline as &dyn Any,
-        //         &mut descriptor,
-        //         shape_layout,
-        //         instance_layout,
-        //         key,
-        //     )?;
-        // }
+        if let Some(specialize) = self.properties.user_specialize {
+            specialize(
+                &self.pipeline as &dyn Any,
+                &mut descriptor,
+                shape_layout,
+                instance_layout,
+                key,
+            )?;
+        }
 
         // If bindless mode is on, add a `BINDLESS` define.
         if self.properties.bindless {
@@ -567,21 +563,29 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetMaterialBindGroup<I> 
         let material_bind_group_allocators = material_bind_group_allocator.into_inner();
 
         let Some(material_instance) = material_instances.instances.get(&item.main_entity()) else {
+            info!("missing material 1");
             return RenderCommandResult::Skip;
         };
         let Some(material_bind_group_allocator) =
             material_bind_group_allocators.get(&material_instance.asset_id.type_id())
         else {
+            info!("missing material 2");
             return RenderCommandResult::Skip;
         };
         let Some(material) = materials.get(material_instance.asset_id) else {
+            info!("missing material 3");
+
             return RenderCommandResult::Skip;
         };
         let Some(material_bind_group) = material_bind_group_allocator.get(material.binding.group)
         else {
+            info!("missing material 4");
+
             return RenderCommandResult::Skip;
         };
         let Some(bind_group) = material_bind_group.bind_group() else {
+            info!("missing material 5");
+
             return RenderCommandResult::Skip;
         };
         pass.set_bind_group(I, bind_group, &[]);
@@ -601,28 +605,28 @@ pub struct RenderMaterialInstances {
     pub current_change_tick: Tick,
 }
 
-// /// A dummy [`AssetId`] that we use as a placeholder whenever a mesh doesn't
-// /// have a material.
-// ///
-// /// See the comments in [`RenderMaterialInstances::mesh_material`] for more
-// /// information.
-// pub(crate) static DUMMY_MESH_MATERIAL: AssetId<StandardPointCloudMaterial> =
-//     AssetId::<StandardPointCloudMaterial>::invalid();
+/// A dummy [`AssetId`] that we use as a placeholder whenever a mesh doesn't
+/// have a material.
+///
+/// See the comments in [`RenderMaterialInstances::mesh_material`] for more
+/// information.
+pub(crate) static DUMMY_MESH_MATERIAL: AssetId<StandardPointCloudMaterial> =
+    AssetId::<StandardPointCloudMaterial>::invalid();
 
-// impl RenderMaterialInstances {
-//     /// Returns the mesh material ID for the entity with the given mesh, or a
-//     /// dummy mesh material ID if the mesh has no material ID.
-//     ///
-//     /// Meshes almost always have materials, but in very specific circumstances
-//     /// involving custom pipelines they won't. (See the
-//     /// `specialized_mesh_pipelines` example.)
-//     pub(crate) fn mesh_material(&self, entity: MainEntity) -> UntypedAssetId {
-//         match self.instances.get(&entity) {
-//             Some(render_instance) => render_instance.asset_id,
-//             None => DUMMY_MESH_MATERIAL.into(),
-//         }
-//     }
-// }
+impl RenderMaterialInstances {
+    /// Returns the mesh material ID for the entity with the given mesh, or a
+    /// dummy mesh material ID if the mesh has no material ID.
+    ///
+    /// Meshes almost always have materials, but in very specific circumstances
+    /// involving custom pipelines they won't. (See the
+    /// `specialized_mesh_pipelines` example.)
+    pub(crate) fn mesh_material(&self, entity: MainEntity) -> UntypedAssetId {
+        match self.instances.get(&entity) {
+            Some(render_instance) => render_instance.asset_id,
+            None => DUMMY_MESH_MATERIAL.into(),
+        }
+    }
+}
 
 /// The material associated with a single mesh instance in the main world.
 ///

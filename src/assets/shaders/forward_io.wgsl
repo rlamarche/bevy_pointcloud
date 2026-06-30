@@ -38,21 +38,23 @@ struct VertexOutput {
     // This is `clip position` when the struct is used as a vertex stage output
     // and `frag coord` when used as a fragment stage input
     @builtin(position) position: vec4<f32>,
-    @location(0) world_position: vec4<f32>,
-    @location(1) world_normal: vec3<f32>,
+    @location(0) shape_uv: vec2<f32>,
+    // the position of the point in its space
+    @location(1) instance_position: vec3<f32>,
+    @location(2) world_position: vec4<f32>,
+    @location(3) world_normal: vec3<f32>,
 #ifdef VERTEX_UVS_A
-    @location(2) uv: vec2<f32>,
+    @location(4) uv: vec2<f32>,
 #endif
 #ifdef VERTEX_UVS_B
-    @location(3) uv_b: vec2<f32>,
+    @location(5) uv_b: vec2<f32>,
 #endif
 #ifdef VERTEX_TANGENTS
-    @location(4) world_tangent: vec4<f32>,
+    @location(6) world_tangent: vec4<f32>,
 #endif
-#ifdef VERTEX_COLORS
-    @location(5) color: vec4<f32>,
-#endif
-    @location(6) shape_uv: vec2<f32>,
+// #ifdef VERTEX_COLORS
+    @location(7) color: vec4<f32>,
+// #endif
 }
 
 

@@ -1,13 +1,26 @@
 use bevy::{
     camera::{
-        Camera, visibility::{RenderLayers, ViewVisibility},
-    }, ecs::{
+        primitives::Aabb,
+        visibility::{RenderLayers, ViewVisibility},
+        Camera,
+    },
+    ecs::{
         entity::Entity,
+        hierarchy::ChildOf,
         query::With,
         system::{Local, Query, ResMut},
-    }, log::warn, mesh::Mesh3d, pbr::PreviousGlobalTransform, platform::collections::HashMap, render::{
-        Extract, sync_world::{MainEntity, RenderEntity}, view::ExtractedView,
-    }, transform::components::GlobalTransform, utils::Parallel,
+    },
+    log::warn,
+    mesh::Mesh3d,
+    pbr::PreviousGlobalTransform,
+    platform::collections::HashMap,
+    render::{
+        sync_world::{MainEntity, RenderEntity},
+        view::ExtractedView,
+        Extract,
+    },
+    transform::components::GlobalTransform,
+    utils::Parallel,
 };
 
 use crate::{
@@ -122,25 +135,48 @@ pub fn extract_pointcloud_chunks(
     mut render_mesh_instances: ResMut<RenderPointCloudInstances>,
     mut render_mesh_instance_queues: Local<Parallel<Vec<(Entity, RenderPointCloudInstance)>>>,
     meshes_query: Extract<
-        Query<
-            (
-                Entity,
-                &ViewVisibility,
-                &GlobalTransform,
-                &Mesh3d,
-                &PointCloudChunk3d,
-                Option<&PreviousGlobalTransform>,
-                Option<&RenderLayers>,
-            ),
-        >,
+        Query<(
+            Entity,
+            Option<&ChildOf>,
+            Option<&Aabb>,
+            &ViewVisibility,
+            &GlobalTransform,
+            &Mesh3d,
+            &PointCloudChunk3d,
+            Option<&PreviousGlobalTransform>,
+            Option<&RenderLayers>,
+        )>,
     >,
+    aabb_query: Extract<Query<&Aabb>>,
 ) {
     meshes_query.par_iter().for_each_init(
         || render_mesh_instance_queues.borrow_local_mut(),
-        |queue, (entity, view_visibility, transform, mesh, chunk, previous_transform, render_layers)| {
+        |queue,
+         (
+            entity,
+            maybe_child_of,
+            maybe_aabb,
+            view_visibility,
+            transform,
+            mesh,
+            chunk,
+            previous_transform,
+            render_layers,
+        )| {
             if !view_visibility.get() {
                 return;
             }
+
+            let Some(aabb) = (match maybe_aabb {
+                Some(aabb) => Some(aabb),
+                None => match maybe_child_of {
+                    Some(child_of) => aabb_query.get(child_of.parent()).ok(),
+                    None => None,
+                },
+            }) else {
+                warn!("Unable to get chunk's root aabb");
+                return;
+            };
 
             let world_from_local = transform.affine();
             let previous_world_from_local = previous_transform
@@ -150,6 +186,7 @@ pub fn extract_pointcloud_chunks(
             queue.push((
                 entity,
                 RenderPointCloudInstance {
+                    aabb: *aabb,
                     mesh_id: mesh.id(),
                     asset_id: chunk.id(),
                     transforms: PointCloudTransforms {

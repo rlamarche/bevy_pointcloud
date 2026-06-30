@@ -12,6 +12,7 @@
     forward_io::{ShapeInput, InstanceInput, VertexOutput, FragmentOutput},
     functions,
     pointcloud_bindings::pointcloud,
+    pointcloud_standard_material_bindings::material,
     pointcloud_functions,
 }
 
@@ -44,12 +45,26 @@ fn vertex(
 #endif
 
 #ifdef VERTEX_POSITIONS
-    let world_position = pointcloud_functions::mesh_position_local_to_world(world_from_local, vec4<f32>(vertex.position.xyz, 1.0));
+    let world_position =
+        pointcloud_functions::mesh_position_local_to_world(
+        world_from_local,
+        vec4<f32>(vertex.position.xyz, 1.0)
+    );
+
     var view_position = position_world_to_view(world_position.xyz);
 
-    let radius = 0.025;
+    let radius = functions::compute_point_size(
+        vertex,
+        view_position,
+        world_from_local,
+        material.point_size
+    );
+
     let offset = shape.position.xy * radius;
     out.position = position_view_to_clip(view_position + vec3<f32>(offset, 0.0));
+    out.world_position = world_position;
+    out.instance_position = vertex.position;
+
 
     // out.world_position = mesh_functions::mesh_position_local_to_world(world_from_local, vec4<f32>(vertex.position, 1.0));
     // out.position = position_world_to_clip(out.world_position.xyz);
@@ -62,6 +77,12 @@ fn vertex(
 #ifdef VERTEX_COLORS
     out.color = vertex.color;
 #endif
+
+// #ifdef VERTEX_COLORS
+//     out.color = vertex.color;
+// #else
+//     out.color = material.base_color;
+// #endif
 
     // let right = vec3<f32>(view.world_from_view[0][0], view.world_from_view[0][1], view.world_from_view[0][2]);
     // let up    = vec3<f32>(view.world_from_view[1][0], view.world_from_view[1][1], view.world_from_view[1][2]);
@@ -109,10 +130,18 @@ fn fragment(
         }
     #endif SHAPE_UVS_A
 
-    #ifdef VERTEX_COLORS
-        out.color = vec4<f32>(functions::srgb_to_rgb_simple(in.color.xyz), 1.0);
-    #else
-        out.color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
+
+    #ifdef ELEVATION_GRADIENT
+        let t = (in.instance_position.z - pointcloud.aabb_min.z) / (pointcloud.aabb_max.z - pointcloud.aabb_min.z);
+        let color = mix(material.base_color.xyz, material.base_color_up.xyz, t);
+
+        out.color = vec4<f32>(functions::srgb_to_rgb_simple(color), 1.0);
+    #else // ELEVATION_GRADIENT
+        #ifdef VERTEX_COLORS
+            out.color = vec4<f32>(functions::srgb_to_rgb_simple(in.color.xyz), 1.0);
+        #else
+            out.color = vec4<f32>(functions::srgb_to_rgb_simple(material.base_color.xyz), 1.0);
+        #endif
     #endif
 
     return out;

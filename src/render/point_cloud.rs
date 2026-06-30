@@ -1,9 +1,10 @@
 use bevy::{
     asset::{AssetId, Handle},
-    camera::visibility::RenderLayers,
+    camera::{primitives::Aabb, visibility::RenderLayers},
     ecs::{component::Component, resource::Resource},
     math::{Affine3, Affine3Ext, Vec4},
     mesh::Mesh,
+    pbr::MaterialBindGroupSlot,
     prelude::{Deref, DerefMut},
     render::{
         render_asset::RenderAsset,
@@ -47,6 +48,7 @@ pub struct RenderPointCloudInstances(MainEntityHashMap<RenderPointCloudInstance>
 /// CPU data that the render world keeps for each entity, when *not* using GPU
 /// mesh uniform building.
 pub struct RenderPointCloudInstance {
+    pub aabb: Aabb,
     pub mesh_id: AssetId<Mesh>,
     pub asset_id: AssetId<PointCloudChunk>,
     /// The transform of the mesh.
@@ -65,6 +67,8 @@ pub struct PointCloudTransforms {
 
 #[derive(ShaderType, Clone)]
 pub struct PointCloudUniform {
+    pub aabb_min: Vec4,
+    pub aabb_max: Vec4,
     // Affine 4x3 matrices transposed to 3x4
     pub world_from_local: [Vec4; 3],
     pub previous_world_from_local: [Vec4; 3],
@@ -75,19 +79,34 @@ pub struct PointCloudUniform {
     pub local_from_world_transpose_a: [Vec4; 2],
     pub local_from_world_transpose_b: f32,
     pub first_vertex_index: u32,
+    pub material_bind_group_slot: u32,
 }
 
 impl PointCloudUniform {
-    pub fn new(mesh_transforms: &PointCloudTransforms, first_vertex_index: u32) -> Self {
+    pub fn new(
+        aabb: &Aabb,
+        mesh_transforms: &PointCloudTransforms,
+        first_vertex_index: u32,
+        material_bind_group_slot: MaterialBindGroupSlot,
+    ) -> Self {
         let (local_from_world_transpose_a, local_from_world_transpose_b) =
             mesh_transforms.world_from_local.inverse_transpose_3x3();
 
+        let material_bind_group_slot = u32::from(material_bind_group_slot);
+        debug_assert!(
+            material_bind_group_slot <= 0xFFFF,
+            "Material bind group slot {material_bind_group_slot} overflowed"
+        );
+
         Self {
+            aabb_min: aabb.min().extend(1.0),
+            aabb_max: aabb.max().extend(1.0),
             world_from_local: mesh_transforms.world_from_local.to_transpose(),
             previous_world_from_local: mesh_transforms.previous_world_from_local.to_transpose(),
             local_from_world_transpose_a,
             local_from_world_transpose_b,
             first_vertex_index,
+            material_bind_group_slot,
         }
     }
 }
