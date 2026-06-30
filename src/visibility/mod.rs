@@ -97,9 +97,5 @@ impl Plugin for PointCloudVisiblityPlugin {
         app.world_mut()
             .register_component_hooks::<PointCloud3d>()
             .on_add(add_visibility_class::<PointCloud3d>);
-
-        app.world_mut()
-            .register_component_hooks::<PointCloudChunk3d>()
-            .on_add(add_visibility_class::<PointCloudChunk3d>);
     }
 }
