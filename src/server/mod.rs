@@ -122,7 +122,7 @@ impl FromWorld for PointCloudServer {
 
 impl PointCloudServer {
     /// Load a point cloud lazily (point cloud content will be loaded on the fly when needed)
-    pub fn load<L: PointCloudLoader>(&self, loader: L) -> Handle<PointCloud> {
+    pub fn load<L: PointCloudLoader>(&self, source: L::Source) -> Handle<PointCloud> {
         let handle = self.data.handle_provider.reserve_handle().typed();
         let owned_handle = handle.clone();
 
@@ -130,7 +130,7 @@ impl PointCloudServer {
 
         info!("Loading point cloud");
         let task = IoTaskPool::get().spawn(async move {
-            if let Err(err) = data.load_internal(loader, owned_handle).await {
+            if let Err(err) = data.load_internal::<L>(source, owned_handle).await {
                 error!("{}", err);
             }
         });
@@ -299,10 +299,11 @@ pub(crate) struct PointCloudServerData {
 impl PointCloudServerData {
     async fn load_internal<L: PointCloudLoader>(
         &self,
-        loader: L,
+        source: L::Source,
         handle: Handle<PointCloud>,
     ) -> Result<(), BevyError> {
-        info!("Loading point cloud internally");
+        let loader = L::from_source(source).await.map_err(Into::into)?;
+
         let asset_id = handle.id();
 
         let mut point_cloud = PointCloud::new();

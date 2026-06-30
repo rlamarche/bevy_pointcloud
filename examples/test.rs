@@ -50,11 +50,9 @@ fn load_point_cloud(
         ..default()
     });
 
-    let loader = LasLoader::from(FileSource::open(
+    let point_cloud_handle = point_cloud_server.load::<LasLoader<_>>(FileSource::open(
         "assets/pointclouds/lion_takanawa.copc.laz",
     )?);
-
-    let point_cloud_handle = point_cloud_server.load(loader);
     commands.spawn((
         PointCloud3d(point_cloud_handle),
         Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2)),

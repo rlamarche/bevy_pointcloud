@@ -10,8 +10,14 @@ use bevy::{
 use crate::{ChildIndex, NodeData, PointCloudNode, PointCloudNodeStatus};
 
 pub trait PointCloudLoader: Send + Sync + Sized + 'static {
+    type Source: Send + Sync + 'static;
     type Hierarchy: Send + Sync + 'static;
     type Error: Into<BevyError>;
+
+    /// This method must return a loader from it's source, it will be called asynchronously
+    fn from_source(
+        source: Self::Source,
+    ) -> impl ConditionalSendFuture<Output = Result<Self, Self::Error>>;
 
     /// This method must load the initial point cloud octree hierarchy in a flat structure.
     /// The return value is a vector, the first item is the root,

@@ -52,8 +52,14 @@ impl<S: ByteSource> From<S> for LasLoader<S> {
 }
 
 impl<S: ByteSource> PointCloudLoader for LasLoader<S> {
+    type Source = S;
     type Hierarchy = usize; // just the number of points for faster allocations
     type Error = LasLoaderError;
+
+
+    async fn from_source(source: Self::Source) -> Result<Self, Self::Error> {
+        Ok(Self::from(source))
+    }
 
     async fn load_initial_hierarchy(
         &self,
