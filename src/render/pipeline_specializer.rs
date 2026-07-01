@@ -50,7 +50,8 @@ pub struct SpecializedPointCloudPipelines<S: SpecializedPointCloudPipeline> {
 }
 
 type VertexLayoutCache<S> = HashMap<
-    VertexBufferLayout,
+    // the vertex buffer layout of the shape & the mesh
+    (VertexBufferLayout, VertexBufferLayout),
     HashMap<<S as SpecializedPointCloudPipeline>::Key, CachedRenderPipelineId>,
 >;
 
@@ -121,14 +122,21 @@ impl<S: SpecializedPointCloudPipeline> SpecializedPointCloudPipelines<S> {
             // Different MeshVertexBufferLayouts can produce the same final VertexBufferLayout
             // We want compatible vertex buffer layouts to use the same pipelines, so we must
             // "deduplicate" them
-            let layout_map = match vertex_layout_cache
-                .raw_entry_mut()
-                .from_key(&descriptor.vertex.buffers[0])
-            {
+            // There is 2 vertex buffers because one for the shape, the other for the mesh
+            let layout_map = match vertex_layout_cache.raw_entry_mut().from_key(&(
+                descriptor.vertex.buffers[0].clone(),
+                descriptor.vertex.buffers[1].clone(),
+            )) {
                 RawEntryMut::Occupied(entry) => entry.into_mut(),
                 RawEntryMut::Vacant(entry) => {
                     entry
-                        .insert(descriptor.vertex.buffers[0].clone(), Default::default())
+                        .insert(
+                            (
+                                descriptor.vertex.buffers[0].clone(),
+                                descriptor.vertex.buffers[1].clone(),
+                            ),
+                            Default::default(),
+                        )
                         .1
                 }
             };

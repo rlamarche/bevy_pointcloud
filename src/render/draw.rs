@@ -9,6 +9,7 @@ use bevy::{
     log::warn,
     pbr::{RenderMeshInstances, SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup},
     render::{
+        erased_render_asset::ErasedRenderAssets,
         mesh::{allocator::MeshAllocator, RenderMesh, RenderMeshBufferInfo},
         render_asset::RenderAssets,
         render_phase::{
@@ -17,7 +18,7 @@ use bevy::{
     },
 };
 
-use crate::{PreparedPointCloudUniform, ShapeMeshes};
+use crate::{PreparedMaterial, PreparedPointCloudUniform, RenderMaterialInstances};
 
 pub type DrawPointCloud = (
     SetItemPipeline,
@@ -72,7 +73,8 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
         SRes<RenderAssets<RenderMesh>>,
         SRes<RenderMeshInstances>,
         SRes<MeshAllocator>,
-        SRes<ShapeMeshes>,
+        SRes<ErasedRenderAssets<PreparedMaterial>>,
+        SRes<RenderMaterialInstances>,
     );
     type ViewQuery = ();
     type ItemQuery = ();
@@ -81,16 +83,39 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
         item: &P,
         _view: (),
         _item_query: Option<()>,
-        (meshes, mesh_instances, mesh_allocator, shape_meshes): SystemParamItem<
+        (meshes, mesh_instances, mesh_allocator, materials, material_instances): SystemParamItem<
             'w,
             '_,
             Self::Param,
         >,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let meshes = meshes.into_inner();
         let mesh_instances = mesh_instances.into_inner();
         let mesh_allocator = mesh_allocator.into_inner();
+        let materials = materials.into_inner();
+        let material_instances = material_instances.into_inner();
+
+        let Some(material_instance) = material_instances.instances.get(&item.main_entity()) else {
+            info!("missing material 1");
+            return RenderCommandResult::Skip;
+        };
+
+        let Some(material) = materials.get(material_instance.asset_id) else {
+            info!("missing material 3");
+
+            return RenderCommandResult::Skip;
+        };
+
+        let shape_mesh_id = material.properties.shape_mesh;
+
+        let Some(shape_mesh) = meshes.get(shape_mesh_id) else {
+            return RenderCommandResult::Failure("quad missing");
+        };
+
+        let Some(quad_vertex_buffer_slice) = mesh_allocator.mesh_vertex_slice(&shape_mesh_id)
+        else {
+            return RenderCommandResult::Failure("unable to get quad vertex slice");
+        };
 
         let Some(mesh_asset_id) = mesh_instances.mesh_asset_id(item.main_entity()) else {
             return RenderCommandResult::Skip;
@@ -99,26 +124,15 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
             return RenderCommandResult::Skip;
         };
 
-        // TODO load from a configuration ?
-        let Some(quad_mesh) = meshes.get(&shape_meshes.quad_mesh) else {
-            return RenderCommandResult::Failure("quad missing");
-        };
-        let Some(quad_vertex_buffer_slice) =
-            mesh_allocator.mesh_vertex_slice(&shape_meshes.quad_mesh.id())
-        else {
-            return RenderCommandResult::Failure("unable to get quad vertex slice");
-        };
-
         pass.set_vertex_buffer(0, quad_vertex_buffer_slice.buffer.slice(..));
         pass.set_vertex_buffer(1, vertex_buffer_slice.buffer.slice(..));
 
-        match &quad_mesh.buffer_info {
+        match &shape_mesh.buffer_info {
             RenderMeshBufferInfo::Indexed {
                 count,
                 index_format,
             } => {
-                let Some(index_buffer_slice) =
-                    mesh_allocator.mesh_index_slice(&shape_meshes.quad_mesh.id())
+                let Some(index_buffer_slice) = mesh_allocator.mesh_index_slice(&shape_mesh_id)
                 else {
                     return RenderCommandResult::Skip;
                 };

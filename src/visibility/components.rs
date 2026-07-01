@@ -18,7 +18,7 @@ pub struct PointCloudVisibilitySettings {
 impl Default for PointCloudVisibilitySettings {
     fn default() -> Self {
         Self {
-            min_radius: Some(30.0),
+            min_radius: None,
             point_budget: Some(10_000_000),
         }
     }

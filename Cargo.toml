@@ -110,13 +110,15 @@ features = [
   "std",
   "zstd_rust",
   "x11",
-  "debug",
 ]
 
 [dev-dependencies]
 bevy = { version = "0.19.0", features = [
     "free_camera",
+    "pan_camera",
     "bevy_remote",
+    "debug",
+    "file_watcher",
 ] }
 # bevy_camera_controller = { version = "0.19.0", features = ["free_camera", "pan_camera"] }
 # bevy_remote = { version = "0.19.0" }

@@ -15,9 +15,3 @@ struct PointCloud {
     local_from_world_transpose_a: mat2x4<f32>,
     local_from_world_transpose_b: f32,
 };
-
-struct StandardPointCloudMaterial {
-    base_color: vec4<f32>,
-    base_color_up: vec4<f32>,
-    point_size: f32,
-}

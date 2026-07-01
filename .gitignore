@@ -22,4 +22,5 @@ Cargo.lock
 .zed
 
 # Assets
-/assets
+/assets/pointclouds
+/assets/shaders

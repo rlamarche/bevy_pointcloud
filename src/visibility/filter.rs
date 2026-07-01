@@ -16,12 +16,10 @@ impl ScreenPixelRadiusFilter {
         _camera_view: &CameraView,
         screen_pixel_radius: Option<f32>,
     ) -> bool {
-        if let (Some(radius), Some(min_radius)) = (screen_pixel_radius, self.min_radius)
-            && radius >= min_radius
-        {
-            true
-        } else {
-            false
+        match (screen_pixel_radius, self.min_radius) {
+            (_, None) | (None, _) => true,
+            (Some(radius), Some(min_radius)) if radius >= min_radius => true,
+            _ => false,
         }
     }
 }

@@ -11,7 +11,7 @@ use bevy::{
 mod components;
 #[cfg(feature = "server")]
 mod loader;
-mod material;
+mod materials;
 mod point_cloud;
 pub mod prelude;
 mod render;
@@ -23,7 +23,7 @@ mod visibility;
 pub use components::*;
 #[cfg(feature = "server")]
 pub use loader::*;
-pub use material::*;
+pub use materials::*;
 pub use point_cloud::*;
 pub use render::*;
 pub use resources::*;
@@ -44,7 +44,8 @@ impl Plugin for PointCloudPlugin {
         load_shader_library!(app, "assets/shaders/pointcloud_types.wgsl");
         load_shader_library!(app, "assets/shaders/pointcloud_bindings.wgsl");
         load_shader_library!(app, "assets/shaders/pointcloud_functions.wgsl");
-        load_shader_library!(app, "assets/shaders/pointcloud_standard_material_bindings.wgsl");
+        load_shader_library!(app, "assets/shaders/simple_material_types.wgsl");
+        load_shader_library!(app, "assets/shaders/simple_material_bindings.wgsl");
         embedded_asset!(app, "assets/shaders/pointcloud.wgsl");
         app.init_asset::<PointCloud>()
             .init_asset::<PointCloudChunk>()
@@ -68,7 +69,7 @@ impl Plugin for PointCloudPlugin {
         });
         app.add_plugins(PointCloudVisiblityPlugin);
         app.add_plugins(RenderPointCloudPlugin);
-        app.add_plugins(MaterialPlugin::<StandardPointCloudMaterial>::default());
+        app.add_plugins(MaterialPlugin::<SimplePointCloudMaterial>::default());
     }
 }
 

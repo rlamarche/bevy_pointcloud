@@ -24,14 +24,16 @@ use bevy::{
             SystemParam, SystemParamItem, SystemState,
         },
     },
-    log::{error, info, warn},
+    log::{debug, error, info, warn},
     material::{
         key::{ErasedMaterialKey, ErasedMeshPipelineKey},
         labels::{DrawFunctionLabel, InternedDrawFunctionLabel, InternedShaderLabel, ShaderLabel},
         AlphaMode, OpaqueRendererMethod, RenderPhaseType,
     },
     math::{Affine3, Affine3Ext as _},
-    mesh::{mark_3d_meshes_as_changed_if_their_assets_changed, Mesh3d, MeshVertexBufferLayoutRef},
+    mesh::{
+        mark_3d_meshes_as_changed_if_their_assets_changed, Mesh, Mesh3d, MeshVertexBufferLayoutRef,
+    },
     pbr::{
         alpha_mode_pipeline_key, collect_meshes_for_gpu_building, set_mesh_motion_vector_flags,
         FallbackBindlessResources, MaterialBindGroupAllocator, MaterialBindGroupAllocators,
@@ -76,7 +78,10 @@ use smallvec::SmallVec;
 use std::sync::Arc;
 
 use crate::{
-    DrawPointCloudDepthOnlyPrepass, DrawPointCloudInstanced, DrawPointCloudPrepass, PointCloud3d, PointCloudChunk3d, PointCloudMaterial3d, PointCloudPipeline, PointCloudPipelineSystems, SetPointCloudUniformGroup, ShapeMeshes, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines, StandardPointCloudMaterial,
+    DrawPointCloudDepthOnlyPrepass, DrawPointCloudInstanced, DrawPointCloudPrepass, PointCloud3d,
+    PointCloudChunk3d, PointCloudMaterial3d, PointCloudPipeline, PointCloudPipelineSystems,
+    SetPointCloudUniformGroup, ShapeMeshes, SimplePointCloudMaterial,
+    SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
 };
 
 pub const MATERIAL_BIND_GROUP_INDEX: usize = 3;
@@ -163,6 +168,12 @@ pub trait Material: Asset + AsBindGroup + Clone + Sized {
     /// mesh fragment shader will be used.
     fn fragment_shader() -> ShaderRef {
         ShaderRef::Default
+    }
+
+    /// if none, will use a quad
+    #[inline]
+    fn shape_mesh(&self) -> Option<AssetId<Mesh>> {
+        None
     }
 
     /// Returns this material's [`AlphaMode`]. Defaults to [`AlphaMode::Opaque`].
@@ -610,8 +621,8 @@ pub struct RenderMaterialInstances {
 ///
 /// See the comments in [`RenderMaterialInstances::mesh_material`] for more
 /// information.
-pub(crate) static DUMMY_MESH_MATERIAL: AssetId<StandardPointCloudMaterial> =
-    AssetId::<StandardPointCloudMaterial>::invalid();
+pub(crate) static DUMMY_MESH_MATERIAL: AssetId<SimplePointCloudMaterial> =
+    AssetId::<SimplePointCloudMaterial>::invalid();
 
 impl RenderMaterialInstances {
     /// Returns the mesh material ID for the entity with the given mesh, or a
@@ -903,7 +914,6 @@ pub struct PendingMeshMaterialQueues(pub PendingQueues);
 #[derive(SystemParam)]
 pub(crate) struct SpecializeMaterialMeshesSystemParam<'w, 's> {
     render_meshes: Res<'w, RenderAssets<RenderMesh>>,
-    shape_meshes: Res<'w, ShapeMeshes>,
     render_materials: Res<'w, ErasedRenderAssets<PreparedMaterial>>,
     render_mesh_instances: Res<'w, RenderMeshInstances>,
     render_material_instances: Res<'w, RenderMaterialInstances>,
@@ -932,7 +942,6 @@ pub(crate) fn specialize_material_meshes(
     {
         let SpecializeMaterialMeshesSystemParam {
             render_meshes,
-            shape_meshes,
             render_materials,
             render_mesh_instances,
             render_material_instances,
@@ -1061,33 +1070,34 @@ pub(crate) fn specialize_material_meshes(
                 //     continue;
                 // };
 
-                // TODO: make the mesh configurable (how ?)
-                let Some(shape_mesh) = render_meshes.get(&shape_meshes.quad_mesh) else {
-                    warn!("quad mesh not found");
+                let Some(mesh_instance) =
+                    render_mesh_instances.render_mesh_queue_data(*visible_entity)
+                else {
+                    debug!("mesh_instance not found");
                     view_pending_mesh_material_queues
                         .current_frame
                         .insert((*render_entity, *visible_entity));
                     continue;
                 };
 
-                let Some(mesh_instance) =
-                    render_mesh_instances.render_mesh_queue_data(*visible_entity)
-                else {
-                    // warn!("mesh_instance not found");
-                    view_pending_mesh_material_queues
-                        .current_frame
-                        .insert((*render_entity, *visible_entity));
-                    continue;
-                };
                 let Some(mesh) = render_meshes.get(mesh_instance.mesh_asset_id()) else {
-                    warn!("render_meshes not found");
+                    debug!("render_meshes not found");
                     view_pending_mesh_material_queues
                         .current_frame
                         .insert((*render_entity, *visible_entity));
                     continue;
                 };
                 let Some(material) = render_materials.get(material_instance.asset_id) else {
-                    warn!("render_materials not found");
+                    debug!("render_materials not found");
+                    view_pending_mesh_material_queues
+                        .current_frame
+                        .insert((*render_entity, *visible_entity));
+                    continue;
+                };
+
+                // TODO: make the mesh configurable (how ?)
+                let Some(shape_mesh) = render_meshes.get(material.properties.shape_mesh) else {
+                    debug!("shape mesh not found");
                     view_pending_mesh_material_queues
                         .current_frame
                         .insert((*render_entity, *visible_entity));
@@ -1637,6 +1647,7 @@ where
         SRes<DrawFunctions<AlphaMask3dDeferred>>,
         SRes<DrawFunctions<Shadow>>,
         SRes<AssetServer>,
+        SRes<ShapeMeshes>,
         M::Param,
     );
 
@@ -1659,6 +1670,7 @@ where
             alpha_mask_deferred_draw_functions,
             shadow_draw_functions,
             asset_server,
+            shape_meshes,
             material_param,
         ): &mut SystemParamItem<Self::Param>,
     ) -> Result<Self::ErasedAsset, PrepareAssetError<Self::SourceAsset>> {
@@ -1851,6 +1863,9 @@ where
                 material_key,
                 shadows_enabled,
                 prepass_enabled,
+                shape_mesh: material
+                    .shape_mesh()
+                    .unwrap_or_else(|| shape_meshes.quad_mesh.id()),
             }),
         })
     }
@@ -1982,6 +1997,10 @@ pub struct MaterialProperties {
     /// The key for this material, typically a bitfield of flags that are used to modify
     /// the pipeline descriptor used for this material.
     pub material_key: ErasedMaterialKey,
+
+    /// the mesh instanced by this material
+    pub shape_mesh: AssetId<Mesh>,
+
     /// Whether shadows are enabled for this material
     pub shadows_enabled: bool,
     /// Whether prepass is enabled for this material
