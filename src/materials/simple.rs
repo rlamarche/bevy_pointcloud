@@ -31,7 +31,8 @@ use crate::Material;
 // #[bindless(index_table(range(0..31)))]
 #[reflect(Default, Debug, Clone)]
 pub struct SimplePointCloudMaterial {
-    /// The shape radius, default to `0.5`
+    /// The shape radius, default to None.
+    /// Put `Some(0.5)` for a perfect circle.
     /// If set, the points will be truncated to a circle radius of 1
     pub shape_radius: Option<f32>,
 
@@ -51,7 +52,7 @@ pub struct SimplePointCloudMaterial {
     /// The point size world space dimensions.
     /// Using orthographic projection, the size will always match this size.
     /// Using perspective projection, the point size will fade with distance.
-    /// Defaults to `0.1`.
+    /// Defaults to `0.01`.
     /// Note: the transform scale is applied to the point size.
     pub point_size: f32,
 
@@ -87,7 +88,7 @@ impl Default for SimplePointCloudMaterial {
     fn default() -> Self {
         SimplePointCloudMaterial {
             shape_mesh: None,
-            shape_radius: Some(0.5),
+            shape_radius: None,
             // White because it gets multiplied with texture values if someone uses
             // a texture.
             base_color: Color::WHITE,
