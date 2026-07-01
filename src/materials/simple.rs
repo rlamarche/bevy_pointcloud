@@ -2,7 +2,7 @@ use bevy::{
     asset::{Asset, Handle},
     color::{Color, ColorToComponents, LinearRgba},
     image::Image,
-    math::Vec4,
+    math::{Vec3, Vec4},
     mesh::Mesh,
     pbr::MeshPipelineKey,
     reflect::{std_traits::ReflectDefault, Reflect},
@@ -14,7 +14,7 @@ use bevy::{
 };
 use bitflags::bitflags;
 
-use crate::Material;
+use crate::{ColorStop, ColorStopUniform, Material};
 
 /// A material with "standard" properties used in PBR lighting.
 /// Standard property values with pictures here:
@@ -56,6 +56,26 @@ pub struct SimplePointCloudMaterial {
     /// Note: the transform scale is applied to the point size.
     pub point_size: f32,
 
+    /// A vec of color stops. Up to 8 color stops are currently supported.
+    /// Empty by default.
+    pub color_stops: Vec<ColorStop>,
+
+    /// The end color, must be filled for the gradient to work.
+    /// Defaults to `None`.
+    pub end_color: Option<Color>,
+
+    /// The gradient direction, must be filled for the gradient to work.
+    /// Defaults to `None`.
+    pub gradient_direction: Option<Vec3>,
+
+    /// The gradient start bound (projected from world position), must be filled for the gradient
+    /// to work.
+    pub gradient_start: Option<f32>,
+
+    /// The gradient end bound (projected from world position), must be filled for the gradient to
+    /// work.
+    pub gradient_end: Option<f32>,
+
     /// Whether to cull the "front", "back" or neither side of a point.
     /// If set to `None`, the two sides of the point are visible.
     ///
@@ -93,6 +113,11 @@ impl Default for SimplePointCloudMaterial {
             // a texture.
             base_color: Color::WHITE,
             point_size: 0.01,
+            color_stops: Vec::new(),
+            gradient_direction: None,
+            gradient_start: None,
+            gradient_end: None,
+            end_color: None,
             cull_mode: None,
             base_color_texture: None,
         }
@@ -122,6 +147,18 @@ pub struct SimplePointCloudMaterialUniform {
 
     pub shape_radius: f32,
 
+    pub color_stops: [ColorStopUniform; 8],
+
+    pub color_stop_count: u32,
+
+    pub end_color: Vec4,
+
+    pub gradient_direction: Vec3,
+
+    pub gradient_start: f32,
+
+    pub gradient_end: f32,
+
     /// The [`SimplePointCloudMaterialFlags`] accessible in the `wgsl` shader.
     pub flags: u32,
 }
@@ -136,10 +173,36 @@ impl AsBindGroupShaderType<SimplePointCloudMaterialUniform> for SimplePointCloud
             flags |= SimplePointCloudMaterialFlags::BASE_COLOR_TEXTURE;
         }
 
+        if self.color_stops.len() > 8 {
+            panic!("Up to 8 color stops are supported in SimplePointCloudMaterial.");
+        }
+
         SimplePointCloudMaterialUniform {
             base_color: LinearRgba::from(self.base_color).to_vec4(),
             point_size: self.point_size,
             shape_radius: self.shape_radius.unwrap_or_default(),
+            color_stops: [
+                #[expect(
+                    clippy::get_first,
+                    reason = "It is more idiomatic given the following lines."
+                )]
+                self.color_stops.get(0).cloned().unwrap_or_default().into(),
+                self.color_stops.get(1).cloned().unwrap_or_default().into(),
+                self.color_stops.get(2).cloned().unwrap_or_default().into(),
+                self.color_stops.get(3).cloned().unwrap_or_default().into(),
+                self.color_stops.get(4).cloned().unwrap_or_default().into(),
+                self.color_stops.get(5).cloned().unwrap_or_default().into(),
+                self.color_stops.get(6).cloned().unwrap_or_default().into(),
+                self.color_stops.get(7).cloned().unwrap_or_default().into(),
+            ],
+            color_stop_count: self.color_stops.len() as u32,
+            end_color: self
+                .end_color
+                .map(|c| LinearRgba::from(c).to_vec4())
+                .unwrap_or_default(),
+            gradient_direction: self.gradient_direction.unwrap_or_default(),
+            gradient_start: self.gradient_start.unwrap_or_default(),
+            gradient_end: self.gradient_end.unwrap_or_default(),
             flags: flags.bits(),
         }
     }
@@ -150,9 +213,18 @@ bitflags! {
     #[repr(C)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash)]
     pub struct SimplePointCloudMaterialKey: u64 {
-        const CULL_FRONT               = 0x000001;
-        const CULL_BACK                = 0x000002;
-        const SHAPE_RADIUS             = 0x000004;
+        const CULL_FRONT               = 1_u64 <<  0; // 0x000001
+        const CULL_BACK                = 1_u64 <<  1; // 0x000002
+        const SHAPE_RADIUS             = 1_u64 <<  2; // 0x000004
+        const GRADIENT                 = 1_u64 <<  3; // 0x000008
+        const COLOR_STOP_1             = 1_u64 <<  4; // 0x000016
+        const COLOR_STOP_2             = 1_u64 <<  5; // 0x000032
+        const COLOR_STOP_3             = 1_u64 <<  6; // 0x000064
+        const COLOR_STOP_4             = 1_u64 <<  7; // 0x000128
+        const COLOR_STOP_5             = 1_u64 <<  8; // 0x000256
+        const COLOR_STOP_6             = 1_u64 <<  9; // 0x000512
+        const COLOR_STOP_7             = 1_u64 << 10; // 0x001024
+        const COLOR_STOP_8             = 1_u64 << 11; // 0x002048
     }
 }
 
@@ -173,6 +245,45 @@ impl From<&SimplePointCloudMaterial> for SimplePointCloudMaterialKey {
         key.set(
             SimplePointCloudMaterialKey::SHAPE_RADIUS,
             material.shape_radius.is_some(),
+        );
+        key.set(
+            SimplePointCloudMaterialKey::GRADIENT,
+            material.end_color.is_some()
+                && material.gradient_direction.is_some()
+                && material.gradient_start.is_some()
+                && material.gradient_end.is_some(),
+        );
+        key.set(
+            SimplePointCloudMaterialKey::COLOR_STOP_1,
+            !material.color_stops.is_empty(),
+        );
+        key.set(
+            SimplePointCloudMaterialKey::COLOR_STOP_2,
+            material.color_stops.len() >= 2,
+        );
+        key.set(
+            SimplePointCloudMaterialKey::COLOR_STOP_3,
+            material.color_stops.len() >= 3,
+        );
+        key.set(
+            SimplePointCloudMaterialKey::COLOR_STOP_4,
+            material.color_stops.len() >= 4,
+        );
+        key.set(
+            SimplePointCloudMaterialKey::COLOR_STOP_5,
+            material.color_stops.len() >= 5,
+        );
+        key.set(
+            SimplePointCloudMaterialKey::COLOR_STOP_6,
+            material.color_stops.len() >= 6,
+        );
+        key.set(
+            SimplePointCloudMaterialKey::COLOR_STOP_7,
+            material.color_stops.len() >= 7,
+        );
+        key.set(
+            SimplePointCloudMaterialKey::COLOR_STOP_8,
+            material.color_stops.len() >= 8,
         );
 
         key
@@ -201,10 +312,48 @@ impl Material for SimplePointCloudMaterial {
         if let Some(fragment) = descriptor.fragment.as_mut() {
             let shader_defs = &mut fragment.shader_defs;
 
-            for (flags, shader_def) in [(
-                SimplePointCloudMaterialKey::SHAPE_RADIUS,
-                "SIMPLE_MATERIAL_SHAPE_RADIUS",
-            )] {
+            for (flags, shader_def) in [
+                (
+                    SimplePointCloudMaterialKey::SHAPE_RADIUS,
+                    "SIMPLE_MATERIAL_SHAPE_RADIUS",
+                ),
+                (
+                    SimplePointCloudMaterialKey::GRADIENT,
+                    "SIMPLE_MATERIAL_GRADIENT",
+                ),
+                (
+                    SimplePointCloudMaterialKey::COLOR_STOP_1,
+                    "SIMPLE_MATERIAL_COLOR_STOP_1",
+                ),
+                (
+                    SimplePointCloudMaterialKey::COLOR_STOP_2,
+                    "SIMPLE_MATERIAL_COLOR_STOP_2",
+                ),
+                (
+                    SimplePointCloudMaterialKey::COLOR_STOP_3,
+                    "SIMPLE_MATERIAL_COLOR_STOP_3",
+                ),
+                (
+                    SimplePointCloudMaterialKey::COLOR_STOP_4,
+                    "SIMPLE_MATERIAL_COLOR_STOP_4",
+                ),
+                (
+                    SimplePointCloudMaterialKey::COLOR_STOP_5,
+                    "SIMPLE_MATERIAL_COLOR_STOP_5",
+                ),
+                (
+                    SimplePointCloudMaterialKey::COLOR_STOP_6,
+                    "SIMPLE_MATERIAL_COLOR_STOP_6",
+                ),
+                (
+                    SimplePointCloudMaterialKey::COLOR_STOP_7,
+                    "SIMPLE_MATERIAL_COLOR_STOP_7",
+                ),
+                (
+                    SimplePointCloudMaterialKey::COLOR_STOP_8,
+                    "SIMPLE_MATERIAL_COLOR_STOP_8",
+                ),
+            ] {
                 if key.bind_group_data.intersects(flags) {
                     shader_defs.push(shader_def.into());
                 }
