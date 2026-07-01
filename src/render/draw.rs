@@ -96,13 +96,10 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
         let material_instances = material_instances.into_inner();
 
         let Some(material_instance) = material_instances.instances.get(&item.main_entity()) else {
-            info!("missing material 1");
             return RenderCommandResult::Skip;
         };
 
         let Some(material) = materials.get(material_instance.asset_id) else {
-            info!("missing material 3");
-
             return RenderCommandResult::Skip;
         };
 
