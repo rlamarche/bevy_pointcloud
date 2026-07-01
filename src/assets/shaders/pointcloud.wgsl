@@ -12,7 +12,8 @@
     forward_io::{ShapeInput, InstanceInput, VertexOutput, FragmentOutput},
     functions,
     pointcloud_bindings::pointcloud,
-    simple_material_bindings::material,
+    simple_material_types as material_types,
+    simple_material_bindings as material_bindings,
     pointcloud_functions,
 }
 
@@ -32,7 +33,12 @@ fn vertex(
 
 
 #ifdef VERTEX_POSITIONS
-    let world_position = functions::compute_world_position(vertex, world_from_local, shape, material.point_size);
+    let world_position = functions::compute_world_position(
+        vertex,
+        world_from_local,
+        shape,
+        material_bindings::material.point_size
+    );
 
     out.world_position = vec4<f32>(world_position, 1.0);
     out.position = view.clip_from_world * out.world_position;
@@ -62,7 +68,7 @@ fn fragment(
         // Perfect circle
         let dist = distance(in.shape_uv, vec2<f32>(0.5, 0.5));
 
-        if dist > material.shape_radius {
+        if dist > material_bindings::material.shape_radius {
             #ifdef DEBUG_UV
                     return vec4<f32>(in.uv, 0.0, 1.0);
             #else // DEBUG
@@ -72,10 +78,21 @@ fn fragment(
         #endif // SIMPLE_MATERIAL_SHAPE_RADIUS
     #endif // SHAPE_UVS_A
 
+    var base_color = material_bindings::material.base_color;
+
+    if ((material_bindings::material.flags & material_types::SIMPLE_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT) != 0u) {
+        base_color *=
+            textureSample(
+                material_bindings::base_color_texture,
+                material_bindings::base_color_sampler,
+                in.shape_uv,
+        );
+    }
+
     #ifdef VERTEX_COLORS
-        out.color = vec4<f32>(functions::srgb_to_rgb_simple(in.color.xyz * material.base_color.xyz), 1.0);
+        out.color = vec4<f32>(functions::srgb_to_rgb_simple(in.color.xyz * base_color.xyz), 1.0);
     #else
-        out.color = vec4<f32>(functions::srgb_to_rgb_simple(material.base_color.xyz), 1.0);
+        out.color = vec4<f32>(functions::srgb_to_rgb_simple(base_color.xyz), 1.0);
     #endif
 
     return out;
