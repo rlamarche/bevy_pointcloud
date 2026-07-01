@@ -29,6 +29,7 @@ fn extract_scale(matrix: mat4x4<f32>) -> vec3<f32> {
     return vec3<f32>(scale_x, scale_y, scale_z);
 }
 
+/// WIP function to handle adaptive point sizing in octrees
 fn compute_radius(
     // will be used for adaptive point size
     vertex: InstanceInput,
@@ -44,33 +45,29 @@ fn compute_radius(
     return point_size * transform_scale;
 }
 
+/// This function computes the world position of the point using the shape vertice
+/// params:
+/// - `position`: the position of the point (the instance)
+/// - `world_from_local`: transform matrix from local (in the point cloud space) to the world
+/// - `shape_position`: the position of a vertice of the shape
+/// - `point_size`: the point size is juste a scale applied to the shape
+/// Note that the scale from `world_from_local` is also applied (the max scale) to preserve coherent point sizing.
+/// The shape is always face to the camera. Later we would be using the normal of the points to orient the shapes.
 fn compute_world_position(
-    vertex: InstanceInput,
+    position: vec3<f32>,
     world_from_local: mat4x4<f32>,
-    shape: ShapeInput,
+    shape_position: vec3<f32>,
     point_size: f32,
 ) -> vec3<f32> {
-    // compute the point position in world
-    var world_position = (world_from_local * vec4<f32>(vertex.position.xyz, 1.0)).xyz;
+    var world_position = (world_from_local * vec4<f32>(position.xyz, 1.0)).xyz;
     let max_scale = extract_max_scale(world_from_local);
 
     let right  = vec3<f32>(view.world_from_view[0][0], view.world_from_view[0][1], view.world_from_view[0][2]);
     let up     = vec3<f32>(view.world_from_view[1][0], view.world_from_view[1][1], view.world_from_view[1][2]);
     let facing = vec3<f32>(view.world_from_view[2][0], view.world_from_view[2][1], view.world_from_view[2][2]);
 
-    let billboard_shape = view.world_from_view * vec4<f32>(shape.position, 1.0);
+    let billboard_shape = view.world_from_view * vec4<f32>(shape_position, 1.0);
     world_position = world_position + billboard_shape.xyz * max_scale * point_size;
 
     return world_position;
-
-    // let billborad_shape = right * shape.position.x + up * shape.position.y + facing * shape.position.z;
-
-    // TODO if normal available, compute 3d scale and shape projection using this normal
-
-    // let scaled_shape = shape.position.xyz * max_scale * material.point_size;
-
-    // world_position = world_position.xyz
-    //     + right * scaled_shape.x
-    //     + up * scaled_shape.y
-    //     + facing * scaled_shape.z;
 }

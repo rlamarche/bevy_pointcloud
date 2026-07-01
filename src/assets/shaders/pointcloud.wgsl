@@ -1,4 +1,3 @@
-// #import bevy_pbr::mesh_view_bindings::view
 #import bevy_pbr::{
     mesh_view_bindings::view,
     view_transformations::{
@@ -12,9 +11,9 @@
     forward_io::{ShapeInput, InstanceInput, VertexOutput, FragmentOutput},
     functions,
     pointcloud_bindings::pointcloud,
+    pointcloud_functions,
     simple_material_types as material_types,
     simple_material_bindings as material_bindings,
-    pointcloud_functions,
 }
 
 @vertex
@@ -34,9 +33,9 @@ fn vertex(
 
 #ifdef VERTEX_POSITIONS
     let world_position = functions::compute_world_position(
-        vertex,
+        vertex.position,
         world_from_local,
-        shape,
+        shape.position,
         material_bindings::material.point_size
     );
 

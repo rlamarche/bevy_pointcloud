@@ -30,22 +30,23 @@ fn setup(mut commands: Commands) {
 }
 
 fn load_point_cloud(
+    mut commands: Commands,
     mut materials: ResMut<Assets<SimplePointCloudMaterial>>,
     point_cloud_server: Res<PointCloudServer>,
-    mut commands: Commands,
+    asset_server: Res<AssetServer>,
 ) -> Result {
+    let texture_handle = asset_server.load("branding/bevy_icon.png");
     commands.spawn((
         PointCloud3d(point_cloud_server.load::<PointCloudMeshLoader>(
-            Sphere::new(0.5).mesh().ico(16)?, // .uv(128, 72)
+            Sphere::new(0.5).mesh().ico(16)?,
         )),
         PointCloudMaterial3d(materials.add(SimplePointCloudMaterial {
             shape_radius: None,
             base_color: RED.into(),
+            base_color_texture: Some(texture_handle),
             point_size: 0.01,
             ..default()
         })),
-        Transform::from_scale(Vec3::new(1.0, 1.0, 1.0)),
-        // Transform::from_scale(Vec3::new(1.0, 1.0, 2.0)),
     ));
 
     Ok(())
@@ -69,7 +70,7 @@ fn toggle_material(
     material: Query<&PointCloudMaterial3d<SimplePointCloudMaterial>>,
     key_input: Res<ButtonInput<KeyCode>>,
 ) {
-    if key_input.just_pressed(KeyCode::KeyM) {
+    if key_input.just_pressed(KeyCode::KeyP) {
         let material = material.single().unwrap();
 
         if let Some(mut material) = materials.get_mut(material) {

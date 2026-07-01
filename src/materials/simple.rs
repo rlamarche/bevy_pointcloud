@@ -181,12 +181,10 @@ impl From<&SimplePointCloudMaterial> for SimplePointCloudMaterialKey {
 
 impl Material for SimplePointCloudMaterial {
     fn vertex_shader() -> bevy::shader::ShaderRef {
-        // "embedded://bevy_pointcloud/assets/shaders/pointcloud.wgsl".into()
-        "shaders/pointcloud_dev.wgsl".into()
+        "embedded://bevy_pointcloud/assets/shaders/pointcloud.wgsl".into()
     }
     fn fragment_shader() -> bevy::shader::ShaderRef {
-        "shaders/pointcloud_dev.wgsl".into()
-        // "embedded://bevy_pointcloud/assets/shaders/pointcloud.wgsl".into()
+        "embedded://bevy_pointcloud/assets/shaders/pointcloud.wgsl".into()
     }
     fn shape_mesh(&self) -> Option<bevy::asset::AssetId<Mesh>> {
         self.shape_mesh.as_ref().map(Handle::id)
