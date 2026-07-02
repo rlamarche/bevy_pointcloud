@@ -4,12 +4,8 @@ use bevy::{
     camera_controller::free_camera::{FreeCamera, FreeCameraPlugin},
     prelude::*,
     remote::{http::RemoteHttpPlugin, RemotePlugin},
-    render::view::NoIndirectDrawing,
 };
-use bevy_pointcloud::{
-    las::LasLoader, mesh::PointCloudMeshLoader, prelude::*, FileSource, PointCloud3d,
-    PointCloudMaterial3d, PointCloudServer, StandardPointCloudMaterial,
-};
+use bevy_pointcloud::{las::LasLoader, prelude::*};
 
 fn main() {
     App::new()
@@ -25,7 +21,6 @@ fn setup(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(0.0, 5.0, 15.0).looking_at(Vec3::ZERO, Vec3::Y),
-        NoIndirectDrawing,
         Msaa::Off,
         FreeCamera::default(),
     ));
@@ -33,7 +28,7 @@ fn setup(mut commands: Commands) {
 
 fn load_point_cloud(
     // mut materials: ResMut<Assets<StandardMaterial>>,
-    mut pc_materials: ResMut<Assets<StandardPointCloudMaterial>>,
+    mut pc_materials: ResMut<Assets<SimplePointCloudMaterial>>,
     point_cloud_server: Res<PointCloudServer>,
     // mut images: ResMut<Assets<Image>>,
     mut commands: Commands,
@@ -44,8 +39,8 @@ fn load_point_cloud(
     //     ..default()
     // });
 
-    let material = pc_materials.add(StandardPointCloudMaterial {
-        base_color: Color::WHITE,
+    let material = pc_materials.add(SimplePointCloudMaterial {
+        point_size: 25.0,
         // base_color_texture: Some(images.add(uv_debug_texture())),
         ..default()
     });
@@ -61,24 +56,24 @@ fn load_point_cloud(
     ));
 
     commands.spawn((
-        PointCloud3d(point_cloud_server.load::<PointCloudMeshLoader>(
-            Sphere::default().mesh().uv(32, 18)
-        )),
+        PointCloud3d(
+            point_cloud_server.load::<PointCloudMeshLoader>(Sphere::default().mesh().uv(32, 18)),
+        ),
         PointCloudMaterial3d(material.clone()),
     ));
 
     commands.spawn((
-        PointCloud3d(point_cloud_server.load::<PointCloudMeshLoader>(
-            Sphere::default().mesh().ico(5)?
-        )),
+        PointCloud3d(
+            point_cloud_server.load::<PointCloudMeshLoader>(Sphere::default().mesh().ico(5)?),
+        ),
         Transform::from_translation(Vec3::new(1.0, 0.0, 0.0)),
         PointCloudMaterial3d(material.clone()),
     ));
 
     commands.spawn((
-        PointCloud3d(point_cloud_server.load::<PointCloudMeshLoader>(
-            Torus::default().mesh().build()
-        )),
+        PointCloud3d(
+            point_cloud_server.load::<PointCloudMeshLoader>(Torus::default().mesh().build()),
+        ),
         Transform::from_translation(Vec3::new(2.5, 0.0, 0.0)),
         PointCloudMaterial3d(material.clone()),
     ));

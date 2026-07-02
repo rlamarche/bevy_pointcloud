@@ -20,7 +20,6 @@ fn setup(mut commands: Commands) {
 
 fn load_point_cloud(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
     asset_server: Res<AssetServer>,
     mut materials: ResMut<Assets<SimplePointCloudMaterial>>,
     point_cloud_server: Res<PointCloudServer>,
@@ -32,7 +31,6 @@ fn load_point_cloud(
         ),
         PointCloudMaterial3d(materials.add(SimplePointCloudMaterial {
             shape_radius: Some(0.5),
-            shape_mesh: Some(meshes.add(Rectangle::new(1.0, 1.0))),
             base_color_texture: Some(texture_handle),
             point_size: 0.02,
             ..Default::default()

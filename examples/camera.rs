@@ -37,9 +37,9 @@ fn load_point_cloud(
 ) -> Result {
     let texture_handle = asset_server.load("branding/bevy_icon.png");
     commands.spawn((
-        PointCloud3d(point_cloud_server.load::<PointCloudMeshLoader>(
-            Sphere::new(0.5).mesh().ico(16)?,
-        )),
+        PointCloud3d(
+            point_cloud_server.load::<PointCloudMeshLoader>(Sphere::new(0.5).mesh().ico(16)?),
+        ),
         PointCloudMaterial3d(materials.add(SimplePointCloudMaterial {
             shape_radius: None,
             base_color: RED.into(),
