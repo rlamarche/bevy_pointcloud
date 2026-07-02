@@ -28,10 +28,10 @@ Once data is safely inside the render world, the preparation phase packages raw 
 ### `prepare_point_cloud_uniforms`
 * **Responsibility:** Generating and packing global uniform data for point cloud instances.
 * **Core Logic:** This system reads the extracted `GlobalTransform` matrices and compiles them into a **`PreparedPointCloudUniforms`** resource containing individual `PointCloudUniform` allocations.
-* **Architectural Trade-off (Binding Efficiency):** > 💡 **Shared Instance Uniforms:** Currently, **all chunks belonging to the same point cloud instance share a single, global `PointCloudUniform`**. 
-  > 
-  > While assigning a dedicated uniform per individual octree node/chunk would allow for individual spatial adjustments, it would introduce catastrophic descriptor set re-bindings during draw calls. Sharing the transform uniform globally across the entire hierarchy dramatically reduces binding overhead and ensures optimal high-throughput rendering.
+* **Architectural Trade-off (Binding Efficiency):**
 
+  **Shared Instance Uniforms:** Currently, all chunks belonging to the same point cloud instance share a single, global `PointCloudUniform`.
+  > While assigning a dedicated uniform per individual octree node/chunk would allow for individual spatial adjustments, it would introduce catastrophic descriptor set re-bindings during draw calls. Sharing the transform uniform globally across the entire hierarchy dramatically reduces binding overhead and ensures optimal high-throughput rendering.
 
 
 ## Render-World Data Flow Overview

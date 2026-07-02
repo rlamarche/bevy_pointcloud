@@ -8,7 +8,6 @@
 
 Rather than being a standalone viewer application or a rigid, game-ready solution, this plugin is designed from the ground up as a **flexible framework**. It provides the essential building blocks required to integrate, manage, and render point cloud data seamlessly within the Bevy Engine.
 
----
 
 ## Core Features
 
@@ -52,7 +51,6 @@ To achieve visually effective LOD rendering, the plugin maps the state of visibl
   * The **2048 nodes-per-instance limit** will be removed by allowing a single point cloud instance to span across multiple rows (lines) within the same texture.
   * The **2048 total instances limit** will be removed by introducing support for multiple visibility textures.
 
----
 
 ## Architecture & Under the Hood
 
@@ -69,7 +67,6 @@ It is worth noting that Bevy already handles standard mesh instancing automatica
 
 **What `bevy_point_cloud` brings to the table** is a much finer level of control over this instancing process. It is specifically engineered to manage **millions or billions of instances organized in chunks**, hierarchically stored and streamed via an octree structure, which native mesh batching cannot handle alone.
 
----
 
 ## Getting Started
 
@@ -135,7 +132,6 @@ While the framework handles the heavy lifting automatically, here is a quick loo
    * `PointCloudMaterial3d`: Links a custom material asset to your entity, telling the engine *how* the points should look.
 4. **Customizing Visuals with `SimplePointCloudMaterial`**: The `SimplePointCloudMaterial` is a built-in asset used to control the shading and appearance of your points. By modifying this material in the Bevy `Assets` storage, you can easily customize properties such as point size scaling, point shape (square or circular), and color modes (RGB, intensities, etc.).
 
----
 
 ## Loader Responsibilities & Pipeline Boundaries
 
@@ -145,7 +141,6 @@ To remain highly modular, `bevy_point_cloud` establishes a clear boundary betwee
 * **On-the-Fly Octree Generation:** Building the octree hierarchy at runtime if the source file is not already pre-optimized for streaming (for instance, by leveraging crates like `copc-converter`).
 * **Offline Web Caching:** Implementing caching strategies for web-based asset loading. This keeps requested chunks cached on disk (offline storage) via HTTP range queries, heavily reducing network load and allowing instantaneous re-loading when a chunk becomes visible again.
 
----
 
 ## WebGL, WebGPU & Web Workers Roadmap
 
@@ -154,7 +149,6 @@ The plugin is designed with broad platform compatibility in mind, specifically t
 * **Future WebGPU Roadmap:** Once WebGPU reaches General Availability (GA) and wider adoption, this texture-based approach could be upgraded to use `StorageBuffer` (SSBO). This will completely bypass texture size limitations and significantly improve tracking efficiency on modern hardware while maintaining a fallback for WebGL 2.0.
 * **Multi-threaded Web Parsing:** Future roadmap entries include shifting chunk decompression and data parsing out of the main UI thread. By leveraging Web Workers alongside modern WASM multithreading capabilities, processing will happen on a background thread pool to ensure a locked 60+ FPS experience during heavy streaming.
 
----
 
 ## Acknowledgements
 
@@ -162,7 +156,6 @@ This crate would not have been possible without two major pillars:
 1. **The Bevy Maintainers & Community:** For building an incredibly powerful, modular, and forward-thinking rendering infrastructure and ECS engine. 
 2. **Markus Schütz (Creator of Potree):** This work relies heavily on the groundbreaking research and implementation found in **Potree**. The octree structure, hierarchical traversal logic, adaptive point sizing algorithms, and Eye-Dome Lighting (EDL) shading techniques used in this plugin are deeply inspired by his phenomenal contributions to the point cloud rendering ecosystem.
 
----
 
 ## License
 

@@ -621,7 +621,7 @@ fn mark_meshes_as_changed_if_their_materials_changed<M>(
     });
 }
 
-/// Fills the [`RenderPointCloudMaterialInstances`] resources from the meshes in the
+/// Fills the [`RenderPointCloudMaterialInstances`] resources from the point clouds in the
 /// scene.
 fn extract_mesh_materials<M: Material>(
     mut material_instances: ResMut<RenderPointCloudMaterialInstances>,
@@ -651,20 +651,20 @@ fn extract_mesh_materials<M: Material>(
     }
 }
 
-/// Removes mesh materials from [`RenderMaterialInstances`] when their
-/// [`MeshMaterial3d`] components are removed.
+/// Removes point cloud materials from [`RenderPointCloudMaterialInstances`] when their
+/// [`PointCloudMaterial3d`] components are removed.
 ///
 /// This is tricky because we have to deal with the case in which a material of
 /// type A was removed and replaced with a material of type B in the same frame
 /// (which is actually somewhat common of an operation). In this case, even
-/// though an entry will be present in `RemovedComponents<MeshMaterial3d<A>>`,
+/// though an entry will be present in `RemovedComponents<PointCloudMaterial3d<A>>`,
 /// we must not remove the entry in `RenderMaterialInstances` which corresponds
 /// to material B. To handle this case, we use change ticks to avoid removing
 /// the entry if it was updated this frame.
 ///
 /// This is the first of two sweep phases. Because this phase runs once per
 /// material type, we need a second phase in order to guarantee that we only
-/// bump [`RenderMaterialInstances::current_change_tick`] once.
+/// bump [`RenderPointCloudMaterialInstances::current_change_tick`] once.
 fn early_sweep_material_instances<M>(
     mut material_instances: ResMut<RenderPointCloudMaterialInstances>,
     mut removed_materials_query: Extract<RemovedComponents<PointCloudMaterial3d<M>>>,
@@ -683,19 +683,19 @@ fn early_sweep_material_instances<M>(
     }
 }
 
-/// Removes mesh materials from [`RenderMaterialInstances`] when their
+/// Removes mesh materials from [`RenderPointCloudMaterialInstances`] when their
 /// [`ViewVisibility`] components are removed.
 ///
 /// This runs after all invocations of `early_sweep_material_instances` and is
-/// responsible for bumping [`RenderMaterialInstances::current_change_tick`] in
+/// responsible for bumping [`RenderPointCloudMaterialInstances::current_change_tick`] in
 /// preparation for a new frame.
 pub fn late_sweep_material_instances(
     mut material_instances: ResMut<RenderPointCloudMaterialInstances>,
-    mut removed_meshes_query: Extract<RemovedComponents<PointCloud3d>>,
+    mut removed_point_clouds_query: Extract<RemovedComponents<PointCloud3d>>,
 ) {
     let last_change_tick = material_instances.current_change_tick;
 
-    for entity in removed_meshes_query.read() {
+    for entity in removed_point_clouds_query.read() {
         if let Entry::Occupied(occupied_entry) = material_instances.instances.entry(entity.into()) {
             // Only sweep the entry if it wasn't updated this frame. It's
             // possible that a `ViewVisibility` component was removed and
@@ -711,6 +711,15 @@ pub fn late_sweep_material_instances(
         .set(last_change_tick.get() + 1);
 }
 
+/// Extracts main-world entities requiring pipeline specialization and registers them
+/// into the render world's dirty tracking table.
+///
+/// ### Why it is required
+/// In Bevy's rendering architecture, when a point cloud's material flags, layout, or
+/// custom attributes change, its associated GPU pipeline may need to be specialized
+/// (re-evaluated or recompiled). This system bridges that dirty state between the
+/// simulation world and the isolated [`RenderApp`], ensuring the renderer knows which
+/// specific entities require pipeline specialization before the draw phase.
 pub fn extract_entities_needs_specialization<M>(
     entities_needing_specialization: Extract<Res<EntitiesNeedingSpecialization<M>>>,
     mut dirty_specializations: ResMut<DirtySpecializations>,
@@ -968,43 +977,6 @@ pub(crate) fn specialize_material_meshes(
                         .insert((*render_entity, *visible_entity));
                     continue;
                 };
-
-                // // get the list of visible chunks of this point cloud
-                // let Some(render_visible_point_cloud) =
-                // visible_point_cloud_entities.get(*visible_entity) else {
-                //     view_pending_mesh_material_queues
-                //         .current_frame
-                //         .insert((*render_entity, *visible_entity));
-                //     continue;
-                // };
-
-                // // try to get the first visible chunk of this point cloud
-                // let Some(visible_chunk) = render_visible_point_cloud.chunk_entities.first() else
-                // {     view_pending_mesh_material_queues
-                //         .current_frame
-                //         .insert((*render_entity, *visible_entity));
-                //     continue;
-                // };
-
-                // // get the extracted component
-                // let Ok(point_cloud_chunk_3d) = chunks.get(visible_chunk.entity) else {
-                //     warn!("point cloud chunk 3d not found in render world");
-                //     view_pending_mesh_material_queues
-                //         .current_frame
-                //         .insert((*render_entity, *visible_entity));
-                //     continue;
-                // };
-
-                // // TODO find a more direct way to access this mesh ?
-                // // then access the underlying mesh
-                // let Some(RenderPointCloudChunk {
-                //     mesh: Some(mesh_handle),
-                // }) = render_chunks.get(point_cloud_chunk_3d) else {
-                //     view_pending_mesh_material_queues
-                //         .current_frame
-                //         .insert((*render_entity, *visible_entity));
-                //     continue;
-                // };
 
                 let Some(mesh_instance) =
                     render_mesh_instances.render_mesh_queue_data(*visible_entity)
