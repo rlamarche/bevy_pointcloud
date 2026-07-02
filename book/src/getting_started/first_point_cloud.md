@@ -1,4 +1,4 @@
-# Getting Started
+# Your First Point Cloud
 
 This section guides you through a minimal example to render a point cloud using `bevy_pointcloud`. 
 
