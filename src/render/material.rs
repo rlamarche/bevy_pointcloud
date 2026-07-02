@@ -86,77 +86,13 @@ use crate::{
 
 pub const MATERIAL_BIND_GROUP_INDEX: usize = 3;
 
-/// Materials are used alongside [`MaterialPlugin`], [`Mesh3d`], and [`MeshMaterial3d`]
+/// Materials are used alongside [`MaterialPlugin`], [`PointCloud3d`], and [`PointCloudMaterial3d`]
 /// to spawn entities that are rendered with a specific [`Material`] type. They serve as an easy to
-/// use high level way to render [`Mesh3d`] entities with custom shader logic.
+/// use high level way to render [`PointCloud3d`] entities with custom shader logic.
 ///
 /// Materials must implement [`AsBindGroup`] to define how data will be transferred to the GPU and
 /// bound in shaders. [`AsBindGroup`] can be derived, which makes generating bindings
 /// straightforward. See the [`AsBindGroup`] docs for details.
-///
-/// # Example
-///
-/// Here is a simple [`Material`] implementation. The [`AsBindGroup`] derive has many features. To
-/// see what else is available, check out the [`AsBindGroup`] documentation.
-///
-/// ```
-/// # use bevy::pbr::{Material, MeshMaterial3d};
-/// # use bevy::ecs::prelude::*;
-/// # use bevy::image::Image;
-/// # use bevy::reflect::TypePath;
-/// # use bevy::mesh::{Mesh, Mesh3d};
-/// # use bevy::render::render_resource::AsBindGroup;
-/// # use bevy::shader::ShaderRef;
-/// # use bevy::color::LinearRgba;
-/// # use bevy::color::palettes::basic::RED;
-/// # use bevy::asset::{Handle, AssetServer, Assets, Asset};
-/// # use bevy::math::primitives::Capsule3d;
-/// #
-/// #[derive(AsBindGroup, Debug, Clone, Asset, TypePath)]
-/// pub struct CustomMaterial {
-///     // Uniform bindings must implement `ShaderType`, which will be used to convert the value to
-///     // its shader-compatible equivalent. Most core math types already implement `ShaderType`.
-///     #[uniform(0)]
-///     color: LinearRgba,
-///     // Images can be bound as textures in shaders. If the Image's sampler is also needed, just
-///     // add the sampler attribute with a different binding index.
-///     #[texture(1)]
-///     #[sampler(2)]
-///     color_texture: Handle<Image>,
-/// }
-///
-/// // All functions on `Material` have default impls. You only need to implement the
-/// // functions that are relevant for your material.
-/// impl Material for CustomMaterial {
-///     fn fragment_shader() -> ShaderRef {
-///         "shaders/custom_material.wgsl".into()
-///     }
-/// }
-///
-/// // Spawn an entity with a mesh using `CustomMaterial`.
-/// fn setup(
-///     mut commands: Commands,
-///     mut meshes: ResMut<Assets<Mesh>>,
-///     mut materials: ResMut<Assets<CustomMaterial>>,
-///     asset_server: Res<AssetServer>
-/// ) {
-///     commands.spawn((
-///         Mesh3d(meshes.add(Capsule3d::default())),
-///         MeshMaterial3d(materials.add(CustomMaterial {
-///             color: RED.into(),
-///             color_texture: asset_server.load("some_image.png"),
-///         })),
-///     ));
-/// }
-/// ```
-///
-/// In WGSL shaders, the material's binding would look like this:
-///
-/// ```wgsl
-/// @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> color: vec4<f32>;
-/// @group(#{MATERIAL_BIND_GROUP}) @binding(1) var color_texture: texture_2d<f32>;
-/// @group(#{MATERIAL_BIND_GROUP}) @binding(2) var color_sampler: sampler;
-/// ```
 pub trait Material: Asset + AsBindGroup + Clone + Sized {
     /// Returns this material's vertex shader. If [`ShaderRef::Default`] is returned, the default
     /// mesh vertex shader will be used.
@@ -685,7 +621,7 @@ fn mark_meshes_as_changed_if_their_materials_changed<M>(
     });
 }
 
-/// Fills the [`RenderMaterialInstances`] resources from the meshes in the
+/// Fills the [`RenderPointCloudMaterialInstances`] resources from the meshes in the
 /// scene.
 fn extract_mesh_materials<M: Material>(
     mut material_instances: ResMut<RenderPointCloudMaterialInstances>,

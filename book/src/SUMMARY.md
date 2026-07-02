@@ -28,4 +28,5 @@
 - [Plugin Architecture](./internals/plugin_architecture.md)
 - [Visibility Systems](./internals/visibility_systems.md)
 - [Data Preparation Pipeline](./internals/data_preparation.md)
+- [Materials Preparation Pipeline](./internals/materials_preparation.md)
 - [Render Pipeline & Draw Functions](./internals/render_pipeline.md)

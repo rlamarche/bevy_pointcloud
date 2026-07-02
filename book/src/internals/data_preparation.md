@@ -1,31 +1,62 @@
 # Data Preparation Pipeline
 
-The Data Preparation Pipeline bridges the Bevy Main World (where your ECS entities and logic reside) and the Render World. This pipeline ensures that only the visible elements of your massive point clouds are prepared, packed, and uploaded to the GPU each frame.
-
-> ⚠️ **Note:** This section covers the extraction and transformation pipelines for geometry and instances. Material preparation and shading parameters are more complex and are covered separately in the next section.
+This section details how `bevy_point_cloud` transfers data from the main world to the sub-render world, and how that data is massaged into GPU-ready structures before rendering.
 
 
 ## 1. Extraction Phase
 
-Systems in this phase run during Bevy's `ExtractSchedule` inside the `RenderApp`. Their primary job is to safely copy data from the Main World into the Render World, filtering out any data that isn't needed for the current frame.
+Extraction is the bridge between your main ECS world and Bevy's isolated `RenderApp`. Systems in this phase run inside the **`ExtractSchedule`** and are strictly optimized to clone or compute only the minimal data required for the GPU.
 
 ### `extract_visible_point_cloud_chunks`
-* **Execution Order:** Runs immediately after Bevy's native `extract_cameras` system.
-* **Core Logic:** This system extracts the visible point cloud chunk entities into the render world while preserving their structural hierarchy. Crucially, it also computes a view-specific `first_child_index` and `children_mask` for each active view.
-* **Purpose:** This computation prepares the topological data needed to generate the GPU visibility texture later on, ensuring the shaders know exactly which level-of-detail (LOD) nodes are active for each camera.
+* **Scheduling:** Runs immediately after Bevy's native `extract_cameras` system.
+* **Responsibility:** Mirroring visibility and structural states into the render world.
+* **Core Logic:** This system extracts the visible point cloud chunk entities while preserving their logical layout. Crucially, it evaluates the visible topology per camera view to compute view-specific `first_child_index` and `children_mask` properties.
+* **Why it matters:** This layout tracking is the data foundation used later in the pipeline to construct the specialized visibility texture mapping required for adaptive point sizing.
 
 ### `extract_pointcloud_chunk_instances`
-* **Core Logic:** This system populates the `RenderPointCloudChunkInstances` resource, creating a dedicated `RenderPointCloudChunkInstance` for every single visible `PointCloudChunk3d`. 
-* **Data Optimization:** To maximize performance and eliminate overhead during the extraction frame, this system completely bypasses copying mesh or asset IDs. It strictly extracts only the lightweight data required for spatial positioning and rendering features:
-  * Its Axis-Aligned Bounding Box (`Aabb`), essential for viewport features and fine culling.
-  * Its global transforms (`Transform`), which are required to position the chunk correctly in 3D space.
+* **Responsibility:** Flattening spatial and structural data into an optimized render cache.
+* **Core Logic:** Iterates over every visible `PointCloudChunk3d` and populates the **`RenderPointCloudChunkInstances`** resource with lightweight `RenderPointCloudChunkInstance` metadata. 
+* **Optimizations & Extracted Attributes:**
+  * **`GlobalTransform`:** Extracted to build the instance-level uniform matrix.
+  * **`Aabb`:** Extracted and cached. While frustum culling is already processed, storing the Axis-Aligned Bounding Box in the render world makes spatial boundaries immediately available for adaptive point sizing based on the LOD, advanced visual or debugging features directly inside the shaders.
 
 
 ## 2. Preparation Phase
 
-Once the required data is safely extracted into the Render World, it enters the preparation phase to be packed into GPU-friendly structures (such as Uniform Buffers) before rendering.
+Once data is safely inside the render world, the preparation phase packages raw components into GPU bind groups and uniform buffers. This phase runs inside Bevy's Render App schedules.
 
 ### `prepare_point_cloud_uniforms`
-* **Core Logic:** This system processes the extracted transforms and attributes to build the uniform data for each point cloud instance, storing the results in the `PreparedPointCloudUniforms` resource.
-* **Optimization Note:** Currently, **all chunks belonging to the same point cloud instance share a single, global point cloud uniform**. 
-* **Why it matters:** Grouping chunks under a single uniform drastically reduces the number of bind group updates and binding switches required during the rendering phase, leading to significantly better CPU-to-GPU performance and smoother frame rates.
+* **Responsibility:** Generating and packing global uniform data for point cloud instances.
+* **Core Logic:** This system reads the extracted `GlobalTransform` matrices and compiles them into a **`PreparedPointCloudUniforms`** resource containing individual `PointCloudUniform` allocations.
+* **Architectural Trade-off (Binding Efficiency):** > 💡 **Shared Instance Uniforms:** Currently, **all chunks belonging to the same point cloud instance share a single, global `PointCloudUniform`**. 
+  > 
+  > While assigning a dedicated uniform per individual octree node/chunk would allow for individual spatial adjustments, it would introduce catastrophic descriptor set re-bindings during draw calls. Sharing the transform uniform globally across the entire hierarchy dramatically reduces binding overhead and ensures optimal high-throughput rendering.
+
+
+
+## Render-World Data Flow Overview
+
+The diagram below summarizes how data progresses from main components to GPU-ready uniforms:
+
+```d2
+vars: {
+    d2-config: {
+        pad: 50
+    }
+}
+
+direction: right
+
+MainWorld: "Main World (ECS)" {
+  Chunk: "PointCloudChunk3d"
+  Root: "PointCloud3d"
+}
+
+RenderWorld: "Render World (RenderApp)" {
+  Instances: "RenderPointCloudChunkInstances"
+  Uniforms: "PreparedPointCloudUniforms"
+}
+
+MainWorld.Chunk -> RenderWorld.Instances: "extract_pointcloud_chunk_instances"
+MainWorld.Root -> RenderWorld.Uniforms: "prepare_point_cloud_uniforms (via Transform)"
+```

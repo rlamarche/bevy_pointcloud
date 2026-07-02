@@ -140,6 +140,7 @@ pub fn extract_visible_point_cloud_chunks(
 ///
 /// It also extracts the its aabb (useful for rendering features), and its transforms, for
 /// populating the [`crate::PointCloudUniform`] later.
+/// TODO: don't extract transforms for non root chunks.
 pub fn extract_pointcloud_chunk_instances(
     mut render_point_cloud_chunk_instances: ResMut<RenderPointCloudChunkInstances>,
     mut render_point_cloud_chunk_instance_queues: Local<
