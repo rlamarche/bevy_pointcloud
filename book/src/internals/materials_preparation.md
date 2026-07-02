@@ -22,6 +22,15 @@ Inside the main Bevy application, the plugin registers the material asset type, 
 * Initializes the main-world **`EntitiesNeedingSpecialization<M>`** tracking resource.
 * Automatically registers system dependencies to mark material assets and their associated point cloud meshes as changed upon modification (`check_entities_needing_specialization`).
 
+
+### `check_entities_needing_specialization::<M>`
+* **Scheduling:** Runs in the Main App's `PostUpdate` schedule, explicitly `.after(AssetEventSystems)` and `.after(mark_3d_meshes_as_changed_if_their_assets_changed)`.
+* **Responsibility:** Detecting structural or material alterations in the main world and flagging which point cloud entities require GPU pipeline specialization or removal.
+* **Core Logic:** * **Additions & Changes:** It utilizes a parallel iterator (`par_iter()`) to rapidly scan for point cloud entities where the core `PointCloud3d` data, the `PointCloudMaterial3d<M>`, or their underlying assets have changed. These entities are collected across threads via a thread-local cache (`Parallel<Vec<Entity>>`) and drained into the **`EntitiesNeedingSpecialization::changed`** list.
+  * **Removals:** It reads Bevy's `RemovedComponents` events for both `PointCloud3d` and `PointCloudMaterial3d<M>`. Any entity that has lost either its structural component or its material is instantly pushed into the **`EntitiesNeedingSpecialization::removed`** list.
+* **Why it matters:** This system is the brain of the dirty-checking pipeline on the CPU simulation side. It consolidates all triggers—whether a user swapped a material asset, modified a vertex attribute layout, or outright deleted a point cloud—into a single, clean tracking resource. Because Bevy's downstream `specialize_material_meshes` processes pipeline removals *before* additions, any same-frame component drop-and-swap is completely safe and free from edge-case race conditions.
+
+
 ### Render App Orchestration (`ExtractSchedule` & `RenderStartup`)
 If a sub-render app is found, the plugin hooks into the rendering loop lifecycle. It inserts bind group allocators at `RenderStartup` and registers the heavy data extraction routines to execute inside the `ExtractSchedule`.
 
