@@ -3,6 +3,12 @@
 ## Core Definitions
 
 ```d2
+vars: {
+    d2-config: {
+        pad: 50
+    }
+}
+
 direction: left
 
 PointCloud: "Point Cloud" {
@@ -82,18 +88,25 @@ In `bevy_point_cloud`, each point is materialized as a single **vertex** within 
 To interface with Bevy's ECS (Entity Component System) and asset management pipeline, `bevy_point_cloud` introduces a specific set of components and assets.
 
 ```d2
-direction: down
+vars: {
+    d2-config: {
+        pad: 50
+    }
+}
+
+direction: right
 
 Assets: "Assets" {
+  near: top-left
   PointCloud: "PointCloud"
   PointCloudChunk: "PointCloudChunk"
   PointCloud -> PointCloudChunk: References
 }
 
 Components: "Components" {
+  near: top-right
   PointCloud3d: "PointCloud3d"
   PointCloudChunk3d: "PointCloudChunk3d"
-  PointCloudMaterial3d: "PointCloudMaterial3d<M>"
 
   Transform: "Transform"
   Transform.style.bold: false
@@ -103,6 +116,11 @@ Components: "Components" {
   PointCloudChunk3d <- PointCloudChunk3d: ChildChunkOf
   PointCloud3d -> Transform: "Requires"
 }
+
+Assets.PointCloud <- Components.PointCloud3d: "Reference"
+Assets.PointCloudChunk <- Components.PointCloudChunk3d: "Reference"
+
+
 ```
 
 ### Assets
@@ -141,3 +159,104 @@ You do not need to manually spawn the `PointCloudChunk3d` components. `bevy_poin
 3. **Hierarchical Nesting**: All spawned `PointCloudChunk3d` entities have the root `PointCloud3d` entity as their direct ECS parent (via Bevy's `ChildOf` relationship).
 
    This ensures they all share the same coordinate space and transform propagation without deep nesting overhead, as every chunk remains in the same frame of reference as the root. Instead, the custom `ChildChunkOf` relationship is strictly a logical pointer used to easily query and traverse the parent chunk hierarchy from an ECS query. This setup guarantees that deleting or moving the root point cloud correctly cascades through all active chunks while keeping query access simple and efficient.
+
+---
+
+## Materials
+
+When rendering point clouds, achieving precise visual control over points—whether for scientific visualization, aesthetic styling, or performance tuning—is essential. 
+
+Instead of reinventing the wheel, `bevy_point_cloud` is built directly on top of **Bevy's native Material system**. By duplicating Bevy's core material paradigms and adapting them with custom vertex and fragment behaviors, the plugin blends seamlessly into the engine's existing asset and rendering architecture.
+
+This architectural choice ensures that:
+* **Materials are First-Class Assets:** They are managed by Bevy’s `AssetServer`, benefit from hot-reloading, and can be easily duplicated or modified at runtime.
+* **Instance Sharing & Efficiency:** A single material asset instance can be shared and reused across multiple distinct point cloud instances in your scene. This dramatically reduces bind group re-bindings and maximizes GPU rendering efficiency.
+* **Fully Extensible:** You can implement the `PointCloudMaterial` trait to provide your own custom WGSL shaders, bind groups, and uniform properties, leveraging Bevy's automatic pipeline caching under the hood.
+
+---
+
+### The Built-in `SimplePointCloudMaterial`
+
+To get you started immediately without writing custom shaders, `bevy_point_cloud` provides a highly versatile, feature-rich default material asset named **`SimplePointCloudMaterial`**. It leverages both CPU-side properties and GPU-side dynamic evaluation to offer advanced styling out of the box:
+
+* **Adaptive Point Sizing:** Supports both **fixed screen-space sizing** (points maintain their size regardless of distance) and **dynamic world-space sizing** (points scale based on depth and LOD metrics to ensure gap-free rendering).
+* **Coloring & Texturing:**
+  * **Base Color:** Apply a uniform tint or map a global texture across the cloud.
+[  * **Textures:** Apply a global texture across the cloud.]: # Not yet implemented
+  * **Per-Point Texturing:** Render custom shapes or apply textures to individual point primitives by leveraging point-level UV layouts.
+* **Advanced Color Gradients:** Built-in support for procedural color ramps featuring up to **8 customizable stops**. Gradients can be mapped dynamically based on:
+  * Spatial coordinates (e.g., coloring by height/Z-axis).
+  * Custom bounding boxes and directional vectors.
+[  * Custom point attributes (e.g., LIDAR intensity, classification, or return flags).]: # Not yet implemented
+* **Procedural Point Shapes:** Go beyond simple square pixels. The default shader allows choosing or injecting custom shapes (e.g., circles, oriented quads, or custom geometries) used for rendering each individual point.
+
+
+```d2
+vars: {
+    d2-config: {
+        pad: 50
+    }
+}
+
+direction: right
+
+Assets: "Assets" {
+  near: top-left
+  SimplePointCloudMaterial
+}
+
+Components: "Components" {
+  near: top-right
+  SimplePointCloudMaterial3d: "PointCloudMaterial3d<SimplePointCloudMaterial>"
+}
+
+Assets.SimplePointCloudMaterial <- Components.SimplePointCloudMaterial3d: "Reference"
+```
+
+
+---
+
+### Integrating with the Pipeline
+
+In practice, a material asset is bound to a point cloud root entity via the generic **`PointCloudMaterial3d<M>`** component (e.g., `PointCloudMaterial3d<SimplePointCloudMaterial>`). 
+
+By attaching this component to your entity, you pass a `Handle<SimplePointCloudMaterial>` pointing to your material asset. This architecture allows multiple distinct entities, each with their own `PointCloud3d` component, to reference the exact same `SimplePointCloudMaterial` asset handle, ensuring optimal data reuse across the rendering pipeline.
+
+
+```d2
+vars: {
+    d2-config: {
+        pad: 50
+    }
+}
+
+direction: right
+
+PointClouds: "Point Clouds" {
+  # near: top-left
+  MyPointCloud1: "My Point Cloud 1"
+  MyPointCloud2: "My Point Cloud 2"
+}
+
+SimpleMaterials: "Simple Materials" {
+  # near: top-center
+  MyMaterial: "My Material instance"
+}
+
+Entities: "Entities" {
+  # near: bottom-center
+  MyPointCloudInstance1: "My Point Cloud Instance 1" {
+    PointCloud: "PointCloud3d"
+    Material: "PointCloudMaterial3d<..>"
+  }
+  MyPointCloudInstance2: "My Point Cloud Instance 2" {
+    PointCloud: "PointCloud3d"
+    Material: "PointCloudMaterial3d<..>"
+  }
+}
+
+PointClouds.MyPointCloud1 <- Entities.MyPointCloudInstance1.PointCloud: "Reference"
+PointClouds.MyPointCloud2 <- Entities.MyPointCloudInstance2.PointCloud: "Reference"
+SimpleMaterials.MyMaterial <- Entities.MyPointCloudInstance1.Material: "Reference"
+SimpleMaterials.MyMaterial <- Entities.MyPointCloudInstance2.Material: "Reference"
+```
