@@ -72,8 +72,11 @@ impl ChildIndex {
     }
 
     #[inline]
-    pub fn index(&self) -> usize {
-        self.0 as usize
+    pub fn index(&self) -> u8 {
+        if self.0 > 0b111 {
+            panic!("Trying to convert child index which isn't a valid index.")
+        }
+        self.0
     }
 
     pub const X_0_Y_0_Z_0: ChildIndex = ChildIndex(0b000);
@@ -85,6 +88,7 @@ impl ChildIndex {
     pub const X_1_Y_1_Z_0: ChildIndex = ChildIndex(0b110);
     pub const X_1_Y_1_Z_1: ChildIndex = ChildIndex(0b111);
     pub const ROOT: ChildIndex = ChildIndex(0b1000);
+    pub const NONE: ChildIndex = ChildIndex(u8::MAX);
 }
 
 bitflags::bitflags! {

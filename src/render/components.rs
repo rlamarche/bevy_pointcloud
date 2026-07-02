@@ -68,6 +68,7 @@ pub struct RenderVisiblePointCloudChunkEntity {
     pub parent_id: Option<NodeId>,
     pub depth: u32,
     pub child_index: ChildIndex,
+    pub first_child_index: ChildIndex,
     pub children: [usize; 8],
     pub children_mask: ChildrenMask,
     pub entity: Entity,

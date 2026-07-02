@@ -431,8 +431,6 @@ fn compute_visible_nodes_stack(
                     drop(span_iter_children);
 
                     // add the current node because it is visible or partially visible
-                    let child_index = node.child_index.index();
-
                     visible_point_cloud_entity.node_entities.push(node.into());
                     global_visible_octree_nodes.add_visible_node(asset_id, node, weight);
 
@@ -440,7 +438,7 @@ fn compute_visible_nodes_stack(
                     if let Some(parent_index) = parent_index {
                         let parent = &mut visible_point_cloud_entity.node_entities[parent_index];
 
-                        parent.children[child_index] = current_index;
+                        parent.children[node.child_index.index() as usize] = current_index;
                         parent.children_mask |= ChildrenMask::from(node.child_index);
                     }
                 }

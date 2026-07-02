@@ -26,6 +26,6 @@
 # Developer & Internals Guide
 
 - [Plugin Architecture](./internals/plugin_architecture.md)
-- [Schedules & System Sets](./internals/schedules_systems.md)
+- [Visibility Systems](./internals/visibility_systems.md)
 - [Data Preparation Pipeline](./internals/data_preparation.md)
 - [Render Pipeline & Draw Functions](./internals/render_pipeline.md)

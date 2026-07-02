@@ -287,8 +287,8 @@ impl Plugin for MaterialsPlugin {
                 // .init_gpu_resource::<LightKeyCache>()
                 // .init_gpu_resource::<SpecializedShadowMaterialPipelineCache>()
                 // .init_resource::<DrawFunctions<Shadow>>()
-                .init_resource::<RenderMaterialInstances>()
-                .allow_ambiguous_resource::<RenderMaterialInstances>()
+                .init_resource::<RenderPointCloudMaterialInstances>()
+                .allow_ambiguous_resource::<RenderPointCloudMaterialInstances>()
                 // .init_resource::<MaterialBindGroupAllocators>()
                 // .allow_ambiguous_resource::<MaterialBindGroupAllocators>()
                 .init_gpu_resource::<PendingMeshMaterialQueues>()
@@ -551,7 +551,7 @@ pub struct SetMaterialBindGroup<const I: usize>;
 impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetMaterialBindGroup<I> {
     type Param = (
         SRes<ErasedRenderAssets<PreparedMaterial>>,
-        SRes<RenderMaterialInstances>,
+        SRes<RenderPointCloudMaterialInstances>,
         SRes<MaterialBindGroupAllocators>,
     );
     type ViewQuery = ();
@@ -606,7 +606,7 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetMaterialBindGroup<I> 
 
 /// Stores all extracted instances of all [`Material`]s in the render world.
 #[derive(Resource, Default)]
-pub struct RenderMaterialInstances {
+pub struct RenderPointCloudMaterialInstances {
     /// Maps from each entity in the main world to the
     /// [`RenderMaterialInstance`] associated with it.
     pub instances: MainEntityHashMap<RenderMaterialInstance>,
@@ -621,20 +621,20 @@ pub struct RenderMaterialInstances {
 ///
 /// See the comments in [`RenderMaterialInstances::mesh_material`] for more
 /// information.
-pub(crate) static DUMMY_MESH_MATERIAL: AssetId<SimplePointCloudMaterial> =
+pub(crate) static DUMMY_POINT_CLOUD_MATERIAL: AssetId<SimplePointCloudMaterial> =
     AssetId::<SimplePointCloudMaterial>::invalid();
 
-impl RenderMaterialInstances {
-    /// Returns the mesh material ID for the entity with the given mesh, or a
+impl RenderPointCloudMaterialInstances {
+    /// Returns the point cloud material ID for the entity with the given point cloud, or a
     /// dummy mesh material ID if the mesh has no material ID.
     ///
-    /// Meshes almost always have materials, but in very specific circumstances
+    /// Point clouds almost always have materials, but in very specific circumstances
     /// involving custom pipelines they won't. (See the
     /// `specialized_mesh_pipelines` example.)
-    pub(crate) fn mesh_material(&self, entity: MainEntity) -> UntypedAssetId {
+    pub(crate) fn point_cloud_material(&self, entity: MainEntity) -> UntypedAssetId {
         match self.instances.get(&entity) {
             Some(render_instance) => render_instance.asset_id,
-            None => DUMMY_MESH_MATERIAL.into(),
+            None => DUMMY_POINT_CLOUD_MATERIAL.into(),
         }
     }
 }
@@ -688,7 +688,7 @@ fn mark_meshes_as_changed_if_their_materials_changed<M>(
 /// Fills the [`RenderMaterialInstances`] resources from the meshes in the
 /// scene.
 fn extract_mesh_materials<M: Material>(
-    mut material_instances: ResMut<RenderMaterialInstances>,
+    mut material_instances: ResMut<RenderPointCloudMaterialInstances>,
     changed_meshes_query: Extract<
         Query<
             (Entity, &ViewVisibility, &PointCloudMaterial3d<M>),
@@ -730,7 +730,7 @@ fn extract_mesh_materials<M: Material>(
 /// material type, we need a second phase in order to guarantee that we only
 /// bump [`RenderMaterialInstances::current_change_tick`] once.
 fn early_sweep_material_instances<M>(
-    mut material_instances: ResMut<RenderMaterialInstances>,
+    mut material_instances: ResMut<RenderPointCloudMaterialInstances>,
     mut removed_materials_query: Extract<RemovedComponents<PointCloudMaterial3d<M>>>,
 ) where
     M: Material,
@@ -754,7 +754,7 @@ fn early_sweep_material_instances<M>(
 /// responsible for bumping [`RenderMaterialInstances::current_change_tick`] in
 /// preparation for a new frame.
 pub fn late_sweep_material_instances(
-    mut material_instances: ResMut<RenderMaterialInstances>,
+    mut material_instances: ResMut<RenderPointCloudMaterialInstances>,
     mut removed_meshes_query: Extract<RemovedComponents<PointCloud3d>>,
 ) {
     let last_change_tick = material_instances.current_change_tick;
@@ -916,7 +916,7 @@ pub(crate) struct SpecializeMaterialMeshesSystemParam<'w, 's> {
     render_meshes: Res<'w, RenderAssets<RenderMesh>>,
     render_materials: Res<'w, ErasedRenderAssets<PreparedMaterial>>,
     render_mesh_instances: Res<'w, RenderMeshInstances>,
-    render_material_instances: Res<'w, RenderMaterialInstances>,
+    render_material_instances: Res<'w, RenderPointCloudMaterialInstances>,
     // render_lightmaps: Res<'w, RenderLightmaps>,
     render_visibility_ranges: Res<'w, RenderVisibilityRanges>,
     opaque_render_phases: Res<'w, ViewBinnedRenderPhases<Opaque3d>>,
@@ -1198,7 +1198,7 @@ pub(crate) fn specialize_material_meshes(
 pub fn queue_material_meshes(
     render_materials: Res<ErasedRenderAssets<PreparedMaterial>>,
     render_mesh_instances: Res<RenderMeshInstances>,
-    render_material_instances: Res<RenderMaterialInstances>,
+    render_material_instances: Res<RenderPointCloudMaterialInstances>,
     mesh_assets: Res<RenderAssets<RenderMesh>>,
     mesh_allocator: Res<MeshAllocator>,
     gpu_preprocessing_support: Res<GpuPreprocessingSupport>,

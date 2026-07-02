@@ -8,8 +8,8 @@ use bevy::{
     prelude::{Deref, DerefMut},
     render::{
         render_asset::RenderAsset,
-        render_resource::{BindGroup, ShaderType},
-        sync_world::MainEntityHashMap,
+        render_resource::{BindGroup, ShaderType, UniformBuffer},
+        sync_world::{MainEntity, MainEntityHashMap},
     },
 };
 
@@ -43,14 +43,16 @@ impl RenderAsset for RenderPointCloudChunk {
 /// The set of information needed is different depending on whether CPU or GPU
 /// [`MeshUniform`] building is in use.
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct RenderPointCloudInstances(MainEntityHashMap<RenderPointCloudInstance>);
+pub struct RenderPointCloudChunkInstances(MainEntityHashMap<RenderPointCloudChunkInstance>);
 
 /// CPU data that the render world keeps for each entity, when *not* using GPU
 /// mesh uniform building.
-pub struct RenderPointCloudInstance {
+pub struct RenderPointCloudChunkInstance {
+    /// The entity that point to the root chunk entity, used for loading the corresponding
+    /// [`PreparedPointCloudUniform`] in the draw command [`crate::SetPointCloudUniformGroup`].
+    pub root_entity: MainEntity,
+    pub is_root: bool,
     pub aabb: Aabb,
-    pub mesh_id: AssetId<Mesh>,
-    pub asset_id: AssetId<PointCloudChunk>,
     /// The transform of the mesh.
     ///
     /// This will be written into the [`MeshUniform`] at the appropriate time.
@@ -78,7 +80,6 @@ pub struct PointCloudUniform {
     //   [2].z
     pub local_from_world_transpose_a: [Vec4; 2],
     pub local_from_world_transpose_b: f32,
-    pub first_vertex_index: u32,
     pub material_bind_group_slot: u32,
 }
 
@@ -86,7 +87,6 @@ impl PointCloudUniform {
     pub fn new(
         aabb: &Aabb,
         mesh_transforms: &PointCloudTransforms,
-        first_vertex_index: u32,
         material_bind_group_slot: MaterialBindGroupSlot,
     ) -> Self {
         let (local_from_world_transpose_a, local_from_world_transpose_b) =
@@ -105,13 +105,12 @@ impl PointCloudUniform {
             previous_world_from_local: mesh_transforms.previous_world_from_local.to_transpose(),
             local_from_world_transpose_a,
             local_from_world_transpose_b,
-            first_vertex_index,
             material_bind_group_slot,
         }
     }
 }
 
-#[derive(Clone, Component)]
 pub struct PreparedPointCloudUniform {
+    pub buffer: UniformBuffer<PointCloudUniform>,
     pub bind_group: BindGroup,
 }

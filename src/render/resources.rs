@@ -1,10 +1,9 @@
 use bevy::{
-    ecs::{entity::Entity, resource::Resource},
-    platform::collections::HashMap,
-    prelude::{Deref, DerefMut},
-    render::camera::PendingQueues,
+    ecs::{entity::Entity, resource::Resource}, platform::collections::HashMap, prelude::{Deref, DerefMut}, render::{camera::PendingQueues, sync_world::MainEntity},
 };
 use slotmap::{new_key_type, Key, SlotMap};
+
+use crate::PreparedPointCloudUniform;
 
 /// A resource that holds entities that couldn't be specialized and/or queued
 ///
@@ -59,3 +58,7 @@ impl RenderPointCloudInstanceIndex {
         self.index.get(&entity).copied()
     }
 }
+
+
+#[derive(Resource, Default, Deref, DerefMut)]
+pub struct PreparedPointCloudUniforms(HashMap<MainEntity, PreparedPointCloudUniform>);

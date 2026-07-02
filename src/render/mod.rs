@@ -70,8 +70,9 @@ impl Plugin for RenderPointCloudPlugin {
                 RenderStartup,
                 PointCloudPipelineSystems.after(MeshPipelineSystems),
             )
-            .init_resource::<RenderPointCloudInstances>()
+            .init_resource::<RenderPointCloudChunkInstances>()
             .init_resource::<RenderPointCloudInstanceIndex>()
+            .init_resource::<PreparedPointCloudUniforms>()
             .add_render_command::<Opaque3d, DrawPointCloud>()
             .init_resource::<SpecializedPointCloudPipelines<PointCloudPipeline>>()
             .init_resource::<PendingPointCloudPhaseItemQueues>()
@@ -83,21 +84,13 @@ impl Plugin for RenderPointCloudPlugin {
                 ExtractSchedule,
                 (
                     extract_visible_point_cloud_chunks.after(extract_cameras),
-                    extract_pointcloud_chunks,
+                    extract_pointcloud_chunk_instances,
                 ),
             )
             .add_systems(
                 Render,
                 prepare_point_cloud_uniforms.in_set(RenderSystems::PrepareBindGroups),
             )
-            // .add_systems(
-            //     Render,
-            //     (
-            //         queue_point_clouds.in_set(RenderSystems::Queue),
-            //         // collect_visible_cpu_culled_point_cloud_chunk_entities
-            //         //     .in_set(RenderSystems::PrepareAssets),
-            //     ),
-            // )
             .init_gpu_resource::<RenderMaterialBindings>()
             .allow_ambiguous_resource::<RenderMaterialBindings>();
 

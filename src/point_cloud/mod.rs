@@ -92,7 +92,7 @@ impl PointCloud {
             let parent = self.nodes.get_mut(parent_id).unwrap();
 
             // add to children array and update mask
-            parent.children[node.child_index.index()] = id;
+            parent.children[node.child_index.index() as usize] = id;
             parent.children_mask |= node.child_index.into();
         } else {
             self.root = Some(id);

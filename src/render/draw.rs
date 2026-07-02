@@ -1,10 +1,7 @@
 use bevy::{
     ecs::{
         query::ROQueryItem,
-        system::{
-            lifetimeless::{Read, SRes},
-            SystemParamItem,
-        },
+        system::{lifetimeless::SRes, SystemParamItem},
     },
     log::warn,
     pbr::{RenderMeshInstances, SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup},
@@ -18,7 +15,10 @@ use bevy::{
     },
 };
 
-use crate::{PreparedMaterial, PreparedPointCloudUniform, RenderMaterialInstances};
+use crate::{
+    PreparedMaterial, PreparedPointCloudUniforms, RenderPointCloudChunkInstances,
+    RenderPointCloudMaterialInstances,
+};
 
 pub type DrawPointCloud = (
     SetItemPipeline,
@@ -44,18 +44,35 @@ pub type DrawPointCloudDepthOnlyPrepass = (
 
 pub struct SetPointCloudUniformGroup<const I: usize>;
 impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudUniformGroup<I> {
-    type Param = ();
+    type Param = (
+        SRes<RenderPointCloudChunkInstances>,
+        SRes<PreparedPointCloudUniforms>,
+    );
     type ViewQuery = ();
-    type ItemQuery = Read<PreparedPointCloudUniform>;
+    type ItemQuery = ();
 
     fn render<'w>(
-        _item: &P,
+        item: &P,
         _view: ROQueryItem<'w, '_, Self::ViewQuery>,
-        prepared_custom_uniform: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
-        _param: SystemParamItem<'w, '_, Self::Param>,
+        _: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
+        (render_point_cloud_chunk_instances, prepared_point_cloud_uniforms): SystemParamItem<
+            'w,
+            '_,
+            Self::Param,
+        >,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let Some(prepared_point_cloud_uniform) = prepared_custom_uniform else {
+        let prepared_point_cloud_uniforms = prepared_point_cloud_uniforms.into_inner();
+
+        let Some(chunk_instance) = render_point_cloud_chunk_instances.get(&item.main_entity())
+        else {
+            warn!("render_point_cloud_chunk_instance missing");
+            return RenderCommandResult::Skip;
+        };
+
+        let Some(prepared_point_cloud_uniform) =
+            prepared_point_cloud_uniforms.get(&chunk_instance.root_entity)
+        else {
             warn!("prepared_point_cloud_uniform missing");
             return RenderCommandResult::Skip;
         };
@@ -74,7 +91,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
         SRes<RenderMeshInstances>,
         SRes<MeshAllocator>,
         SRes<ErasedRenderAssets<PreparedMaterial>>,
-        SRes<RenderMaterialInstances>,
+        SRes<RenderPointCloudMaterialInstances>,
     );
     type ViewQuery = ();
     type ItemQuery = ();

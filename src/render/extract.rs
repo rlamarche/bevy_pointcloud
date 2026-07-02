@@ -7,7 +7,7 @@ use bevy::{
     ecs::{
         entity::Entity,
         hierarchy::ChildOf,
-        query::With,
+        query::{Has, With},
         system::{Local, Query, ResMut},
     },
     log::warn,
@@ -24,11 +24,14 @@ use bevy::{
 };
 
 use crate::{
-    ChildrenMask, NodeId, PointCloudChunk3d, PointCloudTransforms, RenderPointCloudInstance,
-    RenderPointCloudInstanceIndex, RenderPointCloudInstances, RenderVisiblePointCloudChunkEntity,
-    RenderVisiblePointCloudEntities, VisiblePointCloudEntities,
+    ChildIndex, ChildrenMask, NodeId, PointCloud3d, PointCloudChunk3d, PointCloudTransforms,
+    RenderPointCloudChunkInstance, RenderPointCloudChunkInstances, RenderPointCloudInstanceIndex,
+    RenderVisiblePointCloudChunkEntity, RenderVisiblePointCloudEntities, VisiblePointCloudEntities,
 };
 
+/// This system extracts the visible point cloud chunk entities into the render world while
+/// preserving the hierarchy, it also computes `first_child_index` and `children_mask` specific for
+/// each views, for later visible nodes texture generation.
 pub fn extract_visible_point_cloud_chunks(
     views: Extract<Query<(RenderEntity, &VisiblePointCloudEntities), With<Camera>>>,
     mut extracted_views: Query<&mut RenderVisiblePointCloudEntities, With<ExtractedView>>,
@@ -93,7 +96,11 @@ pub fn extract_visible_point_cloud_chunks(
                             .chunk_entities[parent_index];
 
                         parent_chunk.children_mask |= node_entity.child_index.into();
-                        parent_chunk.children[node_entity.child_index.index()] = current_index;
+                        parent_chunk.children[node_entity.child_index.index() as usize] =
+                            current_index;
+                        if node_entity.child_index < parent_chunk.first_child_index {
+                            parent_chunk.first_child_index = node_entity.child_index;
+                        }
                     }
 
                     let render_entity = mapper
@@ -112,6 +119,7 @@ pub fn extract_visible_point_cloud_chunks(
                             parent_id: node_entity.parent_id,
                             depth: node_entity.depth,
                             child_index: node_entity.child_index,
+                            first_child_index: ChildIndex::NONE,
                             // empty children list, will be filled when adding children
                             children: [0; 8],
                             // same here, will be recomputed
@@ -127,30 +135,36 @@ pub fn extract_visible_point_cloud_chunks(
 }
 
 /// Extracts meshes from the main world into the render world, populating the
-/// [`RenderMeshInstances`].
+/// [`RenderPointCloudChunkInstances`] resource, which contains a [`RenderPointCloudChunkInstance`]
+/// for each visible [`PointCloudChunk3d`].
 ///
-/// This is the variant of the system that runs when we're *not* using GPU
-/// [`MeshUniform`] building.
-pub fn extract_pointcloud_chunks(
-    mut render_mesh_instances: ResMut<RenderPointCloudInstances>,
-    mut render_mesh_instance_queues: Local<Parallel<Vec<(Entity, RenderPointCloudInstance)>>>,
-    meshes_query: Extract<
-        Query<(
-            Entity,
-            Option<&ChildOf>,
-            Option<&Aabb>,
-            &ViewVisibility,
-            &GlobalTransform,
-            &Mesh3d,
-            &PointCloudChunk3d,
-            Option<&PreviousGlobalTransform>,
-            Option<&RenderLayers>,
-        )>,
+/// It also extracts the its aabb (useful for rendering features), and its transforms, for
+/// populating the [`crate::PointCloudUniform`] later.
+pub fn extract_pointcloud_chunk_instances(
+    mut render_point_cloud_chunk_instances: ResMut<RenderPointCloudChunkInstances>,
+    mut render_point_cloud_chunk_instance_queues: Local<
+        Parallel<Vec<(Entity, RenderPointCloudChunkInstance)>>,
     >,
-    aabb_query: Extract<Query<&Aabb>>,
+    chunks_query: Extract<
+        Query<
+            (
+                Entity,
+                Option<&ChildOf>,
+                Option<&Aabb>,
+                &ViewVisibility,
+                &GlobalTransform,
+                Option<&PreviousGlobalTransform>,
+                Option<&RenderLayers>,
+                // to determine if it is a root
+                Has<PointCloud3d>,
+            ),
+            (With<PointCloudChunk3d>, With<Mesh3d>),
+        >,
+    >,
+    aabb_query: Extract<Query<(Entity, &Aabb)>>,
 ) {
-    meshes_query.par_iter().for_each_init(
-        || render_mesh_instance_queues.borrow_local_mut(),
+    chunks_query.par_iter().for_each_init(
+        || render_point_cloud_chunk_instance_queues.borrow_local_mut(),
         |queue,
          (
             entity,
@@ -158,23 +172,27 @@ pub fn extract_pointcloud_chunks(
             maybe_aabb,
             view_visibility,
             transform,
-            mesh,
-            chunk,
             previous_transform,
             render_layers,
+            is_root,
         )| {
             if !view_visibility.get() {
                 return;
             }
 
-            let Some(aabb) = (match maybe_aabb {
-                Some(aabb) => Some(aabb),
-                None => match maybe_child_of {
+            // the chunk can be either the root chunk, in this cases it has it's own [`Aabb`], or a
+            // child chunk, it which case we have to find the root chunk to get its aabb.
+            let Some((root_main_entity, aabb)) = (match is_root {
+                true => maybe_aabb.map(|aabb| (entity, aabb)),
+                false => match maybe_child_of {
                     Some(child_of) => aabb_query.get(child_of.parent()).ok(),
                     None => None,
                 },
             }) else {
-                warn!("Unable to get chunk's root aabb");
+                warn!(
+                    "Unable to get chunk's root aabb of render entity {:?}",
+                    entity
+                );
                 return;
             };
 
@@ -185,10 +203,10 @@ pub fn extract_pointcloud_chunks(
 
             queue.push((
                 entity,
-                RenderPointCloudInstance {
+                RenderPointCloudChunkInstance {
+                    is_root,
+                    root_entity: root_main_entity.into(),
                     aabb: *aabb,
-                    mesh_id: mesh.id(),
-                    asset_id: chunk.id(),
                     transforms: PointCloudTransforms {
                         world_from_local: world_from_local.into(),
                         previous_world_from_local: previous_world_from_local.into(),
@@ -200,54 +218,10 @@ pub fn extract_pointcloud_chunks(
     );
 
     // Collect the render mesh instances.
-    render_mesh_instances.clear();
-    for queue in render_mesh_instance_queues.iter_mut() {
+    render_point_cloud_chunk_instances.clear();
+    for queue in render_point_cloud_chunk_instance_queues.iter_mut() {
         for (entity, render_mesh_instance) in queue.drain(..) {
-            render_mesh_instances.insert(entity.into(), render_mesh_instance);
+            render_point_cloud_chunk_instances.insert(entity.into(), render_mesh_instance);
         }
     }
 }
-
-// pub fn collect_visible_cpu_culled_point_cloud_chunk_entities(
-//     mut extracted_views: Query<
-//         (&mut RenderVisibleEntities, &RenderVisiblePointCloudEntities),
-//         With<ExtractedView>,
-//     >,
-//     // to preserve allocations
-//     mut visible_entities: Local<Vec<(Entity, MainEntity)>>,
-// ) {
-//     for (mut render_visible_entities, render_visible_point_cloud_entities) in
-//         extracted_views.iter_mut()
-//     {
-//         // clear the visible entities for each view
-//         visible_entities.clear();
-
-//         for (_, render_visible_point_cloud_entity) in
-// &render_visible_point_cloud_entities.entities         {
-//             for render_visible_point_cloud_chunk_entity in
-//                 &render_visible_point_cloud_entity.chunk_entities
-//             {
-//                 visible_entities.push((
-//                     render_visible_point_cloud_chunk_entity.entity,
-//                     render_visible_point_cloud_chunk_entity.main_entity,
-//                 ));
-//             }
-//         }
-
-//         // now update [`RenderVisibleEntities`] component of the extracted view
-
-//         // prepare render visible entities
-//         let entities = render_visible_entities
-//             .classes
-//             .entry(TypeId::of::<PointCloudChunk3d>())
-//             .or_default();
-
-//         entities.prepare_for_new_frame();
-
-//         // Make sure the entity list is sorted, as this is a requirement for
-//         // [`RenderVisibleEntitiesClass::update_from_cpu`].
-//         visible_entities.sort_unstable_by_key(|(_, main_entity)| *main_entity);
-
-//         entities.update_cpu_culled_entities(&visible_entities);
-//     }
-// }

@@ -1,4 +1,4 @@
-# Schedules & System Sets
+# Visibility Systems
 
 This section details how `bevy_point_cloud` orchestrates its CPU-side management logic within Bevy's scheduling architecture.
 
