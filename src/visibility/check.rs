@@ -223,6 +223,7 @@ pub struct CameraView<'a> {
     pub physical_target_size: Option<UVec2>,
 }
 
+// TODO: cache the scale for each node to prevent calculating max scale for each nodes
 fn compute_screen_pixel_radius(
     aabb: &Aabb,
     transform: &GlobalTransform,

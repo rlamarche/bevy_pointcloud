@@ -154,9 +154,11 @@ You do not need to manually spawn the `PointCloudChunk3d` components. `bevy_poin
 
 1. **Lazy Loading**: As the camera moves or as the root `PointCloud` asset finishes loading, the internal management systems traverse the octree.
 2. **Automatic Spawning**: The plugin automatically spawns child entities with the `PointCloudChunk3d` component for every chunk that needs to be streamed or rendered.
-3. **Hierarchical Nesting**: All spawned `PointCloudChunk3d` entities have the root `PointCloud3d` entity as their direct ECS parent (via Bevy's `ChildOf` relationship).
+3. **Hierarchical Nesting**: All spawned `PointCloudChunk3d` entities have the root `PointCloud3d` entity as their direct ECS parent (via Bevy's `ChildOf` relationship), except for the root chunk, which **is** the `PointCloud3d` entity.
 
-   This ensures they all share the same coordinate space and transform propagation without deep nesting overhead, as every chunk remains in the same frame of reference as the root. Instead, the custom `ChildChunkOf` relationship is strictly a logical pointer used to easily query and traverse the parent chunk hierarchy from an ECS query. This setup guarantees that deleting or moving the root point cloud correctly cascades through all active chunks while keeping query access simple and efficient.
+   This ensures they all share the same coordinate space and transform propagation without deep nesting overhead, as every chunk remains in the same frame of reference as the root.
+
+   Instead, the custom `ChildChunkOf` relationship is strictly a logical pointer linking each chunk to its parent chunk, allowing you to easily query and traverse the internal chunk hierarchy from an ECS query. This setup guarantees that deleting or moving the root point cloud correctly cascades through all active chunks while keeping query access simple and efficient.
 
 
 ## Materials
@@ -175,17 +177,15 @@ This architectural choice ensures that:
 
 To get you started immediately without writing custom shaders, `bevy_point_cloud` provides a highly versatile, feature-rich default material asset named **`SimplePointCloudMaterial`**. It leverages both CPU-side properties and GPU-side dynamic evaluation to offer advanced styling out of the box:
 
-* **Adaptive Point Sizing:** Supports both **fixed screen-space sizing** (points maintain their size regardless of distance) and **dynamic world-space sizing** (points scale based on depth and LOD metrics to ensure gap-free rendering).
+* **Adaptive Point Sizing:** Dynamically scales points based on local LOD density to maintain a uniform visual density across the cloud. Instead of applying a single size per chunk, the shader scales individual points depending on which surrounding nodes of the octree are drawn. Points in areas where finer child chunks are missing are rendered larger to fill gaps, ensuring that all visible points within the same spatial zone maintain a consistent visual weight and seamless transitions.
 * **Coloring & Texturing:**
-  * **Base Color:** Apply a uniform tint or map a global texture across the cloud.
-[  * **Textures:** Apply a global texture across the cloud.]: # Not yet implemented
-  * **Per-Point Texturing:** Render custom shapes or apply textures to individual point primitives by leveraging point-level UV layouts.
+  * **Base Color:** Apply a uniform color tint across the cloud.
+  * **Global Texturing (Planned):** Map a global texture across the entire point cloud.
+  * **Point Texturing:** Apply a texture or a custom mesh shape uniformly to all point primitives using point-level UV layouts. *(Note: Texture atlas swapping per-point is possible via custom shaders by leveraging point attributes).*
 * **Advanced Color Gradients:** Built-in support for procedural color ramps featuring up to **8 customizable stops**. Gradients can be mapped dynamically based on:
-  * Spatial coordinates (e.g., coloring by height/Z-axis).
-  * Custom bounding boxes and directional vectors.
-[  * Custom point attributes (e.g., LIDAR intensity, classification, or return flags).]: # Not yet implemented
-* **Procedural Point Shapes:** Go beyond simple square pixels. The default shader allows choosing or injecting custom shapes (e.g., circles, oriented quads, or custom geometries) used for rendering each individual point.
-
+  * **Directional Vectors & Bounds:** Map gradients along any axis (e.g., a vertical vector for height/Z-axis coloring) by providing custom min/max bounds directly in the material. This allows multiple point clouds to easily share the same coordinate scale.
+  * **Custom Point Attributes (Planned):** Map gradients dynamically using any arbitrary point attribute sent to the GPU (such as LIDAR intensity, classification, or custom gameplay data).
+* **Procedural & Custom Shapes:** Go beyond simple square pixels. Out of the box, the default shader can procedurally turn standard quads into **perfect disks** using a radius property. It also allows you to provide a custom base mesh to change the shape of all points globally.
 
 ```d2
 vars: {
