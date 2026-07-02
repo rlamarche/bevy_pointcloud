@@ -51,8 +51,6 @@ fn load_point_cloud(
 }
 ```
 
----
-
 ## Technical Deep Dive
 
 While the framework handles the heavy lifting automatically, here is a quick look at how these core components interact to display your point cloud:

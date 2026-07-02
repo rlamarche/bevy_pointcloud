@@ -2,13 +2,9 @@
 
 This guide will walk you through adding `bevy_point_cloud` to your Bevy project.
 
----
-
 ## Prerequisites
 
 Before starting, ensure you have a working Bevy setup. If you are new to Bevy or need to configure your system's graphics dependencies, please follow the official [Bevy Setup and Installation Guide](https://bevyengine.org/learn/quick-start/getting-started/setup/).
-
----
 
 ## Compatibility Matrix
 
@@ -18,8 +14,6 @@ Because Bevy evolves rapidly, please ensure your project's Bevy version matches 
 | :--- | :--- |
 | **0.19** | `branch = "reboot"` (Development) |
 | *To Be Announced* | `0.1.0` (Future crates.io release) |
-
----
 
 ## Adding the Dependency
 
@@ -43,8 +37,6 @@ bevy_point_cloud = { git = "https://github.com/rlamarche/bevy_pointcloud", branc
 ```
 
 > 💡 **Note on Crates.io:** Once the plugin reaches a stable milestone, standard versioning will be available via `bevy_point_cloud = "0.1"`.
-
----
 
 ## Performance Tip
 

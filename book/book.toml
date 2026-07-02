@@ -5,9 +5,6 @@ language = "en"
 
 [preprocessor]
 
-[preprocessor.mermaid]
-command = "mdbook-mermaid"
-
 [preprocessor.d2]
 
 # path to d2 binary.
@@ -27,8 +24,3 @@ inline = true
 # This is ignored if 'inline' is 'true'.
 # optional. default is "d2".
 output-dir = "d2"
-
-[output]
-
-[output.html]
-additional-js = ["mermaid.min.js", "mermaid-init.js"]

@@ -1,6 +1,11 @@
 # Getting started
 
 - [Introduction](./intro.md)
+  - [Core Features](./intro/core_features.md)
+  - [Architecture & Under the Hood](./intro/architecture.md)
+  - [Loader Responsibilities & Pipeline Boundaries](./intro/loader.md)
+  - [WebGL, WebGPU & Web Workers Roadmap](./intro/web.md)
+  - [Acknowledgements](./intro/acknowledgements.md)
 - [Installation](./getting_started/installation.md)
 - [Your First Point Cloud](./getting_started/first_point_cloud.md)
 

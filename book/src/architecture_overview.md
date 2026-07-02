@@ -70,6 +70,7 @@ In `bevy_point_cloud`, a Chunk is implemented as a Bevy `Asset` containing:
 - **`aabb: Aabb`**: A copy of the corresponding node's bounding box, used for frustum culling.
 - **`vertex_buffer_size: usize`**: The total size of the vertex buffer in bytes, providing immediate metrics on GPU memory usage.
 
+
 ### Point
 
 A **Point** represents a single instance of an object or data position intended for mass rendering.
@@ -81,7 +82,6 @@ In `bevy_point_cloud`, each point is materialized as a single **vertex** within 
   - **Normal**: Used for PBR (Physically Based Rendering) shading or for orienting instanced meshes.
   - **LIDAR Data**: Industry-specific attributes such as intensity, return number, number of returns, classification flags, etc.
 
----
 
 ## Components and Assets
 
@@ -119,8 +119,6 @@ Components: "Components" {
 
 Assets.PointCloud <- Components.PointCloud3d: "Reference"
 Assets.PointCloudChunk <- Components.PointCloudChunk3d: "Reference"
-
-
 ```
 
 ### Assets
@@ -160,7 +158,6 @@ You do not need to manually spawn the `PointCloudChunk3d` components. `bevy_poin
 
    This ensures they all share the same coordinate space and transform propagation without deep nesting overhead, as every chunk remains in the same frame of reference as the root. Instead, the custom `ChildChunkOf` relationship is strictly a logical pointer used to easily query and traverse the parent chunk hierarchy from an ECS query. This setup guarantees that deleting or moving the root point cloud correctly cascades through all active chunks while keeping query access simple and efficient.
 
----
 
 ## Materials
 
@@ -173,7 +170,6 @@ This architectural choice ensures that:
 * **Instance Sharing & Efficiency:** A single material asset instance can be shared and reused across multiple distinct point cloud instances in your scene. This dramatically reduces bind group re-bindings and maximizes GPU rendering efficiency.
 * **Fully Extensible:** You can implement the `PointCloudMaterial` trait to provide your own custom WGSL shaders, bind groups, and uniform properties, leveraging Bevy's automatic pipeline caching under the hood.
 
----
 
 ### The Built-in `SimplePointCloudMaterial`
 
@@ -213,8 +209,6 @@ Components: "Components" {
 Assets.SimplePointCloudMaterial <- Components.SimplePointCloudMaterial3d: "Reference"
 ```
 
-
----
 
 ### Integrating with the Pipeline
 
