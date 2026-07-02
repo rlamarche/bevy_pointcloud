@@ -9,7 +9,7 @@ use bevy_ecs::prelude::*;
 use bevy_render::{
     render_graph::{RenderGraphExt, ViewNodeRunner},
     render_resource::{PipelineCache, SpecializedRenderPipelines},
-    view::Msaa,
+    view::{ExtractedView, Msaa},
     Render, RenderApp, RenderSystems,
 };
 use node::{NormalizePassLabel, NormalizePassNode};
@@ -79,9 +79,9 @@ fn prepare_normalize_pass_pipelines(
     pipeline_cache: Res<PipelineCache>,
     mut pipelines: ResMut<SpecializedRenderPipelines<NormalizePassPipeline>>,
     pipeline: Res<NormalizePassPipeline>,
-    views: Query<(Entity, &Msaa, Option<&PointCloudRenderMode>)>,
+    views: Query<(Entity, &ExtractedView, &Msaa, Option<&PointCloudRenderMode>)>,
 ) {
-    for (entity, msaa, point_cloud_render_mode) in &views {
+    for (entity, view, msaa, point_cloud_render_mode) in &views {
         let pipeline_id = pipelines.specialize(
             &pipeline_cache,
             &pipeline,
@@ -89,6 +89,8 @@ fn prepare_normalize_pass_pipelines(
                 samples: msaa.samples(),
                 use_edl: point_cloud_render_mode.use_edl(),
                 edl_neighbour_count: point_cloud_render_mode.edl_neighbour_count(),
+                // See NormalizePassPipelineKey::hdr.
+                hdr: view.hdr,
             },
         );
 

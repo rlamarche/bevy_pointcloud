@@ -5,6 +5,7 @@ use bevy_render::render_resource::{
     binding_types::{texture_2d, texture_2d_multisampled},
     *,
 };
+use bevy_render::view::ViewTarget;
 use bevy_shader::ShaderDefVal;
 
 use crate::render::{
@@ -16,6 +17,12 @@ pub struct NormalizePassPipelineKey {
     pub samples: u32,
     pub use_edl: bool,
     pub edl_neighbour_count: u32,
+    /// Specialize the color target on the view's
+    /// HDR-ness. The normalize pass writes to the camera's view target, which
+    /// is Rgba16Float for HDR views (e.g. cameras with `Atmosphere`); a
+    /// hardcoded `bevy_default()` (Rgba8UnormSrgb) fails wgpu
+    /// validation on such views.
+    pub hdr: bool,
 }
 
 #[derive(Component)]
@@ -106,7 +113,12 @@ impl SpecializedRenderPipeline for NormalizePassPipeline {
                 shader_defs,
                 entry_point: Some("fragment".into()),
                 targets: vec![Some(ColorTargetState {
-                    format: TextureFormat::bevy_default(),
+                    // Match the view target format.
+                    format: if key.hdr {
+                        ViewTarget::TEXTURE_FORMAT_HDR
+                    } else {
+                        TextureFormat::bevy_default()
+                    },
                     blend: None,
                     write_mask: ColorWrites::ALL,
                 })],

@@ -8,7 +8,7 @@ use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::Core3d;
 use bevy_ecs::{change_detection::Tick, prelude::*};
 use bevy_log::prelude::*;
-use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
+use bevy_pbr::{ExtractedAtmosphere, MeshPipelineKey, SetMeshViewBindGroup};
 use bevy_platform::collections::HashSet;
 use bevy_render::{
     batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport},
@@ -136,11 +136,16 @@ fn queue_attribute_pass(
     custom_draw_pipeline: Res<AttributePassPipeline>,
     point_clouds_3d: Query<&PointCloud3d>,
     mut custom_render_phases: ResMut<ViewBinnedRenderPhases<PointCloud3dAttributePhase>>,
-    mut views: Query<(&ExtractedView, &RenderVisibleEntities, &Msaa)>,
+    mut views: Query<(
+        &ExtractedView,
+        &RenderVisibleEntities,
+        &Msaa,
+        Has<ExtractedAtmosphere>,
+    )>,
     main_entities: Query<&MainEntity>,
     mut next_tick: Local<Tick>,
 ) {
-    for (view, visible_entities, msaa) in &mut views {
+    for (view, visible_entities, msaa, has_atmosphere) in &mut views {
         let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
@@ -148,8 +153,13 @@ fn queue_attribute_pass(
 
         // Create the key based on the view.
         // In this case we only care about MSAA and HDR
-        let view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
+        let mut view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
             | MeshPipelineKey::from_hdr(view.hdr);
+        // See queue_depth_pass — atmosphere views use
+        // the atmosphere mesh-view layout variant.
+        if has_atmosphere {
+            view_key |= MeshPipelineKey::ATMOSPHERE;
+        }
 
         let attribute_key = AttributePipelineKey {
             mesh_key: view_key,

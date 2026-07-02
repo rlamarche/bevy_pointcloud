@@ -218,8 +218,16 @@ fn vertex(vertex: Vertex) -> VertexOutput {
 #else
     let point_size = select(material.point_size, vertex.i_pos_size.w, material.point_size <= 0.0) * transform_scale;
 
-    // Compute radius to size the point correctly with viewport size
-    let radius = point_size / min(viewport[2], viewport[3]);
+    // Clamp to a minimum SCREEN-SPACE size, mirroring
+    // the IS_OCTREE branch. The unclamped view-space radius drops below one
+    // raster sample at distance, so far points vanish entirely (and shimmer/
+    // moire on the way down). min/max_point_size are in pixels.
+    let f_simple = view_bindings::view.clip_from_view[1][1];
+    let slope_simple = 1.0 / f_simple;
+    let proj_factor_simple = -0.5 * viewport[3] / (slope_simple * view_position.z);
+    var radius_screen_simple = (point_size / min(viewport[2], viewport[3])) * proj_factor_simple;
+    radius_screen_simple = clamp(radius_screen_simple, material.min_point_size, material.max_point_size);
+    let radius = radius_screen_simple / proj_factor_simple;
 #endif
 
     // Compute the offset to apply for creating a quad

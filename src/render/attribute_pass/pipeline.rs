@@ -180,7 +180,8 @@ impl SpecializedRenderPipeline for AttributePassPipeline {
                 shader_defs,
                 entry_point: Some("fragment".into()),
                 targets: vec![Some(ColorTargetState {
-                    format: TextureFormat::Rgba32Float,
+                    // Matches the f16 texture.
+                    format: TextureFormat::Rgba16Float,
                     // Additive blending to allow merging close points
                     blend: Some(BlendState {
                         color: BlendComponent {

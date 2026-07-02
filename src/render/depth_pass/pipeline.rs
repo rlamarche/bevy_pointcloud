@@ -165,9 +165,10 @@ impl SpecializedRenderPipeline for DepthPipeline {
                 // Because we can't bind the depth buffer in WASM/WebGL
                 targets: vec![Some(ColorTargetState {
                     format: if key.use_edl {
-                        TextureFormat::Rg32Float
+                        // Matches the f16 texture.
+                        TextureFormat::Rg16Float
                     } else {
-                        TextureFormat::R32Float
+                        TextureFormat::R16Float
                     },
                     blend: None,
                     write_mask: ColorWrites::ALL,

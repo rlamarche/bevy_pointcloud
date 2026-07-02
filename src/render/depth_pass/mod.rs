@@ -8,7 +8,7 @@ use bevy_camera::{Camera, Camera3d};
 use bevy_core_pipeline::core_3d::graph::{Core3d, Node3d};
 use bevy_ecs::{change_detection::Tick, prelude::*};
 use bevy_log::prelude::*;
-use bevy_pbr::{MeshPipelineKey, SetMeshViewBindGroup};
+use bevy_pbr::{ExtractedAtmosphere, MeshPipelineKey, SetMeshViewBindGroup};
 use bevy_platform::collections::HashSet;
 use bevy_render::{
     batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport},
@@ -145,10 +145,11 @@ fn queue_depth_pass(
         &RenderVisibleEntities,
         &Msaa,
         Option<&PointCloudRenderMode>,
+        Has<ExtractedAtmosphere>,
     )>,
     mut next_tick: Local<Tick>,
 ) {
-    for (view, visible_entities, msaa, point_cloud_render_mode) in &mut views {
+    for (view, visible_entities, msaa, point_cloud_render_mode, has_atmosphere) in &mut views {
         let Some(custom_phase) = custom_render_phases.get_mut(&view.retained_view_entity) else {
             continue;
         };
@@ -156,8 +157,15 @@ fn queue_depth_pass(
 
         // Create the key based on the view.
         // In this case we only care about MSAA and HDR
-        let view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
+        let mut view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
             | MeshPipelineKey::from_hdr(view.hdr);
+        // Views with an atmosphere (e.g. cameras with
+        // bevy_pbr's `Atmosphere`) use the atmosphere variant of the mesh-view
+        // bind group layout (extra LUT bindings); the pipeline layout must be
+        // specialized to match or wgpu rejects the draw.
+        if has_atmosphere {
+            view_key |= MeshPipelineKey::ATMOSPHERE;
+        }
 
         let depth_key = DepthPipelineKey {
             mesh_key: view_key,

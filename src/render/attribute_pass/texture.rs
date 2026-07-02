@@ -12,7 +12,7 @@ use bevy_render::{
     },
     render_resource::{
         binding_types::texture_2d, BindGroup, BindGroupEntries, BindGroupLayout, Extent3d,
-        ShaderStages, TextureDescriptor, TextureDimension, TextureFormat::Rgba32Float,
+        ShaderStages, TextureDescriptor, TextureDimension, TextureFormat::Rgba16Float,
         TextureSampleType, TextureUsages, TextureView,
     },
     renderer::RenderDevice,
@@ -83,7 +83,9 @@ pub fn prepare_attribute_pass_textures(
                     mip_level_count: 1,
                     sample_count: msaa.samples(),
                     dimension: TextureDimension::D2,
-                    format: Rgba32Float,
+                    // F16 — float32 is neither
+                    // multisampliable nor blendable under WebGPU core.
+                    format: Rgba16Float,
                     usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
                     view_formats: &[],
                 };
