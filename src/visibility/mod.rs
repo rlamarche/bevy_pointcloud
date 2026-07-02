@@ -8,11 +8,8 @@ mod stack;
 
 use bevy::{
     app::{App, Plugin, PostUpdate},
-    asset::AssetEventSystems,
     camera::{
-        visibility::{
-            add_visibility_class, Visibility, VisibilityClass, VisibilitySystems::CheckVisibility,
-        },
+        visibility::{add_visibility_class, Visibility, VisibilityClass, VisibilitySystems},
         Camera,
     },
     diagnostic::{Diagnostic, DiagnosticPath, RegisterDiagnostic, DEFAULT_MAX_HISTORY_LENGTH},
@@ -25,7 +22,7 @@ pub use filter::*;
 pub use resources::*;
 use stack::*;
 
-use crate::{PointCloud3d, PointCloudChunk3d};
+use crate::{PointCloud3d, PointCloudChunk3d, PointCloudServerSystems};
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
 pub enum PointCloudVisibilitySystems {
@@ -69,7 +66,6 @@ impl Plugin for PointCloudVisiblityPlugin {
             .add_systems(
                 PostUpdate,
                 (
-                    calculate_bounds.in_set(PointCloudVisibilitySystems::CalculateBounds),
                     check_point_cloud_nodes_visibility
                         .in_set(PointCloudVisibilitySystems::CheckPointCloudNodesVisibility),
                     set_visible_point_cloud_chunk_visibility
@@ -79,19 +75,19 @@ impl Plugin for PointCloudVisiblityPlugin {
             .configure_sets(
                 PostUpdate,
                 (
-                    PointCloudVisibilitySystems::CalculateBounds,
-                    CheckVisibility,
                     PointCloudVisibilitySystems::CheckPointCloudNodesVisibility,
-                    PointCloudVisibilitySystems::UpdateViewVisibility,
+                    // scheduled after [`PointCloudServerSystems`] to have the latest loaded meshes
+                    // available for rendering
+                    PointCloudVisibilitySystems::UpdateViewVisibility
+                        .after(PointCloudServerSystems),
                 )
-                    .chain(),
-            )
-            .configure_sets(
-                PostUpdate,
-                PointCloudVisibilitySystems::CalculateBounds
-                    .before(CheckVisibility)
-                    .after(TransformSystems::Propagate)
-                    .after(AssetEventSystems),
+                    .chain()
+                    .after(VisibilitySystems::CheckVisibility)
+                    // We need the [`GlobalTransform`] to be available when computing visibility.
+                    // Note that [`VisibilitySystems::CheckVisibility`] is already after
+                    // [`TransformSystems::Propagate`], but we keep this dependency for
+                    // information.s
+                    .after(TransformSystems::Propagate),
             );
 
         app.world_mut()

@@ -12,10 +12,11 @@ use std::{
 use bevy::{
     app::{Plugin, PostUpdate},
     asset::{AssetHandleProvider, AssetId, Assets, Handle},
+    camera::visibility::VisibilitySystems,
     ecs::{
         error::BevyError,
         resource::Resource,
-        schedule::IntoScheduleConfigs,
+        schedule::{IntoScheduleConfigs, SystemSet},
         system::{Commands, Res, ResMut},
         world::FromWorld,
     },
@@ -41,6 +42,14 @@ use infos::*;
 pub use loader::*;
 pub use task::*;
 
+/// A system set where commands accumulated when handling point cloud events are applied to the
+/// world. So, depending on this system set will make sure that inserted components are available
+/// (like Aabb for example).
+///
+/// [`Messages`]: bevy_ecs::message::Messages
+#[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
+pub struct PointCloudServerSystems;
+
 #[derive(Default)]
 pub struct PointCloudServerPlugin {
     pub settings: PointCloudServerSettings,
@@ -54,16 +63,22 @@ impl Plugin for PointCloudServerPlugin {
             .init_resource::<PointCloudTotalSize>()
             .init_resource::<PointCloudLoadTasks>()
             .init_resource::<PointCloudTracking>()
+            .configure_sets(
+                PostUpdate,
+                // [`VisibilitySystems::CheckVisibility`] needs Aabb to do frustum culling
+                PointCloudServerSystems.before(VisibilitySystems::CheckVisibility),
+            )
             .add_systems(
                 PostUpdate,
                 (
                     cleanup_loaders,
-                    handle_internal_point_cloud_events,
+                    (handle_internal_point_cloud_events, load_chunk_meshes)
+                        .chain()
+                        .in_set(PointCloudServerSystems),
                     process_point_cloud_load_tasks
                         .after(PointCloudVisibilitySystems::CheckPointCloudNodesVisibility),
                     update_point_cloud_server_node_eviction_queue
                         .after(PointCloudVisibilitySystems::CheckPointCloudNodesVisibility),
-                    load_chunk_meshes.after(process_point_cloud_load_tasks),
                 ),
             );
     }

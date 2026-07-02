@@ -13,16 +13,14 @@ use bevy::{
     asset::Assets,
     camera::{
         primitives::{Aabb, Frustum},
-        visibility::{
-            NoAutoAabb, NoFrustumCulling, SetViewVisibility, ViewVisibility, VisibleEntities,
-        },
+        visibility::{SetViewVisibility, ViewVisibility, VisibleEntities},
         Camera, Projection,
     },
     diagnostic::Diagnostics,
     ecs::{
         entity::Entity,
-        query::{Changed, With, Without},
-        system::{Commands, Local, Query, Res, ResMut},
+        query::With,
+        system::{Local, Query, Res, ResMut},
     },
     log::warn,
     math::{UVec2, Vec3A},
@@ -30,48 +28,6 @@ use bevy::{
     time::{Real, Time},
     transform::prelude::*,
 };
-
-/// Computes and adds an [`Aabb`] component to entities with a
-/// [`PointCloud3d`] component and without a [`NoFrustumCulling`] component.
-pub fn calculate_bounds(
-    mut commands: Commands,
-    point_clouds: Res<Assets<PointCloud>>,
-    new_aabb: Query<
-        (Entity, &PointCloud3d),
-        (
-            Without<Aabb>,
-            Without<NoFrustumCulling>,
-            Without<NoAutoAabb>,
-        ),
-    >,
-    mut update_aabb: Query<
-        (&PointCloud3d, &mut Aabb),
-        (
-            Changed<PointCloud3d>,
-            Without<NoFrustumCulling>,
-            Without<NoAutoAabb>,
-        ),
-    >,
-) {
-    for (entity, asset_handle) in &new_aabb {
-        if let Some(point_cloud) = point_clouds.get(asset_handle)
-            && let Some(aabb) = point_cloud.get_root().and_then(|root| root.aabb)
-        {
-            commands.entity(entity).try_insert(aabb);
-        }
-    }
-
-    update_aabb
-        .par_iter_mut()
-        .for_each(|(point_cloud_3d, mut old_aabb)| {
-            if let Some(aabb) = point_clouds
-                .get(point_cloud_3d)
-                .and_then(|point_cloud| point_cloud.get_root().and_then(|root| root.aabb))
-            {
-                *old_aabb = aabb;
-            }
-        });
-}
 
 pub fn check_point_cloud_nodes_visibility(
     mut diagnostics: Diagnostics,
@@ -295,7 +251,7 @@ fn compute_screen_pixel_radius(
             let camera_center = Into::<Vec3A>::into(camera_view.global_transform.translation());
             let distance = (center - camera_center).length();
 
-            let slope = (perspective_projection.fov / 2.0).atan();
+            let slope = (perspective_projection.fov / 2.0).tan();
             let proj_factor = (0.5 * physical_target_size.y as f32) / (slope * distance);
 
             if distance < scaled_radius {
@@ -493,24 +449,31 @@ fn compute_visible_nodes_stack(
     }
 }
 
+/// This system adds each visible [`PointCloudChunk3d`] entity ID to the [`VisibleEntities`]
+/// component for each view. It also updates the [`ViewVisibility`] component on each of these
+/// entities. This allows the chunks' render phases to be queued later in the render world, exactly
+/// like standard meshes.
 pub fn set_visible_point_cloud_chunk_visibility(
     mut views: Query<(&VisiblePointCloudEntities, &mut VisibleEntities), With<Camera>>,
     mut entities: Query<&mut ViewVisibility>,
 ) {
     for (visible_point_cloud_entities, mut visible_entities) in &mut views {
-        let visible_entities = visible_entities.get_mut(TypeId::of::<PointCloudChunk3d>());
+        // Retrieve or initialize the specific sub-list for PointCloudChunk3d inside Bevy's
+        // VisibleEntities
+        let visible_chunk_list = visible_entities.get_mut(TypeId::of::<PointCloudChunk3d>());
 
-        // for each point cloud entity
+        // Iterate through each visible point cloud instance for this view
         for (_, point_cloud_entity) in &visible_point_cloud_entities.entities {
-            // for each point cloud node
+            // Iterate through the visible octree nodes of this point cloud instance
             for node_entity in &point_cloud_entity.node_entities {
-                // keep only nodes with a chunk (which can be rendered)
+                // Keep only nodes that have a valid chunk entity assigned (ready to be rendered)
                 if let Some(chunk_entity) = node_entity.entity {
-                    // add the visible entity
-                    visible_entities.push(chunk_entity);
+                    // Append the chunk entity to Bevy's native visibility list for extraction
+                    visible_chunk_list.push(chunk_entity);
 
+                    // Update Bevy's internal ViewVisibility component to mark this chunk as visible
+                    // this frame
                     if let Ok(mut view_visibility) = entities.get_mut(chunk_entity) {
-                        // set the visible status on the entity itself
                         view_visibility.set_visible();
                     }
                 }
