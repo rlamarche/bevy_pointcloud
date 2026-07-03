@@ -40,6 +40,10 @@ pub struct SimplePointCloudMaterial {
     /// Defaults to `None`.
     pub shape_mesh: Option<Handle<Mesh>>,
 
+    /// Determines the shapes orientation. See [`ShapeOrientation`]
+    /// documentation for options.
+    pub shape_orientation: ShapeOrientation,
+
     /// The color of the surface of the material before lighting.
     ///
     /// Doubles as diffuse albedo for non-metallic, specular for metallic and a mix for everything
@@ -107,9 +111,33 @@ pub struct SimplePointCloudMaterial {
     /// used. See [`UVMapping`] documentation.
     pub uv_mapping: UVMapping,
 
+    /// The UV U vector on which the point position, in object space, will be projected to compute
+    /// U when using a computed UV mapping. Computed UV mapping are:
+    /// - [`UVMapping::Planar`]
+    /// - TODO: add more (spherical, cylindrical, ...)
+    pub uv_u: Vec3,
+
+    /// The UV V vector on which the point position, in object space, will be projected to compute
+    /// V when using a computed UV mapping. Computed UV mapping are:
+    /// - [`UVMapping::Planar`]
+    /// - TODO: add more (spherical, cylindrical, ...)
+    pub uv_v: Vec3,
+
     /// Determines an additionnal transformation to apply to UV coordinates obtained from the
     /// [`SimplePointCloudMaterial::uv_mapping`]
     pub uv_transform: Option<UVTransform>,
+}
+
+/// Determines the shape orientation.
+#[derive(Reflect, Debug, Clone, Default)]
+#[reflect(Default, Debug, Clone)]
+pub enum ShapeOrientation {
+    /// The shape always faces the camera (classic billboard).
+    #[default]
+    Billboard,
+    /// The shape is oriented along the point's normal vector.
+    /// Works only if a normal is provided, and works better if also a tangent is provided.
+    FaceNormal,
 }
 
 /// Determine the UV mapping coordinates mode when using a
@@ -117,17 +145,22 @@ pub struct SimplePointCloudMaterial {
 #[derive(Reflect, Debug, Clone, Default)]
 #[reflect(Default, Debug, Clone)]
 pub enum UVMapping {
-    #[default]
-    /// Multiplies or adds Global UV (from point cloud data) and Local UV (from the point's shape).
+    /// Combine global UV (from point cloud data) and Local UV (from the point's shape).
+    /// **Needs stabilization.**
     Combined,
     /// Uses UVs defined per vertex in the point cloud. The texture stretches across the whole
-    /// cloud.
+    /// cloud and is pixelated. Needs the point cloud's UVs.
     PointCloudOnly,
-    /// Uses UVs of the point's local geometry. The texture is repeated on every single point.
+    /// Uses UVs of the point's local geometry. The texture is repeated on every single point using
+    /// shape's UV.
+    #[default]
     ShapeOnly,
     /// Compute UV coordinates based on the provided [`SimplePointCloudMaterial::uv_direction`] and
     /// [`SimplePointCloudMaterial::uv_offset`]. The norm of the `uv_direction` provides the
     /// scaling.
+    /// **Needs stabilization:**
+    ///  * in billboard mode,the texture on each point does not follow the rotation of the view
+    ///  * in face normal mode, the U/V projection vectors must match the UV coordinates of the shape
     Planar,
 }
 
@@ -167,6 +200,7 @@ impl Default for SimplePointCloudMaterial {
         SimplePointCloudMaterial {
             shape_mesh: None,
             shape_radius: None,
+            shape_orientation: ShapeOrientation::Billboard,
             // White because it gets multiplied with texture values if someone uses
             // a texture.
             base_color: Color::WHITE,
@@ -179,6 +213,17 @@ impl Default for SimplePointCloudMaterial {
             cull_mode: None,
             base_color_texture: None,
             uv_mapping: UVMapping::Combined,
+            uv_u: Vec3 {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+
+            uv_v: Vec3 {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            },
             uv_transform: None,
         }
     }
@@ -203,21 +248,23 @@ pub struct SimplePointCloudMaterialUniform {
     /// in between.
     pub base_color: Vec4,
 
+    pub uv_u: Vec3,
+
+    pub uv_v: Vec3,
+
     pub point_size: f32,
 
     pub shape_radius: f32,
 
-    pub color_stops: [ColorStopUniform; 8],
-
-    pub color_stop_count: u32,
-
-    pub end_color: Vec4,
-
-    pub gradient_direction: Vec3,
-
     pub gradient_start: f32,
 
     pub gradient_end: f32,
+
+    pub end_color: Vec4,
+
+    pub color_stops: [ColorStopUniform; 8],
+
+    pub gradient_direction: Vec3,
 
     pub uv_transform: Mat3,
 
@@ -257,7 +304,6 @@ impl AsBindGroupShaderType<SimplePointCloudMaterialUniform> for SimplePointCloud
                 self.color_stops.get(6).cloned().unwrap_or_default().into(),
                 self.color_stops.get(7).cloned().unwrap_or_default().into(),
             ],
-            color_stop_count: self.color_stops.len() as u32,
             end_color: self
                 .end_color
                 .map(|c| LinearRgba::from(c).to_vec4())
@@ -271,6 +317,8 @@ impl AsBindGroupShaderType<SimplePointCloudMaterialUniform> for SimplePointCloud
                 .clone()
                 .unwrap_or_default()
                 .compute_matrix(),
+            uv_u: self.uv_u,
+            uv_v: self.uv_v,
         }
     }
 }
@@ -283,21 +331,22 @@ bitflags! {
         const CULL_FRONT               = 1_u64 <<  0;
         const CULL_BACK                = 1_u64 <<  1;
         const SHAPE_RADIUS             = 1_u64 <<  2;
-        const GRADIENT                 = 1_u64 <<  3;
+        const SHAPE_ORIENTATION        = 1_u64 <<  3;
+        const GRADIENT                 = 1_u64 <<  4;
 
-        const COLOR_STOP_1             = 1_u64 <<  4;
-        const COLOR_STOP_2             = 1_u64 <<  5;
-        const COLOR_STOP_3             = 1_u64 <<  6;
-        const COLOR_STOP_4             = 1_u64 <<  7;
-        const COLOR_STOP_5             = 1_u64 <<  8;
-        const COLOR_STOP_6             = 1_u64 <<  9;
-        const COLOR_STOP_7             = 1_u64 << 10;
-        const COLOR_STOP_8             = 1_u64 << 11;
+        const COLOR_STOP_1             = 1_u64 <<  5;
+        const COLOR_STOP_2             = 1_u64 <<  6;
+        const COLOR_STOP_3             = 1_u64 <<  7;
+        const COLOR_STOP_4             = 1_u64 <<  8;
+        const COLOR_STOP_5             = 1_u64 <<  9;
+        const COLOR_STOP_6             = 1_u64 << 10;
+        const COLOR_STOP_7             = 1_u64 << 11;
+        const COLOR_STOP_8             = 1_u64 << 12;
 
-        const UV_MAPPING_BITS_0        = 1_u64 << 12;
-        const UV_MAPPING_BITS_1        = 1_u64 << 13;
+        const UV_MAPPING_BITS_0        = 1_u64 << 13;
+        const UV_MAPPING_BITS_1        = 1_u64 << 14;
 
-        const UV_TRANSFORM             = 1_u64 << 14;
+        const UV_TRANSFORM             = 1_u64 << 15;
 
         const UV_MAPPING_MASK          = Self::UV_MAPPING_BITS_0.bits() | Self::UV_MAPPING_BITS_1.bits();
 
@@ -325,6 +374,10 @@ impl From<&SimplePointCloudMaterial> for SimplePointCloudMaterialKey {
         key.set(
             SimplePointCloudMaterialKey::SHAPE_RADIUS,
             material.shape_radius.is_some(),
+        );
+        key.set(
+            SimplePointCloudMaterialKey::SHAPE_ORIENTATION,
+            matches!(material.shape_orientation, ShapeOrientation::FaceNormal),
         );
         key.set(
             SimplePointCloudMaterialKey::GRADIENT,
@@ -407,6 +460,10 @@ impl Material for SimplePointCloudMaterial {
             (
                 SimplePointCloudMaterialKey::SHAPE_RADIUS,
                 "SIMPLE_MATERIAL_SHAPE_RADIUS",
+            ),
+            (
+                SimplePointCloudMaterialKey::SHAPE_ORIENTATION,
+                "SIMPLE_MATERIAL_SHAPE_ORIENTATION_FACE_NORMAL",
             ),
             (
                 SimplePointCloudMaterialKey::GRADIENT,

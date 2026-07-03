@@ -48,7 +48,10 @@ use bevy::{
     prelude::{Deref, DerefMut},
     render::{
         batching::gpu_preprocessing::{BatchedInstanceBuffers, GpuPreprocessingSupport},
-        camera::{DirtySpecializationSystems, DirtySpecializations, PendingQueues},
+        camera::{
+            clear_dirty_wireframe_specializations, expire_wireframe_specializations_for_views,
+            DirtySpecializationSystems, PendingQueues,
+        },
         erased_render_asset::{
             ErasedRenderAsset, ErasedRenderAssetPlugin, ErasedRenderAssets, PrepareAssetError,
         },
@@ -78,6 +81,7 @@ use smallvec::SmallVec;
 use std::sync::Arc;
 
 use crate::{
+    clear_dirty_specializations, expire_specializations_for_views, DirtySpecializations,
     DrawPointCloudDepthOnlyPrepass, DrawPointCloudInstanced, DrawPointCloudPrepass, PointCloud3d,
     PointCloudChunk3d, PointCloudMaterial3d, PointCloudPipeline, PointCloudPipelineSystems,
     SetPointCloudUniformGroup, ShapeMeshes, SimplePointCloudMaterial,
@@ -218,6 +222,28 @@ impl Plugin for MaterialsPlugin {
         // app.add_plugins((PrepassPipelinePlugin, PrepassPlugin::new(self.debug_flags)));
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
+                // From camera
+                .init_resource::<DirtySpecializations>()
+                .configure_sets(
+                    ExtractSchedule,
+                    (
+                        DirtySpecializationSystems::Clear
+                            .before(DirtySpecializationSystems::CheckForChanges),
+                        DirtySpecializationSystems::CheckForChanges
+                            .before(DirtySpecializationSystems::CheckForRemovals),
+                    ),
+                )
+                .add_systems(
+                    ExtractSchedule,
+                    (
+                        clear_dirty_specializations.in_set(DirtySpecializationSystems::Clear),
+                        clear_dirty_wireframe_specializations
+                            .in_set(DirtySpecializationSystems::Clear),
+                        expire_specializations_for_views.in_set(RenderSystems::Cleanup),
+                        expire_wireframe_specializations_for_views.in_set(RenderSystems::Cleanup),
+                    ),
+                )
+                // End camera
                 .init_gpu_resource::<SpecializedMaterialPipelineCache>()
                 .init_gpu_resource::<SpecializedPointCloudPipelines<MaterialPipelineSpecializer>>()
                 // .init_gpu_resource::<LightKeyCache>()
@@ -1051,7 +1077,6 @@ pub(crate) fn specialize_material_meshes(
                     }
                 }
 
-                info!("adding work item");
                 work_items.push(SpecializationWorkItem {
                     // this point to a PointCloud3d
                     visible_entity: *visible_entity,
@@ -1156,7 +1181,6 @@ pub fn queue_material_meshes(
         for &main_entity in dirty_specializations
             .iter_to_dequeue(view.retained_view_entity, render_visible_mesh_entities)
         {
-            info!("remove old phase for entity {:?}", main_entity);
             opaque_phase.remove(main_entity);
             alpha_mask_phase.remove(main_entity);
             transmissive_phase.remove(Entity::PLACEHOLDER, main_entity);
@@ -1177,7 +1201,6 @@ pub fn queue_material_meshes(
             render_visible_mesh_entities,
             &view_pending_mesh_material_queues.prev_frame,
         ) {
-            info!("Entity {:?}/{:?}", render_entity, visible_entity);
             let Some(pipeline_id) = view_specialized_material_pipeline_cache
                 .get(visible_entity)
                 .copied()
@@ -1279,7 +1302,6 @@ pub fn queue_material_meshes(
                         asset_id: mesh_instance.mesh_asset_id().into(),
                     };
 
-                    info!("add phase");
                     opaque_phase.add(
                         batch_set_key,
                         bin_key,

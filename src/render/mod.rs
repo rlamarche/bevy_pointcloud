@@ -8,6 +8,7 @@ mod point_cloud;
 mod point_cloud_bindings;
 mod prepare;
 mod resources;
+mod camera;
 
 use bevy::{
     app::Plugin,
@@ -44,6 +45,7 @@ pub use point_cloud::*;
 pub use point_cloud_bindings::*;
 pub use prepare::*;
 pub use resources::*;
+pub use camera::*;
 
 use crate::{PointCloud3d, PointCloudChunk3d};
 
