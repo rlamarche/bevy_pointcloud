@@ -44,6 +44,7 @@ impl Plugin for PointCloudPlugin {
         load_shader_library!(app, "assets/shaders/pointcloud_types.wgsl");
         load_shader_library!(app, "assets/shaders/pointcloud_bindings.wgsl");
         load_shader_library!(app, "assets/shaders/pointcloud_functions.wgsl");
+        load_shader_library!(app, "assets/shaders/material_types.wgsl");
         load_shader_library!(app, "assets/shaders/simple_material_types.wgsl");
         load_shader_library!(app, "assets/shaders/simple_material_bindings.wgsl");
         embedded_asset!(app, "assets/shaders/pointcloud.wgsl");

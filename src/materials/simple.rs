@@ -2,7 +2,7 @@ use bevy::{
     asset::{Asset, Handle},
     color::{Color, ColorToComponents, LinearRgba},
     image::Image,
-    math::{Vec3, Vec4},
+    math::{Mat3, Vec2, Vec3, Vec4},
     mesh::Mesh,
     pbr::MeshPipelineKey,
     reflect::{std_traits::ReflectDefault, Reflect},
@@ -102,6 +102,64 @@ pub struct SimplePointCloudMaterial {
     #[sampler(2)]
     #[dependency]
     pub base_color_texture: Option<Handle<Image>>,
+
+    /// Determines the UV mapping type, when a [`SimplePointCloudMaterial::base_color_texture`] is
+    /// used. See [`UVMapping`] documentation.
+    pub uv_mapping: UVMapping,
+
+    /// Determines an additionnal transformation to apply to UV coordinates obtained from the
+    /// [`SimplePointCloudMaterial::uv_mapping`]
+    pub uv_transform: Option<UVTransform>,
+}
+
+/// Determine the UV mapping coordinates mode when using a
+/// [`SimplePointCloudMaterial::base_color_texture`].
+#[derive(Reflect, Debug, Clone, Default)]
+#[reflect(Default, Debug, Clone)]
+pub enum UVMapping {
+    #[default]
+    /// Multiplies or adds Global UV (from point cloud data) and Local UV (from the point's shape).
+    Combined,
+    /// Uses UVs defined per vertex in the point cloud. The texture stretches across the whole
+    /// cloud.
+    PointCloudOnly,
+    /// Uses UVs of the point's local geometry. The texture is repeated on every single point.
+    ShapeOnly,
+    /// Compute UV coordinates based on the provided [`SimplePointCloudMaterial::uv_direction`] and
+    /// [`SimplePointCloudMaterial::uv_offset`]. The norm of the `uv_direction` provides the
+    /// scaling.
+    Planar,
+}
+
+impl UVMapping {
+    /// Maps the UV mapping mode to its corresponding bits in `SimplePointCloudMaterialKey`.
+    pub fn pipeline_key_bits(&self) -> SimplePointCloudMaterialKey {
+        match self {
+            Self::Combined => SimplePointCloudMaterialKey::UV_MAPPING_COMBINED,
+            Self::PointCloudOnly => SimplePointCloudMaterialKey::UV_MAPPING_POINT_CLOUD,
+            Self::ShapeOnly => SimplePointCloudMaterialKey::UV_MAPPING_POINT_SHAPE,
+            Self::Planar => SimplePointCloudMaterialKey::UV_MAPPING_PLANAR,
+        }
+    }
+}
+
+#[derive(Reflect, Debug, Clone, Default)]
+pub struct UVTransform {
+    /// Décalage U et V (translation)
+    pub offset: Vec2,
+    /// Répétition / Échelle sur les axes U et V (Scale non-uniforme)
+    pub scale: Vec2,
+    /// Rotation en radians de la texture
+    pub rotation: f32,
+}
+
+impl UVTransform {
+    /// Computes 3x3 matrix from UV transform
+    pub fn compute_matrix(&self) -> Mat3 {
+        Mat3::from_translation(self.offset)
+            * Mat3::from_angle(self.rotation)
+            * Mat3::from_scale(self.scale)
+    }
 }
 
 impl Default for SimplePointCloudMaterial {
@@ -120,6 +178,8 @@ impl Default for SimplePointCloudMaterial {
             end_color: None,
             cull_mode: None,
             base_color_texture: None,
+            uv_mapping: UVMapping::Combined,
+            uv_transform: None,
         }
     }
 }
@@ -158,6 +218,8 @@ pub struct SimplePointCloudMaterialUniform {
     pub gradient_start: f32,
 
     pub gradient_end: f32,
+
+    pub uv_transform: Mat3,
 
     /// The [`SimplePointCloudMaterialFlags`] accessible in the `wgsl` shader.
     pub flags: u32,
@@ -204,6 +266,11 @@ impl AsBindGroupShaderType<SimplePointCloudMaterialUniform> for SimplePointCloud
             gradient_start: self.gradient_start.unwrap_or_default(),
             gradient_end: self.gradient_end.unwrap_or_default(),
             flags: flags.bits(),
+            uv_transform: self
+                .uv_transform
+                .clone()
+                .unwrap_or_default()
+                .compute_matrix(),
         }
     }
 }
@@ -213,18 +280,31 @@ bitflags! {
     #[repr(C)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash)]
     pub struct SimplePointCloudMaterialKey: u64 {
-        const CULL_FRONT               = 1_u64 <<  0; // 0x000001
-        const CULL_BACK                = 1_u64 <<  1; // 0x000002
-        const SHAPE_RADIUS             = 1_u64 <<  2; // 0x000004
-        const GRADIENT                 = 1_u64 <<  3; // 0x000008
-        const COLOR_STOP_1             = 1_u64 <<  4; // 0x000016
-        const COLOR_STOP_2             = 1_u64 <<  5; // 0x000032
-        const COLOR_STOP_3             = 1_u64 <<  6; // 0x000064
-        const COLOR_STOP_4             = 1_u64 <<  7; // 0x000128
-        const COLOR_STOP_5             = 1_u64 <<  8; // 0x000256
-        const COLOR_STOP_6             = 1_u64 <<  9; // 0x000512
-        const COLOR_STOP_7             = 1_u64 << 10; // 0x001024
-        const COLOR_STOP_8             = 1_u64 << 11; // 0x002048
+        const CULL_FRONT               = 1_u64 <<  0;
+        const CULL_BACK                = 1_u64 <<  1;
+        const SHAPE_RADIUS             = 1_u64 <<  2;
+        const GRADIENT                 = 1_u64 <<  3;
+
+        const COLOR_STOP_1             = 1_u64 <<  4;
+        const COLOR_STOP_2             = 1_u64 <<  5;
+        const COLOR_STOP_3             = 1_u64 <<  6;
+        const COLOR_STOP_4             = 1_u64 <<  7;
+        const COLOR_STOP_5             = 1_u64 <<  8;
+        const COLOR_STOP_6             = 1_u64 <<  9;
+        const COLOR_STOP_7             = 1_u64 << 10;
+        const COLOR_STOP_8             = 1_u64 << 11;
+
+        const UV_MAPPING_BITS_0        = 1_u64 << 12;
+        const UV_MAPPING_BITS_1        = 1_u64 << 13;
+
+        const UV_TRANSFORM             = 1_u64 << 14;
+
+        const UV_MAPPING_MASK          = Self::UV_MAPPING_BITS_0.bits() | Self::UV_MAPPING_BITS_1.bits();
+
+        const UV_MAPPING_COMBINED      = 0;
+        const UV_MAPPING_POINT_CLOUD   = Self::UV_MAPPING_BITS_0.bits();
+        const UV_MAPPING_POINT_SHAPE   = Self::UV_MAPPING_BITS_1.bits();
+        const UV_MAPPING_PLANAR        = Self::UV_MAPPING_BITS_0.bits() | Self::UV_MAPPING_BITS_1.bits();
     }
 }
 
@@ -286,6 +366,13 @@ impl From<&SimplePointCloudMaterial> for SimplePointCloudMaterialKey {
             material.color_stops.len() >= 8,
         );
 
+        key.insert(material.uv_mapping.pipeline_key_bits());
+
+        key.set(
+            SimplePointCloudMaterialKey::UV_TRANSFORM,
+            material.uv_transform.is_some(),
+        );
+
         key
     }
 }
@@ -309,55 +396,87 @@ impl Material for SimplePointCloudMaterial {
         key: crate::MaterialPipelineKey<Self>,
     ) -> bevy::ecs::error::Result<(), bevy::material::specialize::SpecializedMeshPipelineError>
     {
-        if let Some(fragment) = descriptor.fragment.as_mut() {
-            let shader_defs = &mut fragment.shader_defs;
+        // Extract the custom material key from the bind group data
+        let material_key = key.bind_group_data;
 
-            for (flags, shader_def) in [
-                (
-                    SimplePointCloudMaterialKey::SHAPE_RADIUS,
-                    "SIMPLE_MATERIAL_SHAPE_RADIUS",
-                ),
-                (
-                    SimplePointCloudMaterialKey::GRADIENT,
-                    "SIMPLE_MATERIAL_GRADIENT",
-                ),
-                (
-                    SimplePointCloudMaterialKey::COLOR_STOP_1,
-                    "SIMPLE_MATERIAL_COLOR_STOP_1",
-                ),
-                (
-                    SimplePointCloudMaterialKey::COLOR_STOP_2,
-                    "SIMPLE_MATERIAL_COLOR_STOP_2",
-                ),
-                (
-                    SimplePointCloudMaterialKey::COLOR_STOP_3,
-                    "SIMPLE_MATERIAL_COLOR_STOP_3",
-                ),
-                (
-                    SimplePointCloudMaterialKey::COLOR_STOP_4,
-                    "SIMPLE_MATERIAL_COLOR_STOP_4",
-                ),
-                (
-                    SimplePointCloudMaterialKey::COLOR_STOP_5,
-                    "SIMPLE_MATERIAL_COLOR_STOP_5",
-                ),
-                (
-                    SimplePointCloudMaterialKey::COLOR_STOP_6,
-                    "SIMPLE_MATERIAL_COLOR_STOP_6",
-                ),
-                (
-                    SimplePointCloudMaterialKey::COLOR_STOP_7,
-                    "SIMPLE_MATERIAL_COLOR_STOP_7",
-                ),
-                (
-                    SimplePointCloudMaterialKey::COLOR_STOP_8,
-                    "SIMPLE_MATERIAL_COLOR_STOP_8",
-                ),
-            ] {
-                if key.bind_group_data.intersects(flags) {
-                    shader_defs.push(shader_def.into());
-                }
+        // Collect all shader defs for both vertex and fragment stages
+        let mut shader_defs = Vec::new();
+
+        // 1. Evaluate single boolean flags
+        for (flags, shader_def) in [
+            (
+                SimplePointCloudMaterialKey::SHAPE_RADIUS,
+                "SIMPLE_MATERIAL_SHAPE_RADIUS",
+            ),
+            (
+                SimplePointCloudMaterialKey::GRADIENT,
+                "SIMPLE_MATERIAL_GRADIENT",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_1,
+                "SIMPLE_MATERIAL_COLOR_STOP_1",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_2,
+                "SIMPLE_MATERIAL_COLOR_STOP_2",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_3,
+                "SIMPLE_MATERIAL_COLOR_STOP_3",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_4,
+                "SIMPLE_MATERIAL_COLOR_STOP_4",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_5,
+                "SIMPLE_MATERIAL_COLOR_STOP_5",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_6,
+                "SIMPLE_MATERIAL_COLOR_STOP_6",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_7,
+                "SIMPLE_MATERIAL_COLOR_STOP_7",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_8,
+                "SIMPLE_MATERIAL_COLOR_STOP_8",
+            ),
+            (
+                SimplePointCloudMaterialKey::UV_TRANSFORM,
+                "SIMPLE_MATERIAL_HAS_UV_TRANSFORM",
+            ),
+        ] {
+            if material_key.intersects(flags) {
+                shader_defs.push(shader_def.into());
             }
+        }
+
+        // 2. Evaluate multi-bit UV mapping mode using the mask
+        match material_key & SimplePointCloudMaterialKey::UV_MAPPING_MASK {
+            SimplePointCloudMaterialKey::UV_MAPPING_COMBINED => {
+                shader_defs.push("SIMPLE_MATERIAL_UV_MAPPING_COMBINED".into());
+            }
+            SimplePointCloudMaterialKey::UV_MAPPING_POINT_CLOUD => {
+                shader_defs.push("SIMPLE_MATERIAL_UV_MAPPING_POINT_CLOUD".into());
+            }
+            SimplePointCloudMaterialKey::UV_MAPPING_POINT_SHAPE => {
+                shader_defs.push("SIMPLE_MATERIAL_UV_MAPPING_POINT_SHAPE".into());
+            }
+            SimplePointCloudMaterialKey::UV_MAPPING_PLANAR => {
+                shader_defs.push("SIMPLE_MATERIAL_UV_MAPPING_PLANAR".into());
+            }
+            _ => unreachable!("Invalid UV mapping bits state encountered in pipeline key."),
+        }
+
+        // Forward shader defs to the vertex stage
+        descriptor.vertex.shader_defs.extend(shader_defs.clone());
+
+        // Forward shader defs to the fragment stage if it exists
+        if let Some(fragment) = descriptor.fragment.as_mut() {
+            fragment.shader_defs.extend(shader_defs);
         }
 
         // Generally, we want to cull front faces if `CULL_FRONT` is present and
@@ -365,10 +484,8 @@ impl Material for SimplePointCloudMaterial {
         // `INVERT_CULLING` on (usually used for mirrors and the like), we do
         // the opposite.
         descriptor.primitive.cull_mode = match (
-            key.bind_group_data
-                .contains(SimplePointCloudMaterialKey::CULL_FRONT),
-            key.bind_group_data
-                .contains(SimplePointCloudMaterialKey::CULL_BACK),
+            material_key.contains(SimplePointCloudMaterialKey::CULL_FRONT),
+            material_key.contains(SimplePointCloudMaterialKey::CULL_BACK),
             key.mesh_key.contains(MeshPipelineKey::INVERT_CULLING),
         ) {
             (true, false, false) | (false, true, true) => Some(Face::Front),
