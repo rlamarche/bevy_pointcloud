@@ -68,6 +68,7 @@ experimental_pbr_pcss = []
 pbr_light_textures = []
 potree = ["dep:potree", "potree/async"]
 potree_fs = ["potree", "potree/fs"]
+copc = ["dep:copc-streaming", "dep:async-lock"]
 
 [dependencies]
 slotmap = { version = "1.0.7", default-features = false }
@@ -96,6 +97,11 @@ las = { version = "0.9", features = ["laz"], optional = true }
 potree = { git = "https://github.com/rlamarche/potree-rs.git", branch = "main", default-features = false, optional = true }
 
 
+copc-streaming = { git = "https://github.com/rlamarche/copc.git", branch = "feat/add-send", optional = true }
+
+async-lock = { version = "3.0", default-features = false, optional = true }
+
+
 [dependencies.bevy]
 version = "0.19"
 default-features = false
@@ -120,7 +126,11 @@ bevy = { version = "0.19.0", features = [
     "bevy_remote",
     "debug",
     "file_watcher",
+    "ui",
+    "bevy_feathers",
 ] }
 # bevy_camera_controller = { version = "0.19.0", features = ["free_camera", "pan_camera"] }
 # bevy_remote = { version = "0.19.0" }
 bytemuck = "1"
+
+bevy_panorbit_camera = "0.35.0"

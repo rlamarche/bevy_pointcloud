@@ -44,6 +44,10 @@ pub struct SimplePointCloudMaterial {
     /// documentation for options.
     pub shape_orientation: ShapeOrientation,
 
+    /// The default normal (if missing on the vertex attributes).
+    /// Used for the shape orientation in [`ShapeOrientation::FaceNormal`] mode.
+    pub default_normal: Vec3,
+
     /// The color of the surface of the material before lighting.
     ///
     /// Doubles as diffuse albedo for non-metallic, specular for metallic and a mix for everything
@@ -53,12 +57,17 @@ pub struct SimplePointCloudMaterial {
     /// Defaults to [`Color::WHITE`].
     pub base_color: Color,
 
-    /// The point size world space dimensions.
-    /// Using orthographic projection, the size will always match this size.
-    /// Using perspective projection, the point size will fade with distance.
+    pub point_size_mode: PointSizeMode,
+
+    /// The point size in pixels.
+    /// Using orthographic projection, the size in pixels will always match this size.
+    /// Using perspective projection, the point size will fade with distance, and grow.
     /// Defaults to `0.01`.
     /// Note: the transform scale is applied to the point size.
     pub point_size: f32,
+
+    pub min_point_size: Option<f32>,
+    pub max_point_size: Option<f32>,
 
     /// A vec of color stops. Up to 8 color stops are currently supported.
     /// Empty by default.
@@ -128,6 +137,55 @@ pub struct SimplePointCloudMaterial {
     pub uv_transform: Option<UVTransform>,
 }
 
+/// Determines how the point size is interpreted.
+#[derive(Reflect, Debug, Clone, Default)]
+#[reflect(Default, Debug, Clone)]
+pub enum PointSizeMode {
+    /// Point size is specified in screen pixels.
+    ///
+    /// - In [`bevy::camera::Projection::Perspective`] mode, points will appear smaller as they get
+    ///   further away from the camera (perspective divide).
+    /// - In [`bevy::camera::Projection::Orthographic`] mode, points will maintain a constant pixel
+    ///   size regardless of the camera's distance or zoom level.
+    ScreenPixels,
+
+    /// Point size is specified in screen pixels, relative to the entity's transform.
+    ///
+    /// Similar to [`PointSizeMode::ScreenPixels`], but the final size is multiplied by the
+    /// entity's [`bevy::transform::components::Transform`] scale. If you scale the entity,
+    /// the points will scale accordingly. If the scaling is not the same on all axes, the max
+    /// scale will be retained.
+    #[default]
+    ScreenPixelsLocal,
+
+    /// Point size is specified in world-space units (e.g., meters).
+    ///
+    /// The size is absolute within the 3D world and is unaffected by the entity's
+    /// [`bevy::transform::components::Transform`] scale. Points will correctly scale
+    /// with camera distance, zoom, and projection modes (both Perspective and Orthographic).
+    WorldSpace,
+
+    /// Point size is specified in local-space units, relative to the entity's transform.
+    ///
+    /// Similar to [`PointSizeMode::WorldSpace`], but the final size is multiplied by the
+    /// entity's [`bevy::transform::components::Transform`] scale. If you scale the entity,
+    /// the points will scale accordingly. If the scaling is not the same on all axes, the max
+    /// scale will be retained.
+    LocalSpace,
+}
+
+impl PointSizeMode {
+    /// Maps the UV mapping mode to its corresponding bits in `SimplePointCloudMaterialKey`.
+    pub fn pipeline_key_bits(&self) -> SimplePointCloudMaterialKey {
+        match self {
+            PointSizeMode::ScreenPixels => SimplePointCloudMaterialKey::POINT_SIZE_SCREEN,
+            PointSizeMode::ScreenPixelsLocal => SimplePointCloudMaterialKey::POINT_SIZE_SCREEN_LOCAL,
+            PointSizeMode::WorldSpace => SimplePointCloudMaterialKey::POINT_SIZE_WORLD,
+            PointSizeMode::LocalSpace => SimplePointCloudMaterialKey::POINT_SIZE_LOCAL,
+        }
+    }
+}
+
 /// Determines the shape orientation.
 #[derive(Reflect, Debug, Clone, Default)]
 #[reflect(Default, Debug, Clone)]
@@ -155,12 +213,12 @@ pub enum UVMapping {
     /// shape's UV.
     #[default]
     ShapeOnly,
-    /// Compute UV coordinates based on the provided [`SimplePointCloudMaterial::uv_direction`] and
-    /// [`SimplePointCloudMaterial::uv_offset`]. The norm of the `uv_direction` provides the
-    /// scaling.
+    /// Compute UV coordinates based on the provided [`SimplePointCloudMaterial::uv_u`] and
+    /// [`SimplePointCloudMaterial::uv_v`].
     /// **Needs stabilization:**
     ///  * in billboard mode,the texture on each point does not follow the rotation of the view
-    ///  * in face normal mode, the U/V projection vectors must match the UV coordinates of the shape
+    ///  * in face normal mode, the U/V projection vectors must match the UV coordinates of the
+    ///    shape
     Planar,
 }
 
@@ -201,10 +259,14 @@ impl Default for SimplePointCloudMaterial {
             shape_mesh: None,
             shape_radius: None,
             shape_orientation: ShapeOrientation::Billboard,
+            default_normal: Vec3::Z,
             // White because it gets multiplied with texture values if someone uses
             // a texture.
             base_color: Color::WHITE,
-            point_size: 0.01,
+            point_size_mode: PointSizeMode::ScreenPixelsLocal,
+            point_size: 30.0,
+            min_point_size: None,
+            max_point_size: None,
             color_stops: Vec::new(),
             gradient_direction: None,
             gradient_start: None,
@@ -213,17 +275,8 @@ impl Default for SimplePointCloudMaterial {
             cull_mode: None,
             base_color_texture: None,
             uv_mapping: UVMapping::Combined,
-            uv_u: Vec3 {
-                x: 1.0,
-                y: 0.0,
-                z: 0.0,
-            },
-
-            uv_v: Vec3 {
-                x: 0.0,
-                y: 1.0,
-                z: 0.0,
-            },
+            uv_u: Vec3::X,
+            uv_v: Vec3::Y,
             uv_transform: None,
         }
     }
@@ -248,11 +301,13 @@ pub struct SimplePointCloudMaterialUniform {
     /// in between.
     pub base_color: Vec4,
 
-    pub uv_u: Vec3,
-
-    pub uv_v: Vec3,
+    pub default_normal: Vec3,
 
     pub point_size: f32,
+
+    pub min_point_size: f32,
+
+    pub max_point_size: f32,
 
     pub shape_radius: f32,
 
@@ -267,6 +322,10 @@ pub struct SimplePointCloudMaterialUniform {
     pub gradient_direction: Vec3,
 
     pub uv_transform: Mat3,
+
+    pub uv_u: Vec3,
+
+    pub uv_v: Vec3,
 
     /// The [`SimplePointCloudMaterialFlags`] accessible in the `wgsl` shader.
     pub flags: u32,
@@ -289,6 +348,9 @@ impl AsBindGroupShaderType<SimplePointCloudMaterialUniform> for SimplePointCloud
         SimplePointCloudMaterialUniform {
             base_color: LinearRgba::from(self.base_color).to_vec4(),
             point_size: self.point_size,
+            default_normal: self.default_normal,
+            min_point_size: self.min_point_size.unwrap_or_default(),
+            max_point_size: self.max_point_size.unwrap_or_default(),
             shape_radius: self.shape_radius.unwrap_or_default(),
             color_stops: [
                 #[expect(
@@ -328,25 +390,35 @@ bitflags! {
     #[repr(C)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash)]
     pub struct SimplePointCloudMaterialKey: u64 {
-        const CULL_FRONT               = 1_u64 <<  0;
-        const CULL_BACK                = 1_u64 <<  1;
-        const SHAPE_RADIUS             = 1_u64 <<  2;
-        const SHAPE_ORIENTATION        = 1_u64 <<  3;
-        const GRADIENT                 = 1_u64 <<  4;
+        const POINT_SIZE_MODE_BITS_0        = 1_u64 << 0;
+        const POINT_SIZE_MODE_BITS_1        = 1_u64 << 1;
 
-        const COLOR_STOP_1             = 1_u64 <<  5;
-        const COLOR_STOP_2             = 1_u64 <<  6;
-        const COLOR_STOP_3             = 1_u64 <<  7;
-        const COLOR_STOP_4             = 1_u64 <<  8;
-        const COLOR_STOP_5             = 1_u64 <<  9;
-        const COLOR_STOP_6             = 1_u64 << 10;
-        const COLOR_STOP_7             = 1_u64 << 11;
-        const COLOR_STOP_8             = 1_u64 << 12;
+        const POINT_SIZE_MASK          = Self::POINT_SIZE_MODE_BITS_0.bits() | Self::POINT_SIZE_MODE_BITS_1.bits();
 
-        const UV_MAPPING_BITS_0        = 1_u64 << 13;
-        const UV_MAPPING_BITS_1        = 1_u64 << 14;
+        const POINT_SIZE_SCREEN        = 0;
+        const POINT_SIZE_SCREEN_LOCAL  = Self::POINT_SIZE_MODE_BITS_0.bits();
+        const POINT_SIZE_WORLD         = Self::POINT_SIZE_MODE_BITS_1.bits();
+        const POINT_SIZE_LOCAL         = Self::POINT_SIZE_MODE_BITS_0.bits() | Self::POINT_SIZE_MODE_BITS_1.bits();
 
-        const UV_TRANSFORM             = 1_u64 << 15;
+        const CULL_FRONT               = 1_u64 <<  2;
+        const CULL_BACK                = 1_u64 <<  3;
+        const SHAPE_RADIUS             = 1_u64 <<  4;
+        const SHAPE_ORIENTATION        = 1_u64 <<  5;
+        const GRADIENT                 = 1_u64 <<  6;
+
+        const COLOR_STOP_1             = 1_u64 <<  7;
+        const COLOR_STOP_2             = 1_u64 <<  8;
+        const COLOR_STOP_3             = 1_u64 <<  9;
+        const COLOR_STOP_4             = 1_u64 <<  10;
+        const COLOR_STOP_5             = 1_u64 <<  11;
+        const COLOR_STOP_6             = 1_u64 <<  12;
+        const COLOR_STOP_7             = 1_u64 <<  13;
+        const COLOR_STOP_8             = 1_u64 <<  14;
+
+        const UV_MAPPING_BITS_0        = 1_u64 <<  15;
+        const UV_MAPPING_BITS_1        = 1_u64 <<  16;
+
+        const UV_TRANSFORM             = 1_u64 <<  17;
 
         const UV_MAPPING_MASK          = Self::UV_MAPPING_BITS_0.bits() | Self::UV_MAPPING_BITS_1.bits();
 
@@ -362,6 +434,8 @@ bitflags! {
 impl From<&SimplePointCloudMaterial> for SimplePointCloudMaterialKey {
     fn from(material: &SimplePointCloudMaterial) -> Self {
         let mut key = SimplePointCloudMaterialKey::empty();
+
+        key.insert(material.point_size_mode.pipeline_key_bits());
 
         key.set(
             SimplePointCloudMaterialKey::CULL_FRONT,
@@ -432,9 +506,11 @@ impl From<&SimplePointCloudMaterial> for SimplePointCloudMaterialKey {
 
 impl Material for SimplePointCloudMaterial {
     fn vertex_shader() -> bevy::shader::ShaderRef {
+        // "shaders/pointcloud_dev.wgsl".into()
         "embedded://bevy_pointcloud/assets/shaders/pointcloud.wgsl".into()
     }
     fn fragment_shader() -> bevy::shader::ShaderRef {
+        // "shaders/pointcloud_dev.wgsl".into()
         "embedded://bevy_pointcloud/assets/shaders/pointcloud.wgsl".into()
     }
     fn shape_mesh(&self) -> Option<bevy::asset::AssetId<Mesh>> {
@@ -455,7 +531,24 @@ impl Material for SimplePointCloudMaterial {
         // Collect all shader defs for both vertex and fragment stages
         let mut shader_defs = Vec::new();
 
-        // 1. Evaluate single boolean flags
+        // Evaluate multi-bit point size mode using the mask
+        match material_key & SimplePointCloudMaterialKey::POINT_SIZE_MASK {
+            SimplePointCloudMaterialKey::POINT_SIZE_SCREEN => {
+                shader_defs.push("SIMPLE_MATERIAL_POINT_SIZE_SCREEN".into());
+            }
+            SimplePointCloudMaterialKey::POINT_SIZE_SCREEN_LOCAL => {
+                shader_defs.push("SIMPLE_MATERIAL_UV_POINT_SIZE_SCREEN_LOCAL".into());
+            }
+            SimplePointCloudMaterialKey::POINT_SIZE_WORLD => {
+                shader_defs.push("SIMPLE_MATERIAL_POINT_SIZE_WORLD".into());
+            }
+            SimplePointCloudMaterialKey::POINT_SIZE_LOCAL => {
+                shader_defs.push("SIMPLE_MATERIAL_POINT_SIZE_LOCAL".into());
+            }
+            _ => unreachable!("Invalid UV mapping bits state encountered in pipeline key."),
+        }
+
+        // Evaluate single boolean flags
         for (flags, shader_def) in [
             (
                 SimplePointCloudMaterialKey::SHAPE_RADIUS,
@@ -511,7 +604,7 @@ impl Material for SimplePointCloudMaterial {
             }
         }
 
-        // 2. Evaluate multi-bit UV mapping mode using the mask
+        // Evaluate multi-bit UV mapping mode using the mask
         match material_key & SimplePointCloudMaterialKey::UV_MAPPING_MASK {
             SimplePointCloudMaterialKey::UV_MAPPING_COMBINED => {
                 shader_defs.push("SIMPLE_MATERIAL_UV_MAPPING_COMBINED".into());

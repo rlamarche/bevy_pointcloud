@@ -5,7 +5,7 @@ use std::f32::consts::TAU;
 use bevy::{
     camera::ScalingMode,
     camera_controller::free_camera::{FreeCamera, FreeCameraPlugin},
-    color::palettes::css::RED,
+    color::palettes::css::{RED, YELLOW},
     prelude::*,
 };
 use bevy_pointcloud::prelude::*;
@@ -24,7 +24,7 @@ fn main() {
 fn setup(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(1.0, 0.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(-4.0, 0.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
         FreeCamera::default(),
     ));
 }
@@ -36,17 +36,61 @@ fn load_point_cloud(
     asset_server: Res<AssetServer>,
 ) -> Result {
     let texture_handle = asset_server.load("branding/bevy_icon.png");
+    let point_cloud =
+        point_cloud_server.load::<PointCloudMeshLoader>(Sphere::new(0.5).mesh().ico(16)?);
     commands.spawn((
-        PointCloud3d(
-            point_cloud_server.load::<PointCloudMeshLoader>(Sphere::new(0.5).mesh().ico(16)?),
-        ),
+        PointCloud3d(point_cloud.clone()),
         PointCloudMaterial3d(materials.add(SimplePointCloudMaterial {
             shape_radius: None,
             base_color: RED.into(),
-            base_color_texture: Some(texture_handle),
-            point_size: 0.01,
+            base_color_texture: Some(texture_handle.clone()),
+            point_size_mode: PointSizeMode::WorldSpace,
+            point_size: 0.02, // in meters
             ..default()
         })),
+        Transform::from_translation(Vec3::new(0.0, -1.0, -1.0)),
+    ));
+
+    commands.spawn((
+        PointCloud3d(point_cloud.clone()),
+        PointCloudMaterial3d(materials.add(SimplePointCloudMaterial {
+            shape_radius: None,
+            base_color: RED.into(),
+            base_color_texture: Some(texture_handle.clone()),
+            point_size_mode: PointSizeMode::LocalSpace,
+            point_size: 0.02, // in meters
+            ..default()
+        })),
+        Transform::from_translation(Vec3::new(0.0, -1.0, 1.0)),
+    ));
+
+
+    commands.spawn((
+        PointCloud3d(point_cloud.clone()),
+        PointCloudMaterial3d(materials.add(SimplePointCloudMaterial {
+            shape_radius: None,
+            base_color: YELLOW.into(),
+            base_color_texture: Some(texture_handle.clone()),
+            point_size_mode: PointSizeMode::ScreenPixels,
+            point_size: 20.0, /* in screen pixels (which fade with distance in perspective
+                               * projection) */
+            ..default()
+        })),
+        Transform::from_translation(Vec3::new(0.0, 1.0, -1.0)),
+    ));
+
+    commands.spawn((
+        PointCloud3d(point_cloud.clone()),
+        PointCloudMaterial3d(materials.add(SimplePointCloudMaterial {
+            shape_radius: None,
+            base_color: YELLOW.into(),
+            base_color_texture: Some(texture_handle.clone()),
+            point_size_mode: PointSizeMode::ScreenPixelsLocal,
+            point_size: 20.0, /* in screen pixels (which fade with distance in perspective
+                               * projection) */
+            ..default()
+        })),
+        Transform::from_translation(Vec3::new(0.0, 1.0, 1.0)),
     ));
 
     Ok(())
@@ -56,13 +100,13 @@ fn update_scale(mut point_cloud: Query<&mut Transform, With<PointCloud3d>>, time
     let modulo = (time.elapsed().as_millis() % 2000) as f32 * TAU / 2000.0;
     let modulo_2 = (time.elapsed().as_millis() % 4000) as f32 * TAU / 4000.0;
 
-    let mut transform = point_cloud.single_mut().unwrap();
-
-    *transform = Transform::from_scale(Vec3::new(
-        1.0 + modulo.sin() / 2.0,
-        1.0 + modulo_2.cos() / 2.0,
-        1.0 + modulo.sin() / 2.0 + modulo.cos() / 4.0,
-    ));
+    for mut transform in point_cloud.iter_mut() {
+        *transform = transform.with_scale(Vec3::new(
+            1.0 + modulo.sin() / 2.0,
+            1.0 + modulo_2.cos() / 2.0,
+            1.0 + modulo.sin() / 2.0 + modulo.cos() / 4.0,
+        ));
+    }
 }
 
 fn toggle_material(
@@ -97,7 +141,7 @@ fn toggle_projection(
                 far: 1000.0,
                 viewport_origin: Vec2::new(0.5, 0.5),
                 scaling_mode: ScalingMode::FixedVertical {
-                    viewport_height: 1.0,
+                    viewport_height: 5.0,
                 },
                 area: Rect::new(-1.0, -1.0, 1.0, 1.0),
             }),

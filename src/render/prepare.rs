@@ -3,6 +3,7 @@ use bevy::{
         query::With,
         system::{Query, Res, ResMut},
     },
+    log::info,
     platform::collections::hash_map::Entry,
     render::{
         render_resource::{BindGroupEntries, PipelineCache, UniformBuffer},
@@ -14,14 +15,14 @@ use bevy::{
 use crate::{
     PointCloudChunk3d, PointCloudPipeline, PointCloudUniform, PreparedPointCloudUniform,
     PreparedPointCloudUniforms, RenderMaterialBindings, RenderPointCloudChunkInstances,
-    RenderPointCloudMaterialInstances,
+    RenderPointCloudInstances, RenderPointCloudMaterialInstances,
 };
 
 /// This system prepares the point cloud uniforms.
 /// Note that for the moment, all chunks of a point cloud uses the same point cloud uniform, to
 /// reduce bindings upon rendering.
 pub fn prepare_point_cloud_uniforms(
-    point_cloud_chunk_instances: Res<RenderPointCloudChunkInstances>,
+    point_cloud_instances: Res<RenderPointCloudInstances>,
     mesh_material_ids: Res<RenderPointCloudMaterialInstances>,
     render_material_bindings: Res<RenderMaterialBindings>,
     mut prepared_point_cloud_uniforms: ResMut<PreparedPointCloudUniforms>,
@@ -35,14 +36,9 @@ pub fn prepare_point_cloud_uniforms(
         pipeline_cache.get_bind_group_layout(&point_cloud_pipeline.point_cloud_uniform_layout);
 
     for main_entity in items {
-        let Some(chunk_instance) = point_cloud_chunk_instances.get(main_entity) else {
+        let Some(point_cloud_instance) = point_cloud_instances.get(main_entity) else {
             continue;
         };
-
-        // we only process root chunks here
-        if !chunk_instance.is_root {
-            continue;
-        }
 
         let point_cloud_material = mesh_material_ids.point_cloud_material(*main_entity);
         let material_bindings_index = render_material_bindings
@@ -51,13 +47,14 @@ pub fn prepare_point_cloud_uniforms(
             .unwrap_or_default();
 
         let point_cloud_uniform = PointCloudUniform::new(
-            &chunk_instance.aabb,
-            &chunk_instance.transforms,
+            &point_cloud_instance.aabb,
+            point_cloud_instance.spacing.unwrap_or_default(),
+            &point_cloud_instance.transforms,
             material_bindings_index.slot,
         );
 
         // create the buffer & bind group, and write it
-        match prepared_point_cloud_uniforms.entry(chunk_instance.root_entity) {
+        match prepared_point_cloud_uniforms.entry(point_cloud_instance.entity) {
             Entry::Occupied(mut entry) => {
                 let value = entry.get_mut();
                 value.buffer.set(point_cloud_uniform);

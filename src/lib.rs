@@ -112,7 +112,9 @@ pub fn on_insert_point_cloud_chunk_3d(
         world.get::<ChildOf>(entity),
     ) {
         let point_cloud_entity = {
-            if let Some(&ChildOf(parent_entity)) = maybe_parent {
+            if let Some(&ChildOf(parent_entity)) = maybe_parent
+                && world.entity(parent_entity).contains::<PointCloud3d>()
+            {
                 parent_entity
             } else {
                 entity
@@ -148,7 +150,9 @@ pub fn on_discard_point_cloud_chunk_3d(
         world.get::<ChildOf>(entity),
     ) {
         let point_cloud_entity = {
-            if let Some(&ChildOf(parent_entity)) = maybe_parent {
+            if let Some(&ChildOf(parent_entity)) = maybe_parent
+                && world.entity(parent_entity).contains::<PointCloud3d>()
+            {
                 parent_entity
             } else {
                 entity

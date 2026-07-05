@@ -5,6 +5,7 @@ pub const MAX_NODES: usize = 2048;
 
 pub struct PointCloudPointBudget {
     pub point_budget: Option<usize>,
+    pub max_depth: Option<u32>,
     pub total_points: usize,
     pub total_nodes: usize,
 }
@@ -16,6 +17,12 @@ impl PointCloudPointBudget {
         }
 
         if self.total_nodes >= MAX_NODES {
+            return false;
+        }
+
+        if let Some(max_depth) = self.max_depth
+            && node.depth > max_depth
+        {
             return false;
         }
 

@@ -171,6 +171,7 @@ pub fn check_point_cloud_nodes_visibility(
 
         let mut budget = PointCloudPointBudget {
             point_budget: visibility_settings.point_budget,
+            max_depth: visibility_settings.max_depth,
             total_points: 0,
             total_nodes: 0,
         };

@@ -1,5 +1,8 @@
+#import bevy_render::view::position_view_to_world;
+
 #import bevy_pbr::{
     mesh_view_bindings::view,
+    mesh_functions::mesh_position_local_to_world,
     view_transformations::{
         position_world_to_clip,
         position_world_to_view,
@@ -24,48 +27,105 @@ fn vertex(
 ) -> VertexOutput {
     var out: VertexOutput;
 
+    // We assume VERTEX_POSITIONS & SHAPE_POSITIONS are set.
+
     out.instance_position = vertex.position;
+
     #ifdef VERTEX_NORMALS
         out.world_normal = pointcloud_functions::mesh_normal_local_to_world(vertex.normal);
     #endif
 
     let world_from_local = pointcloud_functions::get_world_from_local();
 
+    // compute the world position of point coordinates
+    let world_position = mesh_position_local_to_world(world_from_local, vec4<f32>(vertex.position, 1.0));
+    var view_vertex_position: vec3<f32>;
 
-    #ifdef VERTEX_POSITIONS
-        var world_position: vec3<f32>;
+    let view_position = position_world_to_view(world_position.xyz);
 
-        #ifdef SIMPLE_MATERIAL_SHAPE_ORIENTATION_FACE_NORMAL
-            #ifdef VERTEX_TANGENTS
-                world_position = functions::compute_world_position_oriented_with_tangent(
-                    vertex.position,
-                    vertex.normal,
-                    vertex.tangent.xyz,
-                    world_from_local,
-                    shape.position,
-                    material_bindings::material.point_size
-                );
-            #else
-                world_position = functions::compute_world_position_oriented(
-                    vertex.position,
-                    vertex.normal,
-                    world_from_local,
-                    shape.position,
-                    material_bindings::material.point_size
-                );
-            #endif
+    var radius: f32;
+    let radius_scale = functions::extract_max_scale(world_from_local);
+
+    #ifdef SIMPLE_MATERIAL_POINT_SIZE_SCREEN
+        radius = functions::compute_screen_space_point_size(
+            view_position,
+            material_bindings::material.point_size,
+            material_bindings::material.min_point_size,
+            material_bindings::material.max_point_size
+        );
+    #endif
+
+    #ifdef SIMPLE_MATERIAL_UV_POINT_SIZE_SCREEN_LOCAL
+        radius = functions::compute_screen_space_point_size(
+            view_position,
+            material_bindings::material.point_size * radius_scale,
+            material_bindings::material.min_point_size,
+            material_bindings::material.max_point_size
+        );
+    #endif
+
+    #ifdef SIMPLE_MATERIAL_POINT_SIZE_WORLD
+        radius = functions::compute_world_space_point_size(
+            view_position,
+            material_bindings::material.point_size,
+            material_bindings::material.min_point_size,
+            material_bindings::material.max_point_size
+        );
+    #endif
+
+    #ifdef SIMPLE_MATERIAL_POINT_SIZE_LOCAL
+        radius = functions::compute_world_space_point_size(
+            view_position,
+            material_bindings::material.point_size * radius_scale,
+            material_bindings::material.min_point_size,
+            material_bindings::material.max_point_size
+        );
+    #endif
+
+    var world_vertex_position: vec3<f32>;
+
+    #ifdef SIMPLE_MATERIAL_SHAPE_ORIENTATION_FACE_NORMAL
+        var normal: vec3<f32>;
+        #ifdef VERTEX_NORMALS
+            normal = vertex.normal;
         #else
-            world_position = functions::compute_world_position(
-                vertex.position,
+            normal = material_bindings::material.default_normal;
+        #endif
+        #ifdef VERTEX_TANGENTS
+            world_vertex_position = functions::compute_world_vertex_position_oriented_with_tangent(
+                world_position.xyz,
+                normal,
+                vertex.tangent.xyz,
                 world_from_local,
                 shape.position,
-                material_bindings::material.point_size
+                radius
+            );
+        #else
+            world_vertex_position = functions::compute_world_vertex_position_oriented(
+                world_position.xyz,
+                normal,
+                world_from_local,
+                shape.position,
+                radius
             );
         #endif
 
-        out.world_position = vec4<f32>(world_position, 1.0);
-        out.position = view.clip_from_world * out.world_position;
+        view_vertex_position = position_world_to_view(world_vertex_position);
+    #else // case billboard
+        view_vertex_position = functions::compute_view_billboard_vertex_position(
+            view_position,
+            shape.position,
+            radius
+        );
+
+        world_vertex_position = position_view_to_world(view_vertex_position, view.world_from_view);
     #endif
+
+
+    out.position = position_view_to_clip(view_vertex_position);
+
+    // send also the raw world position (not interpolated) for material computations (eg: gradients)
+    out.world_position = world_position;
 
     #ifdef SHAPE_UVS_A
         out.shape_uv = shape.uv;
@@ -82,44 +142,87 @@ fn vertex(
     #endif
 
     #ifdef SIMPLE_MATERIAL_UV_MAPPING_COMBINED
-        // we need to interpolate our UVs using the point size
-        // This transformation is affine, it's ok to do it here.
-        var center_uv = base_uv;
+        let local_from_world = pointcloud_functions::get_local_from_world();
 
-        let uv_size = material_bindings::material.point_size;
-        let half_uv_size = uv_size * 0.5;
+        // compute the radius in local space
+        let radius_vector_world = vec3<f32>(radius, 0.0, 0.0);
+        let radius_vector_local = local_from_world * vec4<f32>(radius_vector_world.xyz, 0.0);
+        let radius_local = length(radius_vector_local) / 2.0;
 
-        let min_uv = center_uv - half_uv_size;
-        let max_uv = center_uv + half_uv_size;
+        var shape_uv = shape.uv;
 
-        base_uv = mix(min_uv, max_uv, shape.uv);
+        // If we're using billboards, we might need to fix the flip effect when
+        // the viewer go to the otherside, or up side down.
+        // It can be fixed if we know the tangents & bitangent.
+        // We try best to worst case, always giving priority to the most details.
+        // Here the different cases in priority order:
+        // 1. We know the normal and the tangent, we then compute the bitangent.
+        // 2. We know only the normal, we assume `uv_u` material parameter is the tangent.
+        // 3. We have no normals, we assume `uv_u` is the tangent, and `uv_v` the bitangent.
+        #ifndef SIMPLE_MATERIAL_SHAPE_ORIENTATION_FACE_NORMAL
+            // we need to know the local up/right vectors
+            let view_right = vec3<f32>(1.0, 0.0, 0.0);
+            let view_up    = vec3<f32>(0.0, 1.0, 0.0);
+
+            let local_right = (local_from_world * (view.world_from_view * vec4<f32>(view_right, 0.0))).xyz;
+            let local_up    = (local_from_world * (view.world_from_view * vec4<f32>(view_up, 0.0))).xyz;
+
+            var tangent: vec3<f32>;
+            var bitangent: vec3<f32>;
+
+            #ifdef VERTEX_NORMALS
+                #ifdef VERTEX_TANGENTS
+                    tangent = vertex.tangent.xyz;
+                #else // not VERTEX_TANGENTS
+                    tangent = material_bindings::material.uv_u;
+                #endif // VERTEX_TANGENTS
+
+                bitangent = cross(vertex.normal, tangent);
+            #else // not VERTEX_NORMALS
+                    tangent = material_bindings::material.uv_u;
+                    bitangent = material_bindings::material.uv_v;
+            #endif // VERTEX_NORMALS
+
+            // check if a flip is needed
+            let flip_u = dot(tangent, local_right) < 0.0;
+            let flip_v = dot(bitangent, local_up) < 0.0;
+
+            // apply the flip
+            shape_uv.x = select(shape_uv.x, 1.0 - shape_uv.x, flip_u);
+            shape_uv.y = select(shape_uv.y, 1.0 - shape_uv.y, flip_v);
+        #endif // SIMPLE_MATERIAL_SHAPE_ORIENTATION_FACE_NORMAL
+
+        // compute final UV for this vertex
+        base_uv = base_uv + (shape_uv - vec2<f32>(0.5, 0.5)) * radius_local;
     #endif
 
     #ifdef SIMPLE_MATERIAL_UV_MAPPING_PLANAR
+        // compute the vertex position in object space
+        let local_from_world = pointcloud_functions::get_local_from_world();
+        let local_vertex_position = local_from_world * vec4<f32>(world_vertex_position, 1.0);
+
         var aabb_size = pointcloud.aabb_max.xyz - pointcloud.aabb_min.xyz;
 
-        // prevent zeros and NaN after division
-        aabb_size = max(aabb_size, vec3<f32>(0.00001));
+        // Prevent zeros and NaN after division (sometimes it works without it, sometimes not)
+        // Commented because another technique is used below
+        // aabb_size = max(aabb_size, vec3<f32>(0.00001));
 
-        let center_normalized = (vertex.position - pointcloud.aabb_min.xyz) / aabb_size;
+        var vertex_position_normalized = (local_vertex_position.xyz - pointcloud.aabb_min.xyz) / aabb_size;
 
-        let half_size_uv = (material_bindings::material.point_size / 2.0) / aabb_size;
+        // Remove potential NaN values, setting UV a center in this special case
+        vertex_position_normalized.x = select(vertex_position_normalized.x, 0.5, aabb_size.x == 0);
+        vertex_position_normalized.y = select(vertex_position_normalized.y, 0.5, aabb_size.y == 0);
+        vertex_position_normalized.z = select(vertex_position_normalized.z, 0.5, aabb_size.z == 0);
+
+        let half_size_uv = (radius / radius_scale / 2.0) / aabb_size;
 
         let axis_u = material_bindings::material.uv_u;
         let axis_v = material_bindings::material.uv_v;
 
-        let min_uv = vec2<f32>(
-            dot(axis_u, center_normalized - half_size_uv),
-            dot(axis_v, center_normalized - half_size_uv),
+        base_uv = vec2<f32>(
+            dot(axis_u, vertex_position_normalized),
+            1.0 - dot(axis_v, vertex_position_normalized),
         );
-        let max_uv = vec2<f32>(
-            dot(axis_u, center_normalized + half_size_uv),
-            dot(axis_v, center_normalized + half_size_uv),
-        );
-
-        let shape_uv_world_space = vec2<f32>(shape.uv.x, 1.0 - shape.uv.y);
-
-        base_uv = mix(min_uv, max_uv, shape_uv_world_space);
     #endif
 
     // Apply 2D transformation matrix on the global/planar coordinates.
@@ -193,11 +296,6 @@ fn fragment(
         #ifdef SIMPLE_MATERIAL_UV_MAPPING_PLANAR
             // Planar is a global mapping style, so it behaves like PointCloud in the fragment
             texture_uv = in.uv;
-        #endif
-
-        // Apply 2D transformation matrix on the global/planar coordinates
-        #ifdef SIMPLE_MATERIAL_HAS_UV_TRANSFORM
-            texture_uv = (material_bindings::material.uv_transform * vec3<f32>(texture_uv, 1.0)).xy;
         #endif
 
         // Example of texture sampling (adapt with your actual binding names)

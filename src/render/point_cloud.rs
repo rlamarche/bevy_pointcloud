@@ -38,6 +38,29 @@ impl RenderAsset for RenderPointCloudChunk {
 }
 
 /// Information that the render world keeps about each entity that contains a
+/// point cloud.
+/// For each point cloud, it stores all the chunk instances, flat.
+#[derive(Resource, Default, Deref, DerefMut)]
+pub struct RenderPointCloudInstances(MainEntityHashMap<RenderPointCloudInstance>);
+
+/// CPU data that the render world keeps for each entity, when *not* using GPU
+/// mesh uniform building.
+pub struct RenderPointCloudInstance {
+    /// The entity that point to the root chunk entity, used for loading the corresponding
+    /// [`PreparedPointCloudUniform`] in the draw command [`crate::SetPointCloudUniformGroup`].
+    pub entity: MainEntity,
+    pub aabb: Aabb,
+    pub spacing: Option<f32>,
+    /// The transform of the mesh.
+    ///
+    /// This will be written into the [`MeshUniform`] at the appropriate time.
+    pub transforms: PointCloudTransforms,
+    /// The set of render layers that this mesh belongs to.
+    pub render_layers: Option<RenderLayers>,
+    // pub chunks: MainEntityHashMap<RenderPointCloudChunkInstance>,
+}
+
+/// Information that the render world keeps about each entity that contains a
 /// mesh.
 ///
 /// The set of information needed is different depending on whether CPU or GPU
@@ -81,11 +104,13 @@ pub struct PointCloudUniform {
     pub local_from_world_transpose_a: [Vec4; 2],
     pub local_from_world_transpose_b: f32,
     pub material_bind_group_slot: u32,
+    pub spacing: f32,
 }
 
 impl PointCloudUniform {
     pub fn new(
         aabb: &Aabb,
+        spacing: f32,
         mesh_transforms: &PointCloudTransforms,
         material_bind_group_slot: MaterialBindGroupSlot,
     ) -> Self {
@@ -101,6 +126,7 @@ impl PointCloudUniform {
         Self {
             aabb_min: aabb.min().extend(1.0),
             aabb_max: aabb.max().extend(1.0),
+            spacing,
             world_from_local: mesh_transforms.world_from_local.to_transpose(),
             previous_world_from_local: mesh_transforms.previous_world_from_local.to_transpose(),
             local_from_world_transpose_a,

@@ -426,7 +426,6 @@ impl PointCloudServerData {
         loader: Arc<dyn ErasedPointCloudLoader>,
         hierarchy_node: &PointCloudNode,
     ) -> Result<(), BevyError> {
-        info!("load chunk internal");
         match loader.load_chunk(hierarchy_node).await {
             Ok(chunk) => self
                 .event_sender

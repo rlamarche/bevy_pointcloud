@@ -84,8 +84,9 @@ use crate::{
     clear_dirty_specializations, expire_specializations_for_views, DirtySpecializations,
     DrawPointCloudDepthOnlyPrepass, DrawPointCloudInstanced, DrawPointCloudPrepass, PointCloud3d,
     PointCloudChunk3d, PointCloudMaterial3d, PointCloudPipeline, PointCloudPipelineSystems,
-    SetPointCloudUniformGroup, ShapeMeshes, SimplePointCloudMaterial,
-    SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
+    RenderPointCloudChunkInstances, RenderVisiblePointCloudEntities, SetPointCloudUniformGroup,
+    ShapeMeshes, SimplePointCloudMaterial, SpecializedPointCloudPipeline,
+    SpecializedPointCloudPipelines,
 };
 
 pub const MATERIAL_BIND_GROUP_INDEX: usize = 3;
@@ -512,6 +513,7 @@ pub type DrawMaterial = (
 pub struct SetMaterialBindGroup<const I: usize>;
 impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetMaterialBindGroup<I> {
     type Param = (
+        SRes<RenderPointCloudChunkInstances>,
         SRes<ErasedRenderAssets<PreparedMaterial>>,
         SRes<RenderPointCloudMaterialInstances>,
         SRes<MaterialBindGroupAllocators>,
@@ -524,18 +526,28 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetMaterialBindGroup<I> 
         item: &P,
         _view: (),
         _item_query: Option<()>,
-        (materials, material_instances, material_bind_group_allocator): SystemParamItem<
-            'w,
-            '_,
-            Self::Param,
-        >,
+        (
+            render_point_cloud_chunk_instances,
+            materials,
+            material_instances,
+            material_bind_group_allocator,
+        ): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         let materials = materials.into_inner();
         let material_instances = material_instances.into_inner();
         let material_bind_group_allocators = material_bind_group_allocator.into_inner();
 
-        let Some(material_instance) = material_instances.instances.get(&item.main_entity()) else {
+        let Some(chunk_instance) = render_point_cloud_chunk_instances.get(&item.main_entity())
+        else {
+            warn!("render_point_cloud_chunk_instance missing");
+            return RenderCommandResult::Skip;
+        };
+
+        let Some(material_instance) = material_instances
+            .instances
+            .get(&chunk_instance.root_entity)
+        else {
             info!("missing material 1");
             return RenderCommandResult::Skip;
         };
@@ -1143,11 +1155,15 @@ pub fn queue_material_meshes(
     mut transmissive_render_phases: ResMut<ViewSortedRenderPhases<Transmissive3d>>,
     mut transparent_render_phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
     mut pending_mesh_material_queues: ResMut<PendingMeshMaterialQueues>,
-    views: Query<(&ExtractedView, &RenderVisibleEntities)>,
+    views: Query<(
+        &ExtractedView,
+        &RenderVisibleEntities,
+        &RenderVisiblePointCloudEntities,
+    )>,
     specialized_material_pipeline_cache: ResMut<SpecializedMaterialPipelineCache>,
     dirty_specializations: Res<DirtySpecializations>,
 ) {
-    for (view, visible_entities) in &views {
+    for (view, visible_entities, render_visible_point_cloud_entities) in &views {
         let (
             Some(opaque_phase),
             Some(alpha_mask_phase),
@@ -1201,6 +1217,16 @@ pub fn queue_material_meshes(
             render_visible_mesh_entities,
             &view_pending_mesh_material_queues.prev_frame,
         ) {
+            let Some(render_visible_point_cloud_entity) =
+                render_visible_point_cloud_entities.get(visible_entity)
+            else {
+                // debug!(
+                //     "missing render visible point cloud entity for {:?}",
+                //     visible_entity
+                // );
+                continue;
+            };
+
             let Some(pipeline_id) = view_specialized_material_pipeline_cache
                 .get(visible_entity)
                 .copied()
@@ -1302,18 +1328,22 @@ pub fn queue_material_meshes(
                         asset_id: mesh_instance.mesh_asset_id().into(),
                     };
 
-                    opaque_phase.add(
-                        batch_set_key,
-                        bin_key,
-                        (*render_entity, *visible_entity),
-                        mesh_instance.current_uniform_index,
-                        BinnedRenderPhaseType::UnbatchableMesh,
-                        // BinnedRenderPhaseType::mesh(
-                        //     mesh_instance.should_batch(),
-                        //     // false,
-                        //     &gpu_preprocessing_support,
-                        // ),
-                    );
+                    // we iterate through all chunks, and add their phase
+                    for chunk in &render_visible_point_cloud_entity.chunk_entities {
+                        // info!("add phase {:?} {:?}", render_entity, visible_entity);
+                        opaque_phase.add(
+                            batch_set_key.clone(),
+                            bin_key.clone(),
+                            (chunk.entity, chunk.main_entity),
+                            mesh_instance.current_uniform_index,
+                            BinnedRenderPhaseType::UnbatchableMesh,
+                            // BinnedRenderPhaseType::mesh(
+                            //     mesh_instance.should_batch(),
+                            //     // false,
+                            //     &gpu_preprocessing_support,
+                            // ),
+                        );
+                    }
                 }
                 // Alpha mask
                 RenderPhaseType::AlphaMask => {

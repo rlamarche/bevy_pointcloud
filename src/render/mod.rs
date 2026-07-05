@@ -72,6 +72,7 @@ impl Plugin for RenderPointCloudPlugin {
                 RenderStartup,
                 PointCloudPipelineSystems.after(MeshPipelineSystems),
             )
+            .init_resource::<RenderPointCloudInstances>()
             .init_resource::<RenderPointCloudChunkInstances>()
             .init_resource::<RenderPointCloudInstanceIndex>()
             .init_resource::<PreparedPointCloudUniforms>()
@@ -86,6 +87,7 @@ impl Plugin for RenderPointCloudPlugin {
                 ExtractSchedule,
                 (
                     extract_visible_point_cloud_chunks.after(extract_cameras),
+                    extract_pointcloud_instances,
                     extract_pointcloud_chunk_instances,
                 ),
             )

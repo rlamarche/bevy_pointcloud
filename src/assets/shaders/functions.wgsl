@@ -1,11 +1,105 @@
 #define_import_path bevy_pointcloud::functions
 
-#import bevy_pbr::mesh_view_bindings::view
+#import bevy_pbr::{
+    mesh_view_bindings::view,
+    view_transformations::{
+        position_world_to_clip,
+        position_world_to_view,
+        position_view_to_clip,
+    },
+}
 #import bevy_pointcloud::{
     types,
     material_types::ColorStop,
     forward_io::{ShapeInput, InstanceInput},
 }
+
+const F32_MAX: f32 = 3.4028234663852886e+38;
+
+fn clamp_point_size(point_size: f32, min: f32, max: f32) -> f32 {
+    let checked_max = select(max, F32_MAX, max <= 0.0);
+
+    return clamp(point_size, min, checked_max);
+}
+
+
+/// Computes and clamps the screen-space size of a point cloud vertex.
+///
+/// This function accounts for perspective distortion based on camera distance (depth)
+/// and viewport dimensions, ensuring points stay within defined pixel bounds.
+///
+/// # Parameters
+/// * `view_position`: The vertex position in view/camera space (uses `z` for depth).
+/// * `point_size`: The base world-space size of the point.
+/// * `min_point_size`: Minimum allowed screen size in pixels.
+/// * `max_point_size`: Maximum allowed screen size in pixels.
+///
+/// # Returns
+/// The perspective-adjusted and clamped point size.
+///
+/// # Dependencies
+/// Expects the Bevy global `view` binding (`clip_from_view` and `viewport`) to be in scope.
+fn compute_screen_space_point_size(
+    view_position: vec3<f32>,
+    point_size: f32,
+    min_point_size: f32,
+    max_point_size: f32,
+) -> f32 {
+    let f = view.clip_from_view[1][1];
+    let fov = 2.0 * atan(1.0 / f);
+    let slope = tan(fov / 2.0);
+    let proj_factor = -0.5 * view.viewport[3] / (slope * view_position.z);
+
+    var radius_screen = (point_size / min(view.viewport[2], view.viewport[3])) * proj_factor;
+    radius_screen = clamp_point_size(radius_screen, min_point_size, max_point_size);
+
+    if (abs(proj_factor) < 0.0001) {
+        return radius_screen;
+    }
+    return radius_screen / proj_factor;
+}
+
+/// Computes and clamps the world-space size of a point cloud vertex
+/// based on screen-space (pixel) constraints.
+///
+/// This ensures that the point's effective size in the world is scaled
+/// so that its projection on screen never goes below or above the pixel limits.
+///
+/// # Parameters
+/// * `view_position`: The vertex position in view/camera space (uses `z` for depth).
+/// * `point_size`: The base world-space size of the point.
+/// * `min_point_size`: Minimum allowed screen size in pixels.
+/// * `max_point_size`: Maximum allowed screen size in pixels.
+///
+/// # Returns
+/// The adjusted point size in World Space units.
+///
+/// # Dependencies
+/// Expects the Bevy global `view` binding (`clip_from_view` and `viewport`) to be in scope.
+fn compute_world_space_point_size(
+    view_position: vec3<f32>,
+    point_size: f32,
+    min_point_size: f32,
+    max_point_size: f32,
+) -> f32 {
+    let f = view.clip_from_view[1][1];
+    let fov = 2.0 * atan(1.0 / f);
+    let slope = tan(fov / 2.0);
+
+    let proj_factor = -0.5 * view.viewport[3] / (slope * view_position.z);
+
+    let viewport_min = min(view.viewport[2], view.viewport[3]);
+    var radius_screen = (point_size / viewport_min) * proj_factor;
+
+    radius_screen = clamp_point_size(radius_screen, min_point_size, max_point_size);
+
+    if (abs(proj_factor) < 0.0001) {
+        return point_size;
+    }
+
+    return (radius_screen / proj_factor) * viewport_min;
+}
+
 
 fn srgb_to_rgb_simple(color: vec3<f32>) -> vec3<f32> {
     return pow(color, vec3<f32>(2.2));
@@ -46,7 +140,8 @@ fn compute_radius(
     return point_size * transform_scale;
 }
 
-/// This function computes the world position of the point using the shape vertice
+
+/// This function computes the view position of the point using the shape vertice, in billboard mode.
 /// params:
 /// - `position`: the position of the point (the instance)
 /// - `world_from_local`: transform matrix from local (in the point cloud space) to the world
@@ -54,56 +149,43 @@ fn compute_radius(
 /// - `point_size`: the point size is juste a scale applied to the shape
 /// Note that the scale from `world_from_local` is also applied (the max scale) to preserve coherent point sizing.
 /// The shape is always face to the camera. Later we would be using the normal of the points to orient the shapes.
-fn compute_world_position(
-    position: vec3<f32>,
-    world_from_local: mat4x4<f32>,
+fn compute_view_billboard_vertex_position(
+    view_position: vec3<f32>,
     shape_position: vec3<f32>,
-    point_size: f32,
+    radius: f32,
 ) -> vec3<f32> {
-    var world_position = (world_from_local * vec4<f32>(position.xyz, 1.0)).xyz;
-    let max_scale = extract_max_scale(world_from_local);
+    let offset = shape_position * radius;
 
-    let right  = vec3<f32>(view.world_from_view[0][0], view.world_from_view[0][1], view.world_from_view[0][2]);
-    let up     = vec3<f32>(view.world_from_view[1][0], view.world_from_view[1][1], view.world_from_view[1][2]);
-    let facing = vec3<f32>(view.world_from_view[2][0], view.world_from_view[2][1], view.world_from_view[2][2]);
-
-    let billboard_shape = view.world_from_view * vec4<f32>(shape_position, 1.0);
-    world_position = world_position + billboard_shape.xyz * max_scale * point_size;
-
-    return world_position;
+    return view_position + offset;
 }
-
 
 /// This function computes the world position of the point using the 3D shape vertex oriented by the point's normal.
 /// The missing tangent will be computed automatically.
 /// params:
-/// - `position`: the position of the point (the instance)
+/// - `world_position`: the position of the point in the world
 /// - `normal`: the local normal vector of the point (the instance)
 /// - `world_from_local`: transform matrix from local (in the point cloud space) to the world
 /// - `shape_position`: the 3D position of a vertex of the shape (e.g. vertices of a sphere)
 /// - `point_size`: the point size is just a scale applied to the shape
-fn compute_world_position_oriented(
-    position: vec3<f32>,
+fn compute_world_vertex_position_oriented(
+    world_position: vec3<f32>,
     normal: vec3<f32>,
     world_from_local: mat4x4<f32>,
     shape_position: vec3<f32>,
-    point_size: f32,
+    radius: f32,
 ) -> vec3<f32> {
-    // 1. Compute the world position of the point instance center
-    var world_position = (world_from_local * vec4<f32>(position, 1.0)).xyz;
-    let max_scale = extract_max_scale(world_from_local);
-
-    // 2. Transform the local normal into world space and normalize it (Local Z-Axis)
+    // Transform the local normal into world space and normalize it (Local Z-Axis)
     let world_normal = normalize((world_from_local * vec4<f32>(normal, 0.0)).xyz);
 
-    // 3. Build the remaining orthonormal basis (Tangent & Bitangent)
+    // Build the remaining orthonormal basis (Tangent & Bitangent)
     var up_ref = vec3<f32>(0.0, 1.0, 0.0);
     if (abs(world_normal.y) > 0.99) {
         up_ref = vec3<f32>(1.0, 0.0, 0.0);
     }
 
     // World tangent (Local X-Axis)
-    let world_tangent = cross(up_ref, world_normal);
+    // up_ref and world_normal may not be orthogonal, that's why normalize is needed.
+    let world_tangent = normalize(cross(up_ref, world_normal));
     // World bitangent (Local Y-Axis)
     let world_bitangent = cross(world_normal, world_tangent);
 
@@ -116,31 +198,30 @@ fn compute_world_position_oriented(
                + (world_normal * shape_position.z);
 
     // Apply the scale and point size to the 3D offset, then add to the center
-    world_position = world_position + offset * max_scale * point_size;
+    let world_vertex_position = world_position + offset * radius;
 
-    return world_position;
+    return world_vertex_position;
 }
+
+
+
 
 /// This function computes the world position of the point using the 3D shape vertex oriented by the point's normal and tangent.
 /// params:
-/// - `position`: the position of the point (the instance)
+/// - `world_position`: the position of the point in the world
 /// - `normal`: the local normal vector of the point (the instance)
 /// - `tangent`: the local tagent vector of the point (the instance)
 /// - `world_from_local`: transform matrix from local (in the point cloud space) to the world
 /// - `shape_position`: the 3D position of a vertex of the shape (e.g. vertices of a sphere)
 /// - `point_size`: the point size is just a scale applied to the shape
-fn compute_world_position_oriented_with_tangent(
-    position: vec3<f32>,
+fn compute_world_vertex_position_oriented_with_tangent(
+    world_position: vec3<f32>,
     normal: vec3<f32>,
     tangent: vec3<f32>,
     world_from_local: mat4x4<f32>,
     shape_position: vec3<f32>,
-    point_size: f32,
+    radius: f32,
 ) -> vec3<f32> {
-    // Compute the world position of the point instance center
-    var world_position = (world_from_local * vec4<f32>(position, 1.0)).xyz;
-    let max_scale = extract_max_scale(world_from_local);
-
     // Transform the local normal into world space and normalize it (Local Z-Axis)
     let world_normal = normalize((world_from_local * vec4<f32>(normal, 0.0)).xyz);
 
@@ -159,10 +240,30 @@ fn compute_world_position_oriented_with_tangent(
                + (world_normal * shape_position.z);
 
     // Apply the scale and point size to the 3D offset, then add to the center
-    world_position = world_position + offset * max_scale * point_size;
+    let world_vertex_position = world_position + offset * radius;
 
-    return world_position;
+    return world_vertex_position;
 }
+
+
+fn compute_tangent_and_bitangent(
+    normal: vec3<f32>,
+) -> mat2x3<f32> {
+    // Build the remaining orthonormal basis (Tangent & Bitangent)
+    var up_ref = vec3<f32>(0.0, 1.0, 0.0);
+    // TODO replace with select ?
+    if (abs(normal.y) > 0.99) {
+        up_ref = vec3<f32>(1.0, 0.0, 0.0);
+    }
+
+    let tangent = normalize(cross(up_ref, normal));
+    let bitangent = cross(normal, tangent);
+
+    return mat2x3<f32>(tangent, bitangent);
+}
+
+
+
 
 // Function to evaluate the multi-stop gradient based on shaderdefs
 fn evaluate_gradient(base_color: vec4<f32>, end_color: vec4<f32>, color_stops: array<ColorStop, 8>, t: f32) -> vec4<f32> {

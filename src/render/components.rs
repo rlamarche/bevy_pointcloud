@@ -18,8 +18,8 @@ pub struct RenderVisiblePointCloudEntities {
 }
 
 impl RenderVisiblePointCloudEntities {
-    pub fn get(&mut self, main_entity: MainEntity) -> Option<&RenderVisiblePointCloudEntity> {
-        self.entities.get(&main_entity)
+    pub fn get(&self, main_entity: &MainEntity) -> Option<&RenderVisiblePointCloudEntity> {
+        self.entities.get(main_entity)
     }
 
     pub fn get_or_insert_mut(

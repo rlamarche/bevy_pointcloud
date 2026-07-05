@@ -21,6 +21,7 @@ pub struct PointCloud {
     pub nodes: SlotMap<NodeId, PointCloudNode>,
     pub root: Option<NodeId>,
     pub aabb: Option<Aabb>,
+    pub spacing: Option<f32>,
 }
 
 impl PointCloud {

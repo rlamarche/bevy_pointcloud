@@ -301,7 +301,6 @@ pub fn handle_internal_point_cloud_events(
                 }
             }
             InternalPointCloudEvent::ChunkLoaded { id, node_id, mesh } => {
-                info!("Chunk loaded: {:?}/{:?}", id, node_id);
                 let key = PointCloudNodeKey { id, node_id };
 
                 // update in flight hashset

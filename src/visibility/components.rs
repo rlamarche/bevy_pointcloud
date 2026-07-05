@@ -13,6 +13,7 @@ use crate::{ChildIndex, ChildrenMask, NodeId, PointCloud, PointCloudChunk, Point
 pub struct PointCloudVisibilitySettings {
     pub min_radius: Option<f32>,
     pub point_budget: Option<usize>,
+    pub max_depth: Option<u32>,
 }
 
 impl Default for PointCloudVisibilitySettings {
@@ -20,6 +21,7 @@ impl Default for PointCloudVisibilitySettings {
         Self {
             min_radius: None,
             point_budget: Some(10_000_000),
+            max_depth: None,
         }
     }
 }

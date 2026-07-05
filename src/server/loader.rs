@@ -1,17 +1,22 @@
 use std::ops::Deref;
 
 use bevy::{
-    camera::primitives::Aabb,
-    ecs::error::BevyError,
-    mesh::Mesh,
-    tasks::{BoxedFuture, ConditionalSendFuture},
+    asset::meta::Settings, camera::primitives::Aabb, ecs::error::BevyError, mesh::Mesh, tasks::{BoxedFuture, ConditionalSendFuture},
 };
 
 use crate::{ChildIndex, NodeData, PointCloudNode, PointCloudNodeStatus};
 
 pub trait PointCloudLoader: Send + Sync + Sized + 'static {
+    /// The source of this loader
     type Source: Send + Sync + 'static;
+
+    // /// The settings type used by this [`PointCloudLoader`].
+    // type Settings: Settings + Default;
+
+    /// The data needed to store data
     type Hierarchy: Send + Sync + 'static;
+
+    /// The type of [error](`std::error::Error`) which could be encountered by this loader.
     type Error: Into<BevyError>;
 
     /// This method must return a loader from it's source, it will be called asynchronously
@@ -32,7 +37,7 @@ pub trait PointCloudLoader: Send + Sync + Sized + 'static {
     /// This method must load the provided node sub hierarchy.
     /// The return format is the same as described in [`PointCloudLoader::load_initial_hierarchy`].
     /// So, the provided node is expected to be the first in the returned vector.
-    /// The provided node **must** be in [`HierarchyNodeStatus::Proxy`] state, or an error might be
+    /// The provided node **should** be in [`HierarchyNodeStatus::Proxy`] state, or an error might be
     /// thrown.
     #[expect(unused, reason = "Prevent suffixing parameter with _.")]
     fn load_sub_hierarchy(

@@ -1,4 +1,5 @@
 use bevy::{
+    asset::Assets,
     camera::{
         primitives::Aabb,
         visibility::{RenderLayers, ViewVisibility},
@@ -8,7 +9,7 @@ use bevy::{
         entity::Entity,
         hierarchy::ChildOf,
         query::{Has, With},
-        system::{Local, Query, ResMut},
+        system::{Local, Query, Res, ResMut},
     },
     log::warn,
     mesh::Mesh3d,
@@ -24,8 +25,9 @@ use bevy::{
 };
 
 use crate::{
-    ChildIndex, ChildrenMask, NodeId, PointCloud3d, PointCloudChunk3d, PointCloudTransforms,
-    RenderPointCloudChunkInstance, RenderPointCloudChunkInstances, RenderPointCloudInstanceIndex,
+    ChildIndex, ChildrenMask, NodeId, PointCloud, PointCloud3d, PointCloudChunk3d,
+    PointCloudTransforms, RenderPointCloudChunkInstance, RenderPointCloudChunkInstances,
+    RenderPointCloudInstance, RenderPointCloudInstanceIndex, RenderPointCloudInstances,
     RenderVisiblePointCloudChunkEntity, RenderVisiblePointCloudEntities, VisiblePointCloudEntities,
 };
 
@@ -130,6 +132,90 @@ pub fn extract_visible_point_cloud_chunks(
                     );
                 }
             }
+        }
+    }
+}
+
+/// Extracts meshes from the main world into the render world, populating the
+/// [`RenderPointCloudChunkInstances`] resource, which contains a [`RenderPointCloudChunkInstance`]
+/// for each visible [`PointCloudChunk3d`].
+///
+/// It also extracts the its aabb (useful for rendering features), and its transforms, for
+/// populating the [`crate::PointCloudUniform`] later.
+/// TODO: don't extract transforms for non root chunks.
+pub fn extract_pointcloud_instances(
+    mut render_point_cloud_instances: ResMut<RenderPointCloudInstances>,
+    mut render_point_cloud_instance_queues: Local<
+        Parallel<Vec<(Entity, RenderPointCloudInstance)>>,
+    >,
+    chunks_query: Extract<
+        Query<(
+            Entity,
+            &PointCloud3d,
+            Option<&Aabb>,
+            &ViewVisibility,
+            &GlobalTransform,
+            Option<&PreviousGlobalTransform>,
+            Option<&RenderLayers>,
+        )>,
+    >,
+    point_clouds: Extract<Res<Assets<PointCloud>>>,
+) {
+    chunks_query.par_iter().for_each_init(
+        || render_point_cloud_instance_queues.borrow_local_mut(),
+        |queue,
+         (
+            entity,
+            point_cloud_3d,
+            maybe_aabb,
+            view_visibility,
+            transform,
+            previous_transform,
+            render_layers,
+        )| {
+            if !view_visibility.get() {
+                return;
+            }
+
+            let Some(aabb) = maybe_aabb else {
+                warn!(
+                    "Unable to get point cloud's aabb of render entity {:?}",
+                    entity
+                );
+                return;
+            };
+
+            let world_from_local = transform.affine();
+            let previous_world_from_local = previous_transform
+                .map(|previous_transform| previous_transform.0)
+                .unwrap_or(world_from_local);
+
+            let Some(point_cloud) = point_clouds.get(point_cloud_3d) else {
+                warn!("Point Cloud {:?} not found", point_cloud_3d.id());
+                return;
+            };
+
+            queue.push((
+                entity,
+                RenderPointCloudInstance {
+                    entity: entity.into(),
+                    aabb: *aabb,
+                    spacing: point_cloud.spacing,
+                    transforms: PointCloudTransforms {
+                        world_from_local: world_from_local.into(),
+                        previous_world_from_local: previous_world_from_local.into(),
+                    },
+                    render_layers: render_layers.cloned(),
+                },
+            ));
+        },
+    );
+
+    // Collect the render mesh instances.
+    render_point_cloud_instances.clear();
+    for queue in render_point_cloud_instance_queues.iter_mut() {
+        for (entity, render_mesh_instance) in queue.drain(..) {
+            render_point_cloud_instances.insert(entity.into(), render_mesh_instance);
         }
     }
 }

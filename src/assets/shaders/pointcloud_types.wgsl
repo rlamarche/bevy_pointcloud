@@ -14,4 +14,5 @@ struct PointCloud {
     // Use bevy_pbr::mesh_functions::mat2x4_f32_to_mat3x3_unpack to unpack
     local_from_world_transpose_a: mat2x4<f32>,
     local_from_world_transpose_b: f32,
+    spacing: f32,
 };

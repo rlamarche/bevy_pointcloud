@@ -87,6 +87,7 @@ pub struct DrawPointCloudInstanced;
 
 impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
     type Param = (
+        SRes<RenderPointCloudChunkInstances>,
         SRes<RenderAssets<RenderMesh>>,
         SRes<RenderMeshInstances>,
         SRes<MeshAllocator>,
@@ -100,7 +101,7 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
         item: &P,
         _view: (),
         _item_query: Option<()>,
-        (meshes, mesh_instances, mesh_allocator, materials, material_instances): SystemParamItem<
+        (render_point_cloud_chunk_instances, meshes, mesh_instances, mesh_allocator, materials, material_instances): SystemParamItem<
             'w,
             '_,
             Self::Param,
@@ -112,7 +113,13 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
         let materials = materials.into_inner();
         let material_instances = material_instances.into_inner();
 
-        let Some(material_instance) = material_instances.instances.get(&item.main_entity()) else {
+        let Some(chunk_instance) = render_point_cloud_chunk_instances.get(&item.main_entity())
+        else {
+            warn!("render_point_cloud_chunk_instance missing");
+            return RenderCommandResult::Skip;
+        };
+
+        let Some(material_instance) = material_instances.instances.get(&chunk_instance.root_entity) else {
             return RenderCommandResult::Skip;
         };
 
