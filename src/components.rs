@@ -71,6 +71,15 @@ impl From<&PointCloud3d> for UntypedAssetId {
 #[cfg_attr(feature = "serialize", reflect(Serialize, Deserialize))]
 pub struct PointCloudChunk3d(pub Handle<PointCloudChunk>);
 
+impl AsAssetId for PointCloudChunk3d {
+    type Asset = PointCloudChunk;
+
+    fn as_asset_id(&self) -> AssetId<Self::Asset> {
+        self.into()
+    }
+}
+
+
 impl SyncComponent for PointCloudChunk3d {
     type Target = Self;
 }

@@ -38,7 +38,7 @@ fn setup(mut commands: Commands) {
         Transform::from_xyz(1.0, 0.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
         FreeCamera::default(),
         PointCloudVisibilitySettings {
-            max_depth: Some(3),
+            max_depth: Some(5),
             ..default()
         },
     ));
@@ -68,10 +68,10 @@ fn load_point_cloud(
 
     let material_handle = materials.add(SimplePointCloudMaterial {
         shape_radius: Some(0.5),
-        point_size_mode: PointSizeMode::ScreenPixelsLocal,
-        point_size: 30.0,
-        min_point_size: Some(2.0),
-        max_point_size: Some(50.0),
+        point_size_mode: PointSizeMode::LocalSpace,
+        point_size: 0.5,
+        // min_point_size: Some(2.0),
+        // max_point_size: Some(50.0),
         base_color: Color::srgb(0.0, 0.2, 0.4), // Deep Blue
         base_color_texture: Some(texture_handle.clone()),
         uv_mapping: bevy_pointcloud::UVMapping::Planar,

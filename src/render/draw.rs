@@ -73,7 +73,7 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudUniformGrou
         let Some(prepared_point_cloud_uniform) =
             prepared_point_cloud_uniforms.get(&chunk_instance.root_entity)
         else {
-            warn!("prepared_point_cloud_uniform missing");
+            warn!("prepared_point_cloud_uniform missing for root entity {:?}", chunk_instance.root_entity);
             return RenderCommandResult::Skip;
         };
 

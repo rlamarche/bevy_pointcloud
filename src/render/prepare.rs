@@ -2,10 +2,7 @@ use bevy::{
     ecs::{
         query::With,
         system::{Query, Res, ResMut},
-    },
-    log::info,
-    platform::collections::hash_map::Entry,
-    render::{
+    }, log::{info, warn}, platform::collections::hash_map::Entry, render::{
         render_resource::{BindGroupEntries, PipelineCache, UniformBuffer},
         renderer::{RenderDevice, RenderQueue},
         sync_world::MainEntity,
@@ -13,9 +10,7 @@ use bevy::{
 };
 
 use crate::{
-    PointCloudChunk3d, PointCloudPipeline, PointCloudUniform, PreparedPointCloudUniform,
-    PreparedPointCloudUniforms, RenderMaterialBindings, RenderPointCloudChunkInstances,
-    RenderPointCloudInstances, RenderPointCloudMaterialInstances,
+    PointCloud3d, PointCloudChunk3d, PointCloudPipeline, PointCloudUniform, PreparedPointCloudUniform, PreparedPointCloudUniforms, RenderMaterialBindings, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
 };
 
 /// This system prepares the point cloud uniforms.
@@ -26,7 +21,7 @@ pub fn prepare_point_cloud_uniforms(
     mesh_material_ids: Res<RenderPointCloudMaterialInstances>,
     render_material_bindings: Res<RenderMaterialBindings>,
     mut prepared_point_cloud_uniforms: ResMut<PreparedPointCloudUniforms>,
-    items: Query<&MainEntity, With<PointCloudChunk3d>>,
+    items: Query<&MainEntity, With<PointCloud3d>>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
     point_cloud_pipeline: Res<PointCloudPipeline>,
@@ -37,6 +32,9 @@ pub fn prepare_point_cloud_uniforms(
 
     for main_entity in items {
         let Some(point_cloud_instance) = point_cloud_instances.get(main_entity) else {
+            // if the instance is missing, it means that it is not visible
+            // warn!("missing point cloud instance {:?}", main_entity);
+            // TODO: find a faster way ? (eg: extracting only visible entities)
             continue;
         };
 

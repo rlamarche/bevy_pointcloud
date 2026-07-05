@@ -11,7 +11,7 @@ use bevy::{
         query::{Has, With},
         system::{Local, Query, Res, ResMut},
     },
-    log::warn,
+    log::{info, warn},
     mesh::Mesh3d,
     pbr::PreviousGlobalTransform,
     platform::collections::HashMap,
@@ -237,68 +237,37 @@ pub fn extract_pointcloud_chunk_instances(
             (
                 Entity,
                 Option<&ChildOf>,
-                Option<&Aabb>,
                 &ViewVisibility,
-                &GlobalTransform,
-                Option<&PreviousGlobalTransform>,
-                Option<&RenderLayers>,
                 // to determine if it is a root
                 Has<PointCloud3d>,
             ),
             (With<PointCloudChunk3d>, With<Mesh3d>),
         >,
     >,
-    aabb_query: Extract<Query<(Entity, &Aabb)>>,
 ) {
     chunks_query.par_iter().for_each_init(
         || render_point_cloud_chunk_instance_queues.borrow_local_mut(),
-        |queue,
-         (
-            entity,
-            maybe_child_of,
-            maybe_aabb,
-            view_visibility,
-            transform,
-            previous_transform,
-            render_layers,
-            is_root,
-        )| {
+        |queue, (entity, maybe_child_of, view_visibility, is_root)| {
             if !view_visibility.get() {
                 return;
             }
 
-            // the chunk can be either the root chunk, in this cases it has it's own [`Aabb`], or a
-            // child chunk, it which case we have to find the root chunk to get its aabb.
-            let Some((root_main_entity, aabb)) = (match is_root {
-                true => maybe_aabb.map(|aabb| (entity, aabb)),
+            let root_entity = match is_root {
+                true => entity,
                 false => match maybe_child_of {
-                    Some(child_of) => aabb_query.get(child_of.parent()).ok(),
-                    None => None,
+                    Some(ChildOf(parent_entity)) => *parent_entity,
+                    None => {
+                        warn!("Not root entity found for chunk {:?}", entity);
+                        return;
+                    }
                 },
-            }) else {
-                warn!(
-                    "Unable to get chunk's root aabb of render entity {:?}",
-                    entity
-                );
-                return;
             };
-
-            let world_from_local = transform.affine();
-            let previous_world_from_local = previous_transform
-                .map(|previous_transform| previous_transform.0)
-                .unwrap_or(world_from_local);
 
             queue.push((
                 entity,
                 RenderPointCloudChunkInstance {
                     is_root,
-                    root_entity: root_main_entity.into(),
-                    aabb: *aabb,
-                    transforms: PointCloudTransforms {
-                        world_from_local: world_from_local.into(),
-                        previous_world_from_local: previous_world_from_local.into(),
-                    },
-                    render_layers: render_layers.cloned(),
+                    root_entity: root_entity.into(),
                 },
             ));
         },

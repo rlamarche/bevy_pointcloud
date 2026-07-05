@@ -63,6 +63,7 @@ impl Plugin for PointCloudVisiblityPlugin {
             .register_required_components::<Camera, VisiblePointCloudEntities>()
             .register_required_components::<Camera, PointCloudVisibilitySettings>()
             .init_resource::<GlobalVisiblePointCloudNodes>()
+            .init_resource::<GlobalVisiblePointCloudChunks>()
             .add_systems(
                 PostUpdate,
                 (

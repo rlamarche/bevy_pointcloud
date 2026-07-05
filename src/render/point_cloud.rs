@@ -75,13 +75,6 @@ pub struct RenderPointCloudChunkInstance {
     /// [`PreparedPointCloudUniform`] in the draw command [`crate::SetPointCloudUniformGroup`].
     pub root_entity: MainEntity,
     pub is_root: bool,
-    pub aabb: Aabb,
-    /// The transform of the mesh.
-    ///
-    /// This will be written into the [`MeshUniform`] at the appropriate time.
-    pub transforms: PointCloudTransforms,
-    /// The set of render layers that this mesh belongs to.
-    pub render_layers: Option<RenderLayers>,
 }
 
 #[derive(Component)]

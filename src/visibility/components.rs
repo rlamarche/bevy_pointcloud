@@ -67,10 +67,12 @@ pub struct VisiblePointCloudNodeEntity {
     pub children: [usize; 8],
     pub children_mask: ChildrenMask,
     pub entity: Option<Entity>,
+    /// the larger, the more visible is this chunk (so prioritized)
+    pub weight: f32,
 }
 
-impl From<&PointCloudNode> for VisiblePointCloudNodeEntity {
-    fn from(value: &PointCloudNode) -> Self {
+impl VisiblePointCloudNodeEntity {
+    pub fn from_with_weight(value: &PointCloudNode, weight: f32) -> Self {
         VisiblePointCloudNodeEntity {
             id: value.id,
             chunk_id: value.chunk.as_ref().map(Handle::id),
@@ -81,9 +83,25 @@ impl From<&PointCloudNode> for VisiblePointCloudNodeEntity {
             children: [0_usize; 8],
             children_mask: ChildrenMask::empty(),
             entity: None,
+            weight,
         }
     }
 }
+// impl From<&PointCloudNode> for VisiblePointCloudNodeEntity {
+//     fn from(value: &PointCloudNode) -> Self {
+//         VisiblePointCloudNodeEntity {
+//             id: value.id,
+//             chunk_id: value.chunk.as_ref().map(Handle::id),
+//             name: value.name.clone(),
+//             parent_id: value.parent_id,
+//             depth: value.depth,
+//             child_index: value.child_index,
+//             children: [0_usize; 8],
+//             children_mask: ChildrenMask::empty(),
+//             entity: None,
+//         }
+//     }
+// }
 
 /// This component stores the visible nodes for each octree at view level (camera) in "main world".
 #[derive(Component)]

@@ -1,3 +1,5 @@
+use bevy::log::info;
+
 use crate::PointCloudNode;
 
 // TODO define elsewhere

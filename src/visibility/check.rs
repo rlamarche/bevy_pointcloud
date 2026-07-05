@@ -4,10 +4,11 @@ use crate::{
     visibility::{
         budget::PointCloudPointBudget, heap_guard::HeapGuard, stack::StackedPointCloudNodeEntity,
     },
-    ChildrenMask, GlobalVisiblePointCloudNodes, LoadRequestType, PointCloud, PointCloud3d,
-    PointCloudChunk3d, PointCloudInstances, PointCloudLoadTasks, PointCloudNodeStatus,
-    PointCloudVisibilitySettings, PointCloudVisiblityPlugin, ScreenPixelRadiusFilter,
-    SkipPointCloudVisibility, VisiblePointCloudEntities,
+    ChildrenMask, GlobalVisiblePointCloudChunks, GlobalVisiblePointCloudNodes, LoadRequestType,
+    PointCloud, PointCloud3d, PointCloudChunk3d, PointCloudInstances, PointCloudLoadTasks,
+    PointCloudNodeStatus, PointCloudVisibilitySettings, PointCloudVisiblityPlugin,
+    ScreenPixelRadiusFilter, SkipPointCloudVisibility, VisiblePointCloudEntities,
+    VisiblePointCloudNodeEntity,
 };
 use bevy::{
     asset::Assets,
@@ -22,7 +23,7 @@ use bevy::{
         query::With,
         system::{Local, Query, Res, ResMut},
     },
-    log::warn,
+    log::{info, warn},
     math::{UVec2, Vec3A},
     platform::{collections::HashMap, time::Instant},
     time::{Real, Time},
@@ -48,6 +49,7 @@ pub fn check_point_cloud_nodes_visibility(
     mut point_cloud_load_tasks: ResMut<PointCloudLoadTasks>,
     mut priority_stack: Local<BinaryHeap<StackedPointCloudNodeEntity>>,
     mut global_visible_point_cloud_nodes: ResMut<GlobalVisiblePointCloudNodes>,
+    mut global_visible_point_cloud_chunks: ResMut<GlobalVisiblePointCloudChunks>,
     point_cloud_instances: Res<PointCloudInstances>,
 ) {
     #[cfg(feature = "trace")]
@@ -62,6 +64,7 @@ pub fn check_point_cloud_nodes_visibility(
 
     // Clear previous iteration visible point cloud nodes
     global_visible_point_cloud_nodes.clear();
+    global_visible_point_cloud_chunks.clear();
 
     // for each view
     for (
@@ -182,12 +185,12 @@ pub fn check_point_cloud_nodes_visibility(
             &mut budget,
             &mut priority_stack,
             &mut visible_point_cloud_entities,
-            &mut global_visible_point_cloud_nodes,
             &entities_transform,
             &mut point_cloud_load_tasks,
         );
 
-        // extract chunk entities for each visible node, if available
+        // extract chunk entities for each visible node, if available and populate resource
+        // [`GlobalVisiblePointCloudChunks`].
         for (entity, point_cloud_entity) in &mut visible_point_cloud_entities.entities {
             let Some(point_cloud_instance) =
                 point_cloud_instances.get(&point_cloud_entity.asset_id)
@@ -203,6 +206,11 @@ pub fn check_point_cloud_nodes_visibility(
                     && let Some(&chunk_entity) = chunk_instance.get(&chunk_id)
                 {
                     node_entity.entity = Some(chunk_entity);
+                    global_visible_point_cloud_chunks.add_visible_chunk(
+                        *entity,
+                        chunk_entity,
+                        node_entity.weight.into(),
+                    );
                 }
             }
         }
@@ -275,7 +283,6 @@ fn compute_visible_nodes_stack(
     budget: &mut PointCloudPointBudget,
     stack: &mut BinaryHeap<StackedPointCloudNodeEntity>,
     visible_point_cloud_entities: &mut VisiblePointCloudEntities,
-    global_visible_octree_nodes: &mut GlobalVisiblePointCloudNodes,
     entities_transform: &HashMap<Entity, &GlobalTransform>,
     load_tasks: &mut PointCloudLoadTasks,
 ) {
@@ -358,6 +365,8 @@ fn compute_visible_nodes_stack(
             }
         }
 
+        // TODO: check budget before loading sub chunks because it might not be necessary to load them.
+
         match node.chunk.is_some() {
             false => {
                 #[cfg(feature = "trace")]
@@ -392,6 +401,9 @@ fn compute_visible_nodes_stack(
                 #[cfg(feature = "trace")]
                 let _span = info_span!("compute_visible_nodes_stack", name = "loaded").entered();
                 if budget.add_node(node) {
+                    // TODO if budget is depth limiting, should not be necessary to process children
+                    // when max depth is reached.
+
                     #[cfg(feature = "trace")]
                     let span_iter_children =
                         info_span!("compute_visible_nodes_stack", name = "iter_children").entered();
@@ -416,6 +428,7 @@ fn compute_visible_nodes_stack(
                         let span_append_stack =
                             info_span!("compute_visible_nodes_stack", name = "append_stack")
                                 .entered();
+
                         stack.push(StackedPointCloudNodeEntity {
                             entity,
                             asset_id,
@@ -433,8 +446,9 @@ fn compute_visible_nodes_stack(
                     drop(span_iter_children);
 
                     // add the current node because it is visible or partially visible
-                    visible_point_cloud_entity.node_entities.push(node.into());
-                    global_visible_octree_nodes.add_visible_node(asset_id, node, weight);
+                    visible_point_cloud_entity.node_entities.push(
+                        VisiblePointCloudNodeEntity::from_with_weight(node, weight.into()),
+                    );
 
                     // if there is a parent, add it to the visible children array
                     if let Some(parent_index) = parent_index {
