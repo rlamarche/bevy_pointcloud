@@ -187,6 +187,7 @@ pub fn check_point_cloud_nodes_visibility(
             &mut visible_point_cloud_entities,
             &entities_transform,
             &mut point_cloud_load_tasks,
+            false,
         );
 
         // extract chunk entities for each visible node, if available and populate resource
@@ -285,6 +286,7 @@ fn compute_visible_nodes_stack(
     visible_point_cloud_entities: &mut VisiblePointCloudEntities,
     entities_transform: &HashMap<Entity, &GlobalTransform>,
     load_tasks: &mut PointCloudLoadTasks,
+    eager_stop: bool,
 ) {
     #[cfg(feature = "trace")]
     let _span = info_span!("compute_visible_nodes_stack", name = "main").entered();
@@ -365,8 +367,14 @@ fn compute_visible_nodes_stack(
             }
         }
 
-        // TODO: check budget before loading sub chunks because it might not be necessary to load them.
+        let budget_check = budget.check(node);
 
+        if eager_stop && !budget_check {
+            // skip checking for visibility if the budget is reached and eager stop is asked
+            continue;
+        }
+
+        // check if the chunk is loaded
         match node.chunk.is_some() {
             false => {
                 #[cfg(feature = "trace")]
@@ -374,6 +382,7 @@ fn compute_visible_nodes_stack(
                     info_span!("compute_visible_nodes_stack", name = "hierarchy_only").entered();
                 match node.status {
                     PointCloudNodeStatus::Proxy => {
+                        // always load sub hierarchy
                         load_tasks.queue_load_request(
                             asset_id,
                             node.id,
@@ -385,67 +394,27 @@ fn compute_visible_nodes_stack(
                         // the node hierarchy is already loading, nothing to do
                     }
                     PointCloudNodeStatus::Loaded => {
-                        load_tasks.queue_load_request(
-                            asset_id,
-                            node.id,
-                            weight,
-                            LoadRequestType::Chunk,
-                        );
+                        // load the chunk only if w're going to display it
+                        if budget_check {
+                            load_tasks.queue_load_request(
+                                asset_id,
+                                node.id,
+                                weight,
+                                LoadRequestType::Chunk,
+                            );
+                        }
                     }
                 }
             }
-            // NodeStatus::Loading => {
-            //     // the node data is already loading, nothing to do
-            // }
             true => {
                 #[cfg(feature = "trace")]
                 let _span = info_span!("compute_visible_nodes_stack", name = "loaded").entered();
-                if budget.add_node(node) {
-                    // TODO if budget is depth limiting, should not be necessary to process children
-                    // when max depth is reached.
 
-                    #[cfg(feature = "trace")]
-                    let span_iter_children =
-                        info_span!("compute_visible_nodes_stack", name = "iter_children").entered();
-                    // we have to process child nodes, sending flag `completely_visible` to prevent
-                    // useless visibility checks
-                    for i in node.children_mask.iter_one_bits() {
-                        let child_id = &node.children[i as usize];
-                        let Some(child) = point_cloud.get_node(*child_id) else {
-                            warn!("missing node in hierarchy, shouldn't happen");
-                            continue;
-                        };
+                if budget_check {
+                    // take into account the node
+                    budget.add_node(node);
 
-                        let Some(aabb) = &child.aabb else {
-                            continue;
-                        };
-
-                        let child_screen_pixel_radius =
-                            compute_screen_pixel_radius(aabb, transform, camera_view);
-                        let weight = child_screen_pixel_radius.unwrap_or(f32::MAX);
-
-                        #[cfg(feature = "trace")]
-                        let span_append_stack =
-                            info_span!("compute_visible_nodes_stack", name = "append_stack")
-                                .entered();
-
-                        stack.push(StackedPointCloudNodeEntity {
-                            entity,
-                            asset_id,
-                            octree: point_cloud,
-                            node: child,
-                            screen_pixel_radius: child_screen_pixel_radius,
-                            weight: weight.into(),
-                            completely_visible,
-                            parent_index: Some(current_index),
-                        });
-                        #[cfg(feature = "trace")]
-                        drop(span_append_stack)
-                    }
-                    #[cfg(feature = "trace")]
-                    drop(span_iter_children);
-
-                    // add the current node because it is visible or partially visible
+                    // add the current node to the visible nodes list
                     visible_point_cloud_entity.node_entities.push(
                         VisiblePointCloudNodeEntity::from_with_weight(node, weight.into()),
                     );
@@ -458,6 +427,53 @@ fn compute_visible_nodes_stack(
                         parent.children_mask |= ChildrenMask::from(node.child_index);
                     }
                 }
+
+                // if there is a max depth, no need to go further
+                if budget.max_depth.eq(&Some(node.depth)) {
+                    // max depth is reached, no need to continue
+                    continue;
+                }
+
+                #[cfg(feature = "trace")]
+                let span_iter_children =
+                    info_span!("compute_visible_nodes_stack", name = "iter_children").entered();
+
+                // we have to process child nodes, sending flag `completely_visible` to prevent
+                // useless visibility checks
+                for i in node.children_mask.iter_one_bits() {
+                    let child_id = &node.children[i as usize];
+                    let Some(child) = point_cloud.get_node(*child_id) else {
+                        warn!("missing node in hierarchy, shouldn't happen");
+                        continue;
+                    };
+
+                    let Some(aabb) = &child.aabb else {
+                        continue;
+                    };
+
+                    let child_screen_pixel_radius =
+                        compute_screen_pixel_radius(aabb, transform, camera_view);
+                    let weight = child_screen_pixel_radius.unwrap_or(f32::MAX);
+
+                    #[cfg(feature = "trace")]
+                    let span_append_stack =
+                        info_span!("compute_visible_nodes_stack", name = "append_stack").entered();
+
+                    stack.push(StackedPointCloudNodeEntity {
+                        entity,
+                        asset_id,
+                        octree: point_cloud,
+                        node: child,
+                        screen_pixel_radius: child_screen_pixel_radius,
+                        weight: weight.into(),
+                        completely_visible,
+                        parent_index: Some(current_index),
+                    });
+                    #[cfg(feature = "trace")]
+                    drop(span_append_stack)
+                }
+                #[cfg(feature = "trace")]
+                drop(span_iter_children);
             }
         }
     }

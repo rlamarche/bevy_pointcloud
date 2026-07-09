@@ -25,7 +25,7 @@ use bevy::{
             SystemParam, SystemParamItem, SystemState,
         },
     },
-    log::{debug, error, info, warn},
+    log::prelude::*,
     material::{
         key::{ErasedMaterialKey, ErasedMeshPipelineKey},
         labels::{DrawFunctionLabel, InternedDrawFunctionLabel, InternedShaderLabel, ShaderLabel},
@@ -86,8 +86,8 @@ use crate::{
     DrawPointCloudDepthOnlyPrepass, DrawPointCloudInstanced, DrawPointCloudPrepass,
     GlobalVisiblePointCloudChunks, PointCloud3d, PointCloudChunk3d, PointCloudMaterial3d,
     PointCloudPipeline, PointCloudPipelineSystems, RenderPointCloudChunkInstances,
-    RenderVisiblePointCloudEntities, SetPointCloudUniformGroup, ShapeMeshes,
-    SimplePointCloudMaterial, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
+    SetPointCloudUniformGroup, ShapeMeshes, SimplePointCloudMaterial,
+    SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
 };
 
 pub const MATERIAL_BIND_GROUP_INDEX: usize = 3;
@@ -992,7 +992,6 @@ pub(crate) fn specialize_material_meshes(
                     specialized_material_pipeline_cache.clear();
                 } else {
                     for &renderable_entity in dirty_specializations.iter_to_despecialize() {
-                        info!("remove from cache for entity {:?}", renderable_entity);
                         specialized_material_pipeline_cache.remove(&renderable_entity);
                     }
                 }
@@ -1120,7 +1119,6 @@ pub(crate) fn specialize_material_meshes(
                     }
                 }
 
-                info!("Push workitem for entity {:?}", visible_entity);
                 work_items.push(SpecializationWorkItem {
                     // this point to a PointCloud3d
                     visible_entity: *visible_entity,
@@ -1227,7 +1225,6 @@ pub fn queue_material_meshes(
         for &main_entity in dirty_specializations
             .iter_to_dequeue(view.retained_view_entity, render_visible_mesh_entities)
         {
-            info!("remove phase {:?}", main_entity);
             opaque_phase.remove(main_entity);
             alpha_mask_phase.remove(main_entity);
             transmissive_phase.remove(Entity::PLACEHOLDER, main_entity);

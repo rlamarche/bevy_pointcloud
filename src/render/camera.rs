@@ -1,4 +1,4 @@
-use bevy::{ecs::{entity::Entity, resource::Resource, system::{Query, ResMut}}, platform::collections::HashSet, render::{sync_world::{MainEntity, MainEntityHashSet}, view::{ExtractedView, RenderVisibleEntitiesClass, RetainedViewEntity}}};
+use bevy::{ecs::{entity::Entity, resource::Resource, system::{Query, ResMut}}, log::info, platform::collections::HashSet, render::{sync_world::{MainEntity, MainEntityHashSet}, view::{ExtractedView, RenderVisibleEntitiesClass, RetainedViewEntity}}};
 use itertools::Either;
 
 

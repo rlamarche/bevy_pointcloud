@@ -1,5 +1,3 @@
-use bevy::log::info;
-
 use crate::PointCloudNode;
 
 // TODO define elsewhere
@@ -13,12 +11,10 @@ pub struct PointCloudPointBudget {
 }
 
 impl PointCloudPointBudget {
-    pub fn add_node(&mut self, node: &PointCloudNode) -> bool {
-        if node.chunk.is_none() {
-            return false;
-        }
-
-        if self.total_nodes >= MAX_NODES {
+    /// Check if a node can be added while respecting the budget.
+    /// Returns true if the node can be added.
+    pub fn check(&self, node: &PointCloudNode) -> bool {
+        if self.total_nodes + 1 >= MAX_NODES {
             return false;
         }
 
@@ -29,15 +25,21 @@ impl PointCloudPointBudget {
         }
 
         if let Some(point_budget) = self.point_budget
-            && self.total_points > point_budget
+            && self.total_points + node.point_count > point_budget
         {
             return false;
         }
 
+        true
+    }
+
+    /// Add a node to the budget. This function does not check the budget.
+    pub fn add_node(&mut self, node: &PointCloudNode) -> bool {
+        let check = self.check(node);
         self.total_points += node.point_count;
         self.total_nodes += 1;
 
-        true
+        check
     }
 
     pub fn value(&self) -> f64 {
