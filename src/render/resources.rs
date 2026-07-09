@@ -1,5 +1,8 @@
 use bevy::{
-    ecs::{entity::Entity, resource::Resource}, platform::collections::HashMap, prelude::{Deref, DerefMut}, render::{camera::PendingQueues, sync_world::MainEntity},
+    ecs::{entity::Entity, resource::Resource},
+    platform::collections::HashMap,
+    prelude::{Deref, DerefMut},
+    render::{camera::PendingQueues, sync_world::MainEntity},
 };
 use slotmap::{new_key_type, Key, SlotMap};
 
@@ -58,7 +61,6 @@ impl RenderPointCloudInstanceIndex {
         self.index.get(&entity).copied()
     }
 }
-
 
 #[derive(Resource, Default, Deref, DerefMut)]
 pub struct PreparedPointCloudUniforms(HashMap<MainEntity, PreparedPointCloudUniform>);

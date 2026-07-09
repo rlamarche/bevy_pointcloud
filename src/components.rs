@@ -79,7 +79,6 @@ impl AsAssetId for PointCloudChunk3d {
     }
 }
 
-
 impl SyncComponent for PointCloudChunk3d {
     type Target = Self;
 }

@@ -23,7 +23,7 @@ use bevy::{
         query::With,
         system::{Local, Query, Res, ResMut},
     },
-    log::{info, warn},
+    log::warn,
     math::{UVec2, Vec3A},
     platform::{collections::HashMap, time::Instant},
     time::{Real, Time},

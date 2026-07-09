@@ -179,7 +179,9 @@ impl PointSizeMode {
     pub fn pipeline_key_bits(&self) -> SimplePointCloudMaterialKey {
         match self {
             PointSizeMode::ScreenPixels => SimplePointCloudMaterialKey::POINT_SIZE_SCREEN,
-            PointSizeMode::ScreenPixelsLocal => SimplePointCloudMaterialKey::POINT_SIZE_SCREEN_LOCAL,
+            PointSizeMode::ScreenPixelsLocal => {
+                SimplePointCloudMaterialKey::POINT_SIZE_SCREEN_LOCAL
+            }
             PointSizeMode::WorldSpace => SimplePointCloudMaterialKey::POINT_SIZE_WORLD,
             PointSizeMode::LocalSpace => SimplePointCloudMaterialKey::POINT_SIZE_LOCAL,
         }

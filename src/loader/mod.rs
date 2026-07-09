@@ -1,6 +1,6 @@
-mod mesh;
 #[cfg(feature = "copc")]
 mod copc;
+mod mesh;
 
 #[cfg(feature = "las")]
 pub mod las;

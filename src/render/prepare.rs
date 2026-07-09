@@ -2,7 +2,9 @@ use bevy::{
     ecs::{
         query::With,
         system::{Query, Res, ResMut},
-    }, log::{info, warn}, platform::collections::hash_map::Entry, render::{
+    },
+    platform::collections::hash_map::Entry,
+    render::{
         render_resource::{BindGroupEntries, PipelineCache, UniformBuffer},
         renderer::{RenderDevice, RenderQueue},
         sync_world::MainEntity,
@@ -10,7 +12,9 @@ use bevy::{
 };
 
 use crate::{
-    PointCloud3d, PointCloudChunk3d, PointCloudPipeline, PointCloudUniform, PreparedPointCloudUniform, PreparedPointCloudUniforms, RenderMaterialBindings, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
+    PointCloud3d, PointCloudPipeline, PointCloudUniform, PreparedPointCloudUniform,
+    PreparedPointCloudUniforms, RenderMaterialBindings, RenderPointCloudInstances,
+    RenderPointCloudMaterialInstances,
 };
 
 /// This system prepares the point cloud uniforms.

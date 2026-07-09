@@ -370,8 +370,6 @@ pub fn handle_internal_point_cloud_events(
                                 .insert(PointCloudChunk3d(chunk_handle.clone()));
                         }
                     }
-                } else {
-                    warn!("problem");
                 }
             }
             InternalPointCloudEvent::ChunkLoadFailed { id, node_id, error } => {

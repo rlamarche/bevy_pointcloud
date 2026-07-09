@@ -1,3 +1,4 @@
+mod camera;
 mod components;
 mod draw;
 mod extract;
@@ -8,7 +9,6 @@ mod point_cloud;
 mod point_cloud_bindings;
 mod prepare;
 mod resources;
-mod camera;
 
 use bevy::{
     app::Plugin,
@@ -35,6 +35,7 @@ use bevy::{
         ExtractSchedule, GpuResourceAppExt, Render, RenderApp, RenderStartup, RenderSystems,
     },
 };
+pub use camera::*;
 pub use components::*;
 pub use draw::*;
 pub use extract::*;
@@ -45,7 +46,6 @@ pub use point_cloud::*;
 pub use point_cloud_bindings::*;
 pub use prepare::*;
 pub use resources::*;
-pub use camera::*;
 
 use crate::{PointCloud3d, PointCloudChunk3d};
 

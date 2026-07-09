@@ -11,7 +11,7 @@ use bevy::{
         query::{Has, With},
         system::{Local, Query, Res, ResMut},
     },
-    log::{info, warn},
+    log::{debug, warn},
     mesh::Mesh3d,
     pbr::PreviousGlobalTransform,
     platform::collections::HashMap,
@@ -178,8 +178,8 @@ pub fn extract_pointcloud_instances(
             }
 
             let Some(aabb) = maybe_aabb else {
-                warn!(
-                    "Unable to get point cloud's aabb of render entity {:?}",
+                debug!(
+                    "Point cloud's aabb of render entity {:?} not yet available.",
                     entity
                 );
                 return;

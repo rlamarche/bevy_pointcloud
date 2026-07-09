@@ -1,6 +1,16 @@
-use bevy::{ecs::{entity::Entity, resource::Resource, system::{Query, ResMut}}, log::info, platform::collections::HashSet, render::{sync_world::{MainEntity, MainEntityHashSet}, view::{ExtractedView, RenderVisibleEntitiesClass, RetainedViewEntity}}};
+use bevy::{
+    ecs::{
+        entity::Entity,
+        resource::Resource,
+        system::{Query, ResMut},
+    },
+    platform::collections::HashSet,
+    render::{
+        sync_world::{MainEntity, MainEntityHashSet},
+        view::{ExtractedView, RenderVisibleEntitiesClass, RetainedViewEntity},
+    },
+};
 use itertools::Either;
-
 
 /// Clears out the [`DirtySpecializations`] resource in preparation for a new
 /// frame.
@@ -9,7 +19,6 @@ pub fn clear_dirty_specializations(mut dirty_specializations: ResMut<DirtySpecia
     dirty_specializations.removed_renderables.clear();
     dirty_specializations.views.clear();
 }
-
 
 /// A system that removes views that don't exist any longer from
 /// [`DirtySpecializations`].

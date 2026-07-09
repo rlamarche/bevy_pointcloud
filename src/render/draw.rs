@@ -73,7 +73,10 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudUniformGrou
         let Some(prepared_point_cloud_uniform) =
             prepared_point_cloud_uniforms.get(&chunk_instance.root_entity)
         else {
-            warn!("prepared_point_cloud_uniform missing for root entity {:?}", chunk_instance.root_entity);
+            warn!(
+                "prepared_point_cloud_uniform missing for root entity {:?}",
+                chunk_instance.root_entity
+            );
             return RenderCommandResult::Skip;
         };
 
@@ -101,11 +104,14 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
         item: &P,
         _view: (),
         _item_query: Option<()>,
-        (render_point_cloud_chunk_instances, meshes, mesh_instances, mesh_allocator, materials, material_instances): SystemParamItem<
-            'w,
-            '_,
-            Self::Param,
-        >,
+        (
+            render_point_cloud_chunk_instances,
+            meshes,
+            mesh_instances,
+            mesh_allocator,
+            materials,
+            material_instances,
+        ): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         let mesh_instances = mesh_instances.into_inner();
@@ -119,7 +125,10 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
             return RenderCommandResult::Skip;
         };
 
-        let Some(material_instance) = material_instances.instances.get(&chunk_instance.root_entity) else {
+        let Some(material_instance) = material_instances
+            .instances
+            .get(&chunk_instance.root_entity)
+        else {
             return RenderCommandResult::Skip;
         };
 

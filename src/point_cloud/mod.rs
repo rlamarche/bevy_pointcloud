@@ -1,6 +1,6 @@
 mod node;
 
-use std::sync::Arc;
+use std::{collections::VecDeque, sync::Arc};
 
 use bevy::{
     asset::{Asset, AssetId, Handle},
@@ -109,6 +109,11 @@ impl PointCloud {
     pub fn get_node_mut(&mut self, node_id: NodeId) -> Option<&mut PointCloudNode> {
         self.nodes.get_mut(node_id)
     }
+
+    /// Iter through nodes whose chunk is loaded.
+    pub fn iter_chunks<'a>(&'a self) -> PointCloudChunksIterator<'a> {
+        PointCloudChunksIterator::new(self)
+    }
 }
 
 /// A chunk of points
@@ -130,6 +135,48 @@ pub struct PointCloudNodeKey {
 pub struct PointCloudChunkKey {
     pub id: AssetId<PointCloud>,
     pub chunk_id: AssetId<PointCloudChunk>,
+}
+
+pub struct PointCloudChunksIterator<'a> {
+    point_cloud: &'a PointCloud,
+    queue: VecDeque<NodeId>,
+}
+
+impl<'a> PointCloudChunksIterator<'a> {
+    pub fn new(point_cloud: &'a PointCloud) -> Self {
+        let mut queue = VecDeque::new();
+        if let Some(root_id) = point_cloud.root {
+            queue.push_back(root_id);
+        }
+        Self { point_cloud, queue }
+    }
+}
+
+impl<'a> Iterator for PointCloudChunksIterator<'a> {
+    type Item = &'a PointCloudNode;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(current_id) = self.queue.pop_front() {
+            if let Some(node) = self.point_cloud.get_node(current_id) {
+                // Enqueue children only if the current has its chunk loaded.
+                // Might be subject to change if I can have holes in the hierarchy.
+                if node.chunk.is_some() {
+                    for i in node.children_mask.iter_one_bits() {
+                        let child_id = node.children[i as usize];
+                        if !child_id.is_null() {
+                            self.queue.push_back(child_id);
+                        }
+                    }
+                }
+
+                // Yield the node only if it has a loaded chunk
+                if node.chunk.is_some() {
+                    return Some(node);
+                }
+            }
+        }
+        None
+    }
 }
 
 #[cfg(test)]
