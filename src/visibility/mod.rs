@@ -14,6 +14,7 @@ use bevy::{
     },
     diagnostic::{Diagnostic, DiagnosticPath, RegisterDiagnostic, DEFAULT_MAX_HISTORY_LENGTH},
     ecs::schedule::{IntoScheduleConfigs, SystemSet},
+    light::SimulationLightSystems::CheckLightVisibility,
     transform::TransformSystems,
 };
 pub use check::*;
@@ -80,7 +81,9 @@ impl Plugin for PointCloudVisiblityPlugin {
                     // scheduled after [`PointCloudServerSystems`] to have the latest loaded meshes
                     // available for rendering
                     PointCloudVisibilitySystems::UpdateViewVisibility
-                        .after(PointCloudServerSystems),
+                        .after(PointCloudServerSystems)
+                        // before check light visibility so the shadows can work
+                        .before(CheckLightVisibility),
                 )
                     .chain()
                     .after(VisibilitySystems::CheckVisibility)

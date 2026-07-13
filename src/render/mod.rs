@@ -2,12 +2,14 @@ mod camera;
 mod components;
 mod draw;
 mod extract;
+mod light;
 mod material;
 mod pipeline;
 mod pipeline_specializer;
 mod point_cloud;
 mod point_cloud_bindings;
 mod prepare;
+mod prepass;
 mod resources;
 
 use bevy::{
@@ -39,12 +41,14 @@ pub use camera::*;
 pub use components::*;
 pub use draw::*;
 pub use extract::*;
+pub use light::*;
 pub use material::*;
 pub use pipeline::*;
 pub use pipeline_specializer::*;
 pub use point_cloud::*;
 pub use point_cloud_bindings::*;
 pub use prepare::*;
+pub use prepass::*;
 pub use resources::*;
 
 use crate::{PointCloud3d, PointCloudChunk3d};
@@ -76,7 +80,6 @@ impl Plugin for RenderPointCloudPlugin {
             .init_resource::<RenderPointCloudChunkInstances>()
             .init_resource::<RenderPointCloudInstanceIndex>()
             .init_resource::<PreparedPointCloudUniforms>()
-            .add_render_command::<Opaque3d, DrawPointCloud>()
             .init_resource::<SpecializedPointCloudPipelines<PointCloudPipeline>>()
             .init_resource::<PendingPointCloudPhaseItemQueues>()
             .add_systems(

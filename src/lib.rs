@@ -1,8 +1,10 @@
 #![expect(missing_docs, reason = "Not all docs are written yet.")]
 
+use std::path::PathBuf;
+
 use bevy::{
     app::{App, Last, Plugin},
-    asset::{embedded_asset, AssetApp, Assets},
+    asset::{embedded_asset, AssetApp, AssetPath, Assets},
     ecs::{
         entity::Entity,
         hierarchy::ChildOf,
@@ -13,8 +15,9 @@ use bevy::{
     },
     log::{info, warn},
     mesh::Mesh3d,
+    pbr::StandardMaterial,
     platform::collections::HashMap,
-    shader::load_shader_library,
+    shader::{load_shader_library, ShaderRef},
 };
 
 mod components;
@@ -56,7 +59,8 @@ impl Plugin for PointCloudPlugin {
         load_shader_library!(app, "assets/shaders/material_types.wgsl");
         load_shader_library!(app, "assets/shaders/simple_material_types.wgsl");
         load_shader_library!(app, "assets/shaders/simple_material_bindings.wgsl");
-        embedded_asset!(app, "assets/shaders/pointcloud.wgsl");
+        // embedded_asset!(app, "assets/shaders/pointcloud.wgsl");
+        embedded_asset!(app, "assets/shaders/pointcloud_pbr.wgsl");
         app.init_asset::<PointCloud>()
             .init_asset::<PointCloudChunk>()
             .register_asset_reflect::<PointCloud>()
@@ -79,7 +83,8 @@ impl Plugin for PointCloudPlugin {
         });
         app.add_plugins(PointCloudVisiblityPlugin);
         app.add_plugins(RenderPointCloudPlugin);
-        app.add_plugins(MaterialPlugin::<SimplePointCloudMaterial>::default());
+        app.add_plugins(SimplePointCloudMaterialPlugin);
+        app.add_plugins(StandardPointCloudMaterialPlugin);
 
         app.add_systems(Last, spawn_point_cloud_chunks);
     }
@@ -254,4 +259,8 @@ pub fn spawn_point_cloud_chunks(
             }
         }
     }
+}
+
+fn shader_ref(path: PathBuf) -> ShaderRef {
+    ShaderRef::Path(AssetPath::from_path_buf(path).with_source("embedded"))
 }

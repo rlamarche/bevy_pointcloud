@@ -352,7 +352,7 @@ pub fn handle_internal_point_cloud_events(
                                 warn!("Missing parent entity chunk for node id {:?}", node_id);
                                 continue;
                             };
-                            commands.spawn((
+                            let mut entity = commands.spawn((
                                 PointCloudChunk3d(chunk_handle.clone()),
                                 // the parent is the point cloud entity (direct link to root)
                                 ChildOf(point_cloud_entity),
@@ -360,8 +360,12 @@ pub fn handle_internal_point_cloud_events(
                                 ChildChunkOf(parent_chunk_entity),
                                 // we disable cpu culling for this because we do it using the
                                 // octree structure
-                                NoCpuCulling,
+                                // TODO: re-enable and use octree structure for lights also
+                                // NoCpuCulling,
                             ));
+                            if let Some(aabb) = node.aabb {
+                                entity.insert(aabb);
+                            }
                         } else {
                             // this is the root chunk, add it to the root component (the one with
                             // the [`PointCloud3d`] component)

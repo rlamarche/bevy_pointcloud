@@ -36,11 +36,12 @@ use bevy::{
         mark_3d_meshes_as_changed_if_their_assets_changed, Mesh, Mesh3d, MeshVertexBufferLayoutRef,
     },
     pbr::{
-        alpha_mode_pipeline_key, collect_meshes_for_gpu_building, set_mesh_motion_vector_flags,
+        alpha_mode_pipeline_key, check_views_lights_need_specialization,
+        collect_meshes_for_gpu_building, prepare_lights, set_mesh_motion_vector_flags,
         FallbackBindlessResources, MaterialBindGroupAllocator, MaterialBindGroupAllocators,
         MaterialBindingId, MeshInputUniform, MeshPipelineKey, MeshUniform, RenderMeshInstanceFlags,
-        RenderMeshInstances, SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup, Shadow,
-        Transmissive3d, ViewKeyCache,
+        RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup,
+        SetMeshViewBindingArrayBindGroup, Shadow, Transmissive3d, ViewKeyCache,
     },
     platform::{
         collections::{hash_map::Entry, HashMap, HashSet},
@@ -82,15 +83,17 @@ use smallvec::SmallVec;
 use std::sync::Arc;
 
 use crate::{
-    clear_dirty_specializations, expire_specializations_for_views, DirtySpecializations,
-    DrawPointCloudDepthOnlyPrepass, DrawPointCloudInstanced, DrawPointCloudPrepass,
-    GlobalVisiblePointCloudChunks, PointCloud3d, PointCloudChunk3d, PointCloudMaterial3d,
-    PointCloudPipeline, PointCloudPipelineSystems, RenderPointCloudChunkInstances,
-    SetPointCloudUniformGroup, ShapeMeshes, SimplePointCloudMaterial,
-    SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
+    clear_dirty_specializations, expire_specializations_for_views, queue_shadows,
+    specialize_shadows, DirtySpecializations, DrawDepthOnlyPrepass, DrawPointCloudInstanced,
+    DrawPrepass, GlobalVisiblePointCloudChunks, PendingShadowQueues, PointCloud3d,
+    PointCloudChunk3d, PointCloudMaterial3d, PointCloudPipeline, PointCloudPipelineSystems,
+    PrepassPipeline, PrepassPipelinePlugin, PrepassPipelineSpecializer, PrepassPlugin,
+    RenderPointCloudChunkInstances, SetPointCloudUniformGroup, ShapeMeshes,
+    SimplePointCloudMaterial, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
+    SpecializedShadowMaterialPipelineCache,
 };
 
-pub const MATERIAL_BIND_GROUP_INDEX: usize = 3;
+pub const MATERIAL_BIND_GROUP_INDEX: usize = 4;
 
 /// Materials are used alongside [`MaterialPlugin`], [`PointCloud3d`], and [`PointCloudMaterial3d`]
 /// to spawn entities that are rendered with a specific [`Material`] type. They serve as an easy to
@@ -221,7 +224,7 @@ pub struct MaterialsPlugin {
 
 impl Plugin for MaterialsPlugin {
     fn build(&self, app: &mut App) {
-        // app.add_plugins((PrepassPipelinePlugin, PrepassPlugin::new(self.debug_flags)));
+        app.add_plugins((PrepassPipelinePlugin, PrepassPlugin::new(self.debug_flags)));
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 // From camera
@@ -249,7 +252,7 @@ impl Plugin for MaterialsPlugin {
                 .init_gpu_resource::<SpecializedMaterialPipelineCache>()
                 .init_gpu_resource::<SpecializedPointCloudPipelines<MaterialPipelineSpecializer>>()
                 // .init_gpu_resource::<LightKeyCache>()
-                // .init_gpu_resource::<SpecializedShadowMaterialPipelineCache>()
+                .init_gpu_resource::<SpecializedShadowMaterialPipelineCache>()
                 // .init_resource::<DrawFunctions<Shadow>>()
                 .init_resource::<RenderPointCloudMaterialInstances>()
                 .allow_ambiguous_resource::<RenderPointCloudMaterialInstances>()
@@ -257,20 +260,14 @@ impl Plugin for MaterialsPlugin {
                 // .allow_ambiguous_resource::<MaterialBindGroupAllocators>()
                 .init_gpu_resource::<PendingMeshMaterialQueues>()
                 .allow_ambiguous_resource::<PendingMeshMaterialQueues>()
-                // .init_gpu_resource::<PendingShadowQueues>()
-                // .allow_ambiguous_resource::<PendingShadowQueues>()
-                .add_render_command::<Shadow, DrawPointCloudPrepass>()
-                .add_render_command::<Shadow, DrawPointCloudDepthOnlyPrepass>()
+                .init_gpu_resource::<PendingShadowQueues>()
+                .allow_ambiguous_resource::<PendingShadowQueues>()
+                .add_render_command::<Shadow, DrawPrepass>()
+                .add_render_command::<Shadow, DrawDepthOnlyPrepass>()
                 .add_render_command::<Transparent3d, DrawMaterial>()
                 .add_render_command::<Opaque3d, DrawMaterial>()
                 .add_render_command::<AlphaMask3d, DrawMaterial>()
                 .add_render_command::<Transmissive3d, DrawMaterial>()
-
-                .add_render_command::<Opaque3dPrepass, DrawPointCloudPrepass>()
-                .add_render_command::<Opaque3dPrepass, DrawPointCloudDepthOnlyPrepass>()
-                .add_render_command::<AlphaMask3dPrepass, DrawPointCloudPrepass>()
-                .add_render_command::<Opaque3dDeferred, DrawPointCloudPrepass>()
-                .add_render_command::<AlphaMask3dDeferred, DrawPointCloudPrepass>()
                 .add_systems(
                     RenderStartup,
                     init_material_pipeline.after(PointCloudPipelineSystems),
@@ -295,22 +292,21 @@ impl Plugin for MaterialsPlugin {
                         .chain()
                         .in_set(RenderSystems::PrepareBindGroups),
                 )
-                // .add_systems(
-                //     Render,
-                //     (
-                //         check_views_lights_need_specialization
-                //             .in_set(RenderSystems::Specialize)
-                //             .before(specialize_shadows),
-                //         // specialize_shadows also needs to run after
-                //         // prepare_assets::<PreparedMaterial>,
-                //         // which is fine since Specialize is after PrepareAssets
-                //         specialize_shadows
-                //             .in_set(RenderSystems::Specialize)
-                //             .after(prepare_lights),
-                //         queue_shadows.in_set(RenderSystems::QueueMeshes),
-                //     ),
-                // )
-            ;
+                .add_systems(
+                    Render,
+                    (
+                        check_views_lights_need_specialization
+                            .in_set(RenderSystems::Specialize)
+                            .before(specialize_shadows),
+                        // specialize_shadows also needs to run after
+                        // prepare_assets::<PreparedMaterial>,
+                        // which is fine since Specialize is after PrepareAssets
+                        specialize_shadows
+                            .in_set(RenderSystems::Specialize)
+                            .after(prepare_lights),
+                        queue_shadows.in_set(RenderSystems::QueueMeshes),
+                    ),
+                );
         }
     }
 }
@@ -466,9 +462,10 @@ impl SpecializedPointCloudPipeline for MaterialPipelineSpecializer {
             descriptor.fragment.as_mut().unwrap().shader = fragment_shader.clone();
         }
 
-        descriptor
-            .layout
-            .insert(3, self.properties.material_layout.as_ref().unwrap().clone());
+        descriptor.layout.insert(
+            MATERIAL_BIND_GROUP_INDEX,
+            self.properties.material_layout.as_ref().unwrap().clone(),
+        );
 
         if let Some(specialize) = self.properties.user_specialize {
             specialize(
@@ -502,7 +499,8 @@ pub type DrawMaterial = (
     SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetMeshViewBindingArrayBindGroup<1>,
-    SetPointCloudUniformGroup<2>,
+    SetMeshBindGroup<2>,
+    SetPointCloudUniformGroup<3>,
     SetMaterialBindGroup<MATERIAL_BIND_GROUP_INDEX>,
     DrawPointCloudInstanced,
 );
@@ -1177,7 +1175,7 @@ pub fn queue_material_meshes(
     render_point_cloud_chunk_instances: Res<RenderPointCloudChunkInstances>,
     mesh_assets: Res<RenderAssets<RenderMesh>>,
     mesh_allocator: Res<MeshAllocator>,
-    gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
+    _gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
     maybe_batched_instance_buffers: Option<
         Res<BatchedInstanceBuffers<MeshUniform, MeshInputUniform>>,
     >,
@@ -1361,8 +1359,8 @@ pub fn queue_material_meshes(
                     };
 
                     opaque_phase.add(
-                        batch_set_key.clone(),
-                        bin_key.clone(),
+                        batch_set_key,
+                        bin_key,
                         (*render_entity, *visible_entity),
                         mesh_instance.current_uniform_index,
                         BinnedRenderPhaseType::UnbatchableMesh,
@@ -1372,23 +1370,6 @@ pub fn queue_material_meshes(
                         //     &gpu_preprocessing_support,
                         // ),
                     );
-
-                    // // we iterate through all chunks, and add their phase
-                    // for chunk in &render_visible_point_cloud_entity.chunk_entities {
-                    //     // info!("add phase {:?} {:?}", render_entity, visible_entity);
-                    //     opaque_phase.add(
-                    //         batch_set_key.clone(),
-                    //         bin_key.clone(),
-                    //         (chunk.entity, chunk.main_entity),
-                    //         mesh_instance.current_uniform_index,
-                    //         BinnedRenderPhaseType::UnbatchableMesh,
-                    //         // BinnedRenderPhaseType::mesh(
-                    //         //     mesh_instance.should_batch(),
-                    //         //     // false,
-                    //         //     &gpu_preprocessing_support,
-                    //         // ),
-                    //     );
-                    // }
                 }
                 // Alpha mask
                 RenderPhaseType::AlphaMask => {
@@ -1396,6 +1377,7 @@ pub fn queue_material_meshes(
                         .properties
                         .get_draw_function(MainPassAlphaMaskDrawFunction)
                     else {
+                        info!("missing drawfunction for MainPassAlphaMaskDrawFunction");
                         continue;
                     };
                     let batch_set_key = OpaqueNoLightmap3dBatchSetKey {
@@ -1407,15 +1389,17 @@ pub fn queue_material_meshes(
                     let bin_key = OpaqueNoLightmap3dBinKey {
                         asset_id: mesh_instance.mesh_asset_id().into(),
                     };
+                    info!("add alpha mask phase");
                     alpha_mask_phase.add(
                         batch_set_key,
                         bin_key,
-                        (Entity::PLACEHOLDER, *visible_entity),
+                        (*render_entity, *visible_entity),
                         mesh_instance.current_uniform_index,
-                        BinnedRenderPhaseType::mesh(
-                            mesh_instance.should_batch(),
-                            &gpu_preprocessing_support,
-                        ),
+                        BinnedRenderPhaseType::UnbatchableMesh,
+                        // BinnedRenderPhaseType::mesh(
+                        //     mesh_instance.should_batch(),
+                        //     &gpu_preprocessing_support,
+                        // ),
                     );
                 }
                 RenderPhaseType::Transparent => {
@@ -1575,33 +1559,33 @@ pub fn base_specialize(
 }
 
 // TODO later
-// fn prepass_specialize(
-//     world: &mut World,
-//     key: ErasedMaterialPipelineKey,
-//     shape_layout: &MeshVertexBufferLayoutRef,
-//     instance_layout: &MeshVertexBufferLayoutRef,
-//     properties: &Arc<MaterialProperties>,
-// ) -> Result<CachedRenderPipelineId, SpecializedMeshPipelineError> {
-//     world.resource_scope(
-//         |world, mut pipelines: Mut<SpecializedPointCloudPipelines<PrepassPipelineSpecializer>>| {
-//             let prepass_pipeline = world.resource::<PrepassPipeline>().clone();
-//             let pipeline_cache = world.resource::<PipelineCache>();
+fn prepass_specialize(
+    world: &mut World,
+    key: ErasedMaterialPipelineKey,
+    shape_layout: &MeshVertexBufferLayoutRef,
+    instance_layout: &MeshVertexBufferLayoutRef,
+    properties: &Arc<MaterialProperties>,
+) -> Result<CachedRenderPipelineId, SpecializedMeshPipelineError> {
+    world.resource_scope(
+        |world, mut pipelines: Mut<SpecializedPointCloudPipelines<PrepassPipelineSpecializer>>| {
+            let prepass_pipeline = world.resource::<PrepassPipeline>().clone();
+            let pipeline_cache = world.resource::<PipelineCache>();
 
-//             let specializer = PrepassPipelineSpecializer {
-//                 pipeline: prepass_pipeline,
-//                 properties: properties.clone(),
-//             };
+            let specializer = PrepassPipelineSpecializer {
+                pipeline: prepass_pipeline,
+                properties: properties.clone(),
+            };
 
-//             pipelines.specialize(
-//                 pipeline_cache,
-//                 &specializer,
-//                 key,
-//                 shape_layout,
-//                 instance_layout,
-//             )
-//         },
-//     )
-// }
+            pipelines.specialize(
+                pipeline_cache,
+                &specializer,
+                key,
+                shape_layout,
+                instance_layout,
+            )
+        },
+    )
+}
 
 fn user_specialize<M: Material>(
     pipeline: &dyn Any,
@@ -1744,25 +1728,17 @@ where
         let draw_alpha_mask_pbr = alpha_mask_draw_functions.read().id::<DrawMaterial>();
         let draw_transmissive_pbr = transmissive_draw_functions.read().id::<DrawMaterial>();
         let draw_transparent_pbr = transparent_draw_functions.read().id::<DrawMaterial>();
-        let draw_opaque_prepass = opaque_prepass_draw_functions
-            .read()
-            .id::<DrawPointCloudPrepass>();
-        let draw_alpha_mask_prepass = alpha_mask_prepass_draw_functions
-            .read()
-            .id::<DrawPointCloudPrepass>();
+        let draw_opaque_prepass = opaque_prepass_draw_functions.read().id::<DrawPrepass>();
+        let draw_alpha_mask_prepass = alpha_mask_prepass_draw_functions.read().id::<DrawPrepass>();
         let draw_opaque_prepass_depth_only = opaque_prepass_draw_functions
             .read()
-            .id::<DrawPointCloudDepthOnlyPrepass>();
-        let draw_opaque_deferred = opaque_deferred_draw_functions
-            .read()
-            .id::<DrawPointCloudPrepass>();
+            .id::<DrawDepthOnlyPrepass>();
+        let draw_opaque_deferred = opaque_deferred_draw_functions.read().id::<DrawPrepass>();
         let draw_alpha_mask_deferred = alpha_mask_deferred_draw_functions
             .read()
-            .id::<DrawPointCloudPrepass>();
-        let draw_shadows = shadow_draw_functions.read().id::<DrawPointCloudPrepass>();
-        let draw_shadows_depth_only = shadow_draw_functions
-            .read()
-            .id::<DrawPointCloudDepthOnlyPrepass>();
+            .id::<DrawPrepass>();
+        let draw_shadows = shadow_draw_functions.read().id::<DrawPrepass>();
+        let draw_shadows_depth_only = shadow_draw_functions.read().id::<DrawDepthOnlyPrepass>();
 
         let draw_functions = SmallVec::from_iter([
             (MainPassOpaqueDrawFunction.intern(), draw_opaque_pbr),
@@ -1863,7 +1839,7 @@ where
                 shaders,
                 bindless,
                 base_specialize: Some(base_specialize),
-                // prepass_specialize: Some(prepass_specialize),
+                prepass_specialize: Some(prepass_specialize),
                 user_specialize: Some(user_specialize::<M>),
                 material_key,
                 shadows_enabled,
@@ -1996,8 +1972,7 @@ pub struct MaterialProperties {
     /// platform support (or lack thereof) of bindless resources into account.
     pub bindless: bool,
     pub base_specialize: Option<BaseSpecializeFn>,
-    // TODO later
-    // pub prepass_specialize: Option<PrepassSpecializeFn>,
+    pub prepass_specialize: Option<PrepassSpecializeFn>,
     pub user_specialize: Option<UserSpecializeFn>,
     /// The key for this material, typically a bitfield of flags that are used to modify
     /// the pipeline descriptor used for this material.

@@ -69,6 +69,7 @@ pbr_light_textures = []
 potree = ["dep:potree", "potree/async"]
 potree_fs = ["potree", "potree/fs"]
 copc = ["dep:copc-streaming", "dep:async-lock"]
+shader_format_glsl = []
 
 [dependencies]
 slotmap = { version = "1.0.7", default-features = false }
@@ -128,9 +129,18 @@ bevy = { version = "0.19.0", features = [
     "file_watcher",
     "ui",
     "bevy_feathers",
+    "bevy_dev_tools",
 ] }
 # bevy_camera_controller = { version = "0.19.0", features = ["free_camera", "pan_camera"] }
 # bevy_remote = { version = "0.19.0" }
 bytemuck = "1"
 
 bevy_panorbit_camera = "0.35.0"
+
+# Enable a small amount of optimization in the dev profile.
+[profile.dev]
+opt-level = 1
+
+# Enable a large amount of optimization in the dev profile for dependencies.
+[profile.dev.package."*"]
+opt-level = 3

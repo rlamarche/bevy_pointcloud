@@ -1,5 +1,6 @@
 use bevy::{
-    asset::{Asset, Handle},
+    app::Plugin,
+    asset::{embedded_asset, Asset, Handle},
     color::{Color, ColorToComponents, LinearRgba},
     image::Image,
     math::{Mat3, Vec2, Vec3, Vec4},
@@ -14,7 +15,17 @@ use bevy::{
 };
 use bitflags::bitflags;
 
-use crate::{ColorStop, ColorStopUniform, Material};
+use crate::{shader_ref, ColorStop, ColorStopUniform, Material, MaterialPlugin};
+
+pub struct SimplePointCloudMaterialPlugin;
+
+impl Plugin for SimplePointCloudMaterialPlugin {
+    fn build(&self, app: &mut bevy::app::App) {
+        embedded_asset!(app, "simple.wgsl");
+
+        app.add_plugins(MaterialPlugin::<SimplePointCloudMaterial>::default());
+    }
+}
 
 /// A material with "standard" properties used in PBR lighting.
 /// Standard property values with pictures here:
@@ -508,15 +519,21 @@ impl From<&SimplePointCloudMaterial> for SimplePointCloudMaterialKey {
 
 impl Material for SimplePointCloudMaterial {
     fn vertex_shader() -> bevy::shader::ShaderRef {
+        shader_ref(bevy::asset::embedded_path!("simple.wgsl"))
         // "shaders/pointcloud_dev.wgsl".into()
-        "embedded://bevy_pointcloud/assets/shaders/pointcloud.wgsl".into()
+        // "embedded://bevy_pointcloud/assets/shaders/pointcloud.wgsl".into()
     }
     fn fragment_shader() -> bevy::shader::ShaderRef {
+        shader_ref(bevy::asset::embedded_path!("simple.wgsl"))
         // "shaders/pointcloud_dev.wgsl".into()
-        "embedded://bevy_pointcloud/assets/shaders/pointcloud.wgsl".into()
+        // "embedded://bevy_pointcloud/assets/shaders/pointcloud.wgsl".into()
     }
     fn shape_mesh(&self) -> Option<bevy::asset::AssetId<Mesh>> {
         self.shape_mesh.as_ref().map(Handle::id)
+    }
+
+    fn enable_shadows() -> bool {
+        true
     }
 
     fn specialize(

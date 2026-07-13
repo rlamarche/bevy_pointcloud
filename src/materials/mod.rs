@@ -1,4 +1,5 @@
 mod simple;
+mod standard;
 
 use bevy::{
     color::{Color, ColorToComponents, LinearRgba},
@@ -7,6 +8,7 @@ use bevy::{
     render::render_resource::ShaderType,
 };
 pub use simple::*;
+pub use standard::*;
 
 #[derive(Debug, Copy, Clone, PartialEq, Reflect)]
 #[reflect(Default, PartialEq, Debug)]

@@ -6,6 +6,7 @@ use async_lock::RwLock;
 use bevy::{
     asset::RenderAssetUsages,
     camera::primitives::Aabb,
+    log::info,
     math::DVec3,
     mesh::{Mesh, VertexAttributeValues},
     platform::collections::HashMap,
@@ -97,6 +98,11 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
         reader.load_all_hierarchy().await?;
 
         let copc_info = reader.copc_info();
+        info!("COPC INFO: {:#?}", copc_info);
+
+        let las_header = reader.header().las_header();
+        info!("LAS HEADER: {:#?}", las_header);
+
         let aabb = copc_info.root_bounds();
 
         let mut initial_hierarchy = Vec::new();
@@ -159,6 +165,12 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
         let key = node.key;
         let reader = self.reader.read().await;
 
+        let las_header = reader.header().las_header();
+
+        let has_color = las_header.point_format().has_color;
+        // TODO use settings
+        let has_normal = true;
+
         let chunk = reader.fetch_chunk(&key).await?;
 
         // let spacing = reader.copc_info().spacing;
@@ -182,32 +194,36 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
         let mut positions: Vec<[f32; 3]> = Vec::with_capacity(point_count);
 
         // will be allocated if a color is found
-        let mut maybe_colors: Option<Vec<[f32; 4]>> = None;
+        let mut maybe_colors: Option<Vec<[f32; 4]>> = match has_color {
+            true => Some(Vec::with_capacity(point_count)),
+            false => None,
+        };
+
+        let mut maybe_normals: Option<Vec<[f32; 3]>> = match has_normal {
+            true => Some(Vec::with_capacity(point_count)),
+            false => None,
+        };
 
         // TODO load more attributes
         for point in points {
             positions.push([point.x as f32, point.y as f32, point.z as f32]);
-            if let Some(color) = point.color {
-                // lazy init the colors buffer
-                let colors = match maybe_colors.as_mut() {
-                    Some(colors) => colors,
-                    None => {
-                        maybe_colors = Some(Vec::with_capacity(point_count));
-                        maybe_colors.as_mut().unwrap()
-                    }
-                };
 
-                colors.push([
-                    (color.red as f64 / 65535.0) as f32,
-                    (color.green as f64 / 65535.0) as f32,
-                    (color.blue as f64 / 65535.0) as f32,
-                    1.0,
-                ]);
-            } else {
-                if let Some(colors) = maybe_colors.as_mut() {
+            if let Some(colors) = maybe_colors.as_mut() {
+                if let Some(color) = point.color {
+                    colors.push([
+                        (color.red as f64 / 65535.0) as f32,
+                        (color.green as f64 / 65535.0) as f32,
+                        (color.blue as f64 / 65535.0) as f32,
+                        1.0,
+                    ]);
+                } else {
                     // insert an empty color to prevent holes
                     colors.push([0.0, 0.0, 0.0, 1.0]);
                 }
+            }
+            if let Some(normals) = maybe_normals.as_mut() {
+                // always z up normal (testing)
+                normals.push([0.0, 0.0, 1.0]);
             }
         }
 
@@ -224,6 +240,13 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
             mesh.insert_attribute(
                 Mesh::ATTRIBUTE_COLOR,
                 VertexAttributeValues::Float32x4(colors),
+            );
+        }
+
+        if let Some(normals) = maybe_normals {
+            mesh.insert_attribute(
+                Mesh::ATTRIBUTE_NORMAL,
+                VertexAttributeValues::Float32x3(normals),
             );
         }
 

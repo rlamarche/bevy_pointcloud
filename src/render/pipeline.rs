@@ -14,8 +14,8 @@ use bevy::{
     },
     mesh::{Mesh, MeshVertexBufferLayoutRef},
     pbr::{
-        MeshPipeline, MeshPipelineKey, TONEMAPPING_LUT_SAMPLER_BINDING_INDEX,
-        TONEMAPPING_LUT_TEXTURE_BINDING_INDEX,
+        setup_morph_and_skinning_defs, MeshPipeline, MeshPipelineKey,
+        TONEMAPPING_LUT_SAMPLER_BINDING_INDEX, TONEMAPPING_LUT_TEXTURE_BINDING_INDEX,
     },
     render::render_resource::{
         binding_types::uniform_buffer, BindGroupLayoutEntries, BlendComponent, BlendFactor,
@@ -48,7 +48,8 @@ impl FromWorld for PointCloudPipeline {
         let mesh_pipeline = world.resource::<MeshPipeline>();
 
         Self {
-            shader: asset_server.load("embedded://bevy_pointcloud/assets/shaders/pointcloud.wgsl"),
+            shader: asset_server
+                .load("embedded://bevy_pointcloud/assets/shaders/pointcloud_pbr.wgsl"),
             mesh_pipeline: mesh_pipeline.clone(),
             point_cloud_uniform_layout: BindGroupLayoutDescriptor::new(
                 "point_cloud_uniform_layout",
@@ -150,7 +151,7 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
         // Let the shader code know that it's running in a mesh pipeline.
         shader_defs.push("MESH_PIPELINE".into());
 
-        // shader_defs.push("VERTEX_OUTPUT_INSTANCE_INDEX".into());
+        shader_defs.push("VERTEX_OUTPUT_INSTANCE_INDEX".into());
 
         // construct the shape layout vertex buffer layout
 
@@ -175,7 +176,6 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
         let vertex_buffer_layout = shape_layout.0.get_layout(&shape_vertex_attributes)?;
 
         // Now the mesh (instances)
-        //
         let mut vertex_attributes = Vec::new();
 
         if layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
@@ -244,16 +244,17 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             shader_defs.push("MULTISAMPLED".into());
         };
 
+        bind_group_layout.push(setup_morph_and_skinning_defs(
+            &self.mesh_pipeline.mesh_layouts,
+            layout,
+            6,
+            &key,
+            &mut shader_defs,
+            &mut vertex_attributes,
+            self.mesh_pipeline.skins_use_uniform_buffers,
+        ));
+
         bind_group_layout.push(self.point_cloud_uniform_layout.clone());
-        // bind_group_layout.push(setup_morph_and_skinning_defs(
-        //     &self.mesh_pipeline.mesh_layouts,
-        //     layout,
-        //     6,
-        //     &key,
-        //     &mut shader_defs,
-        //     &mut vertex_attributes,
-        //     self.mesh_pipeline.skins_use_uniform_buffers,
-        // ));
 
         if key.contains(MeshPipelineKey::SCREEN_SPACE_AMBIENT_OCCLUSION) {
             shader_defs.push("SCREEN_SPACE_AMBIENT_OCCLUSION".into());

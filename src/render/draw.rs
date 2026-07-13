@@ -4,7 +4,10 @@ use bevy::{
         system::{lifetimeless::SRes, SystemParamItem},
     },
     log::warn,
-    pbr::{RenderMeshInstances, SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup},
+    pbr::{
+        RenderMeshInstances, SetMeshBindGroup, SetMeshViewBindGroup,
+        SetMeshViewBindingArrayBindGroup,
+    },
     render::{
         erased_render_asset::ErasedRenderAssets,
         mesh::{allocator::MeshAllocator, RenderMesh, RenderMeshBufferInfo},
@@ -20,27 +23,28 @@ use crate::{
     RenderPointCloudMaterialInstances,
 };
 
-pub type DrawPointCloud = (
-    SetItemPipeline,
-    SetMeshViewBindGroup<0>,
-    SetMeshViewBindingArrayBindGroup<1>,
-    SetPointCloudUniformGroup<2>,
-    DrawPointCloudInstanced,
-);
+// pub type DrawPointCloud = (
+//     SetItemPipeline,
+//     SetMeshViewBindGroup<0>,
+//     SetMeshViewBindingArrayBindGroup<1>,
+//     SetMeshBindGroup<2>,
+//     SetPointCloudUniformGroup<3>,
+//     DrawPointCloudInstanced,
+// );
 
-// TODO fix
-pub type DrawPointCloudPrepass = (
-    SetItemPipeline,
-    SetMeshViewBindGroup<0>,
-    DrawPointCloudInstanced,
-);
+// // TODO fix
+// pub type DrawPointCloudPrepass = (
+//     SetItemPipeline,
+//     SetMeshViewBindGroup<0>,
+//     DrawPointCloudInstanced,
+// );
 
-// TODO fix
-pub type DrawPointCloudDepthOnlyPrepass = (
-    SetItemPipeline,
-    SetMeshViewBindGroup<0>,
-    DrawPointCloudInstanced,
-);
+// // TODO fix
+// pub type DrawPointCloudDepthOnlyPrepass = (
+//     SetItemPipeline,
+//     SetMeshViewBindGroup<0>,
+//     DrawPointCloudInstanced,
+// );
 
 pub struct SetPointCloudUniformGroup<const I: usize>;
 impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudUniformGroup<I> {
