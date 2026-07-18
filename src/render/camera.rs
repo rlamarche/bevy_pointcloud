@@ -1,12 +1,12 @@
 use bevy::{
     ecs::{
-        entity::Entity,
+        entity::{Entity, EntityHashMap},
         resource::Resource,
         system::{Query, ResMut},
     },
     platform::collections::HashSet,
     render::{
-        sync_world::{MainEntity, MainEntityHashSet},
+        sync_world::MainEntity,
         view::{ExtractedView, RenderVisibleEntitiesClass, RetainedViewEntity},
     },
 };
@@ -48,7 +48,9 @@ pub fn expire_specializations_for_views(
 #[derive(Clone, Resource, Default)]
 pub struct DirtySpecializations {
     /// All renderable objects that must be re-specialized this frame.
-    pub changed_renderables: MainEntityHashSet,
+    /// We use render entities as keys instead of main entities, but store their corresponding main
+    /// entity, because each chunk is a different render entity, sharing the same main entity.
+    pub changed_renderables: EntityHashMap<MainEntity>,
 
     /// All renderable objects that need their specializations removed this
     /// frame.
@@ -56,7 +58,9 @@ pub struct DirtySpecializations {
     /// Note that this may include entities in [`Self::changed_renderables`].
     /// This is fine, as old specializations are removed before new ones are
     /// added.
-    pub removed_renderables: MainEntityHashSet,
+    /// We use render entities as keys instead of main entities, but store their corresponding main
+    /// entity, because each chunk is a different render entity, sharing the same main entity.
+    pub removed_renderables: EntityHashMap<MainEntity>,
 
     /// Views that must be respecialized this frame.
     ///
@@ -105,12 +109,12 @@ impl DirtySpecializations {
 
     /// Iterates over all entities that need their specializations cleared in
     /// this frame.
-    pub fn iter_to_despecialize<'a>(&'a self) -> impl Iterator<Item = &'a MainEntity> {
+    pub fn iter_to_despecialize<'a>(&'a self) -> impl Iterator<Item = &'a Entity> {
         // Entities that changed or were removed must be
         // de-specialized.
         self.changed_renderables
-            .iter()
-            .chain(self.removed_renderables.iter())
+            .keys()
+            .chain(self.removed_renderables.keys())
     }
 
     /// Iterates over all entities that need to have their pipelines
@@ -132,12 +136,7 @@ impl DirtySpecializations {
                     .added_entities()
                     .iter()
                     .map(|(entity, main_entity)| (entity, main_entity))
-                    .chain(self.changed_renderables.iter().filter_map(|main_entity| {
-                        self.entity_pair_from_visible_main_entity(
-                            render_view_visible_mesh_entities,
-                            main_entity,
-                        )
-                    })),
+                    .chain(self.changed_renderables.iter()),
             )
         })
         .chain(last_frame_view_pending_queues.iter().filter_map(
@@ -162,11 +161,11 @@ impl DirtySpecializations {
         &'a self,
         view: RetainedViewEntity,
         render_visible_mesh_entities: &'a RenderVisibleEntitiesClass,
-    ) -> impl Iterator<Item = &'a MainEntity> {
+    ) -> impl Iterator<Item = (&'a Entity, &'a MainEntity)> {
         render_visible_mesh_entities
             .removed_entities
             .iter()
-            .map(|(_, main_entity)| main_entity)
+            .map(|(entity, main_entity)| (entity, main_entity))
             .chain(if self.must_wipe_specializations_for_view(view) {
                 // All visible entities must be removed.
                 // Note that this includes potentially-invisible entities, but
@@ -175,7 +174,7 @@ impl DirtySpecializations {
                 Either::Left(
                     render_visible_mesh_entities
                         .iter_visible()
-                        .map(|(_, main_entity)| main_entity),
+                        .map(|(entity, main_entity)| (entity, main_entity)),
                 )
             } else {
                 // Only entities that changed must be removed.
@@ -209,27 +208,31 @@ impl DirtySpecializations {
                     .added_entities()
                     .iter()
                     .map(|(entity, main_entity)| (entity, main_entity))
-                    .chain(self.changed_renderables.iter().filter_map(|main_entity| {
-                        // Only include entities that need respecialization, are
-                        // visible, and *didn't* become visible this frame. The
-                        // third criterion exists because we already yielded
-                        // such entities just prior to this and don't want to
-                        // yield the same entity twice.
-                        // Note that binary searching works because all lists in
-                        // `RenderVisibleEntities` are guaranteed to be sorted.
-                        if render_visible_mesh_entities
-                            .added_entities()
-                            .binary_search_by_key(main_entity, |(_, main_entity)| *main_entity)
-                            .is_err()
-                        {
-                            self.entity_pair_from_visible_main_entity(
-                                render_visible_mesh_entities,
-                                main_entity,
-                            )
-                        } else {
-                            None
-                        }
-                    })),
+                    .chain(
+                        self.changed_renderables
+                            .iter()
+                            .filter_map(|(entity, main_entity)| {
+                                // Only include entities that need respecialization, are
+                                // visible, and *didn't* become visible this frame. The
+                                // third criterion exists because we already yielded
+                                // such entities just prior to this and don't want to
+                                // yield the same entity twice.
+                                // Note that binary searching works because all lists in
+                                // `RenderVisibleEntities` are guaranteed to be sorted.
+                                if render_visible_mesh_entities
+                                    .added_entities()
+                                    .binary_search(&(*entity, *main_entity))
+                                    .is_err()
+                                {
+                                    self.entity_pair_from_visible_main_entity(
+                                        render_visible_mesh_entities,
+                                        main_entity,
+                                    )
+                                } else {
+                                    None
+                                }
+                            }),
+                    ),
             )
         })
         .chain(last_frame_view_pending_queues.iter().filter_map(

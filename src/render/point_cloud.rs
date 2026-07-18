@@ -1,7 +1,7 @@
 use bevy::{
     asset::{AssetId, Handle},
     camera::{primitives::Aabb, visibility::RenderLayers},
-    ecs::{component::Component, resource::Resource},
+    ecs::{component::Component, entity::EntityHashMap, resource::Resource},
     math::{Affine3, Affine3Ext, Vec4},
     mesh::Mesh,
     pbr::MaterialBindGroupSlot,
@@ -66,7 +66,7 @@ pub struct RenderPointCloudInstance {
 /// The set of information needed is different depending on whether CPU or GPU
 /// [`MeshUniform`] building is in use.
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct RenderPointCloudChunkInstances(MainEntityHashMap<RenderPointCloudChunkInstance>);
+pub struct RenderPointCloudChunkInstances(EntityHashMap<RenderPointCloudChunkInstance>);
 
 /// CPU data that the render world keeps for each entity, when *not* using GPU
 /// mesh uniform building.
@@ -75,6 +75,7 @@ pub struct RenderPointCloudChunkInstance {
     /// [`PreparedPointCloudUniform`] in the draw command [`crate::SetPointCloudUniformGroup`].
     pub root_entity: MainEntity,
     pub is_root: bool,
+    pub mesh_asset_id: AssetId<Mesh>,
 }
 
 #[derive(Component)]

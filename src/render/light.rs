@@ -3,12 +3,12 @@ use std::{any::TypeId, sync::Arc};
 use bevy::{
     camera::visibility::RenderLayers,
     ecs::{
-        entity::Entity,
+        entity::{Entity, EntityHashMap},
         resource::Resource,
         system::{Local, Query, Res, ResMut, SystemParam, SystemState},
         world::World,
     },
-    log::{debug, error, info, warn},
+    log::{error, info, warn},
     material::{
         descriptor::CachedRenderPipelineId, key::ErasedMeshPipelineKey, labels::DrawFunctionId,
         AlphaMode,
@@ -30,7 +30,7 @@ use bevy::{
         mesh::{allocator::MeshAllocator, RenderMesh},
         render_asset::RenderAssets,
         render_phase::{BinnedRenderPhaseType, ViewBinnedRenderPhases},
-        sync_world::{MainEntity, MainEntityHashMap},
+        sync_world::MainEntity,
         view::{
             ExtractedView, RenderShadowMapVisibleEntities, RenderVisibleEntities,
             RetainedViewEntity,
@@ -39,12 +39,13 @@ use bevy::{
 };
 
 use crate::{
-    DirtySpecializations, ErasedMaterialPipelineKey, MaterialProperties, PreparedMaterial,
-    RenderPointCloudChunkInstances, RenderPointCloudMaterialInstances,
+    BinnedRenderPhaseExt, DirtySpecializations, ErasedMaterialPipelineKey, MaterialProperties,
+    PreparedMaterial, RenderPointCloudChunkInstances, RenderPointCloudMaterialInstances,
     ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction,
 };
 
 pub(crate) struct ShadowSpecializationWorkItem {
+    render_entity: Entity,
     visible_entity: MainEntity,
     retained_view_entity: RetainedViewEntity,
     mesh_key: MeshPipelineKey,
@@ -64,7 +65,7 @@ pub struct SpecializedShadowMaterialPipelineCache {
 #[derive(Deref, DerefMut, Default)]
 pub struct SpecializedShadowMaterialViewPipelineCache {
     #[deref]
-    map: MainEntityHashMap<(CachedRenderPipelineId, DrawFunctionId)>,
+    map: EntityHashMap<(CachedRenderPipelineId, DrawFunctionId)>,
 }
 
 /// Holds all entities with mesh materials for which the shadow pass couldn't be
@@ -175,7 +176,7 @@ pub(crate) fn specialize_shadows(
                 if maybe_specialized_shadow_material_pipeline_cache
                     .as_ref()
                     .is_some_and(|specialized_shadow_material_pipeline_cache| {
-                        specialized_shadow_material_pipeline_cache.contains_key(visible_entity)
+                        specialized_shadow_material_pipeline_cache.contains_key(render_entity)
                     })
                 {
                     continue;
@@ -184,7 +185,7 @@ pub(crate) fn specialize_shadows(
                 // our entity is a chunk, we need parent point cloud to get its specialized pipeline
                 // & material
                 let Some(render_point_cloud_chunk_instance) =
-                    render_point_cloud_chunk_instances.get(visible_entity)
+                    render_point_cloud_chunk_instances.get(render_entity)
                 else {
                     continue;
                 };
@@ -202,8 +203,9 @@ pub(crate) fn specialize_shadows(
                         .insert((*render_entity, *visible_entity));
                     continue;
                 };
-                let Some(mesh_instance) =
-                    render_mesh_instances.render_mesh_queue_data(*visible_entity)
+                // get the mesh instance from the root entity
+                let Some(mesh_instance) = render_mesh_instances
+                    .render_mesh_queue_data(render_point_cloud_chunk_instance.root_entity)
                 else {
                     view_pending_shadow_queues
                         .current_frame
@@ -227,7 +229,10 @@ pub(crate) fn specialize_shadows(
                 {
                     continue;
                 }
-                let Some(mesh) = render_meshes.get(mesh_instance.mesh_asset_id()) else {
+
+                // get the mesh from the chunk
+                let Some(mesh) = render_meshes.get(render_point_cloud_chunk_instance.mesh_asset_id)
+                else {
                     continue;
                 };
 
@@ -264,6 +269,7 @@ pub(crate) fn specialize_shadows(
                 };
 
                 work_items.push(ShadowSpecializationWorkItem {
+                    render_entity: *render_entity,
                     visible_entity: *visible_entity,
                     retained_view_entity: extracted_view_light.retained_view_entity,
                     mesh_key,
@@ -324,7 +330,7 @@ pub(crate) fn specialize_shadows(
                     .resource_mut::<SpecializedShadowMaterialPipelineCache>()
                     .entry(item.retained_view_entity)
                     .or_default()
-                    .insert(item.visible_entity, (pipeline_id, draw_function));
+                    .insert(item.render_entity, (pipeline_id, draw_function));
             }
             Err(err) => error!("{}", err),
         }
@@ -383,10 +389,27 @@ pub fn queue_shadows(
 
         // First, remove meshes that need to be respecialized, and those that were removed, from the
         // bins.
-        for &main_entity in dirty_specializations
+        for (render_entity, main_entity) in dirty_specializations
             .iter_to_dequeue(extracted_view_light.retained_view_entity, visible_entities)
         {
-            shadow_phase.remove(main_entity);
+            let Some(render_point_cloud_chunk_instance) =
+                render_point_cloud_chunk_instances.get(render_entity)
+            else {
+                warn!(
+                    "RenderPointCloudChunkInstance not found for entity {:?} when removing shadow phase",
+                    main_entity
+                );
+                continue;
+            };
+
+            info!(
+                "remove shadow phase {:?}/{:?}",
+                render_point_cloud_chunk_instance.root_entity, render_entity
+            );
+            shadow_phase.remove_unbatchable_entity_pair(
+                render_entity,
+                &render_point_cloud_chunk_instance.root_entity,
+            );
         }
 
         // Now iterate through all newly-visible entities and those needing respecialization.
@@ -396,7 +419,7 @@ pub fn queue_shadows(
             &view_pending_shadow_queues.prev_frame,
         ) {
             let Some(&(pipeline_id, draw_function)) =
-                view_specialized_material_pipeline_cache.get(main_entity)
+                view_specialized_material_pipeline_cache.get(render_entity)
             else {
                 warn!(
                     "view_specialized_material_pipeline_cache not found for entity {:?}",
@@ -408,7 +431,7 @@ pub fn queue_shadows(
             // our entity is a chunk, we need parent point cloud to get its specialized pipeline
             // & material
             let Some(render_point_cloud_chunk_instance) =
-                render_point_cloud_chunk_instances.get(main_entity)
+                render_point_cloud_chunk_instances.get(render_entity)
             else {
                 continue;
             };
@@ -485,13 +508,15 @@ pub fn queue_shadows(
                 ShadowBinKey {
                     asset_id: mesh_instance.mesh_asset_id().into(),
                 },
-                (*render_entity, *main_entity),
+                (
+                    *render_entity,
+                    // use the root entity here to correctly handle
+                    // [`GetFullBatchData::get_binned_index`]
+                    // in binned render phases
+                    render_point_cloud_chunk_instance.root_entity,
+                ),
                 mesh_instance.current_uniform_index,
                 BinnedRenderPhaseType::UnbatchableMesh,
-                // BinnedRenderPhaseType::mesh(
-                //     mesh_instance.should_batch(),
-                //     &gpu_preprocessing_support,
-                // ),
             );
         }
     }

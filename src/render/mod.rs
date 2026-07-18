@@ -4,6 +4,7 @@ mod draw;
 mod extract;
 mod light;
 mod material;
+mod phase;
 mod pipeline;
 mod pipeline_specializer;
 mod point_cloud;
@@ -15,7 +16,6 @@ mod resources;
 use bevy::{
     app::Plugin,
     asset::{Assets, Handle},
-    core_pipeline::core_3d::Opaque3d,
     ecs::{
         resource::Resource,
         schedule::{IntoScheduleConfigs, SystemSet},
@@ -26,13 +26,12 @@ use bevy::{
         Vec3,
     },
     mesh::Mesh,
-    pbr::MeshPipelineSystems,
+    pbr::{extract_meshes_for_cpu_building, MeshPipelineSystems},
     render::{
         camera::extract_cameras,
         extract_component::ExtractComponentPlugin,
         extract_resource::{ExtractResource, ExtractResourcePlugin},
         render_asset::RenderAssetPlugin,
-        render_phase::AddRenderCommand,
         view::ExtractedView,
         ExtractSchedule, GpuResourceAppExt, Render, RenderApp, RenderStartup, RenderSystems,
     },
@@ -43,6 +42,7 @@ pub use draw::*;
 pub use extract::*;
 pub use light::*;
 pub use material::*;
+pub use phase::*;
 pub use pipeline::*;
 pub use pipeline_specializer::*;
 pub use point_cloud::*;
@@ -91,7 +91,7 @@ impl Plugin for RenderPointCloudPlugin {
                 (
                     extract_visible_point_cloud_chunks.after(extract_cameras),
                     extract_pointcloud_instances,
-                    extract_pointcloud_chunk_instances,
+                    extract_pointcloud_chunk_instances.after(extract_meshes_for_cpu_building),
                 ),
             )
             .add_systems(

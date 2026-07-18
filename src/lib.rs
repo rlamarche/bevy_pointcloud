@@ -243,18 +243,22 @@ pub fn spawn_point_cloud_chunks(
                 };
                 node_to_entity.insert(node.id, chunk_entity);
 
-                // Set the aabb if any
-                if let Some(aabb) = node.aabb {
-                    info!("spawn aabb for chunk {:?}", chunk_entity);
-                    commands.entity(chunk_entity).insert(aabb);
-                }
-                // Now look for the mesh
-                if let Some(chunk) = point_cloud_chunks.get(chunk_handle.id())
-                    && let Some(mesh_handle) = &chunk.mesh_handle
-                {
-                    commands
-                        .entity(chunk_entity)
-                        .insert(Mesh3d(mesh_handle.clone()));
+                // Spawn [`Mesh3d`] entity only for the root chunk, so we have a
+                // [`RenderMeshInstanceCpu`] or [`RenderMeshInstanceGpu`] available later.
+                if node.depth == 0 {
+                    // Set the aabb if any
+                    if let Some(aabb) = node.aabb {
+                        info!("spawn aabb for chunk {:?}", chunk_entity);
+                        commands.entity(chunk_entity).insert(aabb);
+                    }
+                    // Now look for the mesh
+                    if let Some(chunk) = point_cloud_chunks.get(chunk_handle.id())
+                        && let Some(mesh_handle) = &chunk.mesh_handle
+                    {
+                        commands
+                            .entity(chunk_entity)
+                            .insert(Mesh3d(mesh_handle.clone()));
+                    }
                 }
             }
         }

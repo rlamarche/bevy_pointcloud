@@ -6,13 +6,12 @@ use bevy::{
         Camera,
     },
     ecs::{
-        entity::Entity,
+        entity::{ContainsEntity, Entity},
         hierarchy::ChildOf,
         query::{Has, With},
         system::{Local, Query, Res, ResMut},
     },
     log::{debug, warn},
-    mesh::Mesh3d,
     pbr::PreviousGlobalTransform,
     platform::collections::HashMap,
     render::{
@@ -25,7 +24,7 @@ use bevy::{
 };
 
 use crate::{
-    ChildIndex, ChildrenMask, NodeId, PointCloud, PointCloud3d, PointCloudChunk3d,
+    ChildIndex, ChildrenMask, NodeId, PointCloud, PointCloud3d, PointCloudChunk, PointCloudChunk3d,
     PointCloudTransforms, RenderPointCloudChunkInstance, RenderPointCloudChunkInstances,
     RenderPointCloudInstance, RenderPointCloudInstanceIndex, RenderPointCloudInstances,
     RenderVisiblePointCloudChunkEntity, RenderVisiblePointCloudEntities, VisiblePointCloudEntities,
@@ -232,25 +231,30 @@ pub fn extract_pointcloud_chunk_instances(
     mut render_point_cloud_chunk_instance_queues: Local<
         Parallel<Vec<(Entity, RenderPointCloudChunkInstance)>>,
     >,
+    mapper: Extract<Query<&RenderEntity>>,
     chunks_query: Extract<
-        Query<
-            (
-                Entity,
-                Option<&ChildOf>,
-                &ViewVisibility,
-                // to determine if it is a root
-                Has<PointCloud3d>,
-            ),
-            (With<PointCloudChunk3d>, With<Mesh3d>),
-        >,
+        Query<(
+            Entity,
+            &PointCloudChunk3d,
+            Option<&ChildOf>,
+            &ViewVisibility,
+            // to determine if it is a root
+            Has<PointCloud3d>,
+        )>,
     >,
+    chunks: Extract<Res<Assets<PointCloudChunk>>>,
 ) {
+    // TODO: most fields are invariant, consider extract only new items.
+    // TODO: and remove non visible instances on the next iteration (because we need the instance to
+    // remove it from the phase when looking up for the root entity).
     chunks_query.par_iter().for_each_init(
         || render_point_cloud_chunk_instance_queues.borrow_local_mut(),
-        |queue, (entity, maybe_child_of, view_visibility, is_root)| {
-            if !view_visibility.get() {
-                return;
-            }
+        |queue, (entity, point_cloud_chunk_3d, maybe_child_of, _view_visibility, is_root)| {
+            // we keep invisible instances for the moment because we need the instance to remove
+            // phases
+            // if !view_visibility.get() {
+            //     return;
+            // }
 
             let root_entity = match is_root {
                 true => entity,
@@ -263,11 +267,21 @@ pub fn extract_pointcloud_chunk_instances(
                 },
             };
 
+            let Some(chunk) = chunks.get(point_cloud_chunk_3d) else {
+                warn!("Chunk asset not found for chunk {:?}", point_cloud_chunk_3d);
+                return;
+            };
+            let Some(mesh_handle) = &chunk.mesh_handle else {
+                warn!("Mesh handle missing for chunk {:?}", point_cloud_chunk_3d);
+                return;
+            };
+
             queue.push((
                 entity,
                 RenderPointCloudChunkInstance {
                     is_root,
                     root_entity: root_entity.into(),
+                    mesh_asset_id: mesh_handle.id(),
                 },
             ));
         },
@@ -276,8 +290,13 @@ pub fn extract_pointcloud_chunk_instances(
     // Collect the render mesh instances.
     render_point_cloud_chunk_instances.clear();
     for queue in render_point_cloud_chunk_instance_queues.iter_mut() {
-        for (entity, render_mesh_instance) in queue.drain(..) {
-            render_point_cloud_chunk_instances.insert(entity.into(), render_mesh_instance);
+        for (entity, render_point_cloud_chunk_instance) in queue.drain(..) {
+            let Ok(render_entity) = mapper.get(entity) else {
+                warn!("Render entity not found for main entity {:?}", entity);
+                continue;
+            };
+            render_point_cloud_chunk_instances
+                .insert(render_entity.entity(), render_point_cloud_chunk_instance);
         }
     }
 }

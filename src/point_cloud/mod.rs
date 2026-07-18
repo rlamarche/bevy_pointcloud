@@ -120,6 +120,7 @@ impl PointCloud {
 #[derive(Asset, Debug, Clone, Default, Reflect)]
 #[reflect(Debug, FromWorld, Clone, Default)]
 pub struct PointCloudChunk {
+    pub depth: u32,
     pub mesh_handle: Option<Handle<Mesh>>,
     pub aabb: Option<Aabb>,
     pub vertex_buffer_size: usize,

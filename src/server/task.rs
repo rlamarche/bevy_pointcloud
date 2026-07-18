@@ -6,7 +6,6 @@ use std::{
 
 use bevy::{
     asset::{AssetId, Assets, InvalidGenerationError},
-    camera::visibility::NoCpuCulling,
     ecs::{
         component::Component,
         hierarchy::ChildOf,
@@ -322,6 +321,7 @@ pub fn handle_internal_point_cloud_events(
                 let vertex_buffer_size = mesh.get_vertex_buffer_size();
 
                 let chunk_handle = chunks.add(PointCloudChunk {
+                    depth: node.depth,
                     mesh_handle: None,
                     aabb: node.aabb,
                     vertex_buffer_size,
@@ -358,10 +358,6 @@ pub fn handle_internal_point_cloud_events(
                                 ChildOf(point_cloud_entity),
                                 // but also a link to the parent chunk
                                 ChildChunkOf(parent_chunk_entity),
-                                // we disable cpu culling for this because we do it using the
-                                // octree structure
-                                // TODO: re-enable and use octree structure for lights also
-                                // NoCpuCulling,
                             ));
                             if let Some(aabb) = node.aabb {
                                 entity.insert(aabb);

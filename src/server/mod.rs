@@ -531,12 +531,16 @@ fn load_chunk_meshes(
 
         chunk.mesh_handle = Some(mesh_handle.clone());
 
-        if let Some(point_cloud_entities) = point_cloud_instances.get(&key.id) {
-            for (_, chunks) in point_cloud_entities.iter() {
-                if let Some(&chunk_entity) = chunks.get(&key.chunk_id) {
-                    commands
-                        .entity(chunk_entity)
-                        .insert(Mesh3d(mesh_handle.clone()));
+        // Spawn [`Mesh3d`] entity only for the root chunk, so we have a
+        // [`RenderMeshInstanceCpu`] or [`RenderMeshInstanceGpu`] available later.
+        if chunk.depth == 0 {
+            if let Some(point_cloud_entities) = point_cloud_instances.get(&key.id) {
+                for (_, chunks) in point_cloud_entities.iter() {
+                    if let Some(&chunk_entity) = chunks.get(&key.chunk_id) {
+                        commands
+                            .entity(chunk_entity)
+                            .insert(Mesh3d(mesh_handle.clone()));
+                    }
                 }
             }
         }

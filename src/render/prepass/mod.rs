@@ -12,18 +12,18 @@ use bevy::{
             SystemParam, SystemParamItem, SystemState,
         },
     },
-    log::{debug, error, info, warn},
+    log::{debug, error, warn},
     material::{key::ErasedMeshPipelineKey, AlphaMode, OpaqueRendererMethod, RenderPhaseType},
     math::{Mat4, Vec4},
-    mesh::{Mesh, Mesh3d, MeshVertexBufferLayoutRef},
+    mesh::{Mesh, MeshVertexBufferLayoutRef},
     pbr::{
         alpha_mode_pipeline_key, collect_meshes_for_gpu_building, set_mesh_motion_vector_flags,
         setup_morph_and_skinning_defs, DeferredAlphaMaskDrawFunction, DeferredFragmentShader,
-        DeferredOpaqueDrawFunction, DeferredVertexShader, DrawMesh, MeshLayouts, MeshPipeline,
+        DeferredOpaqueDrawFunction, DeferredVertexShader, MeshLayouts, MeshPipeline,
         MeshPipelineKey, PrepassAlphaMaskDrawFunction, PrepassFragmentShader,
         PrepassOpaqueDepthOnlyDrawFunction, PrepassOpaqueDrawFunction, PrepassVertexShader,
         RenderLightmaps, RenderMaterialInstances, RenderMeshInstanceFlags, RenderMeshInstances,
-        SetMaterialBindGroup, SetMeshBindGroup, ShadowView, MAX_VIEW_LIGHT_PROBES,
+        SetMaterialBindGroup, ShadowView, MAX_VIEW_LIGHT_PROBES,
     },
     prelude::{Deref, DerefMut},
     render::{
@@ -46,8 +46,8 @@ use bevy::{
             ExtractedView, Msaa, RenderVisibilityRanges, RenderVisibleEntities, RetainedViewEntity,
             ViewUniform, ViewUniformOffset, ViewUniforms, VISIBILITY_RANGES_STORAGE_BUFFER_COUNT,
         },
-        Extract, ExtractSchedule, GpuResourceAppExt, Render, RenderApp, RenderDebugFlags,
-        RenderStartup, RenderSystems,
+        Extract, GpuResourceAppExt, Render, RenderApp, RenderDebugFlags, RenderStartup,
+        RenderSystems,
     },
     shader::{load_shader_library, Shader, ShaderDefVal},
 };
@@ -63,7 +63,7 @@ use bevy::{
     render::{
         erased_render_asset::ErasedRenderAssets,
         sync_world::{MainEntity, MainEntityHashMap},
-        RenderSystems::{PrepareAssets, PrepareResources},
+        RenderSystems::PrepareAssets,
     },
     utils::default,
 };
@@ -72,8 +72,8 @@ use std::{num::NonZero, sync::Arc};
 use crate::{
     init_material_pipeline, init_point_cloud_pipeline, DrawPointCloudInstanced,
     ErasedMaterialPipelineKey, MaterialPipeline, MaterialProperties, PointCloudChunk3d,
-    PointCloudPipeline, PreparedMaterial, SetPointCloudUniformGroup, SpecializedPointCloudPipeline,
-    SpecializedPointCloudPipelines, MATERIAL_BIND_GROUP_INDEX,
+    PointCloudPipeline, PreparedMaterial, SetMeshBindGroup, SetPointCloudUniformGroup,
+    SpecializedPointCloudPipeline, SpecializedPointCloudPipelines, MATERIAL_BIND_GROUP_INDEX,
 };
 
 /// Sets up everything required to use the prepass pipeline.

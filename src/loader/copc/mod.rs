@@ -98,10 +98,10 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
         reader.load_all_hierarchy().await?;
 
         let copc_info = reader.copc_info();
-        info!("COPC INFO: {:#?}", copc_info);
+        // info!("COPC INFO: {:#?}", copc_info);
 
-        let las_header = reader.header().las_header();
-        info!("LAS HEADER: {:#?}", las_header);
+        // let las_header = reader.header().las_header();
+        // info!("LAS HEADER: {:#?}", las_header);
 
         let aabb = copc_info.root_bounds();
 
