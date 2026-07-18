@@ -19,13 +19,13 @@ use bevy::{
     },
     diagnostic::Diagnostics,
     ecs::{
-        entity::Entity,
+        entity::EntityHashMap,
         query::With,
         system::{Local, Query, Res, ResMut},
     },
     log::warn,
     math::{UVec2, Vec3A},
-    platform::{collections::HashMap, time::Instant},
+    platform::time::Instant,
     time::{Real, Time},
     transform::prelude::*,
 };
@@ -105,19 +105,13 @@ pub fn check_point_cloud_nodes_visibility(
 
         // create a local scoped priority stack reusing previous allocations
         let mut priority_stack = HeapGuard::new(&mut priority_stack);
-        let mut entities_transform = HashMap::new();
+        let mut entities_transform = EntityHashMap::new();
 
         // for each visible point cloud
         for &entity in visible_entities {
-            let (component, global_transform) = match entities.get(entity) {
-                Ok(item) => item,
-                Err(error) => {
-                    warn!(
-                        "Unable to read point cloud entity for computing nodes visibility: {:#}",
-                        error
-                    );
-                    continue;
-                }
+            let Ok((component, global_transform)) = entities.get(entity) else {
+                warn!("Unable to read point cloud entity for computing nodes visibility");
+                continue;
             };
 
             entities_transform.insert(entity, global_transform);
@@ -234,7 +228,7 @@ pub struct CameraView<'a> {
 }
 
 // TODO: cache the scale for each node to prevent calculating max scale for each nodes
-fn compute_screen_pixel_radius(
+pub fn compute_screen_pixel_radius(
     aabb: &Aabb,
     transform: &GlobalTransform,
     camera_view: &CameraView,
@@ -278,13 +272,13 @@ fn compute_screen_pixel_radius(
     }
 }
 
-fn compute_visible_nodes_stack(
+pub fn compute_visible_nodes_stack(
     camera_view: &CameraView,
     filter: &ScreenPixelRadiusFilter,
     budget: &mut PointCloudPointBudget,
     stack: &mut BinaryHeap<StackedPointCloudNodeEntity>,
     visible_point_cloud_entities: &mut VisiblePointCloudEntities,
-    entities_transform: &HashMap<Entity, &GlobalTransform>,
+    entities_transform: &EntityHashMap<&GlobalTransform>,
     load_tasks: &mut PointCloudLoadTasks,
     eager_stop: bool,
 ) {
@@ -315,8 +309,9 @@ fn compute_visible_nodes_stack(
         #[cfg(feature = "trace")]
         let filter_span = info_span!("compute_visible_nodes_stack", name = "filter").entered();
 
-        // check node visibility
-        if !filter.filter(node, transform, camera_view, screen_pixel_radius) {
+        // Check node visibility.
+        // we ignore root node to prevent it from disappearing when getting far away.
+        if filter.filter(node, transform, camera_view, screen_pixel_radius) {
             continue;
         }
 

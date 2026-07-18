@@ -3,6 +3,7 @@ mod check;
 mod components;
 mod filter;
 mod heap_guard;
+mod light;
 mod resources;
 mod stack;
 
@@ -14,12 +15,16 @@ use bevy::{
     },
     diagnostic::{Diagnostic, DiagnosticPath, RegisterDiagnostic, DEFAULT_MAX_HISTORY_LENGTH},
     ecs::schedule::{IntoScheduleConfigs, SystemSet},
-    light::SimulationLightSystems::CheckLightVisibility,
+    light::{
+        check_dir_light_mesh_visibility, DirectionalLight,
+        SimulationLightSystems::CheckLightVisibility,
+    },
     transform::TransformSystems,
 };
 pub use check::*;
 pub use components::*;
 pub use filter::*;
+pub use light::*;
 pub use resources::*;
 use stack::*;
 
@@ -30,6 +35,7 @@ pub enum PointCloudVisibilitySystems {
     CalculateBounds,
     CheckPointCloudNodesVisibility,
     UpdateViewVisibility,
+    CheckLightVisibility,
 }
 
 pub struct PointCloudVisiblityPlugin;
@@ -63,6 +69,8 @@ impl Plugin for PointCloudVisiblityPlugin {
             .register_required_components::<PointCloudChunk3d, VisibilityClass>()
             .register_required_components::<Camera, VisiblePointCloudEntities>()
             .register_required_components::<Camera, PointCloudVisibilitySettings>()
+            .register_required_components::<DirectionalLight, CascadesVisiblePointCloudEntities>()
+            .register_required_components::<DirectionalLight, PointCloudVisibilitySettings>()
             .init_resource::<GlobalVisiblePointCloudNodes>()
             .init_resource::<GlobalVisiblePointCloudChunks>()
             .add_systems(
@@ -72,6 +80,9 @@ impl Plugin for PointCloudVisiblityPlugin {
                         .in_set(PointCloudVisibilitySystems::CheckPointCloudNodesVisibility),
                     set_visible_point_cloud_chunk_visibility
                         .in_set(PointCloudVisibilitySystems::UpdateViewVisibility),
+                    check_point_cloud_nodes_dir_lights_visibility
+                        .in_set(PointCloudVisibilitySystems::CheckLightVisibility)
+                        .after(check_dir_light_mesh_visibility),
                 ),
             )
             .configure_sets(

@@ -2,9 +2,12 @@ use std::sync::Arc;
 
 use bevy::{
     asset::{AssetId, Handle},
-    ecs::{component::Component, entity::Entity},
-    platform::collections::HashMap,
-    reflect::Reflect,
+    ecs::{
+        component::Component,
+        entity::{Entity, EntityHashMap},
+        reflect::ReflectComponent,
+    },
+    reflect::{std_traits::ReflectDefault, Reflect},
 };
 
 use crate::{ChildIndex, ChildrenMask, NodeId, PointCloud, PointCloudChunk, PointCloudNode};
@@ -28,9 +31,11 @@ impl Default for PointCloudVisibilitySettings {
 
 /// This component stores the visible nodes for each point cloud at view level (camera) in "main
 /// world".
-#[derive(Component, Clone, Debug, Default)]
+#[derive(Component, Clone, Debug, Default, Reflect)]
+#[reflect(Component, Default, Clone)]
 pub struct VisiblePointCloudEntities {
-    pub entities: HashMap<Entity, VisiblePointCloudEntity>,
+    #[reflect(ignore, clone)]
+    pub entities: EntityHashMap<VisiblePointCloudEntity>,
     pub changed_this_frame: bool,
 }
 

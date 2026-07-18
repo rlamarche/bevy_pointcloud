@@ -8,7 +8,7 @@ use bevy::{
         system::{Local, Query, Res, ResMut, SystemParam, SystemState},
         world::World,
     },
-    log::{error, info, warn},
+    log::{debug, error, warn},
     material::{
         descriptor::CachedRenderPipelineId, key::ErasedMeshPipelineKey, labels::DrawFunctionId,
         AlphaMode,
@@ -402,7 +402,7 @@ pub fn queue_shadows(
                 continue;
             };
 
-            info!(
+            debug!(
                 "remove shadow phase {:?}/{:?}",
                 render_point_cloud_chunk_instance.root_entity, render_entity
             );

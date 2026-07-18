@@ -1256,7 +1256,7 @@ pub fn queue_material_meshes(
                 continue;
             };
 
-            info!(
+            debug!(
                 "remove phase {:?}/{:?}",
                 render_point_cloud_chunk_instance.root_entity, render_entity
             );
