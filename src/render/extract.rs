@@ -14,7 +14,7 @@ use bevy::{
         system::{Local, Query, Res, ResMut},
     },
     light::{CascadeShadowConfig, Cascades, DirectionalLight, SpotLight, SunDisk, VolumetricLight},
-    log::{debug, info, warn},
+    log::{debug, warn},
     pbr::PreviousGlobalTransform,
     platform::collections::HashMap,
     render::{
@@ -377,16 +377,10 @@ pub fn extract_cascade_visible_point_cloud_chunks(
                         subview_index,
                     };
 
-                    let view_existing_shadow_map_visibile_entity =
-                        existing_shadow_map_visible_entities
-                            .subviews
-                            .entry(retained_view_entity)
-                            .or_default();
-
-                    // let classes = view_existing_shadow_map_visibile_entity
-                    //     .classes
-                    //     .entry(TypeId::of::<PointCloudChunk3d>())
-                    //     .or_default();
+                    existing_shadow_map_visible_entities
+                        .subviews
+                        .entry(retained_view_entity)
+                        .or_default();
 
                     // Extract the visible CPU culled entities to the list.
                     let extracted_entities = &mut existing_extracted_shadow_map_visible_entities

@@ -88,7 +88,7 @@ pub fn check_point_cloud_nodes_dir_lights_visibility(
 
     // for each view
     for (
-        dir_light,
+        _dir_light,
         cascades,
         frusta,
         cascades_visible_entities,
@@ -383,7 +383,7 @@ pub fn extract_orthographic_projection(cascade: &Cascade) -> OrthographicProject
 // }
 
 /// Reconstructs an `OrthographicProjection` from a `Cascade`, exploiting the fact that
-/// `calculate_cascade()` (in bevy_light) always produces a projection that is:
+/// `calculate_cascade()` (in `bevy_light`) always produces a projection that is:
 ///   - symmetric in X/Y (left = -right, bottom = -top), since `cascade_from_world` already
 ///     re-centers the cascade around `near_plane_center`.
 ///   - has `near = 0.0` exactly, since the cascade's local origin *is* the near plane

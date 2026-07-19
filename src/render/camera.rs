@@ -171,11 +171,7 @@ impl DirtySpecializations {
                 // Note that this includes potentially-invisible entities, but
                 // that's OK as they shouldn't be in the caller's bins in the
                 // first place.
-                Either::Left(
-                    render_visible_mesh_entities
-                        .iter_visible()
-                        .map(|(entity, main_entity)| (entity, main_entity)),
-                )
+                Either::Left(render_visible_mesh_entities.iter_visible())
             } else {
                 // Only entities that changed must be removed.
                 Either::Right(

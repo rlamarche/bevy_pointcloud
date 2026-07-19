@@ -15,7 +15,6 @@ use bevy::{
     },
     log::{info, warn},
     mesh::Mesh3d,
-    pbr::StandardMaterial,
     platform::collections::HashMap,
     shader::{load_shader_library, ShaderRef},
 };
