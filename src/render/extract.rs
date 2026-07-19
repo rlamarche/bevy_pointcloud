@@ -1,22 +1,29 @@
+use std::any::TypeId;
+
 use bevy::{
     asset::Assets,
     camera::{
-        primitives::Aabb,
-        visibility::{RenderLayers, ViewVisibility},
+        primitives::{Aabb, CascadesFrusta},
+        visibility::{CascadesVisibleEntities, RenderLayers, ViewVisibility},
         Camera,
     },
     ecs::{
         entity::{ContainsEntity, Entity},
         hierarchy::ChildOf,
-        query::{Has, With},
+        query::{Changed, Has, Or, With, Without},
         system::{Local, Query, Res, ResMut},
     },
-    log::{debug, warn},
+    light::{CascadeShadowConfig, Cascades, DirectionalLight, SpotLight, SunDisk, VolumetricLight},
+    log::{debug, info, warn},
     pbr::PreviousGlobalTransform,
     platform::collections::HashMap,
     render::{
+        occlusion_culling::OcclusionCulling,
         sync_world::{MainEntity, RenderEntity},
-        view::ExtractedView,
+        view::{
+            ExtractedView, RenderExtractedShadowMapVisibleEntities, RenderShadowMapVisibleEntities,
+            RetainedViewEntity, VisibilityExtractionSystemParam,
+        },
         Extract,
     },
     transform::components::GlobalTransform,
@@ -24,10 +31,11 @@ use bevy::{
 };
 
 use crate::{
-    ChildIndex, ChildrenMask, NodeId, PointCloud, PointCloud3d, PointCloudChunk, PointCloudChunk3d,
-    PointCloudTransforms, RenderPointCloudChunkInstance, RenderPointCloudChunkInstances,
-    RenderPointCloudInstance, RenderPointCloudInstanceIndex, RenderPointCloudInstances,
-    RenderVisiblePointCloudChunkEntity, RenderVisiblePointCloudEntities, VisiblePointCloudEntities,
+    CascadesVisiblePointCloudEntities, ChildIndex, ChildrenMask, NodeId, PointCloud, PointCloud3d,
+    PointCloudChunk, PointCloudChunk3d, PointCloudTransforms, RenderPointCloudChunkInstance,
+    RenderPointCloudChunkInstances, RenderPointCloudInstance, RenderPointCloudInstanceIndex,
+    RenderPointCloudInstances, RenderVisiblePointCloudChunkEntity, RenderVisiblePointCloudEntities,
+    VisiblePointCloudEntities,
 };
 
 /// This system extracts the visible point cloud chunk entities into the render world while
@@ -136,12 +144,11 @@ pub fn extract_visible_point_cloud_chunks(
 }
 
 /// Extracts meshes from the main world into the render world, populating the
-/// [`RenderPointCloudChunkInstances`] resource, which contains a [`RenderPointCloudChunkInstance`]
-/// for each visible [`PointCloudChunk3d`].
+/// [`RenderPointCloudInstances`] resource, which contains a [`RenderPointCloudInstance`]
+/// for each visible [`PointCloud3d`].
 ///
 /// It also extracts the its aabb (useful for rendering features), and its transforms, for
 /// populating the [`crate::PointCloudUniform`] later.
-/// TODO: don't extract transforms for non root chunks.
 pub fn extract_pointcloud_instances(
     mut render_point_cloud_instances: ResMut<RenderPointCloudInstances>,
     mut render_point_cloud_instance_queues: Local<
@@ -222,10 +229,7 @@ pub fn extract_pointcloud_instances(
 /// Extracts meshes from the main world into the render world, populating the
 /// [`RenderPointCloudChunkInstances`] resource, which contains a [`RenderPointCloudChunkInstance`]
 /// for each visible [`PointCloudChunk3d`].
-///
-/// It also extracts the its aabb (useful for rendering features), and its transforms, for
-/// populating the [`crate::PointCloudUniform`] later.
-/// TODO: don't extract transforms for non root chunks.
+/// Note: for the moment, invisible [`PointCloudChunk3d`] are also extracted.
 pub fn extract_pointcloud_chunk_instances(
     mut render_point_cloud_chunk_instances: ResMut<RenderPointCloudChunkInstances>,
     mut render_point_cloud_chunk_instance_queues: Local<
@@ -297,6 +301,126 @@ pub fn extract_pointcloud_chunk_instances(
             };
             render_point_cloud_chunk_instances
                 .insert(render_entity.entity(), render_point_cloud_chunk_instance);
+        }
+    }
+}
+
+pub fn extract_cascade_visible_point_cloud_chunks(
+    directional_lights: Extract<
+        Query<
+            (
+                Entity,
+                RenderEntity,
+                &DirectionalLight,
+                &CascadesVisiblePointCloudEntities,
+                &CascadeShadowConfig,
+                &ViewVisibility,
+            ),
+            (
+                Without<SpotLight>,
+                Or<(
+                    Changed<DirectionalLight>,
+                    Changed<CascadesVisibleEntities>,
+                    Changed<CascadesVisiblePointCloudEntities>,
+                    Changed<Cascades>,
+                    Changed<CascadeShadowConfig>,
+                    Changed<CascadesFrusta>,
+                    Changed<GlobalTransform>,
+                    Changed<ViewVisibility>,
+                    Changed<RenderLayers>,
+                    Changed<VolumetricLight>,
+                    Changed<OcclusionCulling>,
+                    Changed<SunDisk>,
+                )>,
+            ),
+        >,
+    >,
+    visibility_extraction_system_param: VisibilityExtractionSystemParam,
+    mut existing_render_shadow_map_visible_entities: Query<(
+        &mut RenderExtractedShadowMapVisibleEntities,
+        &mut RenderShadowMapVisibleEntities,
+    )>,
+) {
+    let mapper = &visibility_extraction_system_param.mapper;
+
+    for (
+        main_entity,
+        entity,
+        directional_light,
+        visible_entities,
+        cascade_config,
+        view_visibility,
+    ) in &directional_lights
+    {
+        if !view_visibility.get() {
+            continue;
+        }
+
+        if directional_light.shadow_maps_enabled {
+            let Ok((
+                mut existing_extracted_shadow_map_visible_entities,
+                mut existing_shadow_map_visible_entities,
+            )) = existing_render_shadow_map_visible_entities.get_mut(entity)
+            else {
+                warn!("Directional light {:?}/{:?} has no existing extracted data, that shoudn't happen.", main_entity, entity);
+                continue;
+            };
+
+            // Calculate the added and removed entities for each cascade.
+            for (main_auxiliary_entity, visible_mesh_entities_list) in
+                visible_entities.entities.iter()
+            {
+                for subview_index in 0..(cascade_config.bounds.len() as u32) {
+                    let retained_view_entity = RetainedViewEntity {
+                        main_entity: MainEntity::from(main_entity),
+                        auxiliary_entity: MainEntity::from(*main_auxiliary_entity),
+                        subview_index,
+                    };
+
+                    let view_existing_shadow_map_visibile_entity =
+                        existing_shadow_map_visible_entities
+                            .subviews
+                            .entry(retained_view_entity)
+                            .or_default();
+
+                    // let classes = view_existing_shadow_map_visibile_entity
+                    //     .classes
+                    //     .entry(TypeId::of::<PointCloudChunk3d>())
+                    //     .or_default();
+
+                    // Extract the visible CPU culled entities to the list.
+                    let extracted_entities = &mut existing_extracted_shadow_map_visible_entities
+                        .subviews
+                        .entry(retained_view_entity)
+                        .or_default()
+                        .classes
+                        .entry(TypeId::of::<PointCloudChunk3d>())
+                        .or_default()
+                        .entities;
+                    extracted_entities.clear();
+                    let Some(visible_chunk_entities) =
+                        visible_mesh_entities_list.get(subview_index as usize)
+                    else {
+                        continue;
+                    };
+                    extracted_entities.extend(visible_chunk_entities.entities.iter().flat_map(
+                        |(_, visible_point_cloud_entity)| {
+                            // get all node entities which have an associated entity
+                            visible_point_cloud_entity
+                                .node_entities
+                                .iter()
+                                .flat_map(|node| {
+                                    let main_entity = node.entity?;
+                                    let render_entity = match mapper.get(main_entity) {
+                                        Ok(render_entity) => **render_entity,
+                                        Err(_) => Entity::PLACEHOLDER,
+                                    };
+                                    Some((render_entity, MainEntity::from(main_entity)))
+                                })
+                        },
+                    ));
+                }
+            }
         }
     }
 }

@@ -983,8 +983,7 @@ pub(crate) fn specialize_material_meshes(
                 continue;
             };
 
-            let Some(render_visible_mesh_entities) = visible_entities.get::<PointCloudChunk3d>()
-            else {
+            let Some(visible_entities_class) = visible_entities.get::<PointCloudChunk3d>() else {
                 continue;
             };
 
@@ -1014,7 +1013,7 @@ pub(crate) fn specialize_material_meshes(
             // Now process all meshes that need to be specialized.
             for (render_entity, visible_entity) in dirty_specializations.iter_to_specialize(
                 view.retained_view_entity,
-                render_visible_mesh_entities,
+                visible_entities_class,
                 &view_pending_mesh_material_queues.prev_frame,
             ) {
                 if maybe_specialized_material_pipeline_cache
@@ -1083,6 +1082,7 @@ pub(crate) fn specialize_material_meshes(
                         .insert((*render_entity, *visible_entity));
                     continue;
                 };
+
                 let Some(material) = render_materials.get(material_instance.asset_id) else {
                     warn!("render_materials not found");
                     view_pending_mesh_material_queues
@@ -1236,15 +1236,15 @@ pub fn queue_material_meshes(
             continue;
         };
 
-        let Some(render_visible_mesh_entities) = visible_entities.get::<PointCloudChunk3d>() else {
-            info!("no render_visible_mesh_entities for view");
+        let Some(visible_entities_class) = visible_entities.get::<PointCloudChunk3d>() else {
+            info!("no visible entities for view");
             continue;
         };
 
         // First, remove meshes that need to be respecialized, and those that were removed, from the
         // bins.
-        for (render_entity, main_entity) in dirty_specializations
-            .iter_to_dequeue(view.retained_view_entity, render_visible_mesh_entities)
+        for (render_entity, main_entity) in
+            dirty_specializations.iter_to_dequeue(view.retained_view_entity, visible_entities_class)
         {
             let Some(render_point_cloud_chunk_instance) =
                 render_point_cloud_chunk_instances.get(render_entity)
@@ -1289,7 +1289,7 @@ pub fn queue_material_meshes(
         // Now iterate through all newly-visible entities and those needing respecialization.
         for (render_entity, visible_entity) in dirty_specializations.iter_to_queue(
             view.retained_view_entity,
-            render_visible_mesh_entities,
+            visible_entities_class,
             &view_pending_mesh_material_queues.prev_frame,
         ) {
             let Some(pipeline_id) = view_specialized_material_pipeline_cache

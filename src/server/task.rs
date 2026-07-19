@@ -339,7 +339,6 @@ pub fn handle_internal_point_cloud_events(
                 // get again the node immutably
                 let node = point_cloud.get_node(node_id).unwrap(); // was valid just above
 
-                info!("loaded chunk {:?}", node_id);
                 if let Some(point_cloud_entities) = point_cloud_instances.get(&id) {
                     for (&point_cloud_entity, chunks) in point_cloud_entities.iter() {
                         if let Some(parent_node_id) = node.parent_id

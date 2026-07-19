@@ -26,7 +26,7 @@ use bevy::{
         Vec3,
     },
     mesh::Mesh,
-    pbr::{extract_meshes_for_cpu_building, MeshPipelineSystems},
+    pbr::{extract_lights, MeshPipelineSystems},
     render::{
         camera::extract_cameras,
         extract_component::ExtractComponentPlugin,
@@ -58,6 +58,14 @@ pub struct RenderPointCloudPlugin;
 #[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
 pub struct PointCloudPipelineSystems;
 
+#[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
+pub enum PointCloudExtractionSystems {
+    ExtractPointClouds,
+    ExtractPointCloudChunks,
+    ExtractVisiblePointCloudChunks,
+    ExtractCascadeVisiblePointCloudChunks,
+}
+
 impl Plugin for RenderPointCloudPlugin {
     fn build(&self, app: &mut bevy::app::App) {
         app.add_plugins(MaterialsPlugin::default()) // TODO add debug flags opt
@@ -74,7 +82,13 @@ impl Plugin for RenderPointCloudPlugin {
         render_app
             .configure_sets(
                 RenderStartup,
-                PointCloudPipelineSystems.after(MeshPipelineSystems),
+                (
+                    PointCloudPipelineSystems.after(MeshPipelineSystems),
+                    PointCloudExtractionSystems::ExtractVisiblePointCloudChunks
+                        .after(extract_cameras),
+                    PointCloudExtractionSystems::ExtractCascadeVisiblePointCloudChunks
+                        .before(extract_lights),
+                ),
             )
             .init_resource::<RenderPointCloudInstances>()
             .init_resource::<RenderPointCloudChunkInstances>()
@@ -89,9 +103,15 @@ impl Plugin for RenderPointCloudPlugin {
             .add_systems(
                 ExtractSchedule,
                 (
-                    extract_visible_point_cloud_chunks.after(extract_cameras),
-                    extract_pointcloud_instances,
-                    extract_pointcloud_chunk_instances.after(extract_meshes_for_cpu_building),
+                    extract_visible_point_cloud_chunks
+                        .in_set(PointCloudExtractionSystems::ExtractVisiblePointCloudChunks),
+                    extract_pointcloud_instances
+                        .in_set(PointCloudExtractionSystems::ExtractPointClouds),
+                    extract_pointcloud_chunk_instances.in_set(PointCloudExtractionSystems::ExtractPointCloudChunks), //.after(extract_meshes_for_cpu_building),
+                    extract_cascade_visible_point_cloud_chunks
+                        .in_set(PointCloudExtractionSystems::ExtractCascadeVisiblePointCloudChunks)
+                        .before(extract_lights)
+                    ,
                 ),
             )
             .add_systems(

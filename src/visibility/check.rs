@@ -186,6 +186,8 @@ pub fn check_point_cloud_nodes_visibility(
 
         // extract chunk entities for each visible node, if available and populate resource
         // [`GlobalVisiblePointCloudChunks`].
+        // It also fills the [`VisiblePointCloudNodeEntity::entity`] field (not done during the
+        // visiblity check to reduce lookups).
         for (entity, point_cloud_entity) in &mut visible_point_cloud_entities.entities {
             let Some(point_cloud_instance) =
                 point_cloud_instances.get(&point_cloud_entity.asset_id)

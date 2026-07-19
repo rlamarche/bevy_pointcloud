@@ -13,7 +13,7 @@ use bevy::{
         descriptor::CachedRenderPipelineId, key::ErasedMeshPipelineKey, labels::DrawFunctionId,
         AlphaMode,
     },
-    mesh::{Mesh3d, MeshVertexBufferLayoutRef},
+    mesh::MeshVertexBufferLayoutRef,
     pbr::{
         LightEntity, LightKeyCache, MeshPipelineKey, PrepassPipeline, RenderLightmaps,
         RenderMeshInstanceFlags, RenderMeshInstances, Shadow, ShadowBatchSetKey, ShadowBinKey,
@@ -40,8 +40,8 @@ use bevy::{
 
 use crate::{
     BinnedRenderPhaseExt, DirtySpecializations, ErasedMaterialPipelineKey, MaterialProperties,
-    PreparedMaterial, RenderPointCloudChunkInstances, RenderPointCloudMaterialInstances,
-    ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction,
+    PointCloudChunk3d, PreparedMaterial, RenderPointCloudChunkInstances,
+    RenderPointCloudMaterialInstances, ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction,
 };
 
 pub(crate) struct ShadowSpecializationWorkItem {
@@ -162,15 +162,14 @@ pub(crate) fn specialize_shadows(
             // NOTE: Lights with shadow mapping disabled will have no visible entities
             // so no meshes will be queued
 
-            // we get mesh 3d visible entities because there is one for each chunk
-            let Some(visible_entities) = visible_entities.get::<Mesh3d>() else {
+            let Some(visible_entities_class) = visible_entities.get::<PointCloudChunk3d>() else {
                 continue;
             };
 
             // Now process all shadow meshes that need to be re-specialized.
             for (render_entity, visible_entity) in dirty_specializations.iter_to_specialize(
                 extracted_view_light.retained_view_entity,
-                visible_entities,
+                visible_entities_class,
                 &view_pending_shadow_queues.prev_frame,
             ) {
                 if maybe_specialized_shadow_material_pipeline_cache
@@ -187,6 +186,10 @@ pub(crate) fn specialize_shadows(
                 let Some(render_point_cloud_chunk_instance) =
                     render_point_cloud_chunk_instances.get(render_entity)
                 else {
+                    warn!(
+                        "RenderPointCloudChunkInstance not found for entity {:?} in shadows",
+                        visible_entity
+                    );
                     continue;
                 };
 
@@ -198,6 +201,10 @@ pub(crate) fn specialize_shadows(
                     .instances
                     .get(&render_point_cloud_chunk_instance.root_entity)
                 else {
+                    warn!(
+                        "Unable to load material instance for entity {:?} in shadows",
+                        visible_entity
+                    );
                     view_pending_shadow_queues
                         .current_frame
                         .insert((*render_entity, *visible_entity));
@@ -207,12 +214,31 @@ pub(crate) fn specialize_shadows(
                 let Some(mesh_instance) = render_mesh_instances
                     .render_mesh_queue_data(render_point_cloud_chunk_instance.root_entity)
                 else {
+                    warn!(
+                        "mesh_instance not found for entity {:?} in shadows",
+                        render_point_cloud_chunk_instance.root_entity
+                    );
                     view_pending_shadow_queues
                         .current_frame
                         .insert((*render_entity, *visible_entity));
                     continue;
                 };
+
+                // get the mesh from the chunk
+                let Some(mesh) = render_meshes.get(render_point_cloud_chunk_instance.mesh_asset_id)
+                else {
+                    warn!(
+                        "render_meshes not found for asset id {:?} in shadows",
+                        render_point_cloud_chunk_instance.mesh_asset_id
+                    );
+                    view_pending_shadow_queues
+                        .current_frame
+                        .insert((*render_entity, *visible_entity));
+                    continue;
+                };
+
                 let Some(material) = render_materials.get(material_instance.asset_id) else {
+                    warn!("render_materials not found in shadows");
                     view_pending_shadow_queues
                         .current_frame
                         .insert((*render_entity, *visible_entity));
@@ -223,18 +249,13 @@ pub(crate) fn specialize_shadows(
                     // If the material is not a shadow caster, we don't need to specialize it.
                     continue;
                 }
+
                 if !mesh_instance
                     .flags()
                     .contains(RenderMeshInstanceFlags::SHADOW_CASTER)
                 {
                     continue;
                 }
-
-                // get the mesh from the chunk
-                let Some(mesh) = render_meshes.get(render_point_cloud_chunk_instance.mesh_asset_id)
-                else {
-                    continue;
-                };
 
                 let mut mesh_key =
                     *light_key | MeshPipelineKey::from_bits_retain(mesh.key_bits.bits());
@@ -262,6 +283,7 @@ pub(crate) fn specialize_shadows(
                 };
 
                 let Some(shape_mesh) = render_meshes.get(material.properties.shape_mesh) else {
+                    warn!("shape mesh not found");
                     view_pending_shadow_queues
                         .current_frame
                         .insert((*render_entity, *visible_entity));
@@ -383,15 +405,16 @@ pub fn queue_shadows(
             extracted_view_light,
         );
 
-        let Some(visible_entities) = visible_entities.get::<Mesh3d>() else {
+        let Some(visible_entities_class) = visible_entities.get::<PointCloudChunk3d>() else {
             continue;
         };
 
         // First, remove meshes that need to be respecialized, and those that were removed, from the
         // bins.
-        for (render_entity, main_entity) in dirty_specializations
-            .iter_to_dequeue(extracted_view_light.retained_view_entity, visible_entities)
-        {
+        for (render_entity, main_entity) in dirty_specializations.iter_to_dequeue(
+            extracted_view_light.retained_view_entity,
+            visible_entities_class,
+        ) {
             let Some(render_point_cloud_chunk_instance) =
                 render_point_cloud_chunk_instances.get(render_entity)
             else {
@@ -413,9 +436,9 @@ pub fn queue_shadows(
         }
 
         // Now iterate through all newly-visible entities and those needing respecialization.
-        for (render_entity, main_entity) in dirty_specializations.iter_to_queue(
+        for (render_entity, visible_entity) in dirty_specializations.iter_to_queue(
             extracted_view_light.retained_view_entity,
-            visible_entities,
+            visible_entities_class,
             &view_pending_shadow_queues.prev_frame,
         ) {
             let Some(&(pipeline_id, draw_function)) =
@@ -423,7 +446,7 @@ pub fn queue_shadows(
             else {
                 warn!(
                     "view_specialized_material_pipeline_cache not found for entity {:?}",
-                    main_entity
+                    visible_entity
                 );
                 continue;
             };
@@ -436,16 +459,17 @@ pub fn queue_shadows(
                 continue;
             };
 
-            let Some(mesh_instance) = render_mesh_instances.render_mesh_queue_data(*main_entity)
+            let Some(mesh_instance) = render_mesh_instances
+                .render_mesh_queue_data(render_point_cloud_chunk_instance.root_entity)
             else {
                 // We couldn't fetch the mesh, probably because it hasn't
                 // loaded yet. Add the entity to the list of pending shadows
                 // and bail.
                 view_pending_shadow_queues
                     .current_frame
-                    .insert((*render_entity, *main_entity));
+                    .insert((*render_entity, *visible_entity));
 
-                warn!("Mesh instance not found {:?}", main_entity);
+                warn!("Mesh instance not found {:?}", visible_entity);
                 continue;
             };
             if !mesh_instance
@@ -469,7 +493,7 @@ pub fn queue_shadows(
                 // TODO: Bevy is not doing this in its `queue_shadows` system, should I do it ?
                 view_pending_shadow_queues
                     .current_frame
-                    .insert((*render_entity, *main_entity));
+                    .insert((*render_entity, *visible_entity));
                 continue;
             };
 
@@ -479,7 +503,7 @@ pub fn queue_shadows(
                 // list of pending shadows and bail.
                 view_pending_shadow_queues
                     .current_frame
-                    .insert((*render_entity, *main_entity));
+                    .insert((*render_entity, *visible_entity));
                 continue;
             };
 
@@ -492,7 +516,13 @@ pub fn queue_shadows(
                 Some(material.binding.group.0)
             };
 
-            let Some(mesh_slabs) = mesh_allocator.mesh_slabs(&mesh_instance.mesh_asset_id()) else {
+            let Some(mesh_slabs) =
+                mesh_allocator.mesh_slabs(&render_point_cloud_chunk_instance.mesh_asset_id)
+            else {
+                warn!(
+                    "mesh slab not found for visible entity {:?} in shadows",
+                    visible_entity
+                );
                 continue;
             };
 
@@ -506,7 +536,7 @@ pub fn queue_shadows(
             shadow_phase.add(
                 batch_set_key,
                 ShadowBinKey {
-                    asset_id: mesh_instance.mesh_asset_id().into(),
+                    asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
                 },
                 (
                     *render_entity,

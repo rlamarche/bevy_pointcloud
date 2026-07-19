@@ -50,7 +50,7 @@ fn vertex(
 
     let view_position = position_world_to_view(world_position.xyz);
 
-    var radius: f32 = 0.5;
+    var radius: f32 = 1.0;
     let radius_scale = functions::extract_max_scale(world_from_local);
 
     var world_vertex_position: vec3<f32>;

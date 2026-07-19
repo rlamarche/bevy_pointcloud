@@ -169,7 +169,7 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
 
         let has_color = las_header.point_format().has_color;
         // TODO use settings
-        let has_normal = true;
+        let has_normal = false;
 
         let chunk = reader.fetch_chunk(&key).await?;
 

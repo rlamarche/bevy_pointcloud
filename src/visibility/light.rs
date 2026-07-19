@@ -3,31 +3,21 @@ use std::collections::BinaryHeap;
 use bevy::{
     asset::Assets,
     camera::{
-        primitives::{Aabb, CascadesFrusta},
-        visibility::{
-            CascadesVisibleEntities, InheritedVisibility, NoCpuCulling, NoFrustumCulling,
-            RenderLayers, ViewVisibility, VisibilityRange, VisibleEntityRanges,
-            VisibleMeshEntities,
-        },
+        primitives::CascadesFrusta,
+        visibility::{CascadesVisibleEntities, ViewVisibility},
         OrthographicProjection, Projection, ScalingMode,
     },
     ecs::{
         component::Component,
         entity::{Entity, EntityHashMap},
-        query::{Has, With, Without},
         reflect::ReflectComponent,
-        system::{Commands, Local, Query, Res, ResMut},
+        system::{Local, Query, Res, ResMut},
     },
-    light::{
-        cascade::Cascade, Cascades, DirectionalLight, DirectionalLightShadowMap, NotShadowCaster,
-        SpotLight,
-    },
-    log::{info, warn},
+    light::{cascade::Cascade, Cascades, DirectionalLight, DirectionalLightShadowMap},
+    log::warn,
     math::{Rect, UVec2, Vec2},
-    platform::collections::HashMap,
     reflect::{std_traits::ReflectDefault, Reflect},
     transform::components::GlobalTransform,
-    utils::Parallel,
 };
 use itertools::izip;
 
@@ -70,12 +60,13 @@ impl CascadesVisiblePointCloudEntities {
 pub fn check_point_cloud_nodes_dir_lights_visibility(
     entities: Query<(&PointCloud3d, &GlobalTransform)>,
     // TODO add a way to disable checking of a camera
-    mut views: Query<(
+    mut lights: Query<(
         &DirectionalLight,
         &Cascades,
         &CascadesFrusta,
         &CascadesVisibleEntities,
         &GlobalTransform,
+        &ViewVisibility,
         &PointCloudVisibilitySettings,
         &mut CascadesVisiblePointCloudEntities,
         Option<&SkipPointCloudVisibility>,
@@ -102,20 +93,26 @@ pub fn check_point_cloud_nodes_dir_lights_visibility(
         frusta,
         cascades_visible_entities,
         light_global_transform,
+        view_visibility,
         visibility_settings,
         mut cascade_visible_point_cloud_entities,
         skip_point_cloud_visibility,
-    ) in &mut views
+    ) in &mut lights
     {
-        info!("processing directional light");
-        // if !dir_light.is_active {
-        //     continue;
-        // }
+        if !view_visibility.get() {
+            continue;
+        }
 
-        // if skip_point_cloud_visibility.is_some() {
-        //     cascade_visible_point_cloud_entities.changed_this_frame = false;
-        //     continue;
-        // }
+        if (skip_point_cloud_visibility).is_some() {
+            for (_, visible_point_cloud_entities) in
+                &mut cascade_visible_point_cloud_entities.entities
+            {
+                for visible_point_cloud_entity in visible_point_cloud_entities {
+                    visible_point_cloud_entity.changed_this_frame = false;
+                }
+            }
+            continue;
+        }
 
         // Reset previously computed visibility
         cascade_visible_point_cloud_entities.clear_all();
@@ -256,15 +253,15 @@ pub fn check_point_cloud_nodes_dir_lights_visibility(
                     false,
                 );
 
-                info!(
-                    "Visible point cloud entities: {:#?}",
-                    visible_point_cloud_entities
-                        .entities
-                        .iter()
-                        .fold(0, |count, (_, entities)| {
-                            count + entities.node_entities.len()
-                        })
-                );
+                // info!(
+                //     "Visible point cloud entities: {:#?}",
+                //     visible_point_cloud_entities
+                //         .entities
+                //         .iter()
+                //         .fold(0, |count, (_, entities)| {
+                //             count + entities.node_entities.len()
+                //         })
+                // );
 
                 // extract chunk entities for each visible node, if available and populate resource
                 // [`GlobalVisiblePointCloudChunks`].
