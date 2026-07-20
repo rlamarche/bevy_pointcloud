@@ -3,7 +3,7 @@ use bevy::{
     asset::{embedded_asset, Asset, Handle},
     color::{Color, ColorToComponents, LinearRgba},
     image::Image,
-    math::{Mat3, Vec2, Vec3, Vec4},
+    math::{Mat3, Vec3, Vec4},
     mesh::Mesh,
     pbr::MeshPipelineKey,
     reflect::{std_traits::ReflectDefault, Reflect},
@@ -15,7 +15,10 @@ use bevy::{
 };
 use bitflags::bitflags;
 
-use crate::{shader_ref, ColorStop, ColorStopUniform, Material, MaterialPlugin};
+use crate::{
+    shader_ref, ColorStop, ColorStopUniform, Material, MaterialPlugin, PointSizeMode,
+    ShapeOrientation, UVMapping, UVTransform,
+};
 
 pub struct SimplePointCloudMaterialPlugin;
 
@@ -68,6 +71,8 @@ pub struct SimplePointCloudMaterial {
     /// Defaults to [`Color::WHITE`].
     pub base_color: Color,
 
+    /// Determine how the [`SimplePointCloudMaterial::point_size`] is interpreted.
+    /// See docs in [`PointSizeMode`] for options.
     pub point_size_mode: PointSizeMode,
 
     /// The point size in pixels.
@@ -146,124 +151,6 @@ pub struct SimplePointCloudMaterial {
     /// Determines an additionnal transformation to apply to UV coordinates obtained from the
     /// [`SimplePointCloudMaterial::uv_mapping`]
     pub uv_transform: Option<UVTransform>,
-}
-
-/// Determines how the point size is interpreted.
-#[derive(Reflect, Debug, Clone, Default)]
-#[reflect(Default, Debug, Clone)]
-pub enum PointSizeMode {
-    /// Point size is specified in screen pixels.
-    ///
-    /// - In [`bevy::camera::Projection::Perspective`] mode, points will appear smaller as they get
-    ///   further away from the camera (perspective divide).
-    /// - In [`bevy::camera::Projection::Orthographic`] mode, points will maintain a constant pixel
-    ///   size regardless of the camera's distance or zoom level.
-    ScreenPixels,
-
-    /// Point size is specified in screen pixels, relative to the entity's transform.
-    ///
-    /// Similar to [`PointSizeMode::ScreenPixels`], but the final size is multiplied by the
-    /// entity's [`bevy::transform::components::Transform`] scale. If you scale the entity,
-    /// the points will scale accordingly. If the scaling is not the same on all axes, the max
-    /// scale will be retained.
-    #[default]
-    ScreenPixelsLocal,
-
-    /// Point size is specified in world-space units (e.g., meters).
-    ///
-    /// The size is absolute within the 3D world and is unaffected by the entity's
-    /// [`bevy::transform::components::Transform`] scale. Points will correctly scale
-    /// with camera distance, zoom, and projection modes (both Perspective and Orthographic).
-    WorldSpace,
-
-    /// Point size is specified in local-space units, relative to the entity's transform.
-    ///
-    /// Similar to [`PointSizeMode::WorldSpace`], but the final size is multiplied by the
-    /// entity's [`bevy::transform::components::Transform`] scale. If you scale the entity,
-    /// the points will scale accordingly. If the scaling is not the same on all axes, the max
-    /// scale will be retained.
-    LocalSpace,
-}
-
-impl PointSizeMode {
-    /// Maps the UV mapping mode to its corresponding bits in `SimplePointCloudMaterialKey`.
-    pub fn pipeline_key_bits(&self) -> SimplePointCloudMaterialKey {
-        match self {
-            PointSizeMode::ScreenPixels => SimplePointCloudMaterialKey::POINT_SIZE_SCREEN,
-            PointSizeMode::ScreenPixelsLocal => {
-                SimplePointCloudMaterialKey::POINT_SIZE_SCREEN_LOCAL
-            }
-            PointSizeMode::WorldSpace => SimplePointCloudMaterialKey::POINT_SIZE_WORLD,
-            PointSizeMode::LocalSpace => SimplePointCloudMaterialKey::POINT_SIZE_LOCAL,
-        }
-    }
-}
-
-/// Determines the shape orientation.
-#[derive(Reflect, Debug, Clone, Default)]
-#[reflect(Default, Debug, Clone)]
-pub enum ShapeOrientation {
-    /// The shape always faces the camera (classic billboard).
-    #[default]
-    Billboard,
-    /// The shape is oriented along the point's normal vector.
-    /// Works only if a normal is provided, and works better if also a tangent is provided.
-    FaceNormal,
-}
-
-/// Determine the UV mapping coordinates mode when using a
-/// [`SimplePointCloudMaterial::base_color_texture`].
-#[derive(Reflect, Debug, Clone, Default)]
-#[reflect(Default, Debug, Clone)]
-pub enum UVMapping {
-    /// Combine global UV (from point cloud data) and Local UV (from the point's shape).
-    /// **Needs stabilization.**
-    Combined,
-    /// Uses UVs defined per vertex in the point cloud. The texture stretches across the whole
-    /// cloud and is pixelated. Needs the point cloud's UVs.
-    PointCloudOnly,
-    /// Uses UVs of the point's local geometry. The texture is repeated on every single point using
-    /// shape's UV.
-    #[default]
-    ShapeOnly,
-    /// Compute UV coordinates based on the provided [`SimplePointCloudMaterial::uv_u`] and
-    /// [`SimplePointCloudMaterial::uv_v`].
-    /// **Needs stabilization:**
-    ///  * in billboard mode,the texture on each point does not follow the rotation of the view
-    ///  * in face normal mode, the U/V projection vectors must match the UV coordinates of the
-    ///    shape
-    Planar,
-}
-
-impl UVMapping {
-    /// Maps the UV mapping mode to its corresponding bits in `SimplePointCloudMaterialKey`.
-    pub fn pipeline_key_bits(&self) -> SimplePointCloudMaterialKey {
-        match self {
-            Self::Combined => SimplePointCloudMaterialKey::UV_MAPPING_COMBINED,
-            Self::PointCloudOnly => SimplePointCloudMaterialKey::UV_MAPPING_POINT_CLOUD,
-            Self::ShapeOnly => SimplePointCloudMaterialKey::UV_MAPPING_POINT_SHAPE,
-            Self::Planar => SimplePointCloudMaterialKey::UV_MAPPING_PLANAR,
-        }
-    }
-}
-
-#[derive(Reflect, Debug, Clone, Default)]
-pub struct UVTransform {
-    /// Décalage U et V (translation)
-    pub offset: Vec2,
-    /// Répétition / Échelle sur les axes U et V (Scale non-uniforme)
-    pub scale: Vec2,
-    /// Rotation en radians de la texture
-    pub rotation: f32,
-}
-
-impl UVTransform {
-    /// Computes 3x3 matrix from UV transform
-    pub fn compute_matrix(&self) -> Mat3 {
-        Mat3::from_translation(self.offset)
-            * Mat3::from_angle(self.rotation)
-            * Mat3::from_scale(self.scale)
-    }
 }
 
 impl Default for SimplePointCloudMaterial {
@@ -539,7 +426,7 @@ impl Material for SimplePointCloudMaterial {
     fn specialize(
         _pipeline: &crate::MaterialPipeline,
         descriptor: &mut bevy::material::descriptor::RenderPipelineDescriptor,
-        _shape_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
+        _splat_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         _instance_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         key: crate::MaterialPipelineKey<Self>,
     ) -> bevy::ecs::error::Result<(), bevy::material::specialize::SpecializedMeshPipelineError>

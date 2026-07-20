@@ -39,9 +39,10 @@ use bevy::{
 };
 
 use crate::{
-    BinnedRenderPhaseExt, DirtySpecializations, ErasedMaterialPipelineKey, MaterialProperties,
-    PointCloudChunk3d, PreparedMaterial, RenderPointCloudChunkInstances,
-    RenderPointCloudMaterialInstances, ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction,
+    BinnedRenderPhaseExt, DirtySpecializations, ErasedMaterialPipelineKey, ErasedSplatPipelineKey,
+    MaterialProperties, PointCloudChunk3d, PreparedMaterial, RenderPointCloudChunkInstances,
+    RenderPointCloudInstances, RenderPointCloudMaterialInstances, ShadowsDepthOnlyDrawFunction,
+    ShadowsDrawFunction, SplatPipelineKey,
 };
 
 pub(crate) struct ShadowSpecializationWorkItem {
@@ -49,7 +50,8 @@ pub(crate) struct ShadowSpecializationWorkItem {
     visible_entity: MainEntity,
     retained_view_entity: RetainedViewEntity,
     mesh_key: MeshPipelineKey,
-    shape_layout: MeshVertexBufferLayoutRef,
+    splat_key: SplatPipelineKey,
+    splat_layout: MeshVertexBufferLayoutRef,
     instance_layout: MeshVertexBufferLayoutRef,
     properties: Arc<MaterialProperties>,
     material_type_id: TypeId,
@@ -81,6 +83,7 @@ pub(crate) struct SpecializeShadowsSystemParam<'w, 's> {
     render_mesh_instances: Res<'w, RenderMeshInstances>,
     render_materials: Res<'w, ErasedRenderAssets<PreparedMaterial>>,
     render_material_instances: Res<'w, RenderPointCloudMaterialInstances>,
+    render_point_cloud_instances: Res<'w, RenderPointCloudInstances>,
     render_point_cloud_chunk_instances: Res<'w, RenderPointCloudChunkInstances>,
     shadow_render_phases: Res<'w, ViewBinnedRenderPhases<Shadow>>,
     render_lightmaps: Res<'w, RenderLightmaps>,
@@ -107,6 +110,7 @@ pub(crate) fn specialize_shadows(
             render_mesh_instances,
             render_materials,
             render_material_instances,
+            render_point_cloud_instances,
             render_point_cloud_chunk_instances,
             shadow_render_phases,
             render_lightmaps: _render_lightmaps,
@@ -188,6 +192,16 @@ pub(crate) fn specialize_shadows(
                 else {
                     warn!(
                         "RenderPointCloudChunkInstance not found for entity {:?} in shadows",
+                        visible_entity
+                    );
+                    continue;
+                };
+
+                let Some(render_point_cloud_instance) = render_point_cloud_instances
+                    .get(&render_point_cloud_chunk_instance.root_entity)
+                else {
+                    warn!(
+                        "RenderPointCloudInstance not found for entity {:?} in shadows",
                         visible_entity
                     );
                     continue;
@@ -295,7 +309,8 @@ pub(crate) fn specialize_shadows(
                     visible_entity: *visible_entity,
                     retained_view_entity: extracted_view_light.retained_view_entity,
                     mesh_key,
-                    shape_layout: shape_mesh.layout.clone(),
+                    splat_key: (&render_point_cloud_instance.splat_settings).into(),
+                    splat_layout: shape_mesh.layout.clone(),
                     instance_layout: mesh.layout.clone(),
                     properties: material.properties.clone(),
                     material_type_id: material_instance.asset_id.type_id(),
@@ -318,6 +333,7 @@ pub(crate) fn specialize_shadows(
         let key = ErasedMaterialPipelineKey {
             type_id: item.material_type_id,
             mesh_key: ErasedMeshPipelineKey::new(item.mesh_key),
+            splat_key: ErasedSplatPipelineKey::new(item.splat_key),
             material_key: item.properties.material_key.clone(),
         };
 
@@ -343,7 +359,7 @@ pub(crate) fn specialize_shadows(
         match prepass_specialize(
             world,
             key,
-            &item.shape_layout,
+            &item.splat_layout,
             &item.instance_layout,
             &item.properties,
         ) {

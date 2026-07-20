@@ -2,7 +2,7 @@ use bevy::{
     asset::{AssetId, Handle},
     camera::{primitives::Aabb, visibility::RenderLayers},
     ecs::{component::Component, entity::EntityHashMap, resource::Resource},
-    math::{Affine3, Affine3Ext, Vec4},
+    math::{Affine2, Affine3, Affine3Ext, Vec4},
     mesh::Mesh,
     pbr::MaterialBindGroupSlot,
     prelude::{Deref, DerefMut},
@@ -12,8 +12,9 @@ use bevy::{
         sync_world::{MainEntity, MainEntityHashMap},
     },
 };
+use bitflags::bitflags;
 
-use crate::PointCloudChunk;
+use crate::{PointCloudChunk, PointSizeMode, ShapeOrientation, SplatSettings, UVMapping};
 
 #[derive(Debug, Clone)]
 pub struct RenderPointCloudChunk {
@@ -57,7 +58,145 @@ pub struct RenderPointCloudInstance {
     pub transforms: PointCloudTransforms,
     /// The set of render layers that this mesh belongs to.
     pub render_layers: Option<RenderLayers>,
-    // pub chunks: MainEntityHashMap<RenderPointCloudChunkInstance>,
+
+    pub splat_settings: SplatSettings,
+}
+
+// #[derive(Component, Clone)]
+// pub struct RenderPointCloudSplatSettings {
+//     pub point_size_mode: PointSizeMode,
+//     pub point_size: f32,
+//     pub adaptive_point_size: bool,
+//     pub min_point_size: Option<f32>,
+//     pub max_point_size: Option<f32>,
+//     pub splat: AssetId<Mesh>,
+//     pub radius: Option<f32>,
+//     pub orientation: ShapeOrientation,
+//     pub default_normal: Vec3,
+//     pub uv_mapping: UVMapping,
+//     pub uv_u: Vec3,
+//     pub uv_v: Vec3,
+//     pub uv_transform: UVTransform,
+// }
+
+// impl From<&PointCloudSplatSettings> for RenderPointCloudSplatSettings {
+//     fn from(settings: &PointCloudSplatSettings) -> Self {
+//         RenderPointCloudSplatSettings {
+//             point_size_mode: settings.point_size_mode.clone(),
+//             point_size: settings.point_size,
+//             adaptive_point_size: settings.adaptive_point_size,
+//             min_point_size: settings.min_point_size,
+//             max_point_size: settings.max_point_size,
+//             splat: settings
+//                 .splat
+//                 .as_ref()
+//                 .map(|v| v.id())
+//                 .unwrap_or_else(|| AssetId::invalid()),
+//             radius: settings.splat_radius,
+//             orientation: settings.orientation.clone(),
+//             default_normal: settings.default_normal,
+//             uv_mapping: settings.uv_mapping.clone(),
+//             uv_u: settings.uv_u,
+//             uv_v: settings.uv_v,
+//             uv_transform: settings.uv_transform.clone(),
+//         }
+//     }
+// }
+
+bitflags! {
+    /// The pipeline key for `StandardMaterial`, packed into 64 bits.
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+    pub struct SplatPipelineKey: u64 {
+        const POINT_SIZE_MODE_BITS_0        = 1_u64 << 0;
+        const POINT_SIZE_MODE_BITS_1        = 1_u64 << 1;
+
+        const POINT_SIZE_MODE_MASK          = Self::POINT_SIZE_MODE_BITS_0.bits() | Self::POINT_SIZE_MODE_BITS_1.bits();
+
+        const POINT_SIZE_MODE_SCREEN_PIXELS        = 0;
+        const POINT_SIZE_MODE_SCREEN_LOCAL  = Self::POINT_SIZE_MODE_BITS_0.bits();
+        const POINT_SIZE_MODE_WORLD         = Self::POINT_SIZE_MODE_BITS_1.bits();
+        const POINT_SIZE_MODE_LOCAL         = Self::POINT_SIZE_MODE_BITS_0.bits() | Self::POINT_SIZE_MODE_BITS_1.bits();
+
+        const ADAPTIVE_POINT_SIZE           = 1_u64 << 2;
+
+        const SPLAT_RADIUS                  = 1_u64 <<  3;
+        const SPLAT_ORIENTATION_FACE_NORMAL = 1_u64 <<  4;
+
+        const UV_MAPPING_BITS_0        = 1_u64 <<  5;
+        const UV_MAPPING_BITS_1        = 1_u64 <<  6;
+
+        const UV_MAPPING_MASK          = Self::UV_MAPPING_BITS_0.bits() | Self::UV_MAPPING_BITS_1.bits();
+
+        const UV_MAPPING_COMBINED      = 0;
+        const UV_MAPPING_POINT_CLOUD   = Self::UV_MAPPING_BITS_0.bits();
+        const UV_MAPPING_POINT_SHAPE   = Self::UV_MAPPING_BITS_1.bits();
+        const UV_MAPPING_PLANAR        = Self::UV_MAPPING_BITS_0.bits() | Self::UV_MAPPING_BITS_1.bits();
+
+        const UV_TRANSFORM             = 1_u64 <<  7;
+    }
+}
+
+// const STANDARD_MATERIAL_KEY_DEPTH_BIAS_SHIFT: u64 = 32;
+
+impl From<&PointSizeMode> for SplatPipelineKey {
+    fn from(value: &PointSizeMode) -> Self {
+        match value {
+            PointSizeMode::ScreenPixels => SplatPipelineKey::POINT_SIZE_MODE_SCREEN_PIXELS,
+            PointSizeMode::ScreenPixelsLocal => SplatPipelineKey::POINT_SIZE_MODE_SCREEN_LOCAL,
+            PointSizeMode::WorldSpace => SplatPipelineKey::POINT_SIZE_MODE_WORLD,
+            PointSizeMode::LocalSpace => SplatPipelineKey::POINT_SIZE_MODE_LOCAL,
+        }
+    }
+}
+
+impl From<&UVMapping> for SplatPipelineKey {
+    fn from(value: &UVMapping) -> Self {
+        match value {
+            UVMapping::Combined => SplatPipelineKey::UV_MAPPING_COMBINED,
+            UVMapping::PointCloudOnly => SplatPipelineKey::UV_MAPPING_POINT_CLOUD,
+            UVMapping::ShapeOnly => SplatPipelineKey::UV_MAPPING_POINT_SHAPE,
+            UVMapping::Planar => SplatPipelineKey::UV_MAPPING_PLANAR,
+        }
+    }
+}
+
+impl From<&SplatSettings> for SplatPipelineKey {
+    fn from(settings: &SplatSettings) -> Self {
+        let mut key = SplatPipelineKey::empty();
+
+        key.insert((&settings.point_size_mode).into());
+        key.set(
+            SplatPipelineKey::ADAPTIVE_POINT_SIZE,
+            settings.adaptive_point_size,
+        );
+        key.set(SplatPipelineKey::SPLAT_RADIUS, settings.radius.is_some());
+        key.set(
+            SplatPipelineKey::SPLAT_ORIENTATION_FACE_NORMAL,
+            matches!(settings.orientation, ShapeOrientation::FaceNormal),
+        );
+
+        key.insert((&settings.uv_mapping).into());
+
+        key.set(
+            SplatPipelineKey::UV_TRANSFORM,
+            !settings.uv_transform.eq(&Affine2::IDENTITY),
+        );
+
+        key
+    }
+}
+
+impl From<u64> for SplatPipelineKey {
+    fn from(value: u64) -> Self {
+        SplatPipelineKey::from_bits_retain(value)
+    }
+}
+
+impl From<SplatPipelineKey> for u64 {
+    fn from(value: SplatPipelineKey) -> Self {
+        value.bits()
+    }
 }
 
 /// Information that the render world keeps about each entity that contains a

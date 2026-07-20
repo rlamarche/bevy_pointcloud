@@ -27,7 +27,10 @@ use bevy::{
     utils::default,
 };
 
-use crate::{render::pipeline_specializer::SpecializedPointCloudPipeline, PointCloudUniform};
+use crate::{
+    render::pipeline_specializer::SpecializedPointCloudPipeline, PointCloudUniform,
+    SplatPipelineKey,
+};
 
 pub(crate) const IRRADIANCE_VOLUMES_ARE_USABLE: bool = cfg!(not(target_arch = "wasm32"));
 
@@ -131,19 +134,13 @@ impl FromWorld for PointCloudPipeline {
 //     }
 // }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct PointCloudPipelineKey {
-    pub mesh_key: MeshPipelineKey,
-    pub shape_layout_ref: MeshVertexBufferLayoutRef,
-}
-
 impl SpecializedPointCloudPipeline for PointCloudPipeline {
-    type Key = MeshPipelineKey;
+    type Key = (MeshPipelineKey, SplatPipelineKey);
 
     fn specialize(
         &self,
-        key: Self::Key,
-        shape_layout: &MeshVertexBufferLayoutRef,
+        (key, splat_key): Self::Key,
+        splat_layout: &MeshVertexBufferLayoutRef,
         layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
         let mut shader_defs = Vec::new();
@@ -153,27 +150,78 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
 
         shader_defs.push("VERTEX_OUTPUT_INSTANCE_INDEX".into());
 
+        // Splat settings
+
+        // Evaluate multi-bit point size mode using the mask
+        match splat_key & SplatPipelineKey::POINT_SIZE_MODE_MASK {
+            SplatPipelineKey::POINT_SIZE_MODE_SCREEN_PIXELS => {
+                shader_defs.push("POINT_SIZE_MODE_SCREEN_PIXELS".into());
+            }
+            SplatPipelineKey::POINT_SIZE_MODE_SCREEN_LOCAL => {
+                shader_defs.push("POINT_SIZE_MODE_SCREEN_LOCAL".into());
+            }
+            SplatPipelineKey::POINT_SIZE_MODE_WORLD => {
+                shader_defs.push("POINT_SIZE_MODE_WORLD".into());
+            }
+            SplatPipelineKey::POINT_SIZE_MODE_LOCAL => {
+                shader_defs.push("POINT_SIZE_MODE_LOCAL".into());
+            }
+            _ => unreachable!("Invalid point size mode bits state encountered in pipeline key."),
+        }
+
+        // Evaluate single boolean flags
+        for (flags, shader_def) in [
+            (SplatPipelineKey::ADAPTIVE_POINT_SIZE, "ADAPTIVE_POINT_SIZE"),
+            (SplatPipelineKey::SPLAT_RADIUS, "SPLAT_RADIUS"),
+            (
+                SplatPipelineKey::SPLAT_ORIENTATION_FACE_NORMAL,
+                "SPLAT_ORIENTATION_FACE_NORMAL",
+            ),
+            (SplatPipelineKey::UV_TRANSFORM, "SPLAT_UV_TRANSFORM"),
+        ] {
+            if splat_key.intersects(flags) {
+                shader_defs.push(shader_def.into());
+            }
+        }
+
+        // Evaluate multi-bit point size mode using the mask
+        match splat_key & SplatPipelineKey::UV_MAPPING_MASK {
+            SplatPipelineKey::UV_MAPPING_COMBINED => {
+                shader_defs.push("UV_MAPPING_COMBINED".into());
+            }
+            SplatPipelineKey::UV_MAPPING_PLANAR => {
+                shader_defs.push("UV_MAPPING_PLANAR".into());
+            }
+            SplatPipelineKey::UV_MAPPING_POINT_CLOUD => {
+                shader_defs.push("UV_MAPPING_POINT_CLOUD".into());
+            }
+            SplatPipelineKey::UV_MAPPING_POINT_SHAPE => {
+                shader_defs.push("UV_MAPPING_POINT_SHAPE".into());
+            }
+            _ => unreachable!("Invalid uv mapping mode bits state encountered in pipeline key."),
+        }
+
         // construct the shape layout vertex buffer layout
 
         let mut shape_vertex_attributes = Vec::new();
-        if shape_layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
+        if splat_layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
             shader_defs.push("SHAPE_POSITIONS".into());
             // TODO find the best position
             shape_vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
         }
-        if shape_layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
+        if splat_layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
             shader_defs.push("SHAPE_NORMALS".into());
             // TODO find the best position
             shape_vertex_attributes.push(Mesh::ATTRIBUTE_NORMAL.at_shader_location(1));
         }
 
-        if shape_layout.0.contains(Mesh::ATTRIBUTE_UV_0) {
+        if splat_layout.0.contains(Mesh::ATTRIBUTE_UV_0) {
             shader_defs.push("SHAPE_UVS".into());
             shader_defs.push("SHAPE_UVS_A".into());
             shape_vertex_attributes.push(Mesh::ATTRIBUTE_UV_0.at_shader_location(2));
         }
 
-        let vertex_buffer_layout = shape_layout.0.get_layout(&shape_vertex_attributes)?;
+        let vertex_buffer_layout = splat_layout.0.get_layout(&shape_vertex_attributes)?;
 
         // Now the mesh (instances)
         let mut vertex_attributes = Vec::new();

@@ -6,7 +6,6 @@ use async_lock::RwLock;
 use bevy::{
     asset::RenderAssetUsages,
     camera::primitives::Aabb,
-    log::info,
     math::DVec3,
     mesh::{Mesh, VertexAttributeValues},
     platform::collections::HashMap,

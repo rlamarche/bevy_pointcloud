@@ -33,7 +33,7 @@ pub trait SpecializedPointCloudPipeline {
     fn specialize(
         &self,
         key: Self::Key,
-        shape_layout: &MeshVertexBufferLayoutRef,
+        splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError>;
 }
@@ -73,11 +73,11 @@ impl<S: SpecializedPointCloudPipeline> SpecializedPointCloudPipelines<S> {
         cache: &PipelineCache,
         pipeline_specializer: &S,
         key: S::Key,
-        shape_layout: &MeshVertexBufferLayoutRef,
+        splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
     ) -> Result<CachedRenderPipelineId, SpecializedMeshPipelineError> {
         return match self.mesh_layout_cache.entry((
-            shape_layout.clone(),
+            splat_layout.clone(),
             instance_layout.clone(),
             key.clone(),
         )) {
@@ -87,7 +87,7 @@ impl<S: SpecializedPointCloudPipeline> SpecializedPointCloudPipelines<S> {
                 cache,
                 pipeline_specializer,
                 key,
-                shape_layout,
+                splat_layout,
                 instance_layout,
                 entry,
             ),
@@ -99,7 +99,7 @@ impl<S: SpecializedPointCloudPipeline> SpecializedPointCloudPipelines<S> {
             cache: &PipelineCache,
             specialize_pipeline: &S,
             key: S::Key,
-            shape_layout: &MeshVertexBufferLayoutRef,
+            splat_layout: &MeshVertexBufferLayoutRef,
             instance_layout: &MeshVertexBufferLayoutRef,
             entry: VacantEntry<
                 (MeshVertexBufferLayoutRef, MeshVertexBufferLayoutRef, S::Key),
@@ -111,7 +111,7 @@ impl<S: SpecializedPointCloudPipeline> SpecializedPointCloudPipelines<S> {
             S: SpecializedPointCloudPipeline,
         {
             let descriptor = specialize_pipeline
-                .specialize(key.clone(), shape_layout, instance_layout)
+                .specialize(key.clone(), splat_layout, instance_layout)
                 .map_err(|mut err| {
                     {
                         let SpecializedMeshPipelineError::MissingVertexAttribute(err) = &mut err;
@@ -163,40 +163,3 @@ impl<S: SpecializedPointCloudPipeline> SpecializedPointCloudPipelines<S> {
         }
     }
 }
-
-// TODO later
-// impl SpecializedPointCloudPipeline for PrepassPipelineSpecializer {
-//     type Key = ErasedMaterialPipelineKey;
-
-//     fn specialize(
-//         &self,
-//         key: Self::Key,
-//         shape_layout: &MeshVertexBufferLayoutRef,
-//         instance_layout: &MeshVertexBufferLayoutRef,
-//     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
-//         let mut shader_defs = Vec::new();
-//         if self.properties.bindless {
-//             shader_defs.push("BINDLESS".into());
-//         }
-//         let mut descriptor = self.pipeline.specialize(
-//             key.mesh_key.downcast(),
-//             shader_defs,
-//             instance_layout,
-//             &self.properties,
-//         )?;
-
-//         // This is a bit risky because it's possible to change something that would
-//         // break the prepass but be fine in the main pass.
-//         // Since this api is pretty low-level it doesn't matter that much, but it is a potential
-// issue.         if let Some(specialize) = self.properties.user_specialize {
-//             specialize(
-//                 &self.pipeline.material_pipeline,
-//                 &mut descriptor,
-//                 instance_layout,
-//                 key,
-//             )?;
-//         }
-
-//         Ok(descriptor)
-//     }
-// }

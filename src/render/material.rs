@@ -85,12 +85,13 @@ use std::sync::Arc;
 use crate::{
     clear_dirty_specializations, expire_specializations_for_views, queue_shadows,
     specialize_shadows, BinnedRenderPhaseExt, DirtySpecializations, DrawDepthOnlyPrepass,
-    DrawPointCloudInstanced, DrawPrepass, GlobalVisiblePointCloudChunks, PendingShadowQueues,
-    PointCloud3d, PointCloudChunk3d, PointCloudMaterial3d, PointCloudPipeline,
+    DrawPointCloudInstanced, DrawPrepass, ErasedSplatPipelineKey, GlobalVisiblePointCloudChunks,
+    PendingShadowQueues, PointCloud3d, PointCloudChunk3d, PointCloudMaterial3d, PointCloudPipeline,
     PointCloudPipelineSystems, PrepassPipeline, PrepassPipelinePlugin, PrepassPipelineSpecializer,
-    PrepassPlugin, RenderPointCloudChunkInstances, SetMeshBindGroup, SetPointCloudUniformGroup,
-    ShapeMeshes, SimplePointCloudMaterial, SpecializedPointCloudPipeline,
-    SpecializedPointCloudPipelines, SpecializedShadowMaterialPipelineCache,
+    PrepassPlugin, RenderPointCloudChunkInstances, RenderPointCloudInstances, SetMeshBindGroup,
+    SetPointCloudUniformGroup, ShapeMeshes, SimplePointCloudMaterial,
+    SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
+    SpecializedShadowMaterialPipelineCache, SplatPipelineKey,
 };
 
 pub const MATERIAL_BIND_GROUP_INDEX: usize = 4;
@@ -208,7 +209,7 @@ pub trait Material: Asset + AsBindGroup + Clone + Sized {
     fn specialize(
         pipeline: &MaterialPipeline,
         descriptor: &mut RenderPipelineDescriptor,
-        shape_layout: &MeshVertexBufferLayoutRef,
+        splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
         key: MaterialPipelineKey<Self>,
     ) -> Result<(), SpecializedMeshPipelineError> {
@@ -407,6 +408,7 @@ fn add_material_bind_group_allocator<M: Material>(
 /// A key uniquely identifying a specialized [`MaterialPipeline`].
 pub struct MaterialPipelineKey<M: Material> {
     pub mesh_key: MeshPipelineKey,
+    pub splat_key: SplatPipelineKey,
     pub bind_group_data: M::Data,
 }
 
@@ -424,6 +426,7 @@ pub struct MaterialPipelineSpecializer {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ErasedMaterialPipelineKey {
     pub mesh_key: ErasedMeshPipelineKey,
+    pub splat_key: ErasedSplatPipelineKey,
     pub material_key: ErasedMaterialKey,
     pub type_id: TypeId,
 }
@@ -434,13 +437,14 @@ impl SpecializedPointCloudPipeline for MaterialPipelineSpecializer {
     fn specialize(
         &self,
         key: Self::Key,
-        shape_layout: &MeshVertexBufferLayoutRef,
+        splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
         let concrete_mesh_key: MeshPipelineKey = key.mesh_key.downcast();
+        let concrete_splat_key: SplatPipelineKey = key.splat_key.downcast();
         let mut descriptor = self.pipeline.mesh_pipeline.specialize(
-            concrete_mesh_key,
-            shape_layout,
+            (concrete_mesh_key, concrete_splat_key),
+            splat_layout,
             instance_layout,
         )?;
 
@@ -471,7 +475,7 @@ impl SpecializedPointCloudPipeline for MaterialPipelineSpecializer {
             specialize(
                 &self.pipeline as &dyn Any,
                 &mut descriptor,
-                shape_layout,
+                splat_layout,
                 instance_layout,
                 key,
             )?;
@@ -906,7 +910,8 @@ pub(crate) struct SpecializationWorkItem {
     visible_entity: MainEntity,
     retained_view_entity: RetainedViewEntity,
     mesh_key: MeshPipelineKey,
-    shape_layout: MeshVertexBufferLayoutRef,
+    splat_key: SplatPipelineKey,
+    splat_layout: MeshVertexBufferLayoutRef,
     instance_layout: MeshVertexBufferLayoutRef,
     properties: Arc<MaterialProperties>,
     material_type_id: TypeId,
@@ -925,6 +930,7 @@ pub(crate) struct SpecializeMaterialMeshesSystemParam<'w, 's> {
     render_materials: Res<'w, ErasedRenderAssets<PreparedMaterial>>,
     render_mesh_instances: Res<'w, RenderMeshInstances>,
     render_material_instances: Res<'w, RenderPointCloudMaterialInstances>,
+    render_point_cloud_instances: Res<'w, RenderPointCloudInstances>,
     render_point_cloud_chunk_instances: Res<'w, RenderPointCloudChunkInstances>,
     // render_lightmaps: Res<'w, RenderLightmaps>,
     render_visibility_ranges: Res<'w, RenderVisibilityRanges>,
@@ -954,6 +960,7 @@ pub(crate) fn specialize_material_meshes(
             render_materials,
             render_mesh_instances,
             render_material_instances,
+            render_point_cloud_instances,
             render_point_cloud_chunk_instances,
             // render_lightmaps,
             render_visibility_ranges,
@@ -1033,6 +1040,16 @@ pub(crate) fn specialize_material_meshes(
                 else {
                     warn!(
                         "RenderPointCloudChunkInstance not found for entity {:?}",
+                        visible_entity
+                    );
+                    continue;
+                };
+
+                let Some(render_point_cloud_instance) = render_point_cloud_instances
+                    .get(&render_point_cloud_chunk_instance.root_entity)
+                else {
+                    warn!(
+                        "RenderPointCloudInstance not found for entity {:?}",
                         visible_entity
                     );
                     continue;
@@ -1144,7 +1161,8 @@ pub(crate) fn specialize_material_meshes(
                     visible_entity: *visible_entity,
                     retained_view_entity: view.retained_view_entity,
                     mesh_key,
-                    shape_layout: shape_mesh.layout.clone(),
+                    splat_key: (&render_point_cloud_instance.splat_settings).into(),
+                    splat_layout: shape_mesh.layout.clone(),
                     instance_layout: mesh.layout.clone(),
                     properties: material.properties.clone(),
                     material_type_id: material_instance.asset_id.type_id(),
@@ -1159,6 +1177,7 @@ pub(crate) fn specialize_material_meshes(
         let key = ErasedMaterialPipelineKey {
             type_id: item.material_type_id,
             mesh_key: ErasedMeshPipelineKey::new(item.mesh_key),
+            splat_key: ErasedSplatPipelineKey::new(item.splat_key),
             material_key: item.properties.material_key.clone(),
         };
 
@@ -1168,7 +1187,7 @@ pub(crate) fn specialize_material_meshes(
         match base_specialize(
             world,
             key,
-            &item.shape_layout,
+            &item.splat_layout,
             &item.instance_layout,
             &item.properties,
         ) {
@@ -1606,7 +1625,7 @@ pub struct PreparedMaterial {
 pub fn base_specialize(
     world: &mut World,
     key: ErasedMaterialPipelineKey,
-    shape_layout: &MeshVertexBufferLayoutRef,
+    splat_layout: &MeshVertexBufferLayoutRef,
     instance_layout: &MeshVertexBufferLayoutRef,
     properties: &Arc<MaterialProperties>,
 ) -> Result<CachedRenderPipelineId, SpecializedMeshPipelineError> {
@@ -1624,7 +1643,7 @@ pub fn base_specialize(
                 pipeline_cache,
                 &specializer,
                 key,
-                shape_layout,
+                splat_layout,
                 instance_layout,
             )
         },
@@ -1635,7 +1654,7 @@ pub fn base_specialize(
 fn prepass_specialize(
     world: &mut World,
     key: ErasedMaterialPipelineKey,
-    shape_layout: &MeshVertexBufferLayoutRef,
+    splat_layout: &MeshVertexBufferLayoutRef,
     instance_layout: &MeshVertexBufferLayoutRef,
     properties: &Arc<MaterialProperties>,
 ) -> Result<CachedRenderPipelineId, SpecializedMeshPipelineError> {
@@ -1653,7 +1672,7 @@ fn prepass_specialize(
                 pipeline_cache,
                 &specializer,
                 key,
-                shape_layout,
+                splat_layout,
                 instance_layout,
             )
         },
@@ -1663,7 +1682,7 @@ fn prepass_specialize(
 fn user_specialize<M: Material>(
     pipeline: &dyn Any,
     descriptor: &mut RenderPipelineDescriptor,
-    shape_layout: &MeshVertexBufferLayoutRef,
+    splat_layout: &MeshVertexBufferLayoutRef,
     instance_layout: &MeshVertexBufferLayoutRef,
     erased_key: ErasedMaterialPipelineKey,
 ) -> Result<(), SpecializedMeshPipelineError>
@@ -1673,13 +1692,15 @@ where
     let pipeline = pipeline.downcast_ref::<MaterialPipeline>().unwrap();
     let material_key = erased_key.material_key.to_key();
     let mesh_key: MeshPipelineKey = erased_key.mesh_key.downcast();
+    let splat_key: SplatPipelineKey = erased_key.splat_key.downcast();
     M::specialize(
         pipeline,
         descriptor,
-        shape_layout,
+        splat_layout,
         instance_layout,
         MaterialPipelineKey {
             mesh_key,
+            splat_key,
             bind_group_data: material_key,
         },
     )

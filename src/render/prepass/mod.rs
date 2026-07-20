@@ -18,11 +18,10 @@ use bevy::{
     mesh::{Mesh, MeshVertexBufferLayoutRef},
     pbr::{
         alpha_mode_pipeline_key, collect_meshes_for_gpu_building, set_mesh_motion_vector_flags,
-        setup_morph_and_skinning_defs, DeferredAlphaMaskDrawFunction, DeferredFragmentShader,
-        DeferredOpaqueDrawFunction, DeferredVertexShader, MeshLayouts, MeshPipeline,
-        MeshPipelineKey, PrepassAlphaMaskDrawFunction, PrepassFragmentShader,
-        PrepassOpaqueDepthOnlyDrawFunction, PrepassOpaqueDrawFunction, PrepassVertexShader,
-        RenderLightmaps, RenderMaterialInstances, RenderMeshInstanceFlags, RenderMeshInstances,
+        setup_morph_and_skinning_defs, DeferredAlphaMaskDrawFunction, DeferredOpaqueDrawFunction,
+        MeshLayouts, MeshPipeline, MeshPipelineKey, PrepassAlphaMaskDrawFunction,
+        PrepassOpaqueDepthOnlyDrawFunction, PrepassOpaqueDrawFunction, RenderLightmaps,
+        RenderMaterialInstances, RenderMeshInstanceFlags, RenderMeshInstances,
         SetMaterialBindGroup, ShadowView, MAX_VIEW_LIGHT_PROBES,
     },
     prelude::{Deref, DerefMut},
@@ -70,10 +69,13 @@ use bevy::{
 use std::{num::NonZero, sync::Arc};
 
 use crate::{
-    init_material_pipeline, init_point_cloud_pipeline, DrawPointCloudInstanced,
-    ErasedMaterialPipelineKey, MaterialPipeline, MaterialProperties, PointCloudChunk3d,
-    PointCloudPipeline, PreparedMaterial, SetMeshBindGroup, SetPointCloudUniformGroup,
-    SpecializedPointCloudPipeline, SpecializedPointCloudPipelines, MATERIAL_BIND_GROUP_INDEX,
+    init_material_pipeline, init_point_cloud_pipeline, DeferredFragmentShader,
+    DeferredVertexShader, DrawPointCloudInstanced, ErasedMaterialPipelineKey,
+    ErasedSplatPipelineKey, MaterialPipeline, MaterialProperties, PointCloudChunk3d,
+    PointCloudPipeline, PreparedMaterial, PrepassFragmentShader, PrepassVertexShader,
+    RenderPointCloudChunkInstances, RenderPointCloudInstances, SetMeshBindGroup,
+    SetPointCloudUniformGroup, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
+    SplatPipelineKey, MATERIAL_BIND_GROUP_INDEX,
 };
 
 /// Sets up everything required to use the prepass pipeline.
@@ -429,7 +431,7 @@ impl SpecializedPointCloudPipeline for PrepassPipelineSpecializer {
     fn specialize(
         &self,
         key: Self::Key,
-        shape_layout: &MeshVertexBufferLayoutRef,
+        splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
         let mut shader_defs = Vec::new();
@@ -439,7 +441,7 @@ impl SpecializedPointCloudPipeline for PrepassPipelineSpecializer {
         let mut descriptor = self.pipeline.specialize(
             key.mesh_key.downcast(),
             shader_defs,
-            shape_layout,
+            splat_layout,
             instance_layout,
             &self.properties,
         )?;
@@ -452,7 +454,7 @@ impl SpecializedPointCloudPipeline for PrepassPipelineSpecializer {
             specialize(
                 &self.pipeline.material_pipeline,
                 &mut descriptor,
-                shape_layout,
+                splat_layout,
                 instance_layout,
                 key,
             )?;
@@ -471,7 +473,7 @@ impl PrepassPipeline {
         &self,
         mesh_key: MeshPipelineKey,
         shader_defs: Vec<ShaderDefVal>,
-        shape_layout: &MeshVertexBufferLayoutRef,
+        splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
         material_properties: &MaterialProperties,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
@@ -488,27 +490,27 @@ impl PrepassPipeline {
         // construct the shape layout vertex buffer layout
 
         let mut shape_vertex_attributes = Vec::new();
-        if shape_layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
+        if splat_layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
             shader_defs.push("SHAPE_POSITIONS".into());
             // TODO find the best position
             shape_vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
         }
 
         // TODO: needed in prepass ?
-        if shape_layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
+        if splat_layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
             shader_defs.push("SHAPE_NORMALS".into());
             // TODO find the best position
             shape_vertex_attributes.push(Mesh::ATTRIBUTE_NORMAL.at_shader_location(1));
         }
 
         // TODO: needed in prepass ?
-        if shape_layout.0.contains(Mesh::ATTRIBUTE_UV_0) {
+        if splat_layout.0.contains(Mesh::ATTRIBUTE_UV_0) {
             shader_defs.push("SHAPE_UVS".into());
             shader_defs.push("SHAPE_UVS_A".into());
             shape_vertex_attributes.push(Mesh::ATTRIBUTE_UV_0.at_shader_location(2));
         }
 
-        let vertex_buffer_layout = shape_layout.0.get_layout(&shape_vertex_attributes)?;
+        let vertex_buffer_layout = splat_layout.0.get_layout(&shape_vertex_attributes)?;
 
         // Now the mesh (instances)
         let mut vertex_attributes = Vec::new();
@@ -527,6 +529,7 @@ impl PrepassPipeline {
         // support it natively.
         let emulate_unclipped_depth = mesh_key.contains(MeshPipelineKey::UNCLIPPED_DEPTH_ORTHO)
             && !self.depth_clip_control_supported;
+
         if is_depth_only_opaque_prepass(mesh_key) && !emulate_unclipped_depth {
             bind_group_layouts.push(self.empty_layout.clone());
         } else {
@@ -538,6 +541,7 @@ impl PrepassPipeline {
                     .clone(),
             );
         }
+
         #[cfg(all(feature = "webgl", target_arch = "wasm32", not(feature = "webgpu")))]
         shader_defs.push("WEBGL2".into());
         shader_defs.push("VERTEX_OUTPUT_INSTANCE_INDEX".into());
@@ -960,7 +964,8 @@ pub(crate) struct PrepassSpecializationWorkItem {
     visible_entity: MainEntity,
     retained_view_entity: RetainedViewEntity,
     mesh_key: MeshPipelineKey,
-    shape_layout: MeshVertexBufferLayoutRef,
+    splat_key: SplatPipelineKey,
+    splat_layout: MeshVertexBufferLayoutRef,
     instance_layout: MeshVertexBufferLayoutRef,
     properties: Arc<MaterialProperties>,
     material_type_id: TypeId,
@@ -979,6 +984,8 @@ pub(crate) struct SpecializePrepassSystemParam<'w, 's> {
     render_materials: Res<'w, ErasedRenderAssets<PreparedMaterial>>,
     render_mesh_instances: Res<'w, RenderMeshInstances>,
     render_material_instances: Res<'w, RenderMaterialInstances>,
+    render_point_cloud_instances: Res<'w, RenderPointCloudInstances>,
+    render_point_cloud_chunk_instances: Res<'w, RenderPointCloudChunkInstances>,
     render_lightmaps: Res<'w, RenderLightmaps>,
     render_visibility_ranges: Res<'w, RenderVisibilityRanges>,
     view_key_cache: Res<'w, ViewKeyPrepassCache>,
@@ -1023,6 +1030,8 @@ pub(crate) fn specialize_prepass_material_meshes(
             render_materials,
             render_mesh_instances,
             render_material_instances,
+            render_point_cloud_instances,
+            render_point_cloud_chunk_instances,
             render_lightmaps: _render_lightmaps,
             render_visibility_ranges,
             view_key_cache,
@@ -1109,21 +1118,48 @@ pub(crate) fn specialize_prepass_material_meshes(
                     continue;
                 }
 
+                // our entity is a chunk, we need parent point cloud to get its specialized pipeline
+                // & material
+                let Some(render_point_cloud_chunk_instance) =
+                    render_point_cloud_chunk_instances.get(render_entity)
+                else {
+                    warn!(
+                        "RenderPointCloudChunkInstance not found for entity {:?} in prepass",
+                        visible_entity
+                    );
+                    continue;
+                };
+
+                let Some(render_point_cloud_instance) = render_point_cloud_instances
+                    .get(&render_point_cloud_chunk_instance.root_entity)
+                else {
+                    warn!(
+                        "RenderPointCloudInstance not found for entity {:?} in prepass",
+                        visible_entity
+                    );
+                    continue;
+                };
+
                 // Check for material instance, mesh, and material. If any of
                 // these fail, it's probably because the relevant asset hasn't
                 // loaded yet. In that case, add the entity to the list of
                 // pending mesh materials and bail.
-                let Some(material_instance) =
-                    render_material_instances.instances.get(visible_entity)
+                let Some(material_instance) = render_material_instances
+                    .instances
+                    .get(&render_point_cloud_chunk_instance.root_entity)
                 else {
                     view_pending_prepass_mesh_material_queues
                         .current_frame
                         .insert((*render_entity, *visible_entity));
                     continue;
                 };
-                let Some(mesh_instance) =
-                    render_mesh_instances.render_mesh_queue_data(*visible_entity)
+                let Some(mesh_instance) = render_mesh_instances
+                    .render_mesh_queue_data(render_point_cloud_chunk_instance.root_entity)
                 else {
+                    warn!(
+                        "mesh_instance not found for entity {:?} in prepass",
+                        render_point_cloud_chunk_instance.root_entity
+                    );
                     view_pending_prepass_mesh_material_queues
                         .current_frame
                         .insert((*render_entity, *visible_entity));
@@ -1140,7 +1176,17 @@ pub(crate) fn specialize_prepass_material_meshes(
                     removals.push((extracted_view.retained_view_entity, *visible_entity));
                     continue;
                 }
-                let Some(mesh) = render_meshes.get(mesh_instance.mesh_asset_id()) else {
+
+                // get the mesh from the chunk
+                let Some(mesh) = render_meshes.get(render_point_cloud_chunk_instance.mesh_asset_id)
+                else {
+                    warn!(
+                        "render_meshes not found for asset id {:?} in prepass",
+                        render_point_cloud_chunk_instance.mesh_asset_id
+                    );
+                    view_pending_prepass_mesh_material_queues
+                        .current_frame
+                        .insert((*render_entity, *visible_entity));
                     continue;
                 };
 
@@ -1231,7 +1277,8 @@ pub(crate) fn specialize_prepass_material_meshes(
                     visible_entity: *visible_entity,
                     retained_view_entity: extracted_view.retained_view_entity,
                     mesh_key,
-                    shape_layout: shape_mesh.layout.clone(),
+                    splat_key: (&render_point_cloud_instance.splat_settings).into(),
+                    splat_layout: shape_mesh.layout.clone(),
                     instance_layout: mesh.layout.clone(),
                     properties: material.properties.clone(),
                     material_type_id: material_instance.asset_id.type_id(),
@@ -1254,6 +1301,7 @@ pub(crate) fn specialize_prepass_material_meshes(
         let key = ErasedMaterialPipelineKey {
             type_id: item.material_type_id,
             mesh_key: ErasedMeshPipelineKey::new(item.mesh_key),
+            splat_key: ErasedSplatPipelineKey::new(item.splat_key),
             material_key: item.properties.material_key.clone(),
         };
 
@@ -1293,7 +1341,7 @@ pub(crate) fn specialize_prepass_material_meshes(
         match prepass_specialize(
             world,
             key,
-            &item.shape_layout,
+            &item.splat_layout,
             &item.instance_layout,
             &item.properties,
         ) {

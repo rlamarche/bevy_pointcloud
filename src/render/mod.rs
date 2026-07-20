@@ -2,6 +2,7 @@ mod camera;
 mod components;
 mod draw;
 mod extract;
+mod key;
 mod light;
 mod material;
 mod phase;
@@ -40,6 +41,7 @@ pub use camera::*;
 pub use components::*;
 pub use draw::*;
 pub use extract::*;
+pub use key::*;
 pub use light::*;
 pub use material::*;
 pub use phase::*;
@@ -51,7 +53,7 @@ pub use prepare::*;
 pub use prepass::*;
 pub use resources::*;
 
-use crate::{PointCloud3d, PointCloudChunk3d};
+use crate::{PointCloud3d, PointCloudChunk3d, SplatSettings};
 
 pub struct RenderPointCloudPlugin;
 
@@ -71,6 +73,7 @@ impl Plugin for RenderPointCloudPlugin {
         app.add_plugins(MaterialsPlugin::default()) // TODO add debug flags opt
             .add_plugins(ExtractComponentPlugin::<PointCloud3d>::default())
             .add_plugins(ExtractComponentPlugin::<PointCloudChunk3d>::default())
+            .add_plugins(ExtractComponentPlugin::<SplatSettings>::default())
             .add_plugins(ExtractResourcePlugin::<ShapeMeshes>::default())
             .add_plugins(RenderAssetPlugin::<RenderPointCloudChunk>::default())
             .init_resource::<ShapeMeshes>();

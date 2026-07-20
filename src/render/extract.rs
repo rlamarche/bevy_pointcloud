@@ -35,7 +35,7 @@ use crate::{
     PointCloudChunk, PointCloudChunk3d, PointCloudTransforms, RenderPointCloudChunkInstance,
     RenderPointCloudChunkInstances, RenderPointCloudInstance, RenderPointCloudInstanceIndex,
     RenderPointCloudInstances, RenderVisiblePointCloudChunkEntity, RenderVisiblePointCloudEntities,
-    VisiblePointCloudEntities,
+    SplatSettings, VisiblePointCloudEntities,
 };
 
 /// This system extracts the visible point cloud chunk entities into the render world while
@@ -149,15 +149,17 @@ pub fn extract_visible_point_cloud_chunks(
 ///
 /// It also extracts the its aabb (useful for rendering features), and its transforms, for
 /// populating the [`crate::PointCloudUniform`] later.
+/// TODO: extract only if changed
 pub fn extract_pointcloud_instances(
     mut render_point_cloud_instances: ResMut<RenderPointCloudInstances>,
     mut render_point_cloud_instance_queues: Local<
         Parallel<Vec<(Entity, RenderPointCloudInstance)>>,
     >,
-    chunks_query: Extract<
+    entities: Extract<
         Query<(
             Entity,
             &PointCloud3d,
+            &SplatSettings,
             Option<&Aabb>,
             &ViewVisibility,
             &GlobalTransform,
@@ -167,12 +169,13 @@ pub fn extract_pointcloud_instances(
     >,
     point_clouds: Extract<Res<Assets<PointCloud>>>,
 ) {
-    chunks_query.par_iter().for_each_init(
+    entities.par_iter().for_each_init(
         || render_point_cloud_instance_queues.borrow_local_mut(),
         |queue,
          (
             entity,
             point_cloud_3d,
+            point_cloud_splat_settings,
             maybe_aabb,
             view_visibility,
             transform,
@@ -212,6 +215,8 @@ pub fn extract_pointcloud_instances(
                         previous_world_from_local: previous_world_from_local.into(),
                     },
                     render_layers: render_layers.cloned(),
+                    // TODO put default asset id if not filled
+                    splat_settings: point_cloud_splat_settings.clone(),
                 },
             ));
         },

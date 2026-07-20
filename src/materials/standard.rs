@@ -67,7 +67,7 @@ impl Material for StandardMaterial {
     fn specialize(
         _pipeline: &crate::MaterialPipeline,
         descriptor: &mut bevy::material::descriptor::RenderPipelineDescriptor,
-        _shape_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
+        _splat_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         _instance_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         key: crate::MaterialPipelineKey<Self>,
     ) -> bevy::ecs::error::Result<(), bevy::material::specialize::SpecializedMeshPipelineError>
