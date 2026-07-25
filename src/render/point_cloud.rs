@@ -14,7 +14,7 @@ use bevy::{
 };
 use bitflags::bitflags;
 
-use crate::{PointCloudChunk, PointSizeMode, ShapeOrientation, SplatSettings, UVMapping};
+use crate::{PointCloudChunk, PointSizeMode, SplatOrientation, SplatSettings, UVMapping};
 
 #[derive(Debug, Clone)]
 pub struct RenderPointCloudChunk {
@@ -155,7 +155,7 @@ impl From<&UVMapping> for SplatPipelineKey {
         match value {
             UVMapping::Combined => SplatPipelineKey::UV_MAPPING_COMBINED,
             UVMapping::PointCloudOnly => SplatPipelineKey::UV_MAPPING_POINT_CLOUD,
-            UVMapping::ShapeOnly => SplatPipelineKey::UV_MAPPING_POINT_SHAPE,
+            UVMapping::SplatOnly => SplatPipelineKey::UV_MAPPING_POINT_SHAPE,
             UVMapping::Planar => SplatPipelineKey::UV_MAPPING_PLANAR,
         }
     }
@@ -173,7 +173,7 @@ impl From<&SplatSettings> for SplatPipelineKey {
         key.set(SplatPipelineKey::SPLAT_RADIUS, settings.radius.is_some());
         key.set(
             SplatPipelineKey::SPLAT_ORIENTATION_FACE_NORMAL,
-            matches!(settings.orientation, ShapeOrientation::FaceNormal),
+            matches!(settings.orientation, SplatOrientation::FaceNormal),
         );
 
         key.insert((&settings.uv_mapping).into());
@@ -225,6 +225,7 @@ pub struct PointCloudTransforms {
 
 #[derive(ShaderType, Clone)]
 pub struct PointCloudUniform {
+    // --- Transformations & Bounds ---
     pub aabb_min: Vec4,
     pub aabb_max: Vec4,
     // Affine 4x3 matrices transposed to 3x4
@@ -238,6 +239,22 @@ pub struct PointCloudUniform {
     pub local_from_world_transpose_b: f32,
     pub material_bind_group_slot: u32,
     pub spacing: f32,
+
+    // --- Splat Settings Numeric Values ---
+    pub point_size: f32,
+    pub min_point_size: f32, // Defaults to 0.0 if None
+    pub max_point_size: f32, // Defaults to f32::MAX if None
+    pub radius: f32,         // Ignored in shader unless SPLAT_RADIUS shader def is set
+
+    // Vectors aligned to Vec4 for std140 WGSL alignment
+    pub default_normal: Vec4,
+    pub uv_u: Vec4,
+    pub uv_v: Vec4,
+
+    // Affine2 packed into 2x Vec4 (Col 0-1 in A, Translation in B)
+    // Used in shader only when SPLAT_UV_TRANSFORM shader def is set
+    pub uv_transform_a: Vec4,
+    pub uv_transform_b: Vec4,
 }
 
 impl PointCloudUniform {
@@ -246,6 +263,7 @@ impl PointCloudUniform {
         spacing: f32,
         mesh_transforms: &PointCloudTransforms,
         material_bind_group_slot: MaterialBindGroupSlot,
+        splat_settings: &SplatSettings,
     ) -> Self {
         let (local_from_world_transpose_a, local_from_world_transpose_b) =
             mesh_transforms.world_from_local.inverse_transpose_3x3();
@@ -256,6 +274,18 @@ impl PointCloudUniform {
             "Material bind group slot {material_bind_group_slot} overflowed"
         );
 
+        // Decompose Affine2 into two Vec4s for std140 layout alignment
+        let uv_mat = splat_settings.uv_transform.matrix2;
+        let uv_trans = splat_settings.uv_transform.translation;
+
+        let uv_transform_a = Vec4::new(
+            uv_mat.col(0).x,
+            uv_mat.col(0).y,
+            uv_mat.col(1).x,
+            uv_mat.col(1).y,
+        );
+        let uv_transform_b = Vec4::new(uv_trans.x, uv_trans.y, 0.0, 0.0);
+
         Self {
             aabb_min: aabb.min().extend(1.0),
             aabb_max: aabb.max().extend(1.0),
@@ -265,6 +295,19 @@ impl PointCloudUniform {
             local_from_world_transpose_a,
             local_from_world_transpose_b,
             material_bind_group_slot,
+
+            // Splat properties mapping
+            point_size: splat_settings.point_size,
+            min_point_size: splat_settings.min_point_size.unwrap_or(0.0),
+            max_point_size: splat_settings.max_point_size.unwrap_or(f32::MAX),
+            radius: splat_settings.radius.unwrap_or(0.0),
+
+            default_normal: splat_settings.default_normal.extend(0.0),
+            uv_u: splat_settings.uv_u.extend(0.0),
+            uv_v: splat_settings.uv_v.extend(0.0),
+
+            uv_transform_a,
+            uv_transform_b,
         }
     }
 }

@@ -415,7 +415,7 @@ pub struct MaterialPipelineKey<M: Material> {
 /// Render pipeline data for a given [`Material`].
 #[derive(Resource, Clone)]
 pub struct MaterialPipeline {
-    pub mesh_pipeline: PointCloudPipeline,
+    pub pointcloud_pipeline: PointCloudPipeline,
 }
 
 pub struct MaterialPipelineSpecializer {
@@ -442,7 +442,7 @@ impl SpecializedPointCloudPipeline for MaterialPipelineSpecializer {
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
         let concrete_mesh_key: MeshPipelineKey = key.mesh_key.downcast();
         let concrete_splat_key: SplatPipelineKey = key.splat_key.downcast();
-        let mut descriptor = self.pipeline.mesh_pipeline.specialize(
+        let mut descriptor = self.pipeline.pointcloud_pipeline.specialize(
             (concrete_mesh_key, concrete_splat_key),
             splat_layout,
             instance_layout,
@@ -495,7 +495,7 @@ impl SpecializedPointCloudPipeline for MaterialPipelineSpecializer {
 
 pub fn init_material_pipeline(mut commands: Commands, mesh_pipeline: Res<PointCloudPipeline>) {
     commands.insert_resource(MaterialPipeline {
-        mesh_pipeline: mesh_pipeline.clone(),
+        pointcloud_pipeline: mesh_pipeline.clone(),
     });
 }
 
@@ -1635,7 +1635,9 @@ pub fn base_specialize(
             let pipeline_cache = world.resource::<PipelineCache>();
 
             let specializer = MaterialPipelineSpecializer {
-                pipeline: MaterialPipeline { mesh_pipeline },
+                pipeline: MaterialPipeline {
+                    pointcloud_pipeline: mesh_pipeline,
+                },
                 properties: properties.clone(),
             };
 

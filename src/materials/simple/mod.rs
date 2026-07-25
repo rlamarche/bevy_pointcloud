@@ -17,7 +17,7 @@ use bitflags::bitflags;
 
 use crate::{
     shader_ref, ColorStop, ColorStopUniform, Material, MaterialPlugin, PointSizeMode,
-    ShapeOrientation, UVMapping, UVTransform,
+    SplatOrientation, UVMapping, UVTransform,
 };
 
 pub struct SimplePointCloudMaterialPlugin;
@@ -56,7 +56,7 @@ pub struct SimplePointCloudMaterial {
 
     /// Determines the shapes orientation. See [`ShapeOrientation`]
     /// documentation for options.
-    pub shape_orientation: ShapeOrientation,
+    pub shape_orientation: SplatOrientation,
 
     /// The default normal (if missing on the vertex attributes).
     /// Used for the shape orientation in [`ShapeOrientation::FaceNormal`] mode.
@@ -158,7 +158,7 @@ impl Default for SimplePointCloudMaterial {
         SimplePointCloudMaterial {
             shape_mesh: None,
             shape_radius: None,
-            shape_orientation: ShapeOrientation::Billboard,
+            shape_orientation: SplatOrientation::Billboard,
             default_normal: Vec3::Z,
             // White because it gets multiplied with texture values if someone uses
             // a texture.
@@ -351,7 +351,7 @@ impl From<&SimplePointCloudMaterial> for SimplePointCloudMaterialKey {
         );
         key.set(
             SimplePointCloudMaterialKey::SHAPE_ORIENTATION,
-            matches!(material.shape_orientation, ShapeOrientation::FaceNormal),
+            matches!(material.shape_orientation, SplatOrientation::FaceNormal),
         );
         key.set(
             SimplePointCloudMaterialKey::GRADIENT,

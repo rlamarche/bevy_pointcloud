@@ -53,6 +53,7 @@ pub fn prepare_point_cloud_uniforms(
             point_cloud_instance.spacing.unwrap_or_default(),
             &point_cloud_instance.transforms,
             material_bindings_index.slot,
+            &point_cloud_instance.splat_settings,
         );
 
         // create the buffer & bind group, and write it

@@ -15,6 +15,7 @@ impl Plugin for StandardPointCloudMaterialPlugin {
 impl Material for StandardMaterial {
     fn vertex_shader() -> ShaderRef {
         <StandardMaterial as SourceMaterial>::vertex_shader()
+        // "shaders/pointcloud_pbr.wgsl".into()
     }
     fn fragment_shader() -> ShaderRef {
         <StandardMaterial as SourceMaterial>::fragment_shader()
@@ -49,6 +50,7 @@ impl Material for StandardMaterial {
     }
 
     fn prepass_vertex_shader() -> ShaderRef {
+        // "shaders/prepass.wgsl".into()
         <StandardMaterial as SourceMaterial>::prepass_vertex_shader()
     }
 

@@ -107,7 +107,7 @@ impl From<&PointCloudChunk3d> for UntypedAssetId {
     }
 }
 
-#[derive(Component, FromTemplate, Clone, Debug, Default, PartialEq, From, Reflect)]
+#[derive(Component, FromTemplate, Clone, Debug, PartialEq, From, Reflect)]
 #[component(immutable)]
 #[require(Transform)]
 #[reflect(Component, PartialEq, Debug, FromWorld, Clone, Default)]
@@ -117,16 +117,23 @@ pub struct SplatSettings {
     // --- Sizing ---
     pub point_size_mode: PointSizeMode,
 
-    /// The point size in pixels.
-    /// Using orthographic projection, the size in pixels will always match this size.
-    /// Using perspective projection, the point size will fade with distance, and grow.
-    /// Defaults to `0.01`.
+    /// The point size, its units depends on selected [`PointSizeMode`] in field
+    /// [`SplatSettings::point_size_mode`].
+    /// Using orthographic projection, the size in pixels will always match this size. Using
+    /// perspective projection, the point size will fade with distance, and grow. Defaults to
+    /// `30.0` in [`PointSizeMode::ScreenPixels`].
     /// Note: the transform scale is applied to the point size.
     pub point_size: f32,
+
     pub adaptive_point_size: bool,
 
+    /// Min point size in screen space.
+    /// Defaults to `None`.
     #[template(OptionTemplate<f32>)]
     pub min_point_size: Option<f32>,
+
+    /// Max point size in screen space.
+    /// Defaults to `None`.
     #[template(OptionTemplate<f32>)]
     pub max_point_size: Option<f32>,
 
@@ -142,12 +149,12 @@ pub struct SplatSettings {
     #[template(OptionTemplate<f32>)]
     pub radius: Option<f32>,
 
-    /// Determines the shapes orientation. See [`ShapeOrientation`]
+    /// Determines the splats orientation. See [`SplatOrientation`]
     /// documentation for options.
-    pub orientation: ShapeOrientation,
+    pub orientation: SplatOrientation,
 
     /// The default normal (if missing on the vertex attributes).
-    /// Used for the shape orientation in [`ShapeOrientation::FaceNormal`] mode.
+    /// Used for the splat orientation in [`SplatOrientation::FaceNormal`] mode.
     pub default_normal: Vec3,
 
     // --- Mapping Logic ---
@@ -171,6 +178,26 @@ pub struct SplatSettings {
     /// [`PointCloudSplatSettings::uv_mapping`]
     // #[template(OptionTemplate<UVTransform>)]
     pub uv_transform: Affine2,
+}
+
+impl Default for SplatSettings {
+    fn default() -> Self {
+        Self {
+            point_size_mode: PointSizeMode::ScreenPixels,
+            point_size: 30.0,
+            adaptive_point_size: true,
+            min_point_size: None,
+            max_point_size: None,
+            splat: None,
+            radius: None,
+            orientation: SplatOrientation::Billboard,
+            default_normal: Vec3::new(0.0, 1.0, 0.0),
+            uv_mapping: UVMapping::SplatOnly,
+            uv_u: Vec3::new(0.0, 0.0, 1.0),
+            uv_v: Vec3::new(-1.0, 0.0, 0.0),
+            uv_transform: Affine2::IDENTITY,
+        }
+    }
 }
 
 impl SyncComponent for SplatSettings {
@@ -341,14 +368,14 @@ impl PointSizeMode {
     }
 }
 
-/// Determines the shape orientation.
+/// Determines the splat orientation.
 #[derive(FromTemplate, Reflect, Debug, Clone, Default, PartialEq, Eq, Hash)]
 #[reflect(Default, Debug, Clone)]
-pub enum ShapeOrientation {
-    /// The shape always faces the camera (classic billboard).
+pub enum SplatOrientation {
+    /// The splat always faces the camera (classic billboard).
     #[default]
     Billboard,
-    /// The shape is oriented along the point's normal vector.
+    /// The splat is oriented along the point's normal vector.
     /// Works only if a normal is provided, and works better if also a tangent is provided.
     FaceNormal,
 }
@@ -358,22 +385,22 @@ pub enum ShapeOrientation {
 #[derive(FromTemplate, Reflect, Debug, Clone, Default, PartialEq, Eq, Hash)]
 #[reflect(Default, Debug, Clone)]
 pub enum UVMapping {
-    /// Combine global UV (from point cloud data) and Local UV (from the point's shape).
+    /// Combine global UV (from point cloud data) and Local UV (from the point's splat).
     /// **Needs stabilization.**
     Combined,
     /// Uses UVs defined per vertex in the point cloud. The texture stretches across the whole
     /// cloud and is pixelated. Needs the point cloud's UVs.
     PointCloudOnly,
     /// Uses UVs of the point's local geometry. The texture is repeated on every single point using
-    /// shape's UV.
+    /// splat's UV.
     #[default]
-    ShapeOnly,
+    SplatOnly,
     /// Compute UV coordinates based on the provided [`SimplePointCloudMaterial::uv_u`] and
     /// [`SimplePointCloudMaterial::uv_v`].
     /// **Needs stabilization:**
     ///  * in billboard mode,the texture on each point does not follow the rotation of the view
     ///  * in face normal mode, the U/V projection vectors must match the UV coordinates of the
-    ///    shape
+    ///    splat
     Planar,
 }
 
@@ -383,7 +410,7 @@ impl UVMapping {
         match self {
             Self::Combined => SimplePointCloudMaterialKey::UV_MAPPING_COMBINED,
             Self::PointCloudOnly => SimplePointCloudMaterialKey::UV_MAPPING_POINT_CLOUD,
-            Self::ShapeOnly => SimplePointCloudMaterialKey::UV_MAPPING_POINT_SHAPE,
+            Self::SplatOnly => SimplePointCloudMaterialKey::UV_MAPPING_POINT_SHAPE,
             Self::Planar => SimplePointCloudMaterialKey::UV_MAPPING_PLANAR,
         }
     }

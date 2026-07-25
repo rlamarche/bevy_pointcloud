@@ -2,7 +2,7 @@
 
 #import bevy_pbr::{
     mesh_view_bindings::view,
-    mesh_functions::mesh_position_local_to_world,
+    mesh_functions,
     view_transformations::{
         position_world_to_clip,
         position_world_to_view,
@@ -29,16 +29,18 @@ fn vertex(
 
     // We assume VERTEX_POSITIONS & SHAPE_POSITIONS are set.
 
+    out.instance_index = 0;
+
     out.instance_position = vertex.position;
 
     #ifdef VERTEX_NORMALS
-        out.world_normal = pointcloud_functions::mesh_normal_local_to_world(vertex.normal);
+        out.world_normal = mesh_functions::mesh_normal_local_to_world(vertex.normal, out.instance_index);
     #endif
 
     let world_from_local = pointcloud_functions::get_world_from_local();
 
     // compute the world position of point coordinates
-    let world_position = mesh_position_local_to_world(world_from_local, vec4<f32>(vertex.position, 1.0));
+    let world_position = mesh_functions::mesh_position_local_to_world(world_from_local, vec4<f32>(vertex.position, 1.0));
     var view_vertex_position: vec3<f32>;
 
     let view_position = position_world_to_view(world_position.xyz);

@@ -23,81 +23,75 @@ fn clamp_point_size(point_size: f32, min: f32, max: f32) -> f32 {
 }
 
 
-/// Computes and clamps the screen-space size of a point cloud vertex.
+/// Computes the final World-Space quad size for a point configured in Screen-Space (pixels).
 ///
-/// This function accounts for perspective distortion based on camera distance (depth)
-/// and viewport dimensions, ensuring points stay within defined pixel bounds.
+/// Applies perspective projection to calculate pixel footprint at depth Z,
+/// clamps the resulting size between min and max pixel bounds, and converts
+/// back to world dimensions for quad scaling.
 ///
 /// # Parameters
-/// * `view_position`: The vertex position in view/camera space (uses `z` for depth).
-/// * `point_size`: The base world-space size of the point.
-/// * `min_point_size`: Minimum allowed screen size in pixels.
-/// * `max_point_size`: Maximum allowed screen size in pixels.
+/// * `view_position`: Vertex position in view/camera space (uses `z` for depth).
+/// * `point_size_px`: Target base size in screen pixels.
+/// * `min_point_size_px`: Minimum allowed screen size in pixels.
+/// * `max_point_size_px`: Maximum allowed screen size in pixels.
 ///
 /// # Returns
-/// The perspective-adjusted and clamped point size.
-///
-/// # Dependencies
-/// Expects the Bevy global `view` binding (`clip_from_view` and `viewport`) to be in scope.
+/// The World-Space size required for the quad geometry.
 fn compute_screen_space_point_size(
     view_position: vec3<f32>,
-    point_size: f32,
-    min_point_size: f32,
-    max_point_size: f32,
+    point_size_px: f32,
+    min_point_size_px: f32,
+    max_point_size_px: f32,
 ) -> f32 {
-    let f = view.clip_from_view[1][1];
-    let fov = 2.0 * atan(1.0 / f);
-    let slope = tan(fov / 2.0);
-    let proj_factor = -0.5 * view.viewport[3] / (slope * view_position.z);
+    let depth = max(abs(view_position.z), 0.0001);
+    let proj_factor = (view.viewport.w * view.clip_from_view[1][1]) / (2.0 * depth);
 
-    var radius_screen = (point_size / min(view.viewport[2], view.viewport[3])) * proj_factor;
-    radius_screen = clamp_point_size(radius_screen, min_point_size, max_point_size);
-
-    if (abs(proj_factor) < 0.0001) {
-        return radius_screen;
+    if (proj_factor < 0.0001) {
+        return 0.0;
     }
-    return radius_screen / proj_factor;
+
+    // Always clamp pixel size after projection
+    let clamped_px = clamp(point_size_px, min_point_size_px, max_point_size_px);
+
+    // Convert clamped pixels to world space size for quad geometry
+    return clamped_px / proj_factor;
 }
 
-/// Computes and clamps the world-space size of a point cloud vertex
-/// based on screen-space (pixel) constraints.
+/// Computes the final World-Space quad size for a point configured in World-Space units.
 ///
-/// This ensures that the point's effective size in the world is scaled
-/// so that its projection on screen never goes below or above the pixel limits.
+/// Projects the base world-space size to screen pixels at depth Z,
+/// clamps the pixel footprint between min and max pixel bounds to prevent sub-pixel
+/// disappearance or screen-filling overdraw, and returns the adjusted world-space size.
 ///
 /// # Parameters
-/// * `view_position`: The vertex position in view/camera space (uses `z` for depth).
-/// * `point_size`: The base world-space size of the point.
-/// * `min_point_size`: Minimum allowed screen size in pixels.
-/// * `max_point_size`: Maximum allowed screen size in pixels.
+/// * `view_position`: Vertex position in view/camera space (uses `z` for depth).
+/// * `point_size_world`: Base world-space size of the point.
+/// * `min_point_size_px`: Minimum allowed screen size in pixels.
+/// * `max_point_size_px`: Maximum allowed screen size in pixels.
 ///
 /// # Returns
-/// The adjusted point size in World Space units.
-///
-/// # Dependencies
-/// Expects the Bevy global `view` binding (`clip_from_view` and `viewport`) to be in scope.
+/// The adjusted World-Space size for the quad geometry.
 fn compute_world_space_point_size(
     view_position: vec3<f32>,
-    point_size: f32,
-    min_point_size: f32,
-    max_point_size: f32,
+    point_size_world: f32,
+    min_point_size_px: f32,
+    max_point_size_px: f32,
 ) -> f32 {
-    let f = view.clip_from_view[1][1];
-    let fov = 2.0 * atan(1.0 / f);
-    let slope = tan(fov / 2.0);
+    let depth = max(abs(view_position.z), 0.0001);
+    let proj_factor = (view.viewport.w * view.clip_from_view[1][1]) / (2.0 * depth);
 
-    let proj_factor = -0.5 * view.viewport[3] / (slope * view_position.z);
-
-    let viewport_min = min(view.viewport[2], view.viewport[3]);
-    var radius_screen = (point_size / viewport_min) * proj_factor;
-
-    radius_screen = clamp_point_size(radius_screen, min_point_size, max_point_size);
-
-    if (abs(proj_factor) < 0.0001) {
-        return point_size;
+    if (proj_factor < 0.0001) {
+        return point_size_world;
     }
 
-    return (radius_screen / proj_factor) * viewport_min;
+    // 1. Project world size to screen pixels at current depth
+    let size_px = point_size_world * proj_factor;
+
+    // 2. Always clamp resulting pixel size
+    let clamped_px = clamp(size_px, min_point_size_px, max_point_size_px);
+
+    // 3. Convert back to world space size for quad geometry
+    return clamped_px / proj_factor;
 }
 
 
