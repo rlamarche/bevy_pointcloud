@@ -82,6 +82,12 @@ fn load_point_cloud(
             point_size: 0.025,
             ..default()
         })),
+        SplatSettings {
+            point_size_mode: PointSizeMode::LocalSpace,
+            point_size: 0.025,
+            radius: Some(0.5),
+            ..default()
+        },
     ));
 
     Ok(())
