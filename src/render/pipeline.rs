@@ -1,5 +1,5 @@
 use bevy::{
-    asset::{AssetServer, Handle},
+    asset::{load_embedded_asset, AssetServer, Handle},
     core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT,
     ecs::{
         resource::Resource,
@@ -51,8 +51,9 @@ impl FromWorld for PointCloudPipeline {
         let mesh_pipeline = world.resource::<MeshPipeline>();
 
         Self {
-            shader: asset_server
-                .load("embedded://bevy_pointcloud/assets/shaders/pointcloud_pbr.wgsl"),
+            shader: load_embedded_asset!(asset_server, "pointcloud.wgsl"),
+            // shader: asset_server
+            //     .load("embedded://bevy_pointcloud/assets/shaders/pointcloud_pbr.wgsl"),
             mesh_pipeline: mesh_pipeline.clone(),
             point_cloud_uniform_layout: BindGroupLayoutDescriptor::new(
                 "point_cloud_uniform_layout",
@@ -141,7 +142,7 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
         &self,
         (key, splat_key): Self::Key,
         splat_layout: &MeshVertexBufferLayoutRef,
-        layout: &MeshVertexBufferLayoutRef,
+        instance_layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
         let mut shader_defs = Vec::new();
 
@@ -226,36 +227,40 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
         // Now the mesh (instances)
         let mut vertex_attributes = Vec::new();
 
-        if layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
+        if instance_layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
             shader_defs.push("VERTEX_POSITIONS".into());
             // TODO find the best position
             vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(3));
         }
 
-        if layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
+        if instance_layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
             shader_defs.push("VERTEX_NORMALS".into());
             // TODO find the best position
             vertex_attributes.push(Mesh::ATTRIBUTE_NORMAL.at_shader_location(4));
         }
 
-        if layout.0.contains(Mesh::ATTRIBUTE_UV_0) {
+        // we always want an output uv
+        shader_defs.push("VERTEX_UVS_A".into());
+
+        if instance_layout.0.contains(Mesh::ATTRIBUTE_UV_0) {
             shader_defs.push("VERTEX_UVS".into());
-            shader_defs.push("VERTEX_UVS_A".into());
+            shader_defs.push("INSTANCE_UVS_A".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_UV_0.at_shader_location(5));
         }
 
-        if layout.0.contains(Mesh::ATTRIBUTE_UV_1) {
+        if instance_layout.0.contains(Mesh::ATTRIBUTE_UV_1) {
             shader_defs.push("VERTEX_UVS".into());
             shader_defs.push("VERTEX_UVS_B".into());
+            shader_defs.push("INSTANCE_UVS_B".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_UV_1.at_shader_location(6));
         }
 
-        if layout.0.contains(Mesh::ATTRIBUTE_TANGENT) {
+        if instance_layout.0.contains(Mesh::ATTRIBUTE_TANGENT) {
             shader_defs.push("VERTEX_TANGENTS".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_TANGENT.at_shader_location(7));
         }
 
-        if layout.0.contains(Mesh::ATTRIBUTE_COLOR) {
+        if instance_layout.0.contains(Mesh::ATTRIBUTE_COLOR) {
             shader_defs.push("VERTEX_COLORS".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_COLOR.at_shader_location(8));
         }
@@ -294,7 +299,7 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
 
         bind_group_layout.push(setup_morph_and_skinning_defs(
             &self.mesh_pipeline.mesh_layouts,
-            layout,
+            instance_layout,
             6,
             &key,
             &mut shader_defs,
@@ -312,7 +317,7 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             shader_defs.push("CONTACT_SHADOWS".into());
         }
 
-        let mut instance_buffer_layout = layout.0.get_layout(&vertex_attributes)?;
+        let mut instance_buffer_layout = instance_layout.0.get_layout(&vertex_attributes)?;
         // don't forget to set step_mode mode to instance
         instance_buffer_layout.step_mode = VertexStepMode::Instance;
 

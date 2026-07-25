@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use bevy::{
     app::{App, Last, Plugin},
-    asset::{embedded_asset, AssetApp, AssetPath, Assets},
+    asset::{AssetApp, AssetPath, Assets},
     ecs::{
         entity::Entity,
         hierarchy::ChildOf,
@@ -55,11 +55,7 @@ impl Plugin for PointCloudPlugin {
         load_shader_library!(app, "assets/shaders/pointcloud_types.wgsl");
         load_shader_library!(app, "assets/shaders/pointcloud_bindings.wgsl");
         load_shader_library!(app, "assets/shaders/pointcloud_functions.wgsl");
-        load_shader_library!(app, "assets/shaders/material_types.wgsl");
-        load_shader_library!(app, "assets/shaders/simple_material_types.wgsl");
-        load_shader_library!(app, "assets/shaders/simple_material_bindings.wgsl");
-        // embedded_asset!(app, "assets/shaders/pointcloud.wgsl");
-        embedded_asset!(app, "assets/shaders/pointcloud_pbr.wgsl");
+
         app.init_asset::<PointCloud>()
             .init_asset::<PointCloudChunk>()
             .register_asset_reflect::<PointCloud>()

@@ -91,7 +91,7 @@ use crate::{
     PrepassPlugin, RenderPointCloudChunkInstances, RenderPointCloudInstances, SetMeshBindGroup,
     SetPointCloudUniformGroup, ShapeMeshes, SimplePointCloudMaterial,
     SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
-    SpecializedShadowMaterialPipelineCache, SplatPipelineKey,
+    SpecializedShadowMaterialPipelineCache, SplatPipelineKey, SplatSettings,
 };
 
 pub const MATERIAL_BIND_GROUP_INDEX: usize = 4;
@@ -822,6 +822,7 @@ pub fn check_entities_needing_specialization<M>(
                 // TODO restore when editing hierarchy don't trigger this
                 // AssetChanged<PointCloud3d>,
                 Changed<PointCloudMaterial3d<M>>,
+                Changed<SplatSettings>,
                 AssetChanged<PointCloudMaterial3d<M>>,
             )>,
             With<PointCloudMaterial3d<M>>,
@@ -907,7 +908,7 @@ pub fn check_entities_needing_specialization<M>(
 
 pub(crate) struct SpecializationWorkItem {
     render_entity: Entity,
-    visible_entity: MainEntity,
+    // visible_entity: MainEntity,
     retained_view_entity: RetainedViewEntity,
     mesh_key: MeshPipelineKey,
     splat_key: SplatPipelineKey,
@@ -1158,7 +1159,7 @@ pub(crate) fn specialize_material_meshes(
                 work_items.push(SpecializationWorkItem {
                     // this point to a PointCloud3d
                     render_entity: *render_entity,
-                    visible_entity: *visible_entity,
+                    // visible_entity: *visible_entity,
                     retained_view_entity: view.retained_view_entity,
                     mesh_key,
                     splat_key: (&render_point_cloud_instance.splat_settings).into(),
@@ -1368,6 +1369,9 @@ pub fn queue_material_meshes(
                     "mesh slab not found for visible entity {:?}",
                     visible_entity
                 );
+                view_pending_mesh_material_queues
+                    .current_frame
+                    .insert((*render_entity, *visible_entity));
                 continue;
             };
 

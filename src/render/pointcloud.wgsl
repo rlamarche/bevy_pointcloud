@@ -1,14 +1,10 @@
-#import bevy_render::view::position_view_to_world;
-
 #import bevy_pbr::{
     mesh_functions,
     view_transformations::position_world_to_view,
 }
 
-#import bevy_pbr::forward_io::VertexOutput;
-
 #import bevy_pointcloud::{
-    forward_io::{ShapeInput, InstanceInput},
+    forward_io::{ShapeInput, InstanceInput, VertexOutput},
     pointcloud_bindings::pointcloud,
     pointcloud_functions,
 }
@@ -48,7 +44,7 @@ fn vertex(
     #ifdef VERTEX_NORMALS
         let normal = vertex.normal;
     #else
-        let normal = pointcloud.default_normal;
+        let normal = pointcloud.default_normal.xyz;
     #endif
 
     // Prepare tangent
@@ -77,10 +73,10 @@ fn vertex(
         out.color = vertex.color;
     #endif
 
-    #ifdef VERTEX_UVS_A
+    #ifdef INSTANCE_UVS_A
         out.uv = vertex.uv;
     #endif
-    #ifdef VERTEX_UVS_B
+    #ifdef INSTANCE_UVS_B
         out.uv_b = vertex.uv_b;
     #endif
 
@@ -106,6 +102,10 @@ fn vertex(
         pos.world_position,
         radius,
     );
+
+    #ifdef SHAPE_UVS_A
+        out.shape_uv = shape.uv;
+    #endif // SHAPE_UVS_A
 
     return out;
 }

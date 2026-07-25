@@ -1,24 +1,30 @@
-use bevy::{app::Plugin, pbr::StandardMaterial, render::render_resource::Face, shader::ShaderRef};
+use bevy::{
+    app::Plugin, asset::embedded_asset, pbr::StandardMaterial, render::render_resource::Face,
+    shader::ShaderRef,
+};
 
 use bevy::pbr::{Material as SourceMaterial, MeshPipelineKey, StandardMaterialKey};
 
-use crate::{Material, MaterialPlugin};
+use crate::{shader_ref, Material, MaterialPlugin};
 
 pub struct StandardPointCloudMaterialPlugin;
 
 impl Plugin for StandardPointCloudMaterialPlugin {
     fn build(&self, app: &mut bevy::app::App) {
+        embedded_asset!(app, "pbr.wgsl");
+        embedded_asset!(app, "pbr_prepass.wgsl");
+
         app.add_plugins(MaterialPlugin::<StandardMaterial>::default());
     }
 }
 
 impl Material for StandardMaterial {
     fn vertex_shader() -> ShaderRef {
-        <StandardMaterial as SourceMaterial>::vertex_shader()
-        // "shaders/pointcloud_pbr.wgsl".into()
+        ShaderRef::Default
     }
     fn fragment_shader() -> ShaderRef {
-        <StandardMaterial as SourceMaterial>::fragment_shader()
+        shader_ref(bevy::asset::embedded_path!("pbr.wgsl"))
+        // "shaders/pbr_dev.wgsl".into()
     }
 
     fn shape_mesh(&self) -> Option<bevy::asset::AssetId<bevy::mesh::Mesh>> {
@@ -50,20 +56,21 @@ impl Material for StandardMaterial {
     }
 
     fn prepass_vertex_shader() -> ShaderRef {
-        // "shaders/prepass.wgsl".into()
-        <StandardMaterial as SourceMaterial>::prepass_vertex_shader()
+        ShaderRef::Default
     }
 
     fn prepass_fragment_shader() -> ShaderRef {
-        <StandardMaterial as SourceMaterial>::prepass_fragment_shader()
+        shader_ref(bevy::asset::embedded_path!("pbr_prepass.wgsl"))
+        // "shaders/pbr_dev_prepass.wgsl".into()
     }
 
     fn deferred_vertex_shader() -> ShaderRef {
-        <StandardMaterial as SourceMaterial>::deferred_vertex_shader()
+        ShaderRef::Default
     }
 
     fn deferred_fragment_shader() -> ShaderRef {
-        <StandardMaterial as SourceMaterial>::deferred_fragment_shader()
+        shader_ref(bevy::asset::embedded_path!("pbr.wgsl"))
+        // "shaders/pbr_dev.wgsl".into()
     }
 
     fn specialize(

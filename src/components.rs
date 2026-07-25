@@ -108,7 +108,6 @@ impl From<&PointCloudChunk3d> for UntypedAssetId {
 }
 
 #[derive(Component, FromTemplate, Clone, Debug, PartialEq, From, Reflect)]
-#[component(immutable)]
 #[require(Transform)]
 #[reflect(Component, PartialEq, Debug, FromWorld, Clone, Default)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
@@ -354,20 +353,6 @@ pub enum PointSizeMode {
     LocalSpace,
 }
 
-impl PointSizeMode {
-    /// Maps the UV mapping mode to its corresponding bits in `SimplePointCloudMaterialKey`.
-    pub fn pipeline_key_bits(&self) -> SimplePointCloudMaterialKey {
-        match self {
-            PointSizeMode::ScreenPixels => SimplePointCloudMaterialKey::POINT_SIZE_SCREEN,
-            PointSizeMode::ScreenPixelsLocal => {
-                SimplePointCloudMaterialKey::POINT_SIZE_SCREEN_LOCAL
-            }
-            PointSizeMode::WorldSpace => SimplePointCloudMaterialKey::POINT_SIZE_WORLD,
-            PointSizeMode::LocalSpace => SimplePointCloudMaterialKey::POINT_SIZE_LOCAL,
-        }
-    }
-}
-
 /// Determines the splat orientation.
 #[derive(FromTemplate, Reflect, Debug, Clone, Default, PartialEq, Eq, Hash)]
 #[reflect(Default, Debug, Clone)]
@@ -402,18 +387,6 @@ pub enum UVMapping {
     ///  * in face normal mode, the U/V projection vectors must match the UV coordinates of the
     ///    splat
     Planar,
-}
-
-impl UVMapping {
-    /// Maps the UV mapping mode to its corresponding bits in `SimplePointCloudMaterialKey`.
-    pub fn pipeline_key_bits(&self) -> SimplePointCloudMaterialKey {
-        match self {
-            Self::Combined => SimplePointCloudMaterialKey::UV_MAPPING_COMBINED,
-            Self::PointCloudOnly => SimplePointCloudMaterialKey::UV_MAPPING_POINT_CLOUD,
-            Self::SplatOnly => SimplePointCloudMaterialKey::UV_MAPPING_POINT_SHAPE,
-            Self::Planar => SimplePointCloudMaterialKey::UV_MAPPING_PLANAR,
-        }
-    }
 }
 
 #[derive(FromTemplate, Reflect, Debug, Clone, Default, PartialEq)]

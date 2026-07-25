@@ -405,6 +405,7 @@ pub fn init_prepass_pipeline(
         view_layout_no_motion_vectors,
         mesh_layouts: mesh_pipeline.mesh_layouts.clone(),
         default_prepass_shader: load_embedded_asset!(asset_server.as_ref(), "prepass.wgsl"),
+        // default_prepass_shader: asset_server.load(AssetPath::from("shaders/prepass_dev.wgsl")),
         skins_use_uniform_buffers: skins_use_uniform_buffers(&render_device.limits()),
         depth_clip_control_supported,
         binding_arrays_are_usable: binding_arrays_are_usable(&render_device, &render_adapter),
@@ -532,6 +533,12 @@ impl PrepassPipeline {
             shape_vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
         }
 
+        if splat_layout.0.contains(Mesh::ATTRIBUTE_UV_0) {
+            shader_defs.push("SHAPE_UVS".into());
+            shader_defs.push("SHAPE_UVS_A".into());
+            shape_vertex_attributes.push(Mesh::ATTRIBUTE_UV_0.at_shader_location(2));
+        }
+
         let vertex_buffer_layout = splat_layout.0.get_layout(&shape_vertex_attributes)?;
 
         // Now the mesh (instances)
@@ -604,14 +611,19 @@ impl PrepassPipeline {
         }
         let unclipped_depth = key.contains(MeshPipelineKey::UNCLIPPED_DEPTH_ORTHO)
             && self.depth_clip_control_supported;
+
+        // we always want an output uv
+        shader_defs.push("VERTEX_UVS_A".into());
+
         if instance_layout.0.contains(Mesh::ATTRIBUTE_UV_0) {
             shader_defs.push("VERTEX_UVS".into());
-            shader_defs.push("VERTEX_UVS_A".into());
+            shader_defs.push("INSTANCE_UVS_A".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_UV_0.at_shader_location(4));
         }
         if instance_layout.0.contains(Mesh::ATTRIBUTE_UV_1) {
             shader_defs.push("VERTEX_UVS".into());
             shader_defs.push("VERTEX_UVS_B".into());
+            shader_defs.push("INSTANCE_UVS_B".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_UV_1.at_shader_location(5));
         }
         if key.contains(MeshPipelineKey::NORMAL_PREPASS) {
@@ -662,13 +674,7 @@ impl PrepassPipeline {
         if key.contains(MeshPipelineKey::VISIBILITY_RANGE_DITHER) {
             shader_defs.push("VISIBILITY_RANGE_DITHER".into());
         }
-        if key.intersects(
-            MeshPipelineKey::NORMAL_PREPASS
-                | MeshPipelineKey::MOTION_VECTOR_PREPASS
-                | MeshPipelineKey::DEFERRED_PREPASS,
-        ) {
-            shader_defs.push("PREPASS_FRAGMENT".into());
-        }
+
         let bind_group = setup_morph_and_skinning_defs(
             &self.mesh_layouts,
             instance_layout,
@@ -686,6 +692,7 @@ impl PrepassPipeline {
         );
 
         let mut instance_buffer_layout = instance_layout.0.get_layout(&vertex_attributes)?;
+
         // don't forget to set step_mode mode to instance
         instance_buffer_layout.step_mode = VertexStepMode::Instance;
 
@@ -707,12 +714,25 @@ impl PrepassPipeline {
         // The fragment shader is only used when the normal prepass or motion vectors prepass
         // is enabled, the material uses alpha cutoff values and doesn't rely on the standard
         // prepass shader, or we are emulating unclipped depth in the fragment shader.
+        // OR we have a splat radius, so we need to discard on fragment.
         let fragment_required = !targets.is_empty()
             || emulate_unclipped_depth
             || (key.contains(MeshPipelineKey::MAY_DISCARD)
                 && material_properties
                     .get_shader(PrepassFragmentShader)
-                    .is_some());
+                    .is_some())
+            || splat_key.contains(SplatPipelineKey::SPLAT_RADIUS);
+
+        // // we always use a fragment shader
+        // let fragment = Some(FragmentState {
+        //     shader: match material_properties.get_shader(PrepassFragmentShader) {
+        //         Some(frag_shader_handle) => frag_shader_handle,
+        //         None => self.default_prepass_shader.clone(),
+        //     },
+        //     shader_defs: shader_defs.clone(),
+        //     targets,
+        //     ..default()
+        // });
 
         let fragment = fragment_required.then(|| {
             // Use the fragment shader from the material

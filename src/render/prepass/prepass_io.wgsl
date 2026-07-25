@@ -17,10 +17,10 @@ struct InstanceInput {
 #ifdef VERTEX_POSITIONS
     @location(3) position: vec3<f32>,
 #endif
-#ifdef VERTEX_UVS
+#ifdef INSTANCE_UVS_A
     @location(4) uv: vec2<f32>,
 #endif
-#ifdef VERTEX_UVS_B
+#ifdef INSTANCE_UVS_B
     @location(5) uv_b: vec2<f32>,
 #endif
 #ifdef VERTEX_NORMALS
@@ -73,25 +73,29 @@ struct VertexOutput {
 #ifdef VISIBILITY_RANGE_DITHER
     @location(9) @interpolate(flat) visibility_range_dither: i32,
 #endif  // VISIBILITY_RANGE_DITHER
+
+#ifdef SHAPE_UVS_A
+    @location(10) shape_uv: vec2<f32>,
+#endif
 }
 
-#ifdef PREPASS_FRAGMENT
-struct FragmentOutput {
-#ifdef NORMAL_PREPASS
-    @location(0) normal: vec4<f32>,
-#endif
+// #ifdef PREPASS_FRAGMENT
+// struct FragmentOutput {
+// #ifdef NORMAL_PREPASS
+//     @location(0) normal: vec4<f32>,
+// #endif
 
-#ifdef MOTION_VECTOR_PREPASS
-    @location(1) motion_vector: vec2<f32>,
-#endif
+// #ifdef MOTION_VECTOR_PREPASS
+//     @location(1) motion_vector: vec2<f32>,
+// #endif
 
-#ifdef DEFERRED_PREPASS
-    @location(2) deferred: vec4<u32>,
-    @location(3) deferred_lighting_pass_id: u32,
-#endif
+// #ifdef DEFERRED_PREPASS
+//     @location(2) deferred: vec4<u32>,
+//     @location(3) deferred_lighting_pass_id: u32,
+// #endif
 
-#ifdef UNCLIPPED_DEPTH_ORTHO_EMULATION
-    @builtin(frag_depth) frag_depth: f32,
-#endif // UNCLIPPED_DEPTH_ORTHO_EMULATION
-}
-#endif //PREPASS_FRAGMENT
+// #ifdef UNCLIPPED_DEPTH_ORTHO_EMULATION
+//     @builtin(frag_depth) frag_depth: f32,
+// #endif // UNCLIPPED_DEPTH_ORTHO_EMULATION
+// }
+// #endif //PREPASS_FRAGMENT

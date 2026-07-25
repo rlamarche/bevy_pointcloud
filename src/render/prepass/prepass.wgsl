@@ -7,10 +7,11 @@
     morph,
     mesh_view_bindings::view,
     view_transformations::position_world_to_view,
+    prepass_io::FragmentOutput,
 }
 
 #import bevy_pointcloud::{
-    prepass_io::{ShapeInput, InstanceInput, VertexOutput, FragmentOutput},
+    prepass_io::{ShapeInput, InstanceInput, VertexOutput},
     functions,
     pointcloud_bindings::pointcloud,
     pointcloud_functions,
@@ -53,7 +54,7 @@ fn vertex(
     #ifdef VERTEX_NORMALS
         let normal = vertex.normal;
     #else
-        let normal = pointcloud.default_normal;
+        let normal = pointcloud.default_normal.xyz;
     #endif
 
     // Prepare tangent
@@ -81,11 +82,11 @@ fn vertex(
     out.position.z = min(out.position.z, 1.0); // Clamp depth to avoid clipping
 #endif // UNCLIPPED_DEPTH_ORTHO_EMULATION
 
-#ifdef VERTEX_UVS_A
+#ifdef INSTANCE_UVS_A
     out.uv = vertex.uv;
 #endif // VERTEX_UVS_A
 
-#ifdef VERTEX_UVS_B
+#ifdef INSTANCE_UVS_B
     out.uv_b = vertex.uv_b;
 #endif // VERTEX_UVS_B
 
@@ -111,12 +112,27 @@ fn vertex(
         vertex_no_morph.instance_index, mesh_world_from_local[3]);
 #endif  // VISIBILITY_RANGE_DITHER
 
+    #ifdef SHAPE_UVS_A
+        out.shape_uv = shape.uv;
+    #endif // SHAPE_UVS_A
+
     return out;
 }
 
 #ifdef PREPASS_FRAGMENT
 @fragment
 fn fragment(in: VertexOutput) -> FragmentOutput {
+#ifdef SHAPE_UVS_A
+    #ifdef SPLAT_RADIUS
+        // Perfect circle
+        let dist = distance(in.shape_uv, vec2<f32>(0.5, 0.5));
+
+        if dist > pointcloud.radius {
+            discard;
+        }
+    #endif // SPLAT_RADIUS
+#endif // SHAPE_UVS_A
+
     var out: FragmentOutput;
 
 #ifdef NORMAL_PREPASS

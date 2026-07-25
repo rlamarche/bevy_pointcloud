@@ -47,7 +47,7 @@ use crate::{
 
 pub(crate) struct ShadowSpecializationWorkItem {
     render_entity: Entity,
-    visible_entity: MainEntity,
+    // visible_entity: MainEntity,
     retained_view_entity: RetainedViewEntity,
     mesh_key: MeshPipelineKey,
     splat_key: SplatPipelineKey,
@@ -306,7 +306,7 @@ pub(crate) fn specialize_shadows(
 
                 work_items.push(ShadowSpecializationWorkItem {
                     render_entity: *render_entity,
-                    visible_entity: *visible_entity,
+                    // visible_entity: *visible_entity,
                     retained_view_entity: extracted_view_light.retained_view_entity,
                     mesh_key,
                     splat_key: (&render_point_cloud_instance.splat_settings).into(),
@@ -539,6 +539,9 @@ pub fn queue_shadows(
                     "mesh slab not found for visible entity {:?} in shadows",
                     visible_entity
                 );
+                view_pending_shadow_queues
+                    .current_frame
+                    .insert((*render_entity, *visible_entity));
                 continue;
             };
 

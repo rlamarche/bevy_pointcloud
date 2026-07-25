@@ -10,7 +10,6 @@
 }
 #import bevy_pointcloud::{
     types,
-    material_types::ColorStop,
     forward_io::{ShapeInput, InstanceInput},
 }
 
@@ -22,75 +21,57 @@ fn clamp_point_size(point_size: f32, min: f32, max: f32) -> f32 {
     return clamp(point_size, min, checked_max);
 }
 
+/// Internal helper computing pixels per world unit, accounting for perspective vs orthographic projection.
+fn get_projection_factor(view_position_z: f32) -> f32 {
+    // In Bevy, clip_from_view[2][3] is -1.0 for Perspective and 0.0 for Orthographic
+    let is_ortho = view.clip_from_view[2][3] == 0.0;
+
+    if (is_ortho) {
+        return (view.viewport.w * view.clip_from_view[1][1]) * 0.5;
+    } else {
+        let depth = max(abs(view_position_z), 0.0001);
+        return (view.viewport.w * view.clip_from_view[1][1]) / (2.0 * depth);
+    }
+}
+
 
 /// Computes the final World-Space quad size for a point configured in Screen-Space (pixels).
 ///
-/// Applies perspective projection to calculate pixel footprint at depth Z,
-/// clamps the resulting size between min and max pixel bounds, and converts
-/// back to world dimensions for quad scaling.
-///
-/// # Parameters
-/// * `view_position`: Vertex position in view/camera space (uses `z` for depth).
-/// * `point_size_px`: Target base size in screen pixels.
-/// * `min_point_size_px`: Minimum allowed screen size in pixels.
-/// * `max_point_size_px`: Maximum allowed screen size in pixels.
-///
-/// # Returns
-/// The World-Space size required for the quad geometry.
+/// Supports both Perspective and Orthographic projections.
 fn compute_screen_space_point_size(
     view_position: vec3<f32>,
     point_size_px: f32,
     min_point_size_px: f32,
     max_point_size_px: f32,
 ) -> f32 {
-    let depth = max(abs(view_position.z), 0.0001);
-    let proj_factor = (view.viewport.w * view.clip_from_view[1][1]) / (2.0 * depth);
+    let proj_factor = get_projection_factor(view_position.z);
 
     if (proj_factor < 0.0001) {
         return 0.0;
     }
 
-    // Always clamp pixel size after projection
     let clamped_px = clamp(point_size_px, min_point_size_px, max_point_size_px);
-
-    // Convert clamped pixels to world space size for quad geometry
     return clamped_px / proj_factor;
 }
 
 /// Computes the final World-Space quad size for a point configured in World-Space units.
 ///
-/// Projects the base world-space size to screen pixels at depth Z,
-/// clamps the pixel footprint between min and max pixel bounds to prevent sub-pixel
-/// disappearance or screen-filling overdraw, and returns the adjusted world-space size.
-///
-/// # Parameters
-/// * `view_position`: Vertex position in view/camera space (uses `z` for depth).
-/// * `point_size_world`: Base world-space size of the point.
-/// * `min_point_size_px`: Minimum allowed screen size in pixels.
-/// * `max_point_size_px`: Maximum allowed screen size in pixels.
-///
-/// # Returns
-/// The adjusted World-Space size for the quad geometry.
+/// Supports both Perspective and Orthographic projections.
 fn compute_world_space_point_size(
     view_position: vec3<f32>,
     point_size_world: f32,
     min_point_size_px: f32,
     max_point_size_px: f32,
 ) -> f32 {
-    let depth = max(abs(view_position.z), 0.0001);
-    let proj_factor = (view.viewport.w * view.clip_from_view[1][1]) / (2.0 * depth);
+    let proj_factor = get_projection_factor(view_position.z);
 
     if (proj_factor < 0.0001) {
         return point_size_world;
     }
 
-    // 1. Project world size to screen pixels at current depth
     let size_px = point_size_world * proj_factor;
-
-    // 2. Always clamp resulting pixel size
     let clamped_px = clamp(size_px, min_point_size_px, max_point_size_px);
 
-    // 3. Convert back to world space size for quad geometry
     return clamped_px / proj_factor;
 }
 
@@ -254,97 +235,4 @@ fn compute_tangent_and_bitangent(
     let bitangent = cross(normal, tangent);
 
     return mat2x3<f32>(tangent, bitangent);
-}
-
-
-
-
-// Function to evaluate the multi-stop gradient based on shaderdefs
-fn evaluate_gradient(base_color: vec4<f32>, end_color: vec4<f32>, color_stops: array<ColorStop, 8>, t: f32) -> vec4<f32> {
-    let factor = clamp(t, 0.0, 1.0);
-
-    #ifdef SIMPLE_MATERIAL_GRADIENT
-        var current_start_color = base_color;
-        var current_start_point = 0.0;
-
-        // Cumulative chain for 8 color stops
-        #ifdef SIMPLE_MATERIAL_COLOR_STOP_1
-            if factor < color_stops[0].point {
-                let local_t = (factor - current_start_point) / (color_stops[0].point - current_start_point);
-                return mix(current_start_color, color_stops[0].color, local_t);
-            }
-            current_start_color = color_stops[0].color;
-            current_start_point = color_stops[0].point;
-        #endif
-
-        #ifdef SIMPLE_MATERIAL_COLOR_STOP_2
-            if factor < color_stops[1].point {
-                let local_t = (factor - current_start_point) / (color_stops[1].point - current_start_point);
-                return mix(current_start_color, color_stops[1].color, local_t);
-            }
-            current_start_color = color_stops[1].color;
-            current_start_point = color_stops[1].point;
-        #endif
-
-        #ifdef SIMPLE_MATERIAL_COLOR_STOP_3
-            if factor < color_stops[2].point {
-                let local_t = (factor - current_start_point) / (color_stops[2].point - current_start_point);
-                return mix(current_start_color, color_stops[2].color, local_t);
-            }
-            current_start_color = color_stops[2].color;
-            current_start_point = color_stops[2].point;
-        #endif
-
-        #ifdef SIMPLE_MATERIAL_COLOR_STOP_4
-            if factor < color_stops[3].point {
-                let local_t = (factor - current_start_point) / (color_stops[3].point - current_start_point);
-                return mix(current_start_color, color_stops[3].color, local_t);
-            }
-            current_start_color = color_stops[3].color;
-            current_start_point = color_stops[3].point;
-        #endif
-
-        #ifdef SIMPLE_MATERIAL_COLOR_STOP_5
-            if factor < color_stops[4].point {
-                let local_t = (factor - current_start_point) / (color_stops[4].point - current_start_point);
-                return mix(current_start_color, color_stops[4].color, local_t);
-            }
-            current_start_color = color_stops[4].color;
-            current_start_point = color_stops[4].point;
-        #endif
-
-        #ifdef SIMPLE_MATERIAL_COLOR_STOP_6
-            if factor < color_stops[5].point {
-                let local_t = (factor - current_start_point) / (color_stops[5].point - current_start_point);
-                return mix(current_start_color, color_stops[5].color, local_t);
-            }
-            current_start_color = color_stops[5].color;
-            current_start_point = color_stops[5].point;
-        #endif
-
-        #ifdef SIMPLE_MATERIAL_COLOR_STOP_7
-            if factor < color_stops[6].point {
-                let local_t = (factor - current_start_point) / (color_stops[6].point - current_start_point);
-                return mix(current_start_color, color_stops[6].color, local_t);
-            }
-            current_start_color = color_stops[6].color;
-            current_start_point = color_stops[6].point;
-        #endif
-
-        #ifdef SIMPLE_MATERIAL_COLOR_STOP_8
-            if factor < color_stops[7].point {
-                let local_t = (factor - current_start_point) / (color_stops[7].point - current_start_point);
-                return mix(current_start_color, color_stops[7].color, local_t);
-            }
-            current_start_color = color_stops[7].color;
-            current_start_point = color_stops[7].point;
-        #endif
-
-        // Final interpolation between the last active stop and end_color
-        let final_t = (factor - current_start_point) / (1.0 - current_start_point);
-        return mix(current_start_color, end_color, final_t);
-
-    #else
-        return base_color;
-    #endif
 }

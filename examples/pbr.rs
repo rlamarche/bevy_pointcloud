@@ -112,14 +112,14 @@ fn setup(mut commands: Commands, mut scattering_mediums: ResMut<Assets<Scatterin
             ..default()
         },
         AtmosphereSettings::default(),
-        Tonemapping::AcesFitted,
+        Tonemapping::None,
         Bloom::NATURAL, // Gives the sun a much more natural look
-        AtmosphereEnvironmentMapLight::default(), /* Enables atmosphere to drive reflections and
-                         * ambient lighting */
-        VolumetricFog {
-            ambient_intensity: 0.0,
-            ..default()
-        },
+        // Enables atmosphere to drive reflections and ambient lighting
+        AtmosphereEnvironmentMapLight::default(),
+        // VolumetricFog {
+        //     ambient_intensity: 0.0,
+        //     ..default()
+        // },
         Msaa::Off,
     ));
 }
@@ -129,7 +129,7 @@ fn setup_sun(mut commands: Commands) {
         DirectionalLight {
             color: Color::WHITE,
             illuminance: light_consts::lux::AMBIENT_DAYLIGHT, // ~10,000 lux
-            shadow_maps_enabled: true,
+            // shadow_maps_enabled: true,
             ..default()
         },
         SunDisk::EARTH,
@@ -160,25 +160,42 @@ fn load_point_cloud(
     let material_handle = materials.add(material);
 
     let point_cloud_handle =
-        point_cloud_server.load::<PointCloudMeshLoader>(Sphere::new(0.5).mesh().ico(16)?);
+        point_cloud_server.load::<PointCloudMeshLoader>(Sphere::new(0.5).mesh().ico(4)?);
 
     commands.spawn((
         PointCloud3d(point_cloud_handle),
         PointCloudMaterial3d(material_handle.clone()),
         Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)),
+        SplatSettings {
+            point_size_mode: PointSizeMode::LocalSpace,
+            point_size: 0.1,
+            orientation: SplatOrientation::FaceNormal,
+            ..default()
+        },
     ));
 
-    commands.spawn((
-        Mesh3d(
-            meshes.add(
-                Plane3d::default()
-                    .mesh()
-                    .size(500.0, 500.0)
-                    .subdivisions(10),
-            ),
-        ),
-        MeshMaterial3d(materials.add(Color::from(SILVER))),
-    ));
+    // let mut material: StandardMaterial = Color::from(RED).into();
+    // material.cull_mode = None;
+    // let material_handle = materials.add(material);
+
+    // commands.spawn((
+    //     Mesh3d(meshes.add(Sphere::new(0.5).mesh().ico(4)?)),
+    //     MeshMaterial3d(material_handle.clone()),
+    //     Transform::from_translation(Vec3::new(1.0, 1.0, 0.0)),
+    // ));
+
+    // commands.spawn((
+    //     Mesh3d(
+    //         meshes.add(
+    //             Plane3d::default()
+    //                 .mesh()
+    //                 .size(500.0, 500.0)
+    //                 .subdivisions(10),
+    //         ),
+    //     ),
+    //     MeshMaterial3d(materials.add(Color::from(SILVER))),
+    //     Transform::from_translation(Vec3::new(0.0, -1.0, 0.0)),
+    // ));
 
     let point_cloud_handle = point_cloud_server.load::<CopcLoader<_>>(FileSource::open(
         "/home/romain/Documents/PointClouds/LidarHD/LHD_FXX_0893_6238_PTS_LAMB93_IGN69.copc.laz",
@@ -191,6 +208,14 @@ fn load_point_cloud(
             CopcPointCloud,
             PointCloud3d(point_cloud_handle),
             PointCloudMaterial3d(material_handle),
+            SplatSettings {
+                point_size_mode: PointSizeMode::LocalSpace,
+                point_size: 1.0,
+                orientation: SplatOrientation::FaceNormal,
+                default_normal: Vec3::new(0.0, 0.0, 1.0),
+
+                ..default()
+            }
         )],
     ));
 

@@ -13,7 +13,7 @@ use bevy::{
     render::render_resource::Face,
     transform::systems::propagate_parent_transforms,
 };
-use bevy_pointcloud::{las::LasLoader, prelude::*, ShapeOrientation, UVTransform};
+use bevy_pointcloud::{las::LasLoader, prelude::*, SplatOrientation, UVTransform};
 
 use crate::utils::draw_gizmos;
 
@@ -126,9 +126,9 @@ fn load_point_cloud(
             shape_radius: Some(0.5),
             point_size_mode: PointSizeMode::ScreenPixelsLocal,
             point_size: 80.0,
-            shape_orientation: ShapeOrientation::FaceNormal,
+            shape_orientation: SplatOrientation::FaceNormal,
             base_color_texture: Some(texture_handle.clone()),
-            uv_mapping: bevy_pointcloud::UVMapping::ShapeOnly,
+            uv_mapping: bevy_pointcloud::UVMapping::SplatOnly,
             uv_transform: Some(UVTransform {
                 offset: Vec2 { x: -0.5, y: -0.5 },
                 scale: Vec2 { x: 2.0, y: 2.0 },
@@ -146,7 +146,7 @@ fn load_point_cloud(
             shape_radius: Some(0.5),
             point_size_mode: PointSizeMode::LocalSpace,
             point_size: 0.1,
-            shape_orientation: ShapeOrientation::Billboard,
+            shape_orientation: SplatOrientation::Billboard,
             base_color_texture: Some(texture_handle.clone()),
             uv_mapping: bevy_pointcloud::UVMapping::Planar,
             uv_u: Vec3::new(0.0, 0.0, -1.0),
@@ -168,7 +168,7 @@ fn load_point_cloud(
             shape_radius: Some(0.5),
             point_size_mode: PointSizeMode::LocalSpace,
             point_size: 0.1,
-            shape_orientation: ShapeOrientation::FaceNormal,
+            shape_orientation: SplatOrientation::FaceNormal,
             base_color_texture: Some(texture_handle.clone()),
             uv_mapping: bevy_pointcloud::UVMapping::Planar,
             uv_u: Vec3::new(0.0, 0.0, -1.0),
@@ -190,7 +190,7 @@ fn load_point_cloud(
             shape_radius: Some(0.5),
             point_size_mode: PointSizeMode::LocalSpace,
             point_size: 0.1,
-            shape_orientation: ShapeOrientation::FaceNormal,
+            shape_orientation: SplatOrientation::FaceNormal,
             base_color_texture: Some(texture_handle.clone()),
             uv_mapping: bevy_pointcloud::UVMapping::Combined,
             uv_transform: Some(UVTransform {
@@ -213,7 +213,7 @@ fn load_point_cloud(
         shape_radius: Some(0.5),
         point_size_mode: PointSizeMode::LocalSpace,
         point_size: 0.04,
-        shape_orientation: ShapeOrientation::FaceNormal,
+        shape_orientation: SplatOrientation::FaceNormal,
         base_color_texture: Some(texture_handle.clone()),
         uv_mapping: bevy_pointcloud::UVMapping::Combined,
         cull_mode: None,
@@ -238,7 +238,7 @@ fn load_point_cloud(
         shape_radius: Some(0.5),
         point_size_mode: PointSizeMode::LocalSpace,
         point_size: 0.04,
-        shape_orientation: ShapeOrientation::Billboard,
+        shape_orientation: SplatOrientation::Billboard,
         base_color_texture: Some(texture_handle.clone()),
         uv_mapping: bevy_pointcloud::UVMapping::Combined,
         cull_mode: Some(Face::Back),
@@ -268,7 +268,7 @@ fn load_point_cloud(
         shape_radius: Some(0.5),
         point_size_mode: PointSizeMode::LocalSpace,
         point_size: 0.04,
-        shape_orientation: ShapeOrientation::Billboard,
+        shape_orientation: SplatOrientation::Billboard,
         base_color_texture: Some(texture_handle.clone()),
         uv_mapping: bevy_pointcloud::UVMapping::Planar,
         cull_mode: Some(Face::Back),

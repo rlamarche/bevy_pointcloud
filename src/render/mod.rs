@@ -16,7 +16,7 @@ mod resources;
 
 use bevy::{
     app::Plugin,
-    asset::{Assets, Handle},
+    asset::{embedded_asset, Assets, Handle},
     ecs::{
         resource::Resource,
         schedule::{IntoScheduleConfigs, SystemSet},
@@ -70,6 +70,8 @@ pub enum PointCloudExtractionSystems {
 
 impl Plugin for RenderPointCloudPlugin {
     fn build(&self, app: &mut bevy::app::App) {
+        embedded_asset!(app, "pointcloud.wgsl");
+
         app.add_plugins(MaterialsPlugin::default()) // TODO add debug flags opt
             .add_plugins(ExtractComponentPlugin::<PointCloud3d>::default())
             .add_plugins(ExtractComponentPlugin::<PointCloudChunk3d>::default())

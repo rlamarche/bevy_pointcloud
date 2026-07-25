@@ -32,6 +32,7 @@ fn setup(mut commands: Commands) {
 fn load_point_cloud(
     mut commands: Commands,
     mut materials: ResMut<Assets<SimplePointCloudMaterial>>,
+    mut pbr_materials: ResMut<Assets<StandardMaterial>>,
     point_cloud_server: Res<PointCloudServer>,
     asset_server: Res<AssetServer>,
 ) -> Result {
@@ -40,40 +41,55 @@ fn load_point_cloud(
         point_cloud_server.load::<PointCloudMeshLoader>(Sphere::new(0.5).mesh().ico(16)?);
     commands.spawn((
         PointCloud3d(point_cloud.clone()),
-        PointCloudMaterial3d(materials.add(SimplePointCloudMaterial {
-            shape_radius: None,
-            base_color: RED.into(),
-            base_color_texture: Some(texture_handle.clone()),
+        SplatSettings {
             point_size_mode: PointSizeMode::WorldSpace,
             point_size: 0.02, // in meters
+            ..default()
+        },
+        PointCloudMaterial3d(materials.add(SimplePointCloudMaterial {
+            base_color: RED.into(),
+            base_color_texture: Some(texture_handle.clone()),
             ..default()
         })),
         Transform::from_translation(Vec3::new(0.0, -1.0, -1.0)),
     ));
 
+    let mut pbr_material: StandardMaterial = Color::from(RED).into();
+    pbr_material.base_color_texture = Some(texture_handle.clone());
+
     commands.spawn((
         PointCloud3d(point_cloud.clone()),
-        PointCloudMaterial3d(materials.add(SimplePointCloudMaterial {
-            shape_radius: None,
-            base_color: RED.into(),
-            base_color_texture: Some(texture_handle.clone()),
+        SplatSettings {
+            orientation: SplatOrientation::FaceNormal,
             point_size_mode: PointSizeMode::LocalSpace,
-            point_size: 0.02, // in meters
+            point_size: 0.025,
+            // min_point_size: Some(10.0),
+            // max_point_size: Some(30.0),
             ..default()
-        })),
+        },
+        // PointCloudMaterial3d(materials.add(SimplePointCloudMaterial {
+        //     shape_radius: None,
+        //     base_color: RED.into(),
+        //     base_color_texture: Some(texture_handle.clone()),
+        //     point_size_mode: PointSizeMode::LocalSpace,
+        //     point_size: 0.02, // in meters
+        //     ..default()
+        // })),
+        PointCloudMaterial3d(pbr_materials.add(pbr_material)),
         Transform::from_translation(Vec3::new(0.0, -1.0, 1.0)),
     ));
 
-
     commands.spawn((
         PointCloud3d(point_cloud.clone()),
+        SplatSettings {
+            point_size_mode: PointSizeMode::WorldSpace,
+            point_size: 0.02, // in meters
+            ..default()
+        },
         PointCloudMaterial3d(materials.add(SimplePointCloudMaterial {
-            shape_radius: None,
             base_color: YELLOW.into(),
             base_color_texture: Some(texture_handle.clone()),
-            point_size_mode: PointSizeMode::ScreenPixels,
-            point_size: 20.0, /* in screen pixels (which fade with distance in perspective
-                               * projection) */
+
             ..default()
         })),
         Transform::from_translation(Vec3::new(0.0, 1.0, -1.0)),
@@ -81,13 +97,16 @@ fn load_point_cloud(
 
     commands.spawn((
         PointCloud3d(point_cloud.clone()),
-        PointCloudMaterial3d(materials.add(SimplePointCloudMaterial {
-            shape_radius: None,
-            base_color: YELLOW.into(),
-            base_color_texture: Some(texture_handle.clone()),
+        SplatSettings {
             point_size_mode: PointSizeMode::ScreenPixelsLocal,
             point_size: 20.0, /* in screen pixels (which fade with distance in perspective
                                * projection) */
+            ..default()
+        },
+        PointCloudMaterial3d(materials.add(SimplePointCloudMaterial {
+            base_color: YELLOW.into(),
+            base_color_texture: Some(texture_handle.clone()),
+
             ..default()
         })),
         Transform::from_translation(Vec3::new(0.0, 1.0, 1.0)),
@@ -110,19 +129,16 @@ fn update_scale(mut point_cloud: Query<&mut Transform, With<PointCloud3d>>, time
 }
 
 fn toggle_material(
-    mut materials: ResMut<Assets<SimplePointCloudMaterial>>,
-    material: Query<&PointCloudMaterial3d<SimplePointCloudMaterial>>,
+    mut splat_settings: Query<&mut SplatSettings>,
     key_input: Res<ButtonInput<KeyCode>>,
 ) {
     if key_input.just_pressed(KeyCode::KeyP) {
-        let material = material.single().unwrap();
+        let mut splat_settings = splat_settings.single_mut().unwrap();
 
-        if let Some(mut material) = materials.get_mut(material) {
-            if material.shape_radius.is_some() {
-                material.shape_radius = None;
-            } else {
-                material.shape_radius = Some(0.50);
-            }
+        if splat_settings.radius.is_some() {
+            splat_settings.radius = None;
+        } else {
+            splat_settings.radius = Some(0.50);
         }
     }
 }
