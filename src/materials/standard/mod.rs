@@ -159,11 +159,6 @@ impl Material for StandardPointCloudMaterial {
     }
     fn fragment_shader() -> ShaderRef {
         shader_ref(bevy::asset::embedded_path!("pbr.wgsl"))
-        // "shaders/pbr_dev.wgsl".into()
-    }
-
-    fn shape_mesh(&self) -> Option<bevy::asset::AssetId<bevy::mesh::Mesh>> {
-        None
     }
 
     fn alpha_mode(&self) -> bevy::material::prelude::AlphaMode {
@@ -351,5 +346,11 @@ impl From<Color> for StandardPointCloudMaterial {
 impl From<Handle<Image>> for StandardPointCloudMaterial {
     fn from(value: Handle<Image>) -> Self {
         Self(value.into())
+    }
+}
+
+impl From<StandardMaterial> for StandardPointCloudMaterial {
+    fn from(value: StandardMaterial) -> Self {
+        Self(value)
     }
 }

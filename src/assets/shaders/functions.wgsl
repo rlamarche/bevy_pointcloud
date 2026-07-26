@@ -21,59 +21,77 @@ fn clamp_point_size(point_size: f32, min: f32, max: f32) -> f32 {
     return clamp(point_size, min, checked_max);
 }
 
-/// Internal helper computing pixels per world unit, accounting for perspective vs orthographic projection.
-fn get_projection_factor(view_position_z: f32) -> f32 {
-    // In Bevy, clip_from_view[2][3] is -1.0 for Perspective and 0.0 for Orthographic
-    let is_ortho = view.clip_from_view[2][3] == 0.0;
 
-    if (is_ortho) {
-        return (view.viewport.w * view.clip_from_view[1][1]) * 0.5;
-    } else {
-        let depth = max(abs(view_position_z), 0.0001);
-        return (view.viewport.w * view.clip_from_view[1][1]) / (2.0 * depth);
-    }
-}
-
-
-/// Computes the final World-Space quad size for a point configured in Screen-Space (pixels).
+/// Computes the final World-Space quad size for a point configured in Screen-Space (pixel) units.
 ///
-/// Supports both Perspective and Orthographic projections.
+/// Projects the base pixel size to world space at the current view depth,
+/// clamps the pixel footprint between min and max pixel bounds to prevent sub-pixel
+/// disappearance or screen-filling overdraw, and returns the adjusted world-space size.
+///
+/// # Parameters
+/// * `view_position`: Vertex position in view/camera space (uses `z` for depth).
+/// * `point_size_px`: Base screen-space size of the point in pixels.
+/// * `min_point_size_px`: Minimum allowed screen size in pixels.
+/// * `max_point_size_px`: Maximum allowed screen size in pixels.
+///
+/// # Returns
+/// The adjusted World-Space size for the quad geometry.
 fn compute_screen_space_point_size(
     view_position: vec3<f32>,
     point_size_px: f32,
     min_point_size_px: f32,
     max_point_size_px: f32,
 ) -> f32 {
-    let proj_factor = get_projection_factor(view_position.z);
+    let f = view.clip_from_view[1][1];
+    let slope = 1.0 / f;
+    let proj_factor = -0.5 * view.viewport[3] / (slope * view_position.z);
+    var radius_screen = (point_size_px / min(view.viewport[2], view.viewport[3])) * proj_factor;
 
-    if (proj_factor < 0.0001) {
-        return 0.0;
-    }
+    radius_screen = clamp(radius_screen, min_point_size_px, max_point_size_px);
 
-    let clamped_px = clamp(point_size_px, min_point_size_px, max_point_size_px);
-    return clamped_px / proj_factor;
+    return radius_screen / proj_factor;
 }
 
 /// Computes the final World-Space quad size for a point configured in World-Space units.
 ///
-/// Supports both Perspective and Orthographic projections.
+/// Projects the base world-space size to screen pixels at depth Z,
+/// clamps the pixel footprint between min and max pixel bounds to prevent sub-pixel
+/// disappearance or screen-filling overdraw, and returns the adjusted world-space size.
+///
+/// # Parameters
+/// * `view_position`: Vertex position in view/camera space (uses `z` for depth).
+/// * `point_size_world`: Base world-space size of the point.
+/// * `min_point_size_px`: Minimum allowed screen size in pixels.
+/// * `max_point_size_px`: Maximum allowed screen size in pixels.
+///
+/// # Returns
+/// The adjusted World-Space size for the quad geometry.
 fn compute_world_space_point_size(
     view_position: vec3<f32>,
     point_size_world: f32,
     min_point_size_px: f32,
     max_point_size_px: f32,
 ) -> f32 {
-    let proj_factor = get_projection_factor(view_position.z);
+    let depth = max(abs(view_position.z), 0.0001);
+    let proj_factor = (view.viewport.w * view.clip_from_view[1][1]) / (2.0 * depth);
 
     if (proj_factor < 0.0001) {
         return point_size_world;
     }
 
+    // 1. Project world size to screen pixels at current depth
     let size_px = point_size_world * proj_factor;
+
+    // 2. Always clamp resulting pixel size
     let clamped_px = clamp(size_px, min_point_size_px, max_point_size_px);
 
+    // 3. Convert back to world space size for quad geometry
     return clamped_px / proj_factor;
 }
+
+
+
+
 
 
 fn srgb_to_rgb_simple(color: vec3<f32>) -> vec3<f32> {
@@ -235,4 +253,52 @@ fn compute_tangent_and_bitangent(
     let bitangent = cross(normal, tangent);
 
     return mat2x3<f32>(tangent, bitangent);
+}
+
+
+
+fn compute_world_vertex_normal_oriented_with_tangent(
+    normal: vec3<f32>,
+    tangent: vec3<f32>,
+    world_from_local: mat4x4<f32>,
+    shape_normal: vec3<f32>,
+) -> vec3<f32> {
+    let N = normalize(normal);
+    let T = normalize(tangent);
+    let B = normalize(cross(N, T));
+
+    let tbn = mat3x3<f32>(T, B, N);
+    let local_normal = tbn * shape_normal;
+
+    let world_rot = mat3x3<f32>(
+        world_from_local[0].xyz,
+        world_from_local[1].xyz,
+        world_from_local[2].xyz
+    );
+
+    return normalize(world_rot * local_normal);
+}
+
+fn compute_world_vertex_normal_oriented(
+    normal: vec3<f32>,
+    world_from_local: mat4x4<f32>,
+    shape_normal: vec3<f32>,
+) -> vec3<f32> {
+    let N = normalize(normal);
+
+    // Choose an axis that is not parallel to N to construct a stable tangent basis
+    let up = select(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), abs(N.z) < 0.999);
+    let T = normalize(cross(up, N));
+    let B = cross(N, T);
+
+    let tbn = mat3x3<f32>(T, B, N);
+    let local_normal = tbn * shape_normal;
+
+    let world_rot = mat3x3<f32>(
+        world_from_local[0].xyz,
+        world_from_local[1].xyz,
+        world_from_local[2].xyz
+    );
+
+    return normalize(world_rot * local_normal);
 }

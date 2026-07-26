@@ -35,7 +35,7 @@ use crate::{
     PointCloudChunk, PointCloudChunk3d, PointCloudTransforms, RenderPointCloudChunkInstance,
     RenderPointCloudChunkInstances, RenderPointCloudInstance, RenderPointCloudInstanceIndex,
     RenderPointCloudInstances, RenderVisiblePointCloudChunkEntity, RenderVisiblePointCloudEntities,
-    SplatSettings, VisiblePointCloudEntities,
+    SplatMeshes, SplatSettings, VisiblePointCloudEntities,
 };
 
 /// This system extracts the visible point cloud chunk entities into the render world while
@@ -168,6 +168,7 @@ pub fn extract_pointcloud_instances(
         )>,
     >,
     point_clouds: Extract<Res<Assets<PointCloud>>>,
+    splat_meshes: Extract<Res<SplatMeshes>>,
 ) {
     entities.par_iter().for_each_init(
         || render_point_cloud_instance_queues.borrow_local_mut(),
@@ -217,6 +218,10 @@ pub fn extract_pointcloud_instances(
                     render_layers: render_layers.cloned(),
                     // TODO put default asset id if not filled
                     splat_settings: point_cloud_splat_settings.clone(),
+                    splat: match &point_cloud_splat_settings.splat {
+                        Some(handle) => handle.id(),
+                        None => splat_meshes.quad_mesh.id(),
+                    },
                 },
             ));
         },

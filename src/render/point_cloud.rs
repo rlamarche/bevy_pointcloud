@@ -60,6 +60,8 @@ pub struct RenderPointCloudInstance {
     pub render_layers: Option<RenderLayers>,
 
     pub splat_settings: SplatSettings,
+
+    pub splat: AssetId<Mesh>,
 }
 
 // #[derive(Component, Clone)]

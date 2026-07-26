@@ -405,7 +405,6 @@ pub fn init_prepass_pipeline(
         view_layout_no_motion_vectors,
         mesh_layouts: mesh_pipeline.mesh_layouts.clone(),
         default_prepass_shader: load_embedded_asset!(asset_server.as_ref(), "prepass.wgsl"),
-        // default_prepass_shader: asset_server.load(AssetPath::from("shaders/prepass_dev.wgsl")),
         skins_use_uniform_buffers: skins_use_uniform_buffers(&render_device.limits()),
         depth_clip_control_supported,
         binding_arrays_are_usable: binding_arrays_are_usable(&render_device, &render_adapter),
@@ -529,10 +528,13 @@ impl PrepassPipeline {
         let mut shape_vertex_attributes = Vec::new();
         if splat_layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
             shader_defs.push("SHAPE_POSITIONS".into());
-            // TODO find the best position
             shape_vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
         }
-
+        if splat_layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
+            shader_defs.push("VERTEX_NORMALS".into());
+            shader_defs.push("SHAPE_NORMALS".into());
+            shape_vertex_attributes.push(Mesh::ATTRIBUTE_NORMAL.at_shader_location(1));
+        }
         if splat_layout.0.contains(Mesh::ATTRIBUTE_UV_0) {
             shader_defs.push("SHAPE_UVS".into());
             shader_defs.push("SHAPE_UVS_A".into());
@@ -633,6 +635,7 @@ impl PrepassPipeline {
         // we always need normal in prepass for splat orientations
         shader_defs.push("NORMAL_PREPASS_OR_DEFERRED_PREPASS".into());
         if instance_layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
+            shader_defs.push("INSTANCE_NORMALS".into());
             shader_defs.push("VERTEX_NORMALS".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_NORMAL.at_shader_location(6));
         }
@@ -1303,7 +1306,7 @@ pub(crate) fn specialize_prepass_material_meshes(
                     }
                 }
 
-                let Some(shape_mesh) = render_meshes.get(material.properties.shape_mesh) else {
+                let Some(shape_mesh) = render_meshes.get(render_point_cloud_instance.splat) else {
                     debug!("shape mesh not found when specialising prepass");
                     view_pending_prepass_mesh_material_queues
                         .current_frame

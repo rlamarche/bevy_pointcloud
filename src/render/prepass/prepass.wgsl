@@ -50,8 +50,17 @@ fn vertex(
         point_view_position
     );
 
-    // Prepare normal (fallback to default)
-    #ifdef VERTEX_NORMALS
+    #ifdef NORMAL_PREPASS_OR_DEFERRED_PREPASS
+        // Get splat normal (fallback to default)
+        #ifdef SHAPE_NORMALS
+            let shape_normal = shape.normal;
+        #else
+            let shape_normal = pointcloud.default_normal.xyz;
+        #endif
+    #endif // NORMAL_PREPASS_OR_DEFERRED_PREPASS
+
+    // Get point normal (fallback to default)
+    #ifdef INSTANCE_NORMALS
         let normal = vertex.normal;
     #else
         let normal = pointcloud.default_normal.xyz;
@@ -65,14 +74,26 @@ fn vertex(
     #endif
 
     // Compute vertex positions
-    let pos = pointcloud_functions::compute_point_vertex_positions(
-        point_world_position,
-        world_from_local,
-        shape.position,
-        radius,
-        normal,
-        tangent,
-    );
+    #ifdef NORMAL_PREPASS_OR_DEFERRED_PREPASS
+        let pos = pointcloud_functions::compute_point_vertex_positions_normal(
+            point_world_position,
+            world_from_local,
+            shape.position,
+            shape_normal,
+            radius,
+            normal,
+            tangent,
+        );
+    #else // NORMAL_PREPASS_OR_DEFERRED_PREPASS
+        let pos = pointcloud_functions::compute_point_vertex_positions(
+            point_world_position,
+            world_from_local,
+            shape.position,
+            radius,
+            normal,
+            tangent,
+        );
+    #endif // NORMAL_PREPASS_OR_DEFERRED_PREPASS
 
     out.position = pos.clip_position;
     out.world_position = vec4<f32>(pos.world_position, 1.0);
@@ -92,7 +113,7 @@ fn vertex(
 
 #ifdef NORMAL_PREPASS_OR_DEFERRED_PREPASS
 #ifdef VERTEX_NORMALS
-    out.world_normal = mesh_functions::mesh_normal_local_to_world(normal, out.instance_index);
+    out.world_normal = pos.world_normal;
 #endif // VERTEX_NORMALS
 
 #ifdef VERTEX_TANGENTS

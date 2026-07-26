@@ -78,9 +78,9 @@ impl Plugin for RenderPointCloudPlugin {
             .add_plugins(ExtractComponentPlugin::<PointCloud3d>::default())
             .add_plugins(ExtractComponentPlugin::<PointCloudChunk3d>::default())
             .add_plugins(ExtractComponentPlugin::<SplatSettings>::default())
-            .add_plugins(ExtractResourcePlugin::<ShapeMeshes>::default())
+            .add_plugins(ExtractResourcePlugin::<SplatMeshes>::default())
             .add_plugins(RenderAssetPlugin::<RenderPointCloudChunk>::default())
-            .init_resource::<ShapeMeshes>();
+            .init_resource::<SplatMeshes>();
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
@@ -143,12 +143,12 @@ impl Plugin for RenderPointCloudPlugin {
 }
 
 #[derive(Resource, Clone)]
-pub struct ShapeMeshes {
+pub struct SplatMeshes {
     pub quad_mesh: Handle<Mesh>,
     pub triangle_mesh: Handle<Mesh>,
 }
 
-impl FromWorld for ShapeMeshes {
+impl FromWorld for SplatMeshes {
     fn from_world(world: &mut World) -> Self {
         let mut meshes = world.resource_mut::<Assets<Mesh>>();
 
@@ -166,7 +166,7 @@ impl FromWorld for ShapeMeshes {
     }
 }
 
-impl ExtractResource for ShapeMeshes {
+impl ExtractResource for SplatMeshes {
     type Source = Self;
 
     fn extract_resource(source: &Self::Source) -> Self {

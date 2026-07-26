@@ -8,11 +8,12 @@ use bevy::{
     color::palettes::css::{GREEN, RED},
     core_pipeline::tonemapping::Tonemapping,
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
+    image::{ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor},
     light::{
         atmosphere::ScatteringMedium, Atmosphere, AtmosphereEnvironmentMapLight,
         CascadeShadowConfigBuilder, SunDisk, VolumetricFog,
     },
-    math::VectorSpace,
+    math::{Affine2, VectorSpace},
     pbr::AtmosphereSettings,
     post_process::bloom::Bloom,
     prelude::*,
@@ -131,20 +132,35 @@ fn setup_sun(mut commands: Commands) {
         Transform::from_rotation(Quat::from_rotation_x(-PI / 4.0)),
         PointCloudVisibilitySettings {
             min_radius: Some(30.0),
-            point_budget: Some(10_000_000),
+            point_budget: Some(1_000_000),
             ..default()
         },
     ));
 }
 
 fn load_point_cloud(
+    asset_server: Res<AssetServer>,
+    mut meshes: ResMut<Assets<Mesh>>,
     mut pc_standard_materials: ResMut<Assets<StandardPointCloudMaterial>>,
     point_cloud_server: Res<PointCloudServer>,
     mut commands: Commands,
 ) -> Result<()> {
-    let mut material: StandardPointCloudMaterial = Color::from(RED).into();
-    material.cull_mode = None;
-    let material_handle = pc_standard_materials.add(material);
+    let texture_handle = asset_server
+        .load_builder()
+        .with_settings(|settings: &mut ImageLoaderSettings| {
+            settings.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+                address_mode_u: ImageAddressMode::Repeat,
+                address_mode_v: ImageAddressMode::Repeat,
+                ..default()
+            });
+        })
+        .load("branding/bevy_icon.png");
+
+    let material_handle = pc_standard_materials.add(StandardMaterial {
+        base_color_texture: Some(texture_handle),
+        cull_mode: None,
+        ..default()
+    });
 
     let point_cloud_handle = point_cloud_server.load::<CopcLoader<_>>(FileSource::open(
         "/home/romain/Documents/PointClouds/LidarHD/LHD_FXX_0893_6238_PTS_LAMB93_IGN69.copc.laz",
@@ -158,11 +174,20 @@ fn load_point_cloud(
             PointCloud3d(point_cloud_handle),
             PointCloudMaterial3d(material_handle),
             SplatSettings {
+                splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
                 point_size_mode: PointSizeMode::LocalSpace,
                 point_size: 0.5,
-                orientation: SplatOrientation::Billboard,
-                // orientation: SplatOrientation::FaceNormal,
-                // default_normal: Vec3::new(0.0, 0.0, 1.0),
+                // orientation: SplatOrientation::Billboard,
+                orientation: SplatOrientation::FaceNormal,
+                default_normal: Vec3::new(0.0, 0.0, 1.0),
+                uv_mapping: UVMapping::Planar,
+                uv_u: Vec3::new(0.0, 1.0, 0.0),
+                uv_v: Vec3::new(1.0, 0.0, 0.0),
+                uv_transform: Affine2::from_scale_angle_translation(
+                    Vec2 { x: 10.0, y: 10.0 },
+                    0.0,
+                    Vec2::ZERO,
+                ),
                 ..default()
             }
         )],

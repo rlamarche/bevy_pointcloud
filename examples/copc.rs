@@ -43,6 +43,7 @@ fn setup(mut commands: Commands) {
 
 fn load_point_cloud(
     mut materials: ResMut<Assets<SimplePointCloudMaterial>>,
+    mut meshes: ResMut<Assets<Mesh>>,
     asset_server: Res<AssetServer>,
     point_cloud_server: Res<PointCloudServer>,
     mut commands: Commands,
@@ -115,7 +116,8 @@ fn load_point_cloud(
             PointCloud3d(point_cloud_handle),
             PointCloudMaterial3d(material_handle),
             SplatSettings {
-                radius: Some(0.5),
+                splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+                // radius: Some(0.5),
                 point_size_mode: PointSizeMode::LocalSpace,
                 point_size: 0.5,
                 uv_mapping: UVMapping::Planar,

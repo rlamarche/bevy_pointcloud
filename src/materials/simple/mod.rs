@@ -4,7 +4,6 @@ use bevy::{
     color::{Color, ColorToComponents, LinearRgba},
     image::Image,
     math::{Affine2, Vec3, Vec4},
-    mesh::Mesh,
     pbr::MeshPipelineKey,
     reflect::{std_traits::ReflectDefault, Reflect},
     render::{
@@ -46,10 +45,6 @@ impl Plugin for SimplePointCloudMaterialPlugin {
 // #[bindless(index_table(range(0..31)))]
 #[reflect(Default, Debug, Clone)]
 pub struct SimplePointCloudMaterial {
-    /// The shape mesh. If `None`, will be a quad or triangle.
-    /// Defaults to `None`.
-    pub shape_mesh: Option<Handle<Mesh>>,
-
     /// The color of the surface of the material before lighting.
     ///
     /// Doubles as diffuse albedo for non-metallic, specular for metallic and a mix for everything
@@ -114,7 +109,6 @@ pub struct SimplePointCloudMaterial {
 impl Default for SimplePointCloudMaterial {
     fn default() -> Self {
         SimplePointCloudMaterial {
-            shape_mesh: None,
             // White because it gets multiplied with texture values if someone uses
             // a texture.
             base_color: Color::WHITE,
@@ -143,9 +137,6 @@ impl Material for SimplePointCloudMaterial {
     fn fragment_shader() -> bevy::shader::ShaderRef {
         shader_ref(bevy::asset::embedded_path!("simple.wgsl"))
         // "shaders/simple_dev.wgsl".into()
-    }
-    fn shape_mesh(&self) -> Option<bevy::asset::AssetId<Mesh>> {
-        self.shape_mesh.as_ref().map(Handle::id)
     }
 
     fn enable_prepass() -> bool {

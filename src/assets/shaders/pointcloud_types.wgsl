@@ -41,3 +41,10 @@ struct PointVertexPositions {
     view_position: vec3<f32>,
     clip_position: vec4<f32>,
 };
+
+struct PointVertexPositionsNormal {
+    world_position: vec3<f32>,
+    view_position: vec3<f32>,
+    clip_position: vec4<f32>,
+    world_normal: vec3<f32>,
+};

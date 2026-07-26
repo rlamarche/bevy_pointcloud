@@ -52,8 +52,6 @@ impl FromWorld for PointCloudPipeline {
 
         Self {
             shader: load_embedded_asset!(asset_server, "pointcloud.wgsl"),
-            // shader: asset_server
-            //     .load("embedded://bevy_pointcloud/assets/shaders/pointcloud_pbr.wgsl"),
             mesh_pipeline: mesh_pipeline.clone(),
             point_cloud_uniform_layout: BindGroupLayoutDescriptor::new(
                 "point_cloud_uniform_layout",
@@ -207,12 +205,11 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
         let mut shape_vertex_attributes = Vec::new();
         if splat_layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
             shader_defs.push("SHAPE_POSITIONS".into());
-            // TODO find the best position
             shape_vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
         }
         if splat_layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
+            shader_defs.push("VERTEX_NORMALS".into());
             shader_defs.push("SHAPE_NORMALS".into());
-            // TODO find the best position
             shape_vertex_attributes.push(Mesh::ATTRIBUTE_NORMAL.at_shader_location(1));
         }
 
@@ -229,17 +226,17 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
 
         if instance_layout.0.contains(Mesh::ATTRIBUTE_POSITION) {
             shader_defs.push("VERTEX_POSITIONS".into());
-            // TODO find the best position
             vertex_attributes.push(Mesh::ATTRIBUTE_POSITION.at_shader_location(3));
         }
 
         if instance_layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
             shader_defs.push("VERTEX_NORMALS".into());
-            // TODO find the best position
+            shader_defs.push("INSTANCE_NORMALS".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_NORMAL.at_shader_location(4));
         }
 
         // we always want an output uv
+        shader_defs.push("VERTEX_UVS".into());
         shader_defs.push("VERTEX_UVS_A".into());
 
         if instance_layout.0.contains(Mesh::ATTRIBUTE_UV_0) {

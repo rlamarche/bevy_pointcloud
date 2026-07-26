@@ -17,7 +17,10 @@
 #import bevy_pointcloud::{
     functions,
     pointcloud_bindings::pointcloud,
-    pointcloud_types::PointVertexPositions,
+    pointcloud_types::{
+        PointVertexPositions,
+        PointVertexPositionsNormal,
+    }
 }
 
 fn get_world_from_local() -> mat4x4<f32> {
@@ -174,6 +177,93 @@ fn compute_point_vertex_positions(
 
     return res;
 }
+
+
+
+
+/// Computes vertex positions (world, view, clip) and world normal from the point center.
+///
+/// Conventions:
+/// - `point_normal`: Surface normal of the point cloud sample in local/world space.
+/// - `shape_normal`: Local normal of the current vertex from the splat geometry (mesh/cube/quad).
+fn compute_point_vertex_positions_normal(
+    point_world_position: vec3<f32>,
+    world_from_local: mat4x4<f32>,
+    shape_position: vec3<f32>,
+    shape_normal: vec3<f32>,
+    radius: f32,
+    normal: vec3<f32>,
+    tangent: vec3<f32>,
+) -> PointVertexPositionsNormal {
+    var res: PointVertexPositionsNormal;
+
+    let point_view_position = position_world_to_view(point_world_position);
+
+    #ifdef SPLAT_ORIENTATION_FACE_NORMAL
+        #ifdef VERTEX_TANGENTS
+            res.world_position =
+                functions::compute_world_vertex_position_oriented_with_tangent(
+                    point_world_position,
+                    normal,
+                    tangent,
+                    world_from_local,
+                    shape_position,
+                    radius
+                );
+
+            // Orient shape local normal using the point TBN frame (Tangent, Bitangent, Normal)
+            // and transform to world space.
+            res.world_normal = functions::compute_world_vertex_normal_oriented_with_tangent(
+                normal,
+                tangent,
+                world_from_local,
+                shape_normal
+            );
+        #else
+            res.world_position =
+                functions::compute_world_vertex_position_oriented(
+                    point_world_position,
+                    normal,
+                    world_from_local,
+                    shape_position,
+                    radius
+                );
+
+            // Orient shape local normal using constructed orthonormal basis from point normal.
+            res.world_normal = functions::compute_world_vertex_normal_oriented(
+                normal,
+                world_from_local,
+                shape_normal
+            );
+        #endif
+
+        res.view_position = position_world_to_view(res.world_position);
+    #else // Billboard mode
+        res.view_position = functions::compute_view_billboard_vertex_position(
+            point_view_position,
+            shape_position,
+            radius
+        );
+
+        res.world_position = position_view_to_world(res.view_position, view.world_from_view);
+
+        // In billboard mode, rotate the shape local normal by the camera's orientation
+        // (view_from_world transpose/inverse) so it stays aligned with the billboard frame.
+        let world_from_view_rotation = mat3x3<f32>(
+            view.world_from_view[0].xyz,
+            view.world_from_view[1].xyz,
+            view.world_from_view[2].xyz
+        );
+        res.world_normal = normalize(world_from_view_rotation * shape_normal);
+    #endif
+
+    res.clip_position = position_view_to_clip(res.view_position);
+
+    return res;
+}
+
+
+
 
 
 

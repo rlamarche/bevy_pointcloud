@@ -9,7 +9,6 @@ use bevy::{
     log::warn,
     pbr::{MeshBindGroups, MeshMorphBindGroupKey, MorphIndices, RenderMeshInstances, SkinUniforms},
     render::{
-        erased_render_asset::ErasedRenderAssets,
         mesh::{allocator::MeshAllocator, RenderMesh, RenderMeshBufferInfo},
         render_asset::RenderAssets,
         render_phase::{
@@ -22,8 +21,8 @@ use bevy::{
 };
 
 use crate::{
-    skins_use_uniform_buffers, PreparedMaterial, PreparedPointCloudUniforms,
-    RenderPointCloudChunkInstances, RenderPointCloudMaterialInstances,
+    skins_use_uniform_buffers, PreparedPointCloudUniforms, RenderPointCloudChunkInstances,
+    RenderPointCloudInstances,
 };
 
 /// A [`RenderCommand`] that sets the pipeline for the [`CachedRenderPipelinePhaseItem`].
@@ -273,11 +272,10 @@ pub struct DrawPointCloudInstanced;
 
 impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
     type Param = (
+        SRes<RenderPointCloudInstances>,
         SRes<RenderPointCloudChunkInstances>,
         SRes<RenderAssets<RenderMesh>>,
         SRes<MeshAllocator>,
-        SRes<ErasedRenderAssets<PreparedMaterial>>,
-        SRes<RenderPointCloudMaterialInstances>,
     );
     type ViewQuery = ();
     type ItemQuery = ();
@@ -287,46 +285,31 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
         _view: (),
         _item_query: Option<()>,
         (
+            render_point_cloud_instances,
             render_point_cloud_chunk_instances,
             meshes,
             mesh_allocator,
-            materials,
-            material_instances,
         ): SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         let mesh_allocator = mesh_allocator.into_inner();
-        let materials = materials.into_inner();
-        let material_instances = material_instances.into_inner();
 
         let Some(chunk_instance) = render_point_cloud_chunk_instances.get(&item.entity()) else {
-            warn!("render_point_cloud_chunk_instance missing 3");
             return RenderCommandResult::Skip;
         };
 
-        let Some(material_instance) = material_instances
-            .instances
-            .get(&chunk_instance.root_entity)
+        let Some(pointcloud_instance) = render_point_cloud_instances.get(&item.main_entity())
         else {
-            warn!(
-                "material_instance not found for entity {:?}",
-                item.main_entity()
-            );
             return RenderCommandResult::Skip;
         };
 
-        let Some(material) = materials.get(material_instance.asset_id) else {
-            warn!("material not found for entity {:?}", item.main_entity());
-            return RenderCommandResult::Skip;
+        let splat_mesh_id = pointcloud_instance.splat;
+
+        let Some(splat_mesh) = meshes.get(splat_mesh_id) else {
+            return RenderCommandResult::Failure("splat mesh missing");
         };
 
-        let shape_mesh_id = material.properties.shape_mesh;
-
-        let Some(shape_mesh) = meshes.get(shape_mesh_id) else {
-            return RenderCommandResult::Failure("quad missing");
-        };
-
-        let Some(quad_vertex_buffer_slice) = mesh_allocator.mesh_vertex_slice(&shape_mesh_id)
+        let Some(quad_vertex_buffer_slice) = mesh_allocator.mesh_vertex_slice(&splat_mesh_id)
         else {
             return RenderCommandResult::Failure("unable to get quad vertex slice");
         };
@@ -344,12 +327,12 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
         pass.set_vertex_buffer(0, quad_vertex_buffer_slice.buffer.slice(..));
         pass.set_vertex_buffer(1, vertex_buffer_slice.buffer.slice(..));
 
-        match &shape_mesh.buffer_info {
+        match &splat_mesh.buffer_info {
             RenderMeshBufferInfo::Indexed {
                 count,
                 index_format,
             } => {
-                let Some(index_buffer_slice) = mesh_allocator.mesh_index_slice(&shape_mesh_id)
+                let Some(index_buffer_slice) = mesh_allocator.mesh_index_slice(&splat_mesh_id)
                 else {
                     warn!("index_buffer_slice slice not found for shape");
                     return RenderCommandResult::Skip;

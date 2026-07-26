@@ -17,7 +17,7 @@ struct InstanceInput {
 #ifdef VERTEX_POSITIONS
     @location(3) position: vec3<f32>,
 #endif
-#ifdef VERTEX_NORMALS
+#ifdef INSTANCE_NORMALS
     @location(4) normal: vec3<f32>,
 #endif
 #ifdef INSTANCE_UVS_A

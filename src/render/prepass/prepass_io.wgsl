@@ -23,7 +23,7 @@ struct InstanceInput {
 #ifdef INSTANCE_UVS_B
     @location(5) uv_b: vec2<f32>,
 #endif
-#ifdef VERTEX_NORMALS
+#ifdef INSTANCE_NORMALS
     @location(6) normal: vec3<f32>,
 #endif
 #ifdef VERTEX_TANGENTS

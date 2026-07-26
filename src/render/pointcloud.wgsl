@@ -40,8 +40,15 @@ fn vertex(
         point_view_position
     );
 
-    // Prepare normal (fallback to default)
-    #ifdef VERTEX_NORMALS
+    // Get splat normal (fallback to default)
+    #ifdef SHAPE_NORMALS
+        let shape_normal = shape.normal;
+    #else
+        let shape_normal = pointcloud.default_normal.xyz;
+    #endif
+
+    // Get point normal (fallback to default)
+    #ifdef INSTANCE_NORMALS
         let normal = vertex.normal;
     #else
         let normal = pointcloud.default_normal.xyz;
@@ -55,10 +62,11 @@ fn vertex(
     #endif
 
     // Compute vertex positions
-    let pos = pointcloud_functions::compute_point_vertex_positions(
+    let pos = pointcloud_functions::compute_point_vertex_positions_normal(
         point_world_position,
         world_from_local,
         shape.position,
+        shape_normal,
         radius,
         normal,
         tangent,
@@ -66,16 +74,12 @@ fn vertex(
 
     out.position = pos.clip_position;
     out.world_position = vec4<f32>(pos.world_position, 1.0);
-    out.world_normal = mesh_functions::mesh_normal_local_to_world(normal, out.instance_index);
-
+    out.world_normal = pos.world_normal;
 
     #ifdef VERTEX_COLORS
         out.color = vertex.color;
     #endif
 
-    #ifdef INSTANCE_UVS_A
-        out.uv = vertex.uv;
-    #endif
     #ifdef INSTANCE_UVS_B
         out.uv_b = vertex.uv_b;
     #endif
@@ -88,7 +92,7 @@ fn vertex(
         );
     #endif
 
-    #ifdef VERTEX_UVS
+    #ifdef INSTANCE_UVS_A
         let vertex_uv = vertex.uv;
     #else
         let vertex_uv = vec2<f32>(0.0);
@@ -97,7 +101,7 @@ fn vertex(
     out.uv = pointcloud_functions::compute_point_uv(
         vertex_uv,
         shape.uv,
-        normal,
+        shape_normal,
         tangent,
         pos.world_position,
         radius,

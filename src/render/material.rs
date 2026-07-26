@@ -32,9 +32,7 @@ use bevy::{
         AlphaMode, OpaqueRendererMethod, RenderPhaseType,
     },
     math::{Affine3, Affine3Ext as _},
-    mesh::{
-        mark_3d_meshes_as_changed_if_their_assets_changed, Mesh, Mesh3d, MeshVertexBufferLayoutRef,
-    },
+    mesh::{mark_3d_meshes_as_changed_if_their_assets_changed, Mesh3d, MeshVertexBufferLayoutRef},
     pbr::{
         alpha_mode_pipeline_key, check_views_lights_need_specialization,
         collect_meshes_for_gpu_building, prepare_lights, set_mesh_motion_vector_flags,
@@ -90,9 +88,9 @@ use crate::{
     PointCloudDirtySpecializations, PointCloudMaterial3d, PointCloudPipeline,
     PointCloudPipelineSystems, PrepassPipeline, PrepassPipelinePlugin, PrepassPipelineSpecializer,
     PrepassPlugin, RenderPointCloudChunkInstances, RenderPointCloudInstances, SetMeshBindGroup,
-    SetPointCloudUniformGroup, ShapeMeshes, SimplePointCloudMaterial,
-    SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
-    SpecializedShadowMaterialPipelineCache, SplatPipelineKey, SplatSettings,
+    SetPointCloudUniformGroup, SimplePointCloudMaterial, SpecializedPointCloudPipeline,
+    SpecializedPointCloudPipelines, SpecializedShadowMaterialPipelineCache, SplatPipelineKey,
+    SplatSettings,
 };
 
 pub const MATERIAL_BIND_GROUP_INDEX: usize = 4;
@@ -115,12 +113,6 @@ pub trait Material: Asset + AsBindGroup + Clone + Sized {
     /// mesh fragment shader will be used.
     fn fragment_shader() -> ShaderRef {
         ShaderRef::Default
-    }
-
-    /// if none, will use a quad
-    #[inline]
-    fn shape_mesh(&self) -> Option<AssetId<Mesh>> {
-        None
     }
 
     /// Returns this material's [`AlphaMode`]. Defaults to [`AlphaMode::Opaque`].
@@ -486,12 +478,12 @@ impl SpecializedPointCloudPipeline for MaterialPipelineSpecializer {
         }
 
         // If bindless mode is on, add a `BINDLESS` define.
-        if self.properties.bindless {
-            descriptor.vertex.shader_defs.push("BINDLESS".into());
-            if let Some(ref mut fragment) = descriptor.fragment {
-                fragment.shader_defs.push("BINDLESS".into());
-            }
-        }
+        // if self.properties.bindless {
+        //     descriptor.vertex.shader_defs.push("BINDLESS".into());
+        //     if let Some(ref mut fragment) = descriptor.fragment {
+        //         fragment.shader_defs.push("BINDLESS".into());
+        //     }
+        // }
 
         Ok(descriptor)
     }
@@ -830,7 +822,6 @@ pub fn check_entities_needing_specialization<M>(
                 Changed<PointCloudMaterial3d<M>>,
                 Changed<SplatSettings>,
                 AssetChanged<PointCloudMaterial3d<M>>,
-                // Added<RenderEntity>,
             )>,
             With<PointCloudMaterial3d<M>>,
         ),
@@ -1131,7 +1122,7 @@ pub(crate) fn specialize_material_meshes(
                     continue;
                 };
 
-                let Some(shape_mesh) = render_meshes.get(material.properties.shape_mesh) else {
+                let Some(splat_mesh) = render_meshes.get(render_point_cloud_instance.splat) else {
                     warn!("shape mesh not found");
                     view_pending_mesh_material_queues
                         .current_frame
@@ -1185,7 +1176,7 @@ pub(crate) fn specialize_material_meshes(
                     retained_view_entity: view.retained_view_entity,
                     mesh_key,
                     splat_key: (&render_point_cloud_instance.splat_settings).into(),
-                    splat_layout: shape_mesh.layout.clone(),
+                    splat_layout: splat_mesh.layout.clone(),
                     instance_layout: mesh.layout.clone(),
                     properties: material.properties.clone(),
                     material_type_id: material_instance.asset_id.type_id(),
@@ -1757,7 +1748,6 @@ where
         SRes<DrawFunctions<AlphaMask3dDeferred>>,
         SRes<DrawFunctions<Shadow>>,
         SRes<AssetServer>,
-        SRes<ShapeMeshes>,
         M::Param,
     );
 
@@ -1780,7 +1770,6 @@ where
             alpha_mask_deferred_draw_functions,
             shadow_draw_functions,
             asset_server,
-            shape_meshes,
             material_param,
         ): &mut SystemParamItem<Self::Param>,
     ) -> Result<Self::ErasedAsset, PrepareAssetError<Self::SourceAsset>> {
@@ -1965,9 +1954,6 @@ where
                 material_key,
                 shadows_enabled,
                 prepass_enabled,
-                shape_mesh: material
-                    .shape_mesh()
-                    .unwrap_or_else(|| shape_meshes.quad_mesh.id()),
             }),
         })
     }
@@ -2098,9 +2084,6 @@ pub struct MaterialProperties {
     /// The key for this material, typically a bitfield of flags that are used to modify
     /// the pipeline descriptor used for this material.
     pub material_key: ErasedMaterialKey,
-
-    /// the mesh instanced by this material
-    pub shape_mesh: AssetId<Mesh>,
 
     /// Whether shadows are enabled for this material
     pub shadows_enabled: bool,

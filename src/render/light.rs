@@ -298,8 +298,8 @@ pub(crate) fn specialize_shadows(
                     _ => MeshPipelineKey::NONE,
                 };
 
-                let Some(shape_mesh) = render_meshes.get(material.properties.shape_mesh) else {
-                    warn!("shape mesh not found");
+                let Some(splat_mesh) = render_meshes.get(render_point_cloud_instance.splat) else {
+                    warn!("splat mesh not found");
                     view_pending_shadow_queues
                         .current_frame
                         .insert((*render_entity, *visible_entity));
@@ -312,7 +312,7 @@ pub(crate) fn specialize_shadows(
                     retained_view_entity: extracted_view_light.retained_view_entity,
                     mesh_key,
                     splat_key: (&render_point_cloud_instance.splat_settings).into(),
-                    splat_layout: shape_mesh.layout.clone(),
+                    splat_layout: splat_mesh.layout.clone(),
                     instance_layout: mesh.layout.clone(),
                     properties: material.properties.clone(),
                     material_type_id: material_instance.asset_id.type_id(),
