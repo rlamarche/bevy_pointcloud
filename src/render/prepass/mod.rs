@@ -6,6 +6,7 @@ use bevy::{
     camera::{Camera, Camera3d},
     core_pipeline::{core_3d::CORE_3D_DEPTH_FORMAT, deferred::*, prepass::*},
     ecs::{
+        entity::EntityHashMap,
         prelude::*,
         system::{
             lifetimeless::{Read, SRes},
@@ -69,13 +70,14 @@ use bevy::{
 use std::{num::NonZero, sync::Arc};
 
 use crate::{
-    init_material_pipeline, init_point_cloud_pipeline, DeferredFragmentShader,
-    DeferredVertexShader, DrawPointCloudInstanced, ErasedMaterialPipelineKey,
-    ErasedSplatPipelineKey, MaterialPipeline, MaterialProperties, PointCloudChunk3d,
-    PointCloudPipeline, PreparedMaterial, PrepassFragmentShader, PrepassVertexShader,
-    RenderPointCloudChunkInstances, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
-    SetMeshBindGroup, SetPointCloudUniformGroup, SpecializedPointCloudPipeline,
-    SpecializedPointCloudPipelines, SplatPipelineKey, MATERIAL_BIND_GROUP_INDEX,
+    init_material_pipeline, init_point_cloud_pipeline, BinnedRenderPhaseExt,
+    DeferredFragmentShader, DeferredVertexShader, DrawPointCloudInstanced,
+    ErasedMaterialPipelineKey, ErasedSplatPipelineKey, MaterialPipeline, MaterialProperties,
+    PointCloudChunk3d, PointCloudDirtySpecializations, PointCloudPipeline, PreparedMaterial,
+    PrepassFragmentShader, PrepassVertexShader, RenderPointCloudChunkInstances,
+    RenderPointCloudInstances, RenderPointCloudMaterialInstances, SetMeshBindGroup,
+    SetPointCloudUniformGroup, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
+    SplatPipelineKey, MATERIAL_BIND_GROUP_INDEX,
 };
 
 /// Sets up everything required to use the prepass pipeline.
@@ -956,7 +958,7 @@ pub struct SpecializedPrepassMaterialPipelineCache {
 pub struct SpecializedPrepassMaterialViewPipelineCache {
     // material entity -> (tick, pipeline_id, draw_function)
     #[deref]
-    map: MainEntityHashMap<(Tick, CachedRenderPipelineId, DrawFunctionId)>,
+    map: EntityHashMap<(Tick, CachedRenderPipelineId, DrawFunctionId)>,
 }
 
 #[derive(Resource, Deref, DerefMut, Default, Clone)]
@@ -1002,6 +1004,8 @@ pub fn check_prepass_views_need_specialization(
 }
 
 pub(crate) struct PrepassSpecializationWorkItem {
+    render_entity: Entity,
+    #[expect(unused, reason = "Useful for debugging.")]
     visible_entity: MainEntity,
     retained_view_entity: RetainedViewEntity,
     mesh_key: MeshPipelineKey,
@@ -1048,7 +1052,7 @@ pub(crate) struct SpecializePrepassSystemParam<'w, 's> {
     specialized_prepass_material_pipeline_cache:
         ResMut<'w, SpecializedPrepassMaterialPipelineCache>,
     pending_prepass_mesh_material_queues: ResMut<'w, PendingPrepassMeshMaterialQueues>,
-    dirty_specializations: Res<'w, DirtySpecializations>,
+    dirty_specializations: Res<'w, PointCloudDirtySpecializations>,
     this_run: SystemChangeTick,
 }
 
@@ -1056,7 +1060,7 @@ pub(crate) fn specialize_prepass_material_meshes(
     world: &mut World,
     state: &mut SystemState<SpecializePrepassSystemParam>,
     mut work_items: Local<Vec<PrepassSpecializationWorkItem>>,
-    mut removals: Local<Vec<(RetainedViewEntity, MainEntity)>>,
+    mut removals: Local<Vec<(RetainedViewEntity, Entity)>>,
     mut all_views: Local<HashSet<RetainedViewEntity, FixedHasher>>,
 ) {
     work_items.clear();
@@ -1108,9 +1112,7 @@ pub(crate) fn specialize_prepass_material_meshes(
 
             all_views.insert(extracted_view.retained_view_entity);
 
-            // we get mesh 3d visible entities because there is one for each chunk
-            let Some(render_visible_mesh_entities) = visible_entities.get::<PointCloudChunk3d>()
-            else {
+            let Some(visible_entities_class) = visible_entities.get::<PointCloudChunk3d>() else {
                 continue;
             };
 
@@ -1138,7 +1140,9 @@ pub(crate) fn specialize_prepass_material_meshes(
                 {
                     specialized_prepass_material_pipeline_cache.clear();
                 } else {
-                    for &renderable_entity in dirty_specializations.iter_to_despecialize() {
+                    for (&renderable_entity, &_main_entity) in
+                        dirty_specializations.iter_to_despecialize()
+                    {
                         specialized_prepass_material_pipeline_cache.remove(&renderable_entity);
                     }
                 }
@@ -1147,13 +1151,13 @@ pub(crate) fn specialize_prepass_material_meshes(
             // Now process all meshes that need to be specialized.
             for (render_entity, visible_entity) in dirty_specializations.iter_to_specialize(
                 extracted_view.retained_view_entity,
-                render_visible_mesh_entities,
+                visible_entities_class,
                 &view_pending_prepass_mesh_material_queues.prev_frame,
             ) {
                 if maybe_specialized_prepass_material_pipeline_cache
                     .as_ref()
                     .is_some_and(|specialized_prepass_material_pipeline_cache| {
-                        specialized_prepass_material_pipeline_cache.contains_key(visible_entity)
+                        specialized_prepass_material_pipeline_cache.contains_key(render_entity)
                     })
                 {
                     continue;
@@ -1214,7 +1218,7 @@ pub(crate) fn specialize_prepass_material_meshes(
                 };
                 if !material.properties.prepass_enabled {
                     // If the material was previously specialized for prepass, remove it
-                    removals.push((extracted_view.retained_view_entity, *visible_entity));
+                    removals.push((extracted_view.retained_view_entity, *render_entity));
                     continue;
                 }
 
@@ -1245,7 +1249,7 @@ pub(crate) fn specialize_prepass_material_meshes(
                     | AlphaMode::Multiply => {
                         // In case this material was previously in a valid alpha_mode, remove it to
                         // stop the queue system from assuming its retained cache to be valid.
-                        removals.push((extracted_view.retained_view_entity, *visible_entity));
+                        removals.push((extracted_view.retained_view_entity, *render_entity));
                         continue;
                     }
                 }
@@ -1254,7 +1258,7 @@ pub(crate) fn specialize_prepass_material_meshes(
                     // No-op: Materials reading from `ViewTransmissionTexture` are not rendered in
                     // the `Opaque3d` phase, and are therefore also excluded
                     // from the prepass much like alpha-blended materials.
-                    removals.push((extracted_view.retained_view_entity, *visible_entity));
+                    removals.push((extracted_view.retained_view_entity, *render_entity));
                     continue;
                 }
 
@@ -1315,6 +1319,7 @@ pub(crate) fn specialize_prepass_material_meshes(
                 };
 
                 work_items.push(PrepassSpecializationWorkItem {
+                    render_entity: *render_entity,
                     visible_entity: *visible_entity,
                     retained_view_entity: extracted_view.retained_view_entity,
                     mesh_key,
@@ -1391,7 +1396,7 @@ pub(crate) fn specialize_prepass_material_meshes(
                     .resource_mut::<SpecializedPrepassMaterialPipelineCache>()
                     .entry(item.retained_view_entity)
                     .or_default()
-                    .insert(item.visible_entity, (this_run, pipeline_id, draw_function));
+                    .insert(item.render_entity, (this_run, pipeline_id, draw_function));
             }
             Err(err) => error!("{}", err),
         }
@@ -1415,8 +1420,8 @@ pub fn queue_prepass_material_meshes(
     render_mesh_instances: Res<RenderMeshInstances>,
     render_materials: Res<ErasedRenderAssets<PreparedMaterial>>,
     render_material_instances: Res<RenderPointCloudMaterialInstances>,
+    render_point_cloud_chunk_instances: Res<RenderPointCloudChunkInstances>,
     mesh_allocator: Res<MeshAllocator>,
-    gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
     mut opaque_prepass_render_phases: ResMut<ViewBinnedRenderPhases<Opaque3dPrepass>>,
     mut alpha_mask_prepass_render_phases: ResMut<ViewBinnedRenderPhases<AlphaMask3dPrepass>>,
     mut opaque_deferred_render_phases: ResMut<ViewBinnedRenderPhases<Opaque3dDeferred>>,
@@ -1424,7 +1429,7 @@ pub fn queue_prepass_material_meshes(
     views: Query<(&ExtractedView, &RenderVisibleEntities)>,
     specialized_material_pipeline_cache: Res<SpecializedPrepassMaterialPipelineCache>,
     mut pending_prepass_mesh_material_queues: ResMut<PendingPrepassMeshMaterialQueues>,
-    dirty_specializations: Res<DirtySpecializations>,
+    dirty_specializations: Res<PointCloudDirtySpecializations>,
 ) {
     for (extracted_view, visible_entities) in &views {
         let (
@@ -1454,7 +1459,7 @@ pub fn queue_prepass_material_meshes(
             continue;
         }
 
-        let Some(render_visible_mesh_entities) = visible_entities.get::<PointCloudChunk3d>() else {
+        let Some(visible_entities_class) = visible_entities.get::<PointCloudChunk3d>() else {
             continue;
         };
 
@@ -1468,33 +1473,61 @@ pub fn queue_prepass_material_meshes(
 
         // First, remove meshes that need to be respecialized, and those that were removed, from the
         // bins.
-        for &main_entity in dirty_specializations.iter_to_dequeue(
-            extracted_view.retained_view_entity,
-            render_visible_mesh_entities,
-        ) {
+        for (render_entity, main_entity) in dirty_specializations
+            .iter_to_dequeue(extracted_view.retained_view_entity, visible_entities_class)
+        {
+            let Some(render_point_cloud_chunk_instance) =
+                render_point_cloud_chunk_instances.get(render_entity)
+            else {
+                warn!(
+                    "RenderPointCloudChunkInstance not found for entity {:?} when removing phase",
+                    main_entity
+                );
+                continue;
+            };
+
             if let Some(ref mut opaque_phase) = opaque_phase {
-                opaque_phase.remove(main_entity);
+                opaque_phase.remove_unbatchable_entity_pair(
+                    render_entity,
+                    &render_point_cloud_chunk_instance.root_entity,
+                );
             }
             if let Some(ref mut alpha_mask_phase) = alpha_mask_phase {
-                alpha_mask_phase.remove(main_entity);
+                alpha_mask_phase.remove_unbatchable_entity_pair(
+                    render_entity,
+                    &render_point_cloud_chunk_instance.root_entity,
+                );
             }
             if let Some(ref mut opaque_deferred_phase) = opaque_deferred_phase {
-                opaque_deferred_phase.remove(main_entity);
+                opaque_deferred_phase.remove(*main_entity);
             }
             if let Some(ref mut alpha_mask_deferred_phase) = alpha_mask_deferred_phase {
-                alpha_mask_deferred_phase.remove(main_entity);
+                alpha_mask_deferred_phase.remove(*main_entity);
             }
         }
 
         // Now iterate through all newly-visible entities and those needing respecialization.
         for (render_entity, visible_entity) in dirty_specializations.iter_to_queue(
             extracted_view.retained_view_entity,
-            render_visible_mesh_entities,
+            visible_entities_class,
             &view_pending_prepass_mesh_material_queues.prev_frame,
         ) {
+            bevy::log::info!("Enqueuing entity {:?}", visible_entity);
             let Some(&(_, pipeline_id, draw_function)) =
-                view_specialized_material_pipeline_cache.get(visible_entity)
+                view_specialized_material_pipeline_cache.get(render_entity)
             else {
+                continue;
+            };
+
+            // our entity is a chunk, we need parent point cloud to get its specialized pipeline
+            // & material
+            let Some(render_point_cloud_chunk_instance) =
+                render_point_cloud_chunk_instances.get(render_entity)
+            else {
+                warn!(
+                    "RenderPointCloudChunkInstance not found for entity {:?} for prepass",
+                    visible_entity
+                );
                 continue;
             };
 
@@ -1502,27 +1535,45 @@ pub fn queue_prepass_material_meshes(
             // fail, it's probably because the relevant asset hasn't loaded yet.
             // In that case, add the entity to the list of pending mesh
             // materials and bail.
-            let Some(material_instance) = render_material_instances.instances.get(visible_entity)
+            let Some(material_instance) = render_material_instances
+                .instances
+                .get(&render_point_cloud_chunk_instance.root_entity)
             else {
+                warn!("material instance not ready, queue for prepass");
                 view_pending_prepass_mesh_material_queues
                     .current_frame
                     .insert((*render_entity, *visible_entity));
                 continue;
             };
-            let Some(mesh_instance) = render_mesh_instances.render_mesh_queue_data(*visible_entity)
+            // get the mesh instance from the root entity
+            let Some(mesh_instance) = render_mesh_instances
+                .render_mesh_queue_data(render_point_cloud_chunk_instance.root_entity)
             else {
+                warn!("mesh instance not ready, queue for prepass");
                 view_pending_prepass_mesh_material_queues
                     .current_frame
                     .insert((*render_entity, *visible_entity));
                 continue;
             };
             let Some(material) = render_materials.get(material_instance.asset_id) else {
+                warn!("material not ready, queue for prepass");
                 view_pending_prepass_mesh_material_queues
                     .current_frame
                     .insert((*render_entity, *visible_entity));
                 continue;
             };
-            let Some(mesh_slabs) = mesh_allocator.mesh_slabs(&mesh_instance.mesh_asset_id()) else {
+
+            // Fetch the slabs that this mesh resides in.
+            let Some(mesh_slabs) =
+                mesh_allocator.mesh_slabs(&render_point_cloud_chunk_instance.mesh_asset_id)
+            else {
+                warn!(
+                    "mesh slab not found for visible entity {:?} for prepass",
+                    visible_entity
+                );
+                view_pending_prepass_mesh_material_queues
+                    .current_frame
+                    .insert((*render_entity, *visible_entity));
                 continue;
             };
 
@@ -1545,12 +1596,14 @@ pub fn queue_prepass_material_meshes(
                             OpaqueNoLightmap3dBinKey {
                                 asset_id: mesh_instance.mesh_asset_id().into(),
                             },
-                            (*render_entity, *visible_entity),
-                            mesh_instance.current_uniform_index,
-                            BinnedRenderPhaseType::mesh(
-                                mesh_instance.should_batch(),
-                                &gpu_preprocessing_support,
+                            (
+                                *render_entity, // use the root entity here to correctly handle
+                                // [`GetFullBatchData::get_binned_index`]
+                                // in binned render phases
+                                render_point_cloud_chunk_instance.root_entity,
                             ),
+                            mesh_instance.current_uniform_index,
+                            BinnedRenderPhaseType::UnbatchableMesh,
                         );
                     } else if let Some(opaque_phase) = opaque_phase.as_mut() {
                         let depth_only_draw_function = material
@@ -1572,12 +1625,14 @@ pub fn queue_prepass_material_meshes(
                             OpaqueNoLightmap3dBinKey {
                                 asset_id: mesh_instance.mesh_asset_id().into(),
                             },
-                            (*render_entity, *visible_entity),
-                            mesh_instance.current_uniform_index,
-                            BinnedRenderPhaseType::mesh(
-                                mesh_instance.should_batch(),
-                                &gpu_preprocessing_support,
+                            (
+                                *render_entity, // use the root entity here to correctly handle
+                                // [`GetFullBatchData::get_binned_index`]
+                                // in binned render phases
+                                render_point_cloud_chunk_instance.root_entity,
                             ),
+                            mesh_instance.current_uniform_index,
+                            BinnedRenderPhaseType::UnbatchableMesh,
                         );
                     }
                 }
@@ -1593,12 +1648,15 @@ pub fn queue_prepass_material_meshes(
                             OpaqueNoLightmap3dBinKey {
                                 asset_id: mesh_instance.mesh_asset_id().into(),
                             },
-                            (*render_entity, *visible_entity),
-                            mesh_instance.current_uniform_index,
-                            BinnedRenderPhaseType::mesh(
-                                mesh_instance.should_batch(),
-                                &gpu_preprocessing_support,
+                            (
+                                *render_entity,
+                                // use the root entity here to correctly handle
+                                // [`GetFullBatchData::get_binned_index`]
+                                // in binned render phases
+                                render_point_cloud_chunk_instance.root_entity,
                             ),
+                            mesh_instance.current_uniform_index,
+                            BinnedRenderPhaseType::UnbatchableMesh,
                         );
                     } else if let Some(alpha_mask_phase) = alpha_mask_phase.as_mut() {
                         alpha_mask_phase.add(
@@ -1611,12 +1669,15 @@ pub fn queue_prepass_material_meshes(
                             OpaqueNoLightmap3dBinKey {
                                 asset_id: mesh_instance.mesh_asset_id().into(),
                             },
-                            (*render_entity, *visible_entity),
-                            mesh_instance.current_uniform_index,
-                            BinnedRenderPhaseType::mesh(
-                                mesh_instance.should_batch(),
-                                &gpu_preprocessing_support,
+                            (
+                                *render_entity,
+                                // use the root entity here to correctly handle
+                                // [`GetFullBatchData::get_binned_index`]
+                                // in binned render phases
+                                render_point_cloud_chunk_instance.root_entity,
                             ),
+                            mesh_instance.current_uniform_index,
+                            BinnedRenderPhaseType::UnbatchableMesh,
                         );
                     }
                 }
