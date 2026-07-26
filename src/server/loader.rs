@@ -27,6 +27,7 @@ pub trait PointCloudLoader: Send + Sync + Sized + 'static {
     /// This method must return a loader from it's source, it will be called asynchronously
     fn from_source(
         source: Self::Source,
+        settings: Self::Settings,
     ) -> impl ConditionalSendFuture<Output = Result<Self, Self::Error>>;
 
     /// This method must load the initial point cloud octree hierarchy in a flat structure.

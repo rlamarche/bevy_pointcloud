@@ -1,9 +1,6 @@
 // mod density;
 
-use std::{
-    collections::{HashSet, VecDeque},
-    sync::Arc,
-};
+use std::{collections::VecDeque, sync::Arc};
 
 use async_lock::RwLock;
 use bevy::{
@@ -11,10 +8,11 @@ use bevy::{
     camera::primitives::Aabb,
     math::DVec3,
     mesh::{Mesh, VertexAttributeValues},
-    platform::collections::HashMap,
+    platform::collections::{HashMap, HashSet},
     prelude::Deref,
 };
 use copc_streaming::{CopcError, CopcStreamingReader, HierarchyEntry, VoxelKey};
+use las::point::Classification;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -51,11 +49,30 @@ impl From<ByteSourceError> for CopcError {
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct CopcLoaderSettings {
-    pub filter_classification: Option<HashSet<u32>>,
+    pub filter_classification: FilterClassification,
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+pub enum FilterClassification {
+    #[default]
+    None,
+    Include(HashSet<u8>),
+    Exclude(HashSet<u8>),
+}
+
+impl FilterClassification {
+    pub fn filter(&self, classification: &Classification) -> bool {
+        match self {
+            FilterClassification::None => true,
+            FilterClassification::Include(hash_set) => hash_set.contains(&classification.as_u8()),
+            FilterClassification::Exclude(hash_set) => !hash_set.contains(&classification.as_u8()),
+        }
+    }
 }
 
 pub struct CopcLoader<S: ByteSource> {
     reader: Arc<RwLock<CopcStreamingReader<CopcByteSource<S>>>>,
+    settings: CopcLoaderSettings,
 }
 
 #[derive(Clone, Debug, Deref)]
@@ -85,12 +102,16 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
     type Error = CopcLoaderError;
     type Settings = CopcLoaderSettings;
 
-    async fn from_source(source: Self::Source) -> Result<Self, Self::Error> {
+    async fn from_source(
+        source: Self::Source,
+        settings: Self::Settings,
+    ) -> Result<Self, Self::Error> {
         let copc_source: CopcByteSource<S> = source.into();
         let reader = CopcStreamingReader::open(copc_source).await?;
 
         Ok(Self {
             reader: Arc::new(RwLock::new(reader)),
+            settings,
         })
     }
 
@@ -193,7 +214,22 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
         // // magic formula from Potree
         // let offset = (density as f32).log2() / 2.0 - 1.5;
 
-        let point_count = node.point_count as usize;
+        let mut point_count = node.point_count as usize;
+
+        // update point count based on the filter
+        if !matches!(
+            self.settings.filter_classification,
+            FilterClassification::None
+        ) {
+            point_count = points
+                .iter()
+                .filter(|point| {
+                    self.settings
+                        .filter_classification
+                        .filter(&point.classification)
+                })
+                .count();
+        }
 
         // allocate data
         let mut positions: Vec<[f32; 3]> = Vec::with_capacity(point_count);
@@ -211,6 +247,15 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
 
         // TODO load more attributes
         for point in points {
+            // filter points based on classification
+            if !self
+                .settings
+                .filter_classification
+                .filter(&point.classification)
+            {
+                continue;
+            }
+
             positions.push([point.x as f32, point.y as f32, point.z as f32]);
 
             if let Some(colors) = maybe_colors.as_mut() {
@@ -275,4 +320,37 @@ fn copc_aabb_to_aabb(value: copc_streaming::Aabb) -> Aabb {
     let max = DVec3::from_array(value.max);
 
     Aabb::from_min_max(min.as_vec3(), max.as_vec3())
+}
+
+/// Extension trait providing access to the raw ASPRS numerical code.
+pub trait ClassificationExt {
+    /// Returns the underlying ASPRS code as a `u8`.
+    fn as_u8(&self) -> u8;
+}
+
+impl ClassificationExt for Classification {
+    fn as_u8(&self) -> u8 {
+        match *self {
+            Classification::CreatedNeverClassified => 0,
+            Classification::Unclassified => 1,
+            Classification::Ground => 2,
+            Classification::LowVegetation => 3,
+            Classification::MediumVegetation => 4,
+            Classification::HighVegetation => 5,
+            Classification::Building => 6,
+            Classification::LowPoint => 7,
+            Classification::ModelKeyPoint => 8,
+            Classification::Water => 9,
+            Classification::Rail => 10,
+            Classification::RoadSurface => 11,
+            // Code 12 (Overlap) is intentionally excluded from the enum by design.
+            Classification::WireGuard => 13,
+            Classification::WireConductor => 14,
+            Classification::TransmissionTower => 15,
+            Classification::WireStructureConnector => 16,
+            Classification::BridgeDeck => 17,
+            Classification::HighNoise => 18,
+            Classification::Reserved(code) | Classification::UserDefinable(code) => code,
+        }
+    }
 }

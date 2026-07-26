@@ -138,14 +138,27 @@ impl FromWorld for PointCloudServer {
 impl PointCloudServer {
     /// Load a point cloud lazily (point cloud content will be loaded on the fly when needed)
     pub fn load<L: PointCloudLoader>(&self, source: L::Source) -> Handle<PointCloud> {
+        self.load_with_settings::<L>(source, |_| {})
+    }
+
+    pub fn load_with_settings<L: PointCloudLoader>(
+        &self,
+        source: L::Source,
+        settings: impl Fn(&mut L::Settings) + Send + Sync + 'static,
+    ) -> Handle<PointCloud> {
+        let mut default_settings = L::Settings::default();
+        settings(&mut default_settings);
+
         let handle = self.data.handle_provider.reserve_handle().typed();
         let owned_handle = handle.clone();
 
         let data = self.data.clone();
 
-        info!("Loading point cloud");
         let task = IoTaskPool::get().spawn(async move {
-            if let Err(err) = data.load_internal::<L>(source, owned_handle).await {
+            if let Err(err) = data
+                .load_internal::<L>(source, default_settings, owned_handle)
+                .await
+            {
                 error!("{}", err);
             }
         });
@@ -217,17 +230,13 @@ impl PointCloudServer {
         Ok(())
     }
 
+    /// TODO: make possible to patch the point count
     fn load_chunk(
         &mut self,
         asset_id: AssetId<PointCloud>,
         asset: &PointCloud,
         node_id: NodeId,
     ) -> Result<(), PointCloudServerError> {
-        // drop the lock on `AssetInfos` before spawning a task that may block on it in
-        // single-threaded
-        #[cfg(any(target_arch = "wasm32", not(feature = "multi_threaded")))]
-        drop(infos);
-
         let hierarchy_node = asset
             .get_node(node_id)
             .ok_or(PointCloudServerError::HierarchyNodeNotFound)?;
@@ -315,9 +324,10 @@ impl PointCloudServerData {
     async fn load_internal<L: PointCloudLoader>(
         &self,
         source: L::Source,
+        settings: L::Settings,
         handle: Handle<PointCloud>,
     ) -> Result<(), BevyError> {
-        let loader = L::from_source(source).await.map_err(Into::into)?;
+        let loader = L::from_source(source, settings).await.map_err(Into::into)?;
 
         let asset_id = handle.id();
 
