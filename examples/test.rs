@@ -40,7 +40,6 @@ fn load_point_cloud(
     // });
 
     let material = pc_materials.add(SimplePointCloudMaterial {
-        point_size: 25.0,
         // base_color_texture: Some(images.add(uv_debug_texture())),
         ..default()
     });
@@ -53,6 +52,12 @@ fn load_point_cloud(
         Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2)),
         // MeshMaterial3d(debug_material.clone()),
         PointCloudMaterial3d(material.clone()),
+        SplatSettings {
+            point_size: 0.025,
+            point_size_mode: PointSizeMode::LocalSpace,
+            radius: Some(0.5),
+            ..default()
+        },
     ));
 
     commands.spawn((
@@ -60,6 +65,12 @@ fn load_point_cloud(
             point_cloud_server.load::<PointCloudMeshLoader>(Sphere::default().mesh().uv(32, 18)),
         ),
         PointCloudMaterial3d(material.clone()),
+        SplatSettings {
+            point_size: 0.025,
+            point_size_mode: PointSizeMode::LocalSpace,
+            radius: Some(0.5),
+            ..default()
+        },
     ));
 
     commands.spawn((
@@ -68,6 +79,12 @@ fn load_point_cloud(
         ),
         Transform::from_translation(Vec3::new(1.0, 0.0, 0.0)),
         PointCloudMaterial3d(material.clone()),
+        SplatSettings {
+            point_size: 0.025,
+            point_size_mode: PointSizeMode::LocalSpace,
+            radius: Some(0.5),
+            ..default()
+        },
     ));
 
     commands.spawn((
@@ -76,6 +93,12 @@ fn load_point_cloud(
         ),
         Transform::from_translation(Vec3::new(2.5, 0.0, 0.0)),
         PointCloudMaterial3d(material.clone()),
+        SplatSettings {
+            point_size: 0.025,
+            point_size_mode: PointSizeMode::LocalSpace,
+            radius: Some(0.5),
+            ..default()
+        },
     ));
 
     Ok(())

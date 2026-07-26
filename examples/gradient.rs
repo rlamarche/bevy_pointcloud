@@ -79,7 +79,6 @@ fn load_point_cloud(
             gradient_direction: Some(Vec3::new(0.0, 1.0, 0.0)),
             gradient_start: Some(-0.5),
             gradient_end: Some(0.5),
-            point_size: 0.025,
             ..default()
         })),
         SplatSettings {

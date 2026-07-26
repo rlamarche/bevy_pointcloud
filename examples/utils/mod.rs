@@ -1,8 +1,5 @@
 use bevy::{color::palettes::css::RED, prelude::*};
-use bevy_pointcloud::{VisiblePointCloudEntities, prelude::*};
-
-
-
+use bevy_pointcloud::{prelude::*, VisiblePointCloudEntities};
 
 pub fn draw_gizmos(
     point_clouds: Res<Assets<PointCloud>>,
@@ -12,10 +9,8 @@ pub fn draw_gizmos(
 ) {
     // for each view
     for visible_point_cloud_entities in visible_point_cloud_entities {
-
         // for each visible point cloud in this view
         for (entity, visible_point_cloud_entity) in &visible_point_cloud_entities.entities {
-
             let Ok(global_transform) = entities.get(*entity) else {
                 continue;
             };

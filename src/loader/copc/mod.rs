@@ -1,6 +1,9 @@
-mod density;
+// mod density;
 
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::{HashSet, VecDeque},
+    sync::Arc,
+};
 
 use async_lock::RwLock;
 use bevy::{
@@ -12,6 +15,7 @@ use bevy::{
     prelude::Deref,
 };
 use copc_streaming::{CopcError, CopcStreamingReader, HierarchyEntry, VoxelKey};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
@@ -45,9 +49,10 @@ impl From<ByteSourceError> for CopcError {
     }
 }
 
-#[derive(Default)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
-pub struct CopcLoaderSettings {}
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+pub struct CopcLoaderSettings {
+    pub filter_classification: Option<HashSet<u32>>,
+}
 
 pub struct CopcLoader<S: ByteSource> {
     reader: Arc<RwLock<CopcStreamingReader<CopcByteSource<S>>>>,
@@ -78,6 +83,7 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
     type Source = S;
     type Hierarchy = CopcHierarchy;
     type Error = CopcLoaderError;
+    type Settings = CopcLoaderSettings;
 
     async fn from_source(source: Self::Source) -> Result<Self, Self::Error> {
         let copc_source: CopcByteSource<S> = source.into();

@@ -6,7 +6,6 @@ pub struct UiState {
     pub dragging: bool,
 }
 
-
 /// Shared render / visibility settings mirrored into the UI sliders.
 #[derive(Resource)]
 pub struct UiSettings {

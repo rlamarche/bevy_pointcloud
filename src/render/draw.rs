@@ -13,8 +13,10 @@ use bevy::{
         mesh::{allocator::MeshAllocator, RenderMesh, RenderMeshBufferInfo},
         render_asset::RenderAssets,
         render_phase::{
-            PhaseItem, PhaseItemExtraIndex, RenderCommand, RenderCommandResult, TrackedRenderPass,
+            CachedRenderPipelinePhaseItem, PhaseItem, PhaseItemExtraIndex, RenderCommand,
+            RenderCommandResult, TrackedRenderPass,
         },
+        render_resource::PipelineCache,
         renderer::RenderDevice,
     },
 };
@@ -23,6 +25,33 @@ use crate::{
     skins_use_uniform_buffers, PreparedMaterial, PreparedPointCloudUniforms,
     RenderPointCloudChunkInstances, RenderPointCloudMaterialInstances,
 };
+
+/// A [`RenderCommand`] that sets the pipeline for the [`CachedRenderPipelinePhaseItem`].
+pub struct MySetItemPipeline;
+
+impl<P: CachedRenderPipelinePhaseItem> RenderCommand<P> for MySetItemPipeline {
+    type Param = SRes<PipelineCache>;
+    type ViewQuery = ();
+    type ItemQuery = ();
+    #[inline]
+    fn render<'w>(
+        item: &P,
+        _view: (),
+        _entity: Option<()>,
+        pipeline_cache: SystemParamItem<'w, '_, Self::Param>,
+        pass: &mut TrackedRenderPass<'w>,
+    ) -> RenderCommandResult {
+        if let Some(pipeline) = pipeline_cache
+            .into_inner()
+            .get_render_pipeline(item.cached_pipeline())
+        {
+            pass.set_render_pipeline(pipeline);
+            RenderCommandResult::Success
+        } else {
+            RenderCommandResult::Skip
+        }
+    }
+}
 
 /// Same as [`bevy::pbr::SetMeshBindGroup`] but use root point cloud mesh.
 pub struct SetMeshBindGroup<const I: usize>;
@@ -236,7 +265,6 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudUniformGrou
         };
 
         pass.set_bind_group(I, &prepared_point_cloud_uniform.bind_group, &[]);
-
         RenderCommandResult::Success
     }
 }

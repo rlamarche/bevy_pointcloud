@@ -5,6 +5,7 @@ mod extract;
 mod key;
 mod light;
 mod material;
+// mod material_bind_groups;
 mod phase;
 mod pipeline;
 mod pipeline_specializer;
@@ -44,6 +45,7 @@ pub use extract::*;
 pub use key::*;
 pub use light::*;
 pub use material::*;
+// pub use material_bind_groups::*;
 pub use phase::*;
 pub use pipeline::*;
 pub use pipeline_specializer::*;
@@ -103,7 +105,10 @@ impl Plugin for RenderPointCloudPlugin {
             .init_resource::<PendingPointCloudPhaseItemQueues>()
             .add_systems(
                 RenderStartup,
-                init_point_cloud_pipeline.in_set(PointCloudPipelineSystems),
+                (
+                    init_point_cloud_pipeline.in_set(PointCloudPipelineSystems),
+                    // init_fallback_bindless_resources,
+                ),
             )
             .add_systems(
                 ExtractSchedule,
@@ -121,7 +126,12 @@ impl Plugin for RenderPointCloudPlugin {
             )
             .add_systems(
                 Render,
-                prepare_point_cloud_uniforms.in_set(RenderSystems::PrepareBindGroups),
+                (
+                    prepare_point_cloud_uniforms.in_set(RenderSystems::PrepareBindGroups),
+                    check_views_need_specialization
+                        .after(RenderSystems::PrepareAssets)
+                        .before(RenderSystems::Specialize),
+                ),
             )
             .init_gpu_resource::<RenderMaterialBindings>()
             .allow_ambiguous_resource::<RenderMaterialBindings>();

@@ -2,9 +2,16 @@ use std::collections::VecDeque;
 
 use bevy::{
     feathers::{
-        controls::{FeathersCheckbox, FeathersSlider}, theme::{ThemeBackgroundColor, ThemedText}, tokens,
-    }, log::info, picking::prelude::*, prelude::*, ui::Checked, ui_widgets::{
-        SliderPrecision, SliderStep, ValueChange, checkbox_self_update, observe, slider_self_update,
+        controls::{FeathersCheckbox, FeathersSlider},
+        theme::{ThemeBackgroundColor, ThemedText},
+        tokens,
+    },
+    log::info,
+    picking::prelude::*,
+    prelude::*,
+    ui::Checked,
+    ui_widgets::{
+        checkbox_self_update, observe, slider_self_update, SliderPrecision, SliderStep, ValueChange,
     },
 };
 

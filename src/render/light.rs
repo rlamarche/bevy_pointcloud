@@ -39,10 +39,10 @@ use bevy::{
 };
 
 use crate::{
-    BinnedRenderPhaseExt, DirtySpecializations, ErasedMaterialPipelineKey, ErasedSplatPipelineKey,
-    MaterialProperties, PointCloudChunk3d, PreparedMaterial, RenderPointCloudChunkInstances,
-    RenderPointCloudInstances, RenderPointCloudMaterialInstances, ShadowsDepthOnlyDrawFunction,
-    ShadowsDrawFunction, SplatPipelineKey,
+    BinnedRenderPhaseExt, ErasedMaterialPipelineKey, ErasedSplatPipelineKey, MaterialProperties,
+    PointCloudChunk3d, PointCloudDirtySpecializations, PreparedMaterial,
+    RenderPointCloudChunkInstances, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
+    ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction, SplatPipelineKey,
 };
 
 pub(crate) struct ShadowSpecializationWorkItem {
@@ -92,7 +92,7 @@ pub(crate) struct SpecializeShadowsSystemParam<'w, 's> {
     light_key_cache: Res<'w, LightKeyCache>,
     specialized_shadow_material_pipeline_cache: ResMut<'w, SpecializedShadowMaterialPipelineCache>,
     pending_shadow_queues: ResMut<'w, PendingShadowQueues>,
-    dirty_specializations: Res<'w, DirtySpecializations>,
+    dirty_specializations: Res<'w, PointCloudDirtySpecializations>,
 }
 
 pub(crate) fn specialize_shadows(
@@ -153,7 +153,9 @@ pub(crate) fn specialize_shadows(
                 {
                     specialized_shadow_material_pipeline_cache.clear();
                 } else {
-                    for &renderable_entity in dirty_specializations.iter_to_despecialize() {
+                    for (&renderable_entity, &_main_entity) in
+                        dirty_specializations.iter_to_despecialize()
+                    {
                         specialized_shadow_material_pipeline_cache.remove(&renderable_entity);
                     }
                 }
@@ -395,7 +397,7 @@ pub fn queue_shadows(
     shadow_map_visible_entities_query: Query<&RenderShadowMapVisibleEntities>,
     specialized_material_pipeline_cache: Res<SpecializedShadowMaterialPipelineCache>,
     mut pending_shadow_queues: ResMut<PendingShadowQueues>,
-    dirty_specializations: Res<DirtySpecializations>,
+    dirty_specializations: Res<PointCloudDirtySpecializations>,
 ) {
     for (light_entity, extracted_view_light, maybe_view_render_layers) in &view_light_entities {
         let Some(shadow_phase) =

@@ -1,20 +1,17 @@
 #![expect(missing_docs, reason = "Not all docs are written yet.")]
-mod ui;
-
 use std::{f32::consts::PI, ops::Mul};
 
 use bevy::{
     camera::primitives::Aabb,
     camera_controller::free_camera::{FreeCamera, FreeCameraPlugin},
     color::palettes::css::RED,
-    feathers::{dark_theme::create_dark_theme, theme::UiTheme, FeathersPlugins},
+    feathers::FeathersPlugins,
     image::{ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor},
+    math::Affine2,
     prelude::*,
     transform::systems::propagate_parent_transforms,
 };
-use bevy_pointcloud::{ColorStop, CopcLoader, UVTransform, VisiblePointCloudEntities, prelude::*};
-
-use crate::ui::MyUiPlugin;
+use bevy_pointcloud::{prelude::*, ColorStop, CopcLoader, VisiblePointCloudEntities};
 
 fn main() {
     App::new()
@@ -38,7 +35,7 @@ fn setup(mut commands: Commands) {
         Transform::from_xyz(1.0, 0.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
         FreeCamera::default(),
         PointCloudVisibilitySettings {
-            max_depth: Some(5),
+            max_depth: Some(3),
             ..default()
         },
     ));
@@ -67,22 +64,10 @@ fn load_point_cloud(
         .load("branding/bevy_icon.png");
 
     let material_handle = materials.add(SimplePointCloudMaterial {
-        shape_radius: Some(0.5),
-        point_size_mode: PointSizeMode::LocalSpace,
-        point_size: 0.5,
         // min_point_size: Some(2.0),
         // max_point_size: Some(50.0),
         base_color: Color::srgb(0.0, 0.2, 0.4), // Deep Blue
         base_color_texture: Some(texture_handle.clone()),
-        uv_mapping: bevy_pointcloud::UVMapping::Planar,
-        uv_u: Vec3::new(1.0, 0.0, 0.0),
-        uv_v: Vec3::new(0.0, 1.0, 0.0),
-        uv_transform: Some(UVTransform {
-            // offset: Vec2 { x: -0.5, y: -0.5 },
-            scale: Vec2 { x: 10.0, y: 10.0 },
-            rotation: PI / 2.0,
-            ..default()
-        }),
         color_stops: vec![
             ColorStop {
                 color: Color::srgb(0.0, 0.5, 0.7),
@@ -129,6 +114,26 @@ fn load_point_cloud(
         children![(
             PointCloud3d(point_cloud_handle),
             PointCloudMaterial3d(material_handle),
+            SplatSettings {
+                radius: Some(0.5),
+                point_size_mode: PointSizeMode::LocalSpace,
+                point_size: 0.5,
+                uv_mapping: UVMapping::Planar,
+                uv_u: Vec3::new(1.0, 0.0, 0.0),
+                uv_v: Vec3::new(0.0, 1.0, 0.0),
+                uv_transform: Affine2::from_scale_angle_translation(
+                    Vec2 { x: 10.0, y: 10.0 },
+                    PI / 2.0,
+                    Vec2::ZERO,
+                ),
+                // uv_transform: Some(UVTransform {
+                //     // offset: Vec2 { x: -0.5, y: -0.5 },
+                //     scale: Vec2 { x: 10.0, y: 10.0 },
+                //     rotation: PI / 2.0,
+                //     ..default()
+                // }),
+                ..default()
+            }
         )],
     ));
 
@@ -144,10 +149,10 @@ fn setup_point_cloud(
         ),
         (With<PointCloud3d>, Added<Aabb>),
     >,
-    mut materials: ResMut<Assets<SimplePointCloudMaterial>>,
+    mut _materials: ResMut<Assets<SimplePointCloudMaterial>>,
     mut commands: Commands,
 ) {
-    for (entity, aabb, material) in loaded_point_clouds {
+    for (entity, aabb, _material) in loaded_point_clouds {
         let center = aabb.center;
         commands
             .entity(entity)

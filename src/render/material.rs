@@ -84,9 +84,10 @@ use std::sync::Arc;
 
 use crate::{
     clear_dirty_specializations, expire_specializations_for_views, queue_shadows,
-    specialize_shadows, BinnedRenderPhaseExt, DirtySpecializations, DrawDepthOnlyPrepass,
+    specialize_shadows, BinnedRenderPhaseExt, ChildChunkOf, DrawDepthOnlyPrepass,
     DrawPointCloudInstanced, DrawPrepass, ErasedSplatPipelineKey, GlobalVisiblePointCloudChunks,
-    PendingShadowQueues, PointCloud3d, PointCloudChunk3d, PointCloudMaterial3d, PointCloudPipeline,
+    MySetItemPipeline, PendingShadowQueues, PointCloud3d, PointCloudChunk3d,
+    PointCloudDirtySpecializations, PointCloudMaterial3d, PointCloudPipeline,
     PointCloudPipelineSystems, PrepassPipeline, PrepassPipelinePlugin, PrepassPipelineSpecializer,
     PrepassPlugin, RenderPointCloudChunkInstances, RenderPointCloudInstances, SetMeshBindGroup,
     SetPointCloudUniformGroup, ShapeMeshes, SimplePointCloudMaterial,
@@ -229,7 +230,7 @@ impl Plugin for MaterialsPlugin {
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 // From camera
-                .init_resource::<DirtySpecializations>()
+                .init_resource::<PointCloudDirtySpecializations>()
                 .configure_sets(
                     ExtractSchedule,
                     (
@@ -250,15 +251,15 @@ impl Plugin for MaterialsPlugin {
                     ),
                 )
                 // End camera
-                .init_gpu_resource::<SpecializedMaterialPipelineCache>()
+                .init_gpu_resource::<SpecializedPointCloudMaterialPipelineCache>()
                 .init_gpu_resource::<SpecializedPointCloudPipelines<MaterialPipelineSpecializer>>()
                 // .init_gpu_resource::<LightKeyCache>()
                 .init_gpu_resource::<SpecializedShadowMaterialPipelineCache>()
                 // .init_resource::<DrawFunctions<Shadow>>()
                 .init_resource::<RenderPointCloudMaterialInstances>()
                 .allow_ambiguous_resource::<RenderPointCloudMaterialInstances>()
-                // .init_resource::<MaterialBindGroupAllocators>()
-                // .allow_ambiguous_resource::<MaterialBindGroupAllocators>()
+                .init_resource::<MaterialBindGroupAllocators>()
+                .allow_ambiguous_resource::<MaterialBindGroupAllocators>()
                 .init_gpu_resource::<PendingMeshMaterialQueues>()
                 .allow_ambiguous_resource::<PendingMeshMaterialQueues>()
                 .init_gpu_resource::<PendingShadowQueues>()
@@ -383,18 +384,21 @@ fn add_material_bind_group_allocator<M: Material>(
     render_device: Res<RenderDevice>,
     mut bind_group_allocators: ResMut<MaterialBindGroupAllocators>,
 ) {
-    bind_group_allocators.insert(
-        TypeId::of::<M>(),
-        MaterialBindGroupAllocator::new(
-            &render_device,
-            M::label(),
-            material_uses_bindless_resources::<M>(&render_device)
-                .then(|| M::bindless_descriptor())
-                .flatten(),
-            M::bind_group_layout_descriptor(&render_device),
-            M::bindless_slot_count(),
-        ),
-    );
+    // do not erase an existing bind group allocator
+    if !bind_group_allocators.contains_key(&TypeId::of::<M>()) {
+        bind_group_allocators.insert(
+            TypeId::of::<M>(),
+            MaterialBindGroupAllocator::new(
+                &render_device,
+                M::label(),
+                material_uses_bindless_resources::<M>(&render_device)
+                    .then(|| M::bindless_descriptor())
+                    .flatten(),
+                M::bind_group_layout_descriptor(&render_device),
+                M::bindless_slot_count(),
+            ),
+        );
+    }
 }
 
 // /// A dummy [`AssetId`] that we use as a placeholder whenever a mesh doesn't
@@ -500,7 +504,7 @@ pub fn init_material_pipeline(mut commands: Commands, mesh_pipeline: Res<PointCl
 }
 
 pub type DrawMaterial = (
-    SetItemPipeline,
+    MySetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetMeshViewBindingArrayBindGroup<1>,
     SetMeshBindGroup<2>,
@@ -561,6 +565,7 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetMaterialBindGroup<I> 
 
             return RenderCommandResult::Skip;
         };
+        // info!("Material: {:?}", material.binding);
         let Some(material_bind_group) = material_bind_group_allocator.get(material.binding.group)
         else {
             info!("missing material 4");
@@ -573,6 +578,7 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetMaterialBindGroup<I> 
             return RenderCommandResult::Skip;
         };
         pass.set_bind_group(I, bind_group, &[]);
+
         RenderCommandResult::Success
     }
 }
@@ -730,7 +736,7 @@ pub fn late_sweep_material_instances(
 pub fn extract_entities_needs_specialization<M>(
     entities_needing_specialization: Extract<Res<EntitiesNeedingSpecialization<M>>>,
     mapper: Extract<Query<&RenderEntity>>,
-    mut dirty_specializations: ResMut<DirtySpecializations>,
+    mut dirty_specializations: ResMut<PointCloudDirtySpecializations>,
 ) where
     M: Material,
 {
@@ -753,7 +759,7 @@ pub fn extract_entities_needs_specialization<M>(
 pub fn extract_entities_that_need_specializations_removed<M>(
     entities_needing_specialization: Extract<Res<EntitiesNeedingSpecialization<M>>>,
     mapper: Extract<Query<&RenderEntity>>,
-    mut dirty_specializations: ResMut<DirtySpecializations>,
+    mut dirty_specializations: ResMut<PointCloudDirtySpecializations>,
 ) where
     M: Material,
 {
@@ -796,16 +802,16 @@ impl<M> Default for EntitiesNeedingSpecialization<M> {
 
 /// Stores the [`SpecializedMaterialViewPipelineCache`] for each view.
 #[derive(Resource, Deref, DerefMut, Default)]
-pub struct SpecializedMaterialPipelineCache {
+pub struct SpecializedPointCloudMaterialPipelineCache {
     // view entity -> view pipeline cache
     #[deref]
-    map: HashMap<RetainedViewEntity, SpecializedMaterialViewPipelineCache>,
+    map: HashMap<RetainedViewEntity, SpecializedPointCloudMaterialViewPipelineCache>,
 }
 
 /// Stores the cached render pipeline ID for each entity in a single view, as
 /// well as the last time it was changed.
 #[derive(Deref, DerefMut, Default)]
-pub struct SpecializedMaterialViewPipelineCache {
+pub struct SpecializedPointCloudMaterialViewPipelineCache {
     // material entity -> (tick, pipeline_id)
     #[deref]
     map: EntityHashMap<CachedRenderPipelineId>,
@@ -824,6 +830,7 @@ pub fn check_entities_needing_specialization<M>(
                 Changed<PointCloudMaterial3d<M>>,
                 Changed<SplatSettings>,
                 AssetChanged<PointCloudMaterial3d<M>>,
+                // Added<RenderEntity>,
             )>,
             With<PointCloudMaterial3d<M>>,
         ),
@@ -834,18 +841,20 @@ pub fn check_entities_needing_specialization<M>(
             Or<(
                 Changed<PointCloudChunk3d>,
                 AssetChanged<PointCloudChunk3d>,
+                Changed<Mesh3d>,
                 AssetChanged<Mesh3d>,
             )>,
-            // With<PointCloudMaterial3d<M>>,
+            (With<ChildChunkOf>, With<PointCloudChunk3d>),
         ),
     >,
     global_visible_point_cloud_chunks: Res<GlobalVisiblePointCloudChunks>,
     mut par_local: Local<Parallel<Vec<Entity>>>,
     mut entities_needing_specialization: ResMut<EntitiesNeedingSpecialization<M>>,
-    mut removed_mesh_3d_components: RemovedComponents<PointCloud3d>,
+    mut removed_point_cloud_3d_components: RemovedComponents<PointCloud3d>,
+    mut removed_point_cloud_chunk_3d_components: RemovedComponents<PointCloudChunk3d>,
     mut removed_mesh_material_3d_components: RemovedComponents<PointCloudMaterial3d<M>>,
     // reused hashset to prevent duplicates
-    mut changed_entity_hash_set: Local<EntityHashSet>,
+    mut deduplicate_entities_hash_set: Local<EntityHashSet>,
 ) where
     M: Material,
 {
@@ -864,7 +873,7 @@ pub fn check_entities_needing_specialization<M>(
         }
     });
     for queue in par_local.drain() {
-        changed_entity_hash_set.insert(queue);
+        deduplicate_entities_hash_set.insert(queue);
     }
 
     // Gather all entities that need their specializations regenerated.
@@ -873,17 +882,15 @@ pub fn check_entities_needing_specialization<M>(
         par_local.borrow_local_mut().push(entity);
     });
     for queue in par_local.drain() {
-        changed_entity_hash_set.insert(queue);
+        deduplicate_entities_hash_set.insert(queue);
     }
 
     entities_needing_specialization
         .changed
-        .reserve(changed_entity_hash_set.len());
-    for entity in changed_entity_hash_set.drain() {
+        .reserve(deduplicate_entities_hash_set.len());
+    for entity in deduplicate_entities_hash_set.drain() {
         entities_needing_specialization.changed.push(entity);
     }
-
-    // par_local.drain_into(&mut entities_needing_specialization.changed);
 
     // All entities that removed their `PointCloud3d` or `PointCloudMaterial3d` components
     // need to have their specializations removed as well.
@@ -893,22 +900,35 @@ pub fn check_entities_needing_specialization<M>(
     // `specialize_material_meshes` processes specialization removals before
     // additions. So, if the pipeline specialization gets spuriously removed,
     // it'll just be immediately re-added again, which is harmless.
-    for entity in removed_mesh_3d_components
+    for entity in removed_point_cloud_3d_components
         .read()
         .chain(removed_mesh_material_3d_components.read())
     {
+        // TODO is it necessary ? because chunks are treated below
         if let Some(chunks) = global_visible_point_cloud_chunks.get(&entity) {
             for chunk_entity in chunks.keys() {
-                entities_needing_specialization.removed.push(*chunk_entity);
+                deduplicate_entities_hash_set.insert(*chunk_entity);
             }
         }
-        // entities_needing_specialization.removed.push(entity);
+    }
+
+    // process also individual chunks
+    for entity in removed_point_cloud_chunk_3d_components.read() {
+        deduplicate_entities_hash_set.insert(entity);
+    }
+
+    entities_needing_specialization
+        .removed
+        .reserve(deduplicate_entities_hash_set.len());
+    for entity in deduplicate_entities_hash_set.drain() {
+        entities_needing_specialization.removed.push(entity);
     }
 }
 
 pub(crate) struct SpecializationWorkItem {
     render_entity: Entity,
-    // visible_entity: MainEntity,
+    #[expect(unused, reason = "Useful for debugging.")]
+    visible_entity: MainEntity,
     retained_view_entity: RetainedViewEntity,
     mesh_key: MeshPipelineKey,
     splat_key: SplatPipelineKey,
@@ -941,9 +961,9 @@ pub(crate) struct SpecializeMaterialMeshesSystemParam<'w, 's> {
     transparent_render_phases: Res<'w, ViewSortedRenderPhases<Transparent3d>>,
     views: Query<'w, 's, (&'static ExtractedView, &'static RenderVisibleEntities)>,
     view_key_cache: Res<'w, ViewKeyCache>,
-    specialized_material_pipeline_cache: ResMut<'w, SpecializedMaterialPipelineCache>,
+    specialized_material_pipeline_cache: ResMut<'w, SpecializedPointCloudMaterialPipelineCache>,
     pending_mesh_material_queues: ResMut<'w, PendingMeshMaterialQueues>,
-    dirty_specializations: Res<'w, DirtySpecializations>,
+    dirty_specializations: Res<'w, PointCloudDirtySpecializations>,
 }
 
 pub(crate) fn specialize_material_meshes(
@@ -1008,7 +1028,9 @@ pub(crate) fn specialize_material_meshes(
                 {
                     specialized_material_pipeline_cache.clear();
                 } else {
-                    for &renderable_entity in dirty_specializations.iter_to_despecialize() {
+                    for (&renderable_entity, &_main_entity) in
+                        dirty_specializations.iter_to_despecialize()
+                    {
                         specialized_material_pipeline_cache.remove(&renderable_entity);
                     }
                 }
@@ -1159,7 +1181,7 @@ pub(crate) fn specialize_material_meshes(
                 work_items.push(SpecializationWorkItem {
                     // this point to a PointCloud3d
                     render_entity: *render_entity,
-                    // visible_entity: *visible_entity,
+                    visible_entity: *visible_entity,
                     retained_view_entity: view.retained_view_entity,
                     mesh_key,
                     splat_key: (&render_point_cloud_instance.splat_settings).into(),
@@ -1183,6 +1205,7 @@ pub(crate) fn specialize_material_meshes(
         };
 
         let Some(base_specialize) = item.properties.base_specialize else {
+            warn!("no base specialize");
             continue;
         };
         match base_specialize(
@@ -1194,7 +1217,7 @@ pub(crate) fn specialize_material_meshes(
         ) {
             Ok(pipeline_id) => {
                 world
-                    .resource_mut::<SpecializedMaterialPipelineCache>()
+                    .resource_mut::<SpecializedPointCloudMaterialPipelineCache>()
                     .entry(item.retained_view_entity)
                     .or_default()
                     .insert(item.render_entity, pipeline_id);
@@ -1204,7 +1227,7 @@ pub(crate) fn specialize_material_meshes(
     }
 
     world
-        .resource_mut::<SpecializedMaterialPipelineCache>()
+        .resource_mut::<SpecializedPointCloudMaterialPipelineCache>()
         .retain(|view, _| all_views.contains(view));
 }
 
@@ -1227,8 +1250,8 @@ pub fn queue_material_meshes(
     mut pending_mesh_material_queues: ResMut<PendingMeshMaterialQueues>,
     views: Query<(&ExtractedView, &RenderVisibleEntities)>,
     // don't know why it is `ResMut` here, but I suspect it is to have exclusive read access
-    specialized_material_pipeline_cache: ResMut<SpecializedMaterialPipelineCache>,
-    dirty_specializations: Res<DirtySpecializations>,
+    specialized_material_pipeline_cache: ResMut<SpecializedPointCloudMaterialPipelineCache>,
+    dirty_specializations: Res<PointCloudDirtySpecializations>,
 ) {
     for (view, visible_entities) in &views {
         let (
@@ -1243,11 +1266,10 @@ pub fn queue_material_meshes(
             transparent_render_phases.get_mut(&view.retained_view_entity),
         )
         else {
-            info!("no phase for view");
             continue;
         };
 
-        debug!("opaque phase items count: {}", opaque_phase.count_items());
+        // info!("opaque phase items count: {}", opaque_phase.count_items());
 
         let Some(view_specialized_material_pipeline_cache) =
             specialized_material_pipeline_cache.get(&view.retained_view_entity)
@@ -1257,7 +1279,6 @@ pub fn queue_material_meshes(
         };
 
         let Some(visible_entities_class) = visible_entities.get::<PointCloudChunk3d>() else {
-            info!("no visible entities for view");
             continue;
         };
 
@@ -1276,10 +1297,6 @@ pub fn queue_material_meshes(
                 continue;
             };
 
-            debug!(
-                "remove phase {:?}/{:?}",
-                render_point_cloud_chunk_instance.root_entity, render_entity
-            );
             opaque_phase.remove_unbatchable_entity_pair(
                 render_entity,
                 &render_point_cloud_chunk_instance.root_entity,
@@ -1340,6 +1357,7 @@ pub fn queue_material_meshes(
                 .instances
                 .get(&render_point_cloud_chunk_instance.root_entity)
             else {
+                warn!("material instance not ready, queue");
                 view_pending_mesh_material_queues
                     .current_frame
                     .insert((*render_entity, *visible_entity));
@@ -1349,12 +1367,14 @@ pub fn queue_material_meshes(
             let Some(mesh_instance) = render_mesh_instances
                 .render_mesh_queue_data(render_point_cloud_chunk_instance.root_entity)
             else {
+                warn!("mesh instance not ready, queue");
                 view_pending_mesh_material_queues
                     .current_frame
                     .insert((*render_entity, *visible_entity));
                 continue;
             };
             let Some(material) = render_materials.get(material_instance.asset_id) else {
+                warn!("material not ready, queue");
                 view_pending_mesh_material_queues
                     .current_frame
                     .insert((*render_entity, *visible_entity));
@@ -1422,12 +1442,14 @@ pub fn queue_material_meshes(
                         // way, we know we don't need to re-examine it in future
                         // frames.
                         opaque_phase.update_cache(*visible_entity, None);
+                        warn!("deferred ?");
                         continue;
                     }
                     let Some(draw_function) = material
                         .properties
                         .get_draw_function(MainPassOpaqueDrawFunction)
                     else {
+                        warn!("draw functon not found");
                         continue;
                     };
                     let batch_set_key = Opaque3dBatchSetKey {
@@ -1476,7 +1498,6 @@ pub fn queue_material_meshes(
                     let bin_key = OpaqueNoLightmap3dBinKey {
                         asset_id: mesh_instance.mesh_asset_id().into(),
                     };
-                    info!("add alpha mask phase");
                     alpha_mask_phase.add(
                         batch_set_key,
                         bin_key,

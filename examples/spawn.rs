@@ -1,11 +1,8 @@
 #![expect(missing_docs, reason = "Not all docs are written yet.")]
 
-use std::f32::consts::TAU;
-
 use bevy::{
-    camera::ScalingMode,
     camera_controller::free_camera::{FreeCamera, FreeCameraPlugin},
-    color::palettes::css::{RED, YELLOW},
+    color::palettes::css::RED,
     prelude::*,
 };
 use bevy_pointcloud::prelude::*;
@@ -50,11 +47,8 @@ fn init_spawn_configuration(
     let texture_handle = asset_server.load("branding/bevy_icon.png");
 
     let material_handle = materials.add(SimplePointCloudMaterial {
-        shape_radius: None,
         base_color: RED.into(),
         base_color_texture: Some(texture_handle.clone()),
-        point_size_mode: PointSizeMode::WorldSpace,
-        point_size: 0.02, // in meters
         ..default()
     });
 
@@ -76,6 +70,11 @@ fn load_point_cloud(
     commands.spawn((
         PointCloud3d(spawn_configuration.point_cloud_handle.clone()),
         PointCloudMaterial3d(spawn_configuration.material_handle.clone()),
+        SplatSettings {
+            point_size_mode: PointSizeMode::LocalSpace,
+            point_size: 0.02, // in meters
+            ..default()
+        },
         Transform::from_translation(Vec3::new(0.0, -1.0, -1.0)),
     ));
 

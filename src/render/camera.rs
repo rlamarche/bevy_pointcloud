@@ -2,10 +2,11 @@ use bevy::{
     ecs::{
         entity::{Entity, EntityHashMap},
         resource::Resource,
-        system::{Query, ResMut},
+        system::{Query, Res, ResMut},
     },
     platform::collections::HashSet,
     render::{
+        camera::DirtySpecializations,
         sync_world::MainEntity,
         view::{ExtractedView, RenderVisibleEntitiesClass, RetainedViewEntity},
     },
@@ -14,7 +15,9 @@ use itertools::Either;
 
 /// Clears out the [`DirtySpecializations`] resource in preparation for a new
 /// frame.
-pub fn clear_dirty_specializations(mut dirty_specializations: ResMut<DirtySpecializations>) {
+pub fn clear_dirty_specializations(
+    mut dirty_specializations: ResMut<PointCloudDirtySpecializations>,
+) {
     dirty_specializations.changed_renderables.clear();
     dirty_specializations.removed_renderables.clear();
     dirty_specializations.views.clear();
@@ -24,7 +27,7 @@ pub fn clear_dirty_specializations(mut dirty_specializations: ResMut<DirtySpecia
 /// [`DirtySpecializations`].
 pub fn expire_specializations_for_views(
     views: Query<&ExtractedView>,
-    mut dirty_specializations: ResMut<DirtySpecializations>,
+    mut dirty_specializations: ResMut<PointCloudDirtySpecializations>,
 ) {
     let all_live_retained_view_entities: HashSet<_> =
         views.iter().map(|view| view.retained_view_entity).collect();
@@ -46,7 +49,7 @@ pub fn expire_specializations_for_views(
 /// see [`DirtyWireframeSpecializations`]. The reason for having two separate
 /// lists is that a single entity can have both a mesh and a wireframe.
 #[derive(Clone, Resource, Default)]
-pub struct DirtySpecializations {
+pub struct PointCloudDirtySpecializations {
     /// All renderable objects that must be re-specialized this frame.
     /// We use render entities as keys instead of main entities, but store their corresponding main
     /// entity, because each chunk is a different render entity, sharing the same main entity.
@@ -69,7 +72,7 @@ pub struct DirtySpecializations {
     pub views: HashSet<RetainedViewEntity>,
 }
 
-impl DirtySpecializations {
+impl PointCloudDirtySpecializations {
     /// Returns true if the view has changed in such a way that all specialized
     /// pipelines for entities visible from it must be regenerated.
     pub fn must_wipe_specializations_for_view(&self, view: RetainedViewEntity) -> bool {
@@ -109,12 +112,14 @@ impl DirtySpecializations {
 
     /// Iterates over all entities that need their specializations cleared in
     /// this frame.
-    pub fn iter_to_despecialize<'a>(&'a self) -> impl Iterator<Item = &'a Entity> {
+    pub fn iter_to_despecialize<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = (&'a Entity, &'a MainEntity)> {
         // Entities that changed or were removed must be
         // de-specialized.
         self.changed_renderables
-            .keys()
-            .chain(self.removed_renderables.keys())
+            .iter()
+            .chain(self.removed_renderables.iter())
     }
 
     /// Iterates over all entities that need to have their pipelines
@@ -241,4 +246,15 @@ impl DirtySpecializations {
             },
         ))
     }
+}
+
+/// This system copies views needing specialisations in our ouwn [`PointCloudDirtySpecializations`].
+pub fn check_views_need_specialization(
+    dirty_specializations: Res<DirtySpecializations>,
+    mut point_cloud_dirty_specializations: ResMut<PointCloudDirtySpecializations>,
+) {
+    point_cloud_dirty_specializations.views.clear();
+    point_cloud_dirty_specializations
+        .views
+        .extend(&dirty_specializations.views);
 }

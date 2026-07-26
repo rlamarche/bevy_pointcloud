@@ -1,29 +1,16 @@
 #![expect(missing_docs, reason = "Not all docs are written yet.")]
 
-mod utils;
-
 use std::f32::consts::PI;
 
 use bevy::{
     camera_controller::free_camera::{FreeCamera, FreeCameraPlugin},
-    color::palettes::css::{ORANGE_RED, RED},
+    color::palettes::css::{GREEN, RED},
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
-    feathers::palette::WHITE,
     light::CascadeShadowConfigBuilder,
     prelude::*,
-    transform::systems::propagate_parent_transforms,
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pointcloud::{prelude::*, SplatOrientation, SplatSettings, UVMapping};
-
-use crate::utils::draw_gizmos;
-
-struct OverlayColor;
-
-impl OverlayColor {
-    const RED: Color = Color::srgb(1.0, 0.0, 0.0);
-    const GREEN: Color = Color::srgb(0.0, 1.0, 0.0);
-}
 
 fn main() {
     App::new()
@@ -40,7 +27,7 @@ fn main() {
                     ..default()
                 },
                 // We can also change color of the overlay
-                text_color: OverlayColor::GREEN,
+                text_color: GREEN.into(),
                 // We can also set the refresh interval for the FPS counter
                 refresh_interval: core::time::Duration::from_millis(100),
                 enabled: true,
@@ -59,7 +46,7 @@ fn main() {
         .add_plugins(PointCloudPlugin::default())
         .add_systems(Startup, (setup, load_point_cloud))
         .add_systems(Update, toggle_splat_radius)
-        .add_systems(PostUpdate, draw_gizmos.after(propagate_parent_transforms))
+        // .add_systems(PostUpdate, draw_gizmos.after(propagate_parent_transforms))
         .run();
 }
 
@@ -83,14 +70,13 @@ fn setup(mut commands: Commands) {
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(1.0, 0.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
-        // PanOrbitCamera::default(),
+        PanOrbitCamera::default(),
         FreeCamera::default(),
     ));
 }
 
 fn load_point_cloud(
-    mut materials: ResMut<Assets<SimplePointCloudMaterial>>,
-    mut pbr_materials: ResMut<Assets<StandardMaterial>>,
+    mut std_materials: ResMut<Assets<StandardPointCloudMaterial>>,
     point_cloud_server: Res<PointCloudServer>,
     asset_server: Res<AssetServer>,
     mut commands: Commands,
@@ -101,23 +87,16 @@ fn load_point_cloud(
     let point_cloud_handle =
         point_cloud_server.load::<PointCloudMeshLoader>(Sphere::new(0.5).mesh().ico(8)?);
 
-    // 2. Initialize a default instance of the point cloud material
-    let material_handle = materials.add(SimplePointCloudMaterial {
-        shape_radius: Some(0.5),
-        base_color_texture: Some(texture_handle.clone()),
-        ..default()
-    });
-
-    let mut pbr_material: StandardMaterial = Color::from(RED).into();
+    let mut pbr_material: StandardPointCloudMaterial = Color::from(RED).into();
     pbr_material.cull_mode = None;
     pbr_material.double_sided = true;
-    // pbr_material.base_color_texture = Some(texture_handle);
+    pbr_material.base_color_texture = Some(texture_handle);
 
-    let pbr_material_handle = pbr_materials.add(pbr_material);
+    let pbr_material_handle = std_materials.add(pbr_material);
 
     commands.spawn((
         PointCloud3d(point_cloud_handle),
-        PointCloudMaterial3d(pbr_material_handle),
+        PointCloudMaterial3d(pbr_material_handle.clone()),
         // PointCloudMaterial3d(material_handle),
         SplatSettings {
             orientation: SplatOrientation::FaceNormal,
@@ -132,15 +111,6 @@ fn load_point_cloud(
             ..default()
         },
     ));
-
-    // ambient light
-    // ambient lights' brightnesses are measured in candela per meter square, calculable as (color *
-    // brightness)
-    // commands.insert_resource(GlobalAmbientLight {
-    //     color: ORANGE_RED.into(),
-    //     brightness: 200.0,
-    //     ..default()
-    // });
 
     // directional 'sun' light
     commands.spawn((
@@ -165,25 +135,6 @@ fn load_point_cloud(
         }
         .build(),
     ));
-
-    // // red point light
-    // commands.spawn((
-    //     PointLight {
-    //         intensity: 100_000.0,
-    //         color: RED.into(),
-    //         shadow_maps_enabled: true,
-    //         ..default()
-    //     },
-    //     Transform::from_xyz(0.0, 2.0, 0.0),
-    //     // children![(
-    //     //     Mesh3d(meshes.add(Sphere::new(0.1).mesh().uv(32, 18))),
-    //     //     MeshMaterial3d(materials.add(StandardMaterial {
-    //     //         base_color: RED.into(),
-    //     //         emissive: LinearRgba::new(4.0, 0.0, 0.0, 0.0),
-    //     //         ..default()
-    //     //     })),
-    //     // )],
-    // ));
 
     Ok(())
 }

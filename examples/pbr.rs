@@ -1,38 +1,25 @@
 #![expect(missing_docs, reason = "Not all docs are written yet.")]
 
-mod utils;
-
 use std::f32::consts::PI;
 
 use bevy::{
-    anti_alias::taa::TemporalAntiAliasing,
     camera::primitives::Aabb,
     camera_controller::free_camera::{FreeCamera, FreeCameraPlugin},
-    color::palettes::css::{RED, SILVER, YELLOW},
+    color::palettes::css::{GREEN, RED},
     core_pipeline::tonemapping::Tonemapping,
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
     light::{
-        atmosphere::ScatteringMedium, cluster::ClusterConfig, Atmosphere,
-        AtmosphereEnvironmentMapLight, CascadeShadowConfigBuilder, SunDisk, VolumetricFog,
+        atmosphere::ScatteringMedium, Atmosphere, AtmosphereEnvironmentMapLight,
+        CascadeShadowConfigBuilder, SunDisk, VolumetricFog,
     },
     math::VectorSpace,
-    pbr::{AtmosphereSettings, ScreenSpaceReflections},
+    pbr::AtmosphereSettings,
     post_process::bloom::Bloom,
     prelude::*,
-    render::view::NoIndirectDrawing,
 };
-use bevy_pointcloud::{prelude::*, CopcLoader};
-
-use crate::utils::draw_gizmos;
+use bevy_pointcloud::{prelude::*, CopcLoader, StandardPointCloudMaterial};
 
 // --- RESOURCES AND STRUCTURES ---
-
-struct OverlayColor;
-
-impl OverlayColor {
-    const RED: Color = Color::srgb(1.0, 0.0, 0.0);
-    const GREEN: Color = Color::srgb(0.0, 1.0, 0.0);
-}
 
 #[derive(Resource)]
 struct DayCycle {
@@ -70,7 +57,7 @@ fn main() {
                     font_smoothing: FontSmoothing::default(),
                     ..default()
                 },
-                text_color: OverlayColor::GREEN,
+                text_color: GREEN.into(),
                 refresh_interval: core::time::Duration::from_millis(100),
                 enabled: true,
                 frame_time_graph_config: FrameTimeGraphConfig {
@@ -112,14 +99,15 @@ fn setup(mut commands: Commands, mut scattering_mediums: ResMut<Assets<Scatterin
             ..default()
         },
         AtmosphereSettings::default(),
-        Tonemapping::None,
-        Bloom::NATURAL, // Gives the sun a much more natural look
+        Tonemapping::AcesFitted,
+        // Gives the sun a much more natural look
+        Bloom::NATURAL,
         // Enables atmosphere to drive reflections and ambient lighting
         AtmosphereEnvironmentMapLight::default(),
-        // VolumetricFog {
-        //     ambient_intensity: 0.0,
-        //     ..default()
-        // },
+        VolumetricFog {
+            ambient_intensity: 0.0,
+            ..default()
+        },
         Msaa::Off,
     ));
 }
@@ -129,73 +117,34 @@ fn setup_sun(mut commands: Commands) {
         DirectionalLight {
             color: Color::WHITE,
             illuminance: light_consts::lux::AMBIENT_DAYLIGHT, // ~10,000 lux
-            // shadow_maps_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
         SunDisk::EARTH,
         CascadeShadowConfigBuilder {
             maximum_distance: 2000.0,
-            first_cascade_far_bound: 10.0,
+            first_cascade_far_bound: 1.0,
             ..default()
         }
         .build(),
         // Default orientation looks straight down (-Z axis)
         Transform::from_rotation(Quat::from_rotation_x(-PI / 4.0)),
         PointCloudVisibilitySettings {
-            min_radius: Some(150.0),
-            point_budget: Some(1_000_000),
+            min_radius: Some(30.0),
+            point_budget: Some(10_000_000),
             ..default()
         },
     ));
 }
 
 fn load_point_cloud(
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut pc_standard_materials: ResMut<Assets<StandardPointCloudMaterial>>,
     point_cloud_server: Res<PointCloudServer>,
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
 ) -> Result<()> {
-    let mut material: StandardMaterial = Color::from(RED).into();
+    let mut material: StandardPointCloudMaterial = Color::from(RED).into();
     material.cull_mode = None;
-    let material_handle = materials.add(material);
-
-    let point_cloud_handle =
-        point_cloud_server.load::<PointCloudMeshLoader>(Sphere::new(0.5).mesh().ico(4)?);
-
-    commands.spawn((
-        PointCloud3d(point_cloud_handle),
-        PointCloudMaterial3d(material_handle.clone()),
-        Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)),
-        SplatSettings {
-            point_size_mode: PointSizeMode::LocalSpace,
-            point_size: 0.1,
-            orientation: SplatOrientation::FaceNormal,
-            ..default()
-        },
-    ));
-
-    // let mut material: StandardMaterial = Color::from(RED).into();
-    // material.cull_mode = None;
-    // let material_handle = materials.add(material);
-
-    // commands.spawn((
-    //     Mesh3d(meshes.add(Sphere::new(0.5).mesh().ico(4)?)),
-    //     MeshMaterial3d(material_handle.clone()),
-    //     Transform::from_translation(Vec3::new(1.0, 1.0, 0.0)),
-    // ));
-
-    // commands.spawn((
-    //     Mesh3d(
-    //         meshes.add(
-    //             Plane3d::default()
-    //                 .mesh()
-    //                 .size(500.0, 500.0)
-    //                 .subdivisions(10),
-    //         ),
-    //     ),
-    //     MeshMaterial3d(materials.add(Color::from(SILVER))),
-    //     Transform::from_translation(Vec3::new(0.0, -1.0, 0.0)),
-    // ));
+    let material_handle = pc_standard_materials.add(material);
 
     let point_cloud_handle = point_cloud_server.load::<CopcLoader<_>>(FileSource::open(
         "/home/romain/Documents/PointClouds/LidarHD/LHD_FXX_0893_6238_PTS_LAMB93_IGN69.copc.laz",
@@ -210,10 +159,10 @@ fn load_point_cloud(
             PointCloudMaterial3d(material_handle),
             SplatSettings {
                 point_size_mode: PointSizeMode::LocalSpace,
-                point_size: 1.0,
-                orientation: SplatOrientation::FaceNormal,
-                default_normal: Vec3::new(0.0, 0.0, 1.0),
-
+                point_size: 0.5,
+                orientation: SplatOrientation::Billboard,
+                // orientation: SplatOrientation::FaceNormal,
+                // default_normal: Vec3::new(0.0, 0.0, 1.0),
                 ..default()
             }
         )],

@@ -61,7 +61,7 @@ http_source = ["dep:ehttp"]
 multi_threaded = ["bevy/multi_threaded"]
 trace = []
 trace_tracy = ["trace", "bevy/trace_tracy"]
-serialize = ["dep:serde"]
+serialize = []
 webgl = []
 webgpu = []
 experimental_pbr_pcss = []
@@ -72,9 +72,10 @@ copc = ["dep:copc-streaming", "dep:async-lock"]
 shader_format_glsl = []
 
 [dependencies]
+bytemuck = "1"
 slotmap = { version = "1.0.7", default-features = false }
 bitflags = { version = "2.3", default-features = false }
-serde = { version = "1", default-features = false, features = ["derive"], optional = true }
+serde = { version = "1", default-features = false, features = ["derive"] }
 thiserror = "2.0"
 derive_more = { version = "2", default-features = false, features = ["from"] }
 

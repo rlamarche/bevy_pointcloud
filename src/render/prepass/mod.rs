@@ -21,8 +21,8 @@ use bevy::{
         setup_morph_and_skinning_defs, DeferredAlphaMaskDrawFunction, DeferredOpaqueDrawFunction,
         MeshLayouts, MeshPipeline, MeshPipelineKey, PrepassAlphaMaskDrawFunction,
         PrepassOpaqueDepthOnlyDrawFunction, PrepassOpaqueDrawFunction, RenderLightmaps,
-        RenderMaterialInstances, RenderMeshInstanceFlags, RenderMeshInstances,
-        SetMaterialBindGroup, ShadowView, MAX_VIEW_LIGHT_PROBES,
+        RenderMeshInstanceFlags, RenderMeshInstances, SetMaterialBindGroup, ShadowView,
+        MAX_VIEW_LIGHT_PROBES,
     },
     prelude::{Deref, DerefMut},
     render::{
@@ -73,9 +73,9 @@ use crate::{
     DeferredVertexShader, DrawPointCloudInstanced, ErasedMaterialPipelineKey,
     ErasedSplatPipelineKey, MaterialPipeline, MaterialProperties, PointCloudChunk3d,
     PointCloudPipeline, PreparedMaterial, PrepassFragmentShader, PrepassVertexShader,
-    RenderPointCloudChunkInstances, RenderPointCloudInstances, SetMeshBindGroup,
-    SetPointCloudUniformGroup, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
-    SplatPipelineKey, MATERIAL_BIND_GROUP_INDEX,
+    RenderPointCloudChunkInstances, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
+    SetMeshBindGroup, SetPointCloudUniformGroup, SpecializedPointCloudPipeline,
+    SpecializedPointCloudPipelines, SplatPipelineKey, MATERIAL_BIND_GROUP_INDEX,
 };
 
 /// Sets up everything required to use the prepass pipeline.
@@ -1021,7 +1021,7 @@ pub(crate) struct SpecializePrepassSystemParam<'w, 's> {
     render_meshes: Res<'w, RenderAssets<RenderMesh>>,
     render_materials: Res<'w, ErasedRenderAssets<PreparedMaterial>>,
     render_mesh_instances: Res<'w, RenderMeshInstances>,
-    render_material_instances: Res<'w, RenderMaterialInstances>,
+    render_material_instances: Res<'w, RenderPointCloudMaterialInstances>,
     render_point_cloud_instances: Res<'w, RenderPointCloudInstances>,
     render_point_cloud_chunk_instances: Res<'w, RenderPointCloudChunkInstances>,
     render_lightmaps: Res<'w, RenderLightmaps>,
@@ -1411,7 +1411,7 @@ pub(crate) fn specialize_prepass_material_meshes(
 pub fn queue_prepass_material_meshes(
     render_mesh_instances: Res<RenderMeshInstances>,
     render_materials: Res<ErasedRenderAssets<PreparedMaterial>>,
-    render_material_instances: Res<RenderMaterialInstances>,
+    render_material_instances: Res<RenderPointCloudMaterialInstances>,
     mesh_allocator: Res<MeshAllocator>,
     gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
     mut opaque_prepass_render_phases: ResMut<ViewBinnedRenderPhases<Opaque3dPrepass>>,

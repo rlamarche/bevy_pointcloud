@@ -22,8 +22,8 @@ impl Plugin for MyUiPlugin {
             // .add_systems(
             //     PreUpdate,
             //     (
-            //         sync_camera_settings, // write UiSettings → ECS components  // refresh the URL text node
-            //     ),
+            //         sync_camera_settings, // write UiSettings → ECS components  // refresh the
+            // URL text node     ),
             // )
             .add_observer(
                 |event: On<UiHoveringEvent>, mut ui_state: ResMut<UiState>| {
@@ -37,7 +37,6 @@ impl Plugin for MyUiPlugin {
             );
     }
 }
-
 
 fn scene() -> impl SceneList {
     bsn_list![settings_root()]

@@ -1,5 +1,14 @@
 use bevy::{
-    app::Plugin, asset::embedded_asset, pbr::StandardMaterial, render::render_resource::Face,
+    app::Plugin,
+    asset::{embedded_asset, Asset, Handle},
+    color::Color,
+    image::Image,
+    pbr::{StandardMaterial, StandardMaterialUniform},
+    prelude::{Deref, DerefMut},
+    reflect::{std_traits::ReflectDefault, Reflect},
+    render::render_resource::{
+        AsBindGroup, AsBindGroupShaderType, BindlessSlabResourceLimit, Face,
+    },
     shader::ShaderRef,
 };
 
@@ -14,11 +23,137 @@ impl Plugin for StandardPointCloudMaterialPlugin {
         embedded_asset!(app, "pbr.wgsl");
         embedded_asset!(app, "pbr_prepass.wgsl");
 
-        app.add_plugins(MaterialPlugin::<StandardMaterial>::default());
+        app.add_plugins(MaterialPlugin::<StandardPointCloudMaterial>::default());
     }
 }
 
-impl Material for StandardMaterial {
+#[derive(Asset, Debug, Clone, Default, Reflect, Deref, DerefMut)]
+#[reflect(Default, Debug, Clone)]
+pub struct StandardPointCloudMaterial(pub StandardMaterial);
+
+/// Delegate implementation of [`AsBindGroup`] with bindless disabled.
+impl AsBindGroup for StandardPointCloudMaterial {
+    type Data = <StandardMaterial as AsBindGroup>::Data;
+
+    type Param = <StandardMaterial as AsBindGroup>::Param;
+
+    fn label() -> &'static str {
+        "StandardPointCloudMaterial"
+    }
+
+    fn bind_group_data(&self) -> Self::Data {
+        <StandardMaterial as AsBindGroup>::bind_group_data(&self.0)
+    }
+
+    fn unprepared_bind_group(
+        &self,
+        layout: &bevy::render::render_resource::BindGroupLayout,
+        render_device: &bevy::render::renderer::RenderDevice,
+        param: &mut bevy::ecs::system::SystemParamItem<'_, '_, Self::Param>,
+        _force_no_bindless: bool,
+    ) -> Result<
+        bevy::render::render_resource::UnpreparedBindGroup,
+        bevy::render::render_resource::AsBindGroupError,
+    > {
+        <StandardMaterial as AsBindGroup>::unprepared_bind_group(
+            &self.0,
+            layout,
+            render_device,
+            param,
+            true,
+        )
+    }
+
+    fn bind_group_layout_entries(
+        render_device: &bevy::render::renderer::RenderDevice,
+        _force_no_bindless: bool,
+    ) -> Vec<bevy::render::render_resource::BindGroupLayoutEntry>
+    where
+        Self: Sized,
+    {
+        <StandardMaterial as AsBindGroup>::bind_group_layout_entries(render_device, true)
+    }
+
+    fn as_bind_group(
+        &self,
+        layout_descriptor: &bevy::material::descriptor::BindGroupLayoutDescriptor,
+        render_device: &bevy::render::renderer::RenderDevice,
+        pipeline_cache: &bevy::render::render_resource::PipelineCache,
+        param: &mut bevy::ecs::system::SystemParamItem<'_, '_, Self::Param>,
+    ) -> Result<
+        bevy::render::render_resource::PreparedBindGroup,
+        bevy::render::render_resource::AsBindGroupError,
+    > {
+        let layout = &pipeline_cache.get_bind_group_layout(layout_descriptor);
+
+        let bevy::render::render_resource::UnpreparedBindGroup { bindings } =
+            Self::unprepared_bind_group(self, layout, render_device, param, true)?;
+
+        let entries = bindings
+            .iter()
+            .map(
+                |(index, binding)| bevy::render::render_resource::BindGroupEntry {
+                    binding: *index,
+                    resource: binding.get_binding(),
+                },
+            )
+            .collect::<Vec<_>>();
+
+        let bind_group = render_device.create_bind_group(Self::label(), layout, &entries);
+
+        Ok(bevy::render::render_resource::PreparedBindGroup {
+            bindings,
+            bind_group,
+        })
+    }
+
+    fn bind_group_layout(
+        render_device: &bevy::render::renderer::RenderDevice,
+    ) -> bevy::render::render_resource::BindGroupLayout
+    where
+        Self: Sized,
+    {
+        render_device.create_bind_group_layout(
+            Self::label(),
+            &Self::bind_group_layout_entries(render_device, true),
+        )
+    }
+
+    fn bind_group_layout_descriptor(
+        render_device: &bevy::render::renderer::RenderDevice,
+    ) -> bevy::material::descriptor::BindGroupLayoutDescriptor
+    where
+        Self: Sized,
+    {
+        bevy::material::descriptor::BindGroupLayoutDescriptor {
+            label: Self::label().into(),
+            entries: Self::bind_group_layout_entries(render_device, true),
+        }
+    }
+
+    fn bindless_slot_count() -> Option<BindlessSlabResourceLimit> {
+        None
+    }
+
+    fn bindless_supported(_: &bevy::render::renderer::RenderDevice) -> bool {
+        false
+    }
+
+    fn bindless_descriptor() -> Option<bevy::render::render_resource::BindlessDescriptor> {
+        None
+    }
+}
+
+impl AsBindGroupShaderType<StandardMaterialUniform> for StandardPointCloudMaterial {
+    fn as_bind_group_shader_type(
+        &self,
+        images: &bevy::render::render_asset::RenderAssets<bevy::render::texture::GpuImage>,
+    ) -> StandardMaterialUniform {
+        <StandardMaterial as AsBindGroupShaderType::<StandardMaterialUniform>>::as_bind_group_shader_type(&self.0, images)
+    }
+}
+
+impl Material for StandardPointCloudMaterial {
     fn vertex_shader() -> ShaderRef {
         ShaderRef::Default
     }
@@ -206,3 +341,15 @@ impl Material for StandardMaterial {
 
 // Keep in sync with Bevy (private)
 const STANDARD_MATERIAL_KEY_DEPTH_BIAS_SHIFT: u64 = 32;
+
+impl From<Color> for StandardPointCloudMaterial {
+    fn from(value: Color) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<Handle<Image>> for StandardPointCloudMaterial {
+    fn from(value: Handle<Image>) -> Self {
+        Self(value.into())
+    }
+}

@@ -1,30 +1,20 @@
 #![expect(missing_docs, reason = "Not all docs are written yet.")]
 
-mod utils;
-
 use std::f32::consts::TAU;
 
 use bevy::{
     camera_controller::free_camera::{FreeCamera, FreeCameraPlugin},
+    color::palettes::css::GREEN,
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
     image::{ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor},
     light::CascadeShadowConfigBuilder,
+    math::Affine2,
     prelude::*,
     render::render_resource::Face,
-    transform::systems::propagate_parent_transforms,
 };
-use bevy_pointcloud::{las::LasLoader, prelude::*, SplatOrientation, UVTransform};
-
-use crate::utils::draw_gizmos;
+use bevy_pointcloud::{las::LasLoader, prelude::*};
 
 // --- RESOURCES AND STRUCTURE ---
-
-struct OverlayColor;
-
-impl OverlayColor {
-    const RED: Color = Color::srgb(1.0, 0.0, 0.0);
-    const GREEN: Color = Color::srgb(0.0, 1.0, 0.0);
-}
 
 #[derive(Component)]
 struct MyPlan;
@@ -42,7 +32,7 @@ fn main() {
                     font_smoothing: FontSmoothing::default(),
                     ..default()
                 },
-                text_color: OverlayColor::GREEN,
+                text_color: GREEN.into(),
                 refresh_interval: core::time::Duration::from_millis(100),
                 enabled: true,
                 frame_time_graph_config: FrameTimeGraphConfig {
@@ -60,8 +50,6 @@ fn main() {
         .add_systems(Startup, (setup, load_point_cloud))
         // Update Systems
         .add_systems(Update, update_material)
-        // PostUpdate Systems
-        .add_systems(PostUpdate, draw_gizmos.after(propagate_parent_transforms))
         .run();
 }
 
@@ -85,7 +73,6 @@ fn setup(mut commands: Commands) {
             shadow_normal_bias: 1.2,
             ..default()
         },
-        // Restricting max shadow distance concentrates the 4096px resolution into a tighter zone
         CascadeShadowConfigBuilder {
             maximum_distance: 100.0,
             ..default()
@@ -123,19 +110,22 @@ fn load_point_cloud(
     commands.spawn((
         PointCloud3d(point_cloud_sphere.clone()),
         PointCloudMaterial3d(point_cloud_materials.add(SimplePointCloudMaterial {
-            shape_radius: Some(0.5),
-            point_size_mode: PointSizeMode::ScreenPixelsLocal,
-            point_size: 80.0,
-            shape_orientation: SplatOrientation::FaceNormal,
             base_color_texture: Some(texture_handle.clone()),
-            uv_mapping: bevy_pointcloud::UVMapping::SplatOnly,
-            uv_transform: Some(UVTransform {
-                offset: Vec2 { x: -0.5, y: -0.5 },
-                scale: Vec2 { x: 2.0, y: 2.0 },
-                rotation: 0.0,
-            }),
             ..Default::default()
         })),
+        SplatSettings {
+            orientation: SplatOrientation::FaceNormal,
+            radius: Some(0.5),
+            point_size_mode: PointSizeMode::ScreenPixelsLocal,
+            point_size: 80.0,
+            uv_mapping: UVMapping::SplatOnly,
+            uv_transform: Affine2::from_scale_angle_translation(
+                Vec2::splat(2.0),
+                0.0,
+                Vec2::new(-0.5, -0.5),
+            ),
+            ..default()
+        },
         Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)).with_scale(Vec3::splat(5.0)),
     ));
 
@@ -143,21 +133,24 @@ fn load_point_cloud(
     commands.spawn((
         PointCloud3d(point_cloud_sphere.clone()),
         PointCloudMaterial3d(point_cloud_materials.add(SimplePointCloudMaterial {
-            shape_radius: Some(0.5),
-            point_size_mode: PointSizeMode::LocalSpace,
-            point_size: 0.1,
-            shape_orientation: SplatOrientation::Billboard,
             base_color_texture: Some(texture_handle.clone()),
-            uv_mapping: bevy_pointcloud::UVMapping::Planar,
-            uv_u: Vec3::new(0.0, 0.0, -1.0),
-            uv_v: Vec3::new(0.0, -1.0, 0.0),
-            uv_transform: Some(UVTransform {
-                offset: Vec2 { x: -0.5, y: -0.5 },
-                scale: Vec2 { x: 2.0, y: 2.0 },
-                rotation: 0.0,
-            }),
             ..Default::default()
         })),
+        SplatSettings {
+            radius: Some(0.5),
+            point_size_mode: PointSizeMode::LocalSpace,
+            point_size: 0.1,
+            orientation: SplatOrientation::Billboard,
+            uv_mapping: UVMapping::Planar,
+            uv_u: Vec3::new(0.0, 0.0, -1.0),
+            uv_v: Vec3::new(0.0, -1.0, 0.0),
+            uv_transform: Affine2::from_scale_angle_translation(
+                Vec2::splat(2.0),
+                0.0,
+                Vec2::new(-0.5, -0.5),
+            ),
+            ..default()
+        },
         Transform::from_translation(Vec3::new(0.0, 5.0, -5.0)).with_scale(Vec3::splat(5.0)),
     ));
 
@@ -165,21 +158,24 @@ fn load_point_cloud(
     commands.spawn((
         PointCloud3d(point_cloud_sphere.clone()),
         PointCloudMaterial3d(point_cloud_materials.add(SimplePointCloudMaterial {
-            shape_radius: Some(0.5),
-            point_size_mode: PointSizeMode::LocalSpace,
-            point_size: 0.1,
-            shape_orientation: SplatOrientation::FaceNormal,
             base_color_texture: Some(texture_handle.clone()),
-            uv_mapping: bevy_pointcloud::UVMapping::Planar,
-            uv_u: Vec3::new(0.0, 0.0, -1.0),
-            uv_v: Vec3::new(0.0, -1.0, 0.0),
-            uv_transform: Some(UVTransform {
-                offset: Vec2 { x: -0.5, y: -0.5 },
-                scale: Vec2 { x: 2.0, y: 2.0 },
-                rotation: 0.0,
-            }),
             ..Default::default()
         })),
+        SplatSettings {
+            radius: Some(0.5),
+            point_size_mode: PointSizeMode::LocalSpace,
+            point_size: 0.1,
+            orientation: SplatOrientation::FaceNormal,
+            uv_mapping: UVMapping::Planar,
+            uv_u: Vec3::new(0.0, 0.0, -1.0),
+            uv_v: Vec3::new(0.0, -1.0, 0.0),
+            uv_transform: Affine2::from_scale_angle_translation(
+                Vec2::splat(2.0),
+                0.0,
+                Vec2::new(-0.5, -0.5),
+            ),
+            ..default()
+        },
         Transform::from_translation(Vec3::new(0.0, 5.0, 0.0)).with_scale(Vec3::splat(5.0)),
     ));
 
@@ -187,19 +183,22 @@ fn load_point_cloud(
     commands.spawn((
         PointCloud3d(point_cloud_sphere.clone()),
         PointCloudMaterial3d(point_cloud_materials.add(SimplePointCloudMaterial {
-            shape_radius: Some(0.5),
-            point_size_mode: PointSizeMode::LocalSpace,
-            point_size: 0.1,
-            shape_orientation: SplatOrientation::FaceNormal,
             base_color_texture: Some(texture_handle.clone()),
-            uv_mapping: bevy_pointcloud::UVMapping::Combined,
-            uv_transform: Some(UVTransform {
-                offset: Vec2 { x: -0.5, y: -0.5 },
-                scale: Vec2 { x: 2.0, y: 2.0 },
-                rotation: 0.0,
-            }),
             ..Default::default()
         })),
+        SplatSettings {
+            radius: Some(0.5),
+            point_size_mode: PointSizeMode::LocalSpace,
+            point_size: 0.1,
+            orientation: SplatOrientation::FaceNormal,
+            uv_mapping: UVMapping::Combined,
+            uv_transform: Affine2::from_scale_angle_translation(
+                Vec2::splat(2.0),
+                0.0,
+                Vec2::new(-0.5, -0.5),
+            ),
+            ..default()
+        },
         Transform::from_translation(Vec3::new(0.0, 5.0, 5.0)).with_scale(Vec3::splat(5.0)),
     ));
 
@@ -210,18 +209,8 @@ fn load_point_cloud(
         .build();
 
     let animated_material = point_cloud_materials.add(SimplePointCloudMaterial {
-        shape_radius: Some(0.5),
-        point_size_mode: PointSizeMode::LocalSpace,
-        point_size: 0.04,
-        shape_orientation: SplatOrientation::FaceNormal,
         base_color_texture: Some(texture_handle.clone()),
-        uv_mapping: bevy_pointcloud::UVMapping::Combined,
         cull_mode: None,
-        uv_transform: Some(UVTransform {
-            offset: Vec2 { x: -0.5, y: -0.5 },
-            scale: Vec2 { x: 2.0, y: 2.0 },
-            rotation: 0.0,
-        }),
         ..Default::default()
     });
 
@@ -230,25 +219,26 @@ fn load_point_cloud(
         MyPlan,
         PointCloud3d(point_cloud_plan.clone()),
         PointCloudMaterial3d(animated_material.clone()),
+        SplatSettings {
+            radius: Some(0.5),
+            point_size_mode: PointSizeMode::LocalSpace,
+            point_size: 0.04,
+            orientation: SplatOrientation::FaceNormal,
+            uv_mapping: UVMapping::Combined,
+            uv_transform: Affine2::from_scale_angle_translation(
+                Vec2::splat(2.0),
+                0.0,
+                Vec2::new(-0.5, -0.5),
+            ),
+            ..default()
+        },
         Transform::from_translation(Vec3::new(0.0, 0.0, 4.0))
             .with_rotation(Quat::from_axis_angle(Vec3::Y, std::f32::consts::FRAC_PI_2)),
     ));
 
     let animated_material_combined = point_cloud_materials.add(SimplePointCloudMaterial {
-        shape_radius: Some(0.5),
-        point_size_mode: PointSizeMode::LocalSpace,
-        point_size: 0.04,
-        shape_orientation: SplatOrientation::Billboard,
         base_color_texture: Some(texture_handle.clone()),
-        uv_mapping: bevy_pointcloud::UVMapping::Combined,
         cull_mode: Some(Face::Back),
-        uv_u: Vec3::new(1.0, 0.0, 0.0),
-        uv_v: Vec3::new(0.0, 1.0, 0.0),
-        uv_transform: Some(UVTransform {
-            offset: Vec2 { x: -0.5, y: -0.5 },
-            scale: Vec2 { x: 2.0, y: 2.0 },
-            rotation: 0.0,
-        }),
         ..Default::default()
     });
 
@@ -256,29 +246,29 @@ fn load_point_cloud(
         MyPlan,
         PointCloud3d(point_cloud_plan.clone()),
         PointCloudMaterial3d(animated_material_combined.clone()),
+        SplatSettings {
+            radius: Some(0.5),
+            point_size_mode: PointSizeMode::LocalSpace,
+            point_size: 0.04,
+            orientation: SplatOrientation::Billboard,
+            uv_mapping: UVMapping::Combined,
+            uv_u: Vec3::new(1.0, 0.0, 0.0),
+            uv_v: Vec3::new(0.0, 1.0, 0.0),
+            uv_transform: Affine2::from_scale_angle_translation(
+                Vec2::splat(2.0),
+                0.0,
+                Vec2::new(-0.5, -0.5),
+            ),
+            ..default()
+        },
         Transform::from_translation(Vec3::new(0.0, -2.0, 4.0))
             .with_rotation(Quat::from_axis_angle(Vec3::Y, std::f32::consts::FRAC_PI_2)),
     ));
 
-    // [Les autres plans MyPlan d'origine restent ici identiques pour la clarté du code...]
-    // (Tronqué ici pour la lisibilité de la réponse, mais gardé à l'identique dans ton fichier)
-
     // --- DETACHED LION POINT CLOUD ---
     let lion_animated_material = point_cloud_materials.add(SimplePointCloudMaterial {
-        shape_radius: Some(0.5),
-        point_size_mode: PointSizeMode::LocalSpace,
-        point_size: 0.04,
-        shape_orientation: SplatOrientation::Billboard,
         base_color_texture: Some(texture_handle.clone()),
-        uv_mapping: bevy_pointcloud::UVMapping::Planar,
         cull_mode: Some(Face::Back),
-        uv_u: Vec3::new(1.0, 0.0, 0.0),
-        uv_v: Vec3::new(0.0, 1.0, 0.0),
-        uv_transform: Some(UVTransform {
-            offset: Vec2 { x: -0.5, y: -0.5 },
-            scale: Vec2 { x: 2.0, y: 2.0 },
-            rotation: 0.0,
-        }),
         ..Default::default()
     });
 
@@ -286,20 +276,32 @@ fn load_point_cloud(
         "assets/pointclouds/lion_takanawa.copc.laz",
     )?);
 
-    // Moved the lion away on the X axis so it casts its own distinct shadow on the ground
     commands.spawn((
         MyPlan,
         PointCloud3d(point_cloud_handle.clone()),
         PointCloudMaterial3d(lion_animated_material.clone()),
+        SplatSettings {
+            radius: Some(0.5),
+            point_size_mode: PointSizeMode::LocalSpace,
+            point_size: 0.04,
+            orientation: SplatOrientation::Billboard,
+            uv_mapping: UVMapping::Planar,
+            uv_u: Vec3::new(1.0, 0.0, 0.0),
+            uv_v: Vec3::new(0.0, 1.0, 0.0),
+            uv_transform: Affine2::from_scale_angle_translation(
+                Vec2::splat(2.0),
+                0.0,
+                Vec2::new(-0.5, -0.5),
+            ),
+            ..default()
+        },
         Transform::from_rotation(Quat::from_axis_angle(Vec3::X, -std::f32::consts::FRAC_PI_2))
-            .with_translation(Vec3::new(-15.0, 0.0, -2.0)), // <-- X shifted to -15.0
+            .with_translation(Vec3::new(-15.0, 0.0, -2.0)),
     ));
 
     // --- GROUND PLANE FOR SHADOW RECEPTION ---
     commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(150.0, 150.0))), /* Enlarged to catch
-                                                                           * the remote lion
-                                                                           * shadow */
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(150.0, 150.0))),
         MeshMaterial3d(standard_materials.add(StandardMaterial {
             base_color: Color::WHITE,
             perceptual_roughness: 0.8,
@@ -314,20 +316,17 @@ fn load_point_cloud(
 // --- UPDATE SYSTEM ---
 
 fn update_material(
-    mut materials: ResMut<Assets<SimplePointCloudMaterial>>,
-    material: Query<&PointCloudMaterial3d<SimplePointCloudMaterial>>,
+    mut splat_settings_query: Query<&mut SplatSettings, With<MyPlan>>,
     time: Res<Time<Real>>,
 ) {
-    for material in material.iter() {
-        if let Some(mut material) = materials.get_mut(material) {
-            let modulo = (time.elapsed().as_millis() % 20000) as f32 * TAU / 20000.0;
-            let modulo_2 = (time.elapsed().as_millis() % 40000) as f32 * TAU / 40000.0;
+    let modulo = (time.elapsed().as_millis() % 20000) as f32 * TAU / 20000.0;
+    let modulo_2 = (time.elapsed().as_millis() % 40000) as f32 * TAU / 40000.0;
 
-            if let Some(uv_transform) = &mut material.uv_transform {
-                uv_transform.rotation = modulo;
-                uv_transform.scale =
-                    Vec2::new(1.0 + modulo.sin() / 2.0, 1.0 + modulo_2.cos() / 2.0);
-            }
-        }
+    let scale = Vec2::new(1.0 + modulo.sin() / 2.0, 1.0 + modulo_2.cos() / 2.0);
+    let translation = Vec2::new(-0.5, -0.5);
+
+    for mut splat_settings in splat_settings_query.iter_mut() {
+        splat_settings.uv_transform =
+            Affine2::from_scale_angle_translation(scale, modulo, translation);
     }
 }

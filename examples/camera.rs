@@ -32,7 +32,7 @@ fn setup(mut commands: Commands) {
 fn load_point_cloud(
     mut commands: Commands,
     mut materials: ResMut<Assets<SimplePointCloudMaterial>>,
-    mut pbr_materials: ResMut<Assets<StandardMaterial>>,
+    mut std_materials: ResMut<Assets<StandardPointCloudMaterial>>,
     point_cloud_server: Res<PointCloudServer>,
     asset_server: Res<AssetServer>,
 ) -> Result {
@@ -54,7 +54,7 @@ fn load_point_cloud(
         Transform::from_translation(Vec3::new(0.0, -1.0, -1.0)),
     ));
 
-    let mut pbr_material: StandardMaterial = Color::from(RED).into();
+    let mut pbr_material: StandardPointCloudMaterial = Color::from(RED).into();
     pbr_material.base_color_texture = Some(texture_handle.clone());
 
     commands.spawn((
@@ -75,7 +75,7 @@ fn load_point_cloud(
         //     point_size: 0.02, // in meters
         //     ..default()
         // })),
-        PointCloudMaterial3d(pbr_materials.add(pbr_material)),
+        PointCloudMaterial3d(std_materials.add(pbr_material)),
         Transform::from_translation(Vec3::new(0.0, -1.0, 1.0)),
     ));
 

@@ -19,7 +19,7 @@ use bevy::{
 };
 use derive_more::derive::From;
 
-use crate::{Material, PointCloud, PointCloudChunk, SimplePointCloudMaterialKey};
+use crate::{Material, PointCloud, PointCloudChunk};
 
 #[derive(
     Component, FromTemplate, Clone, Debug, Default, Deref, DerefMut, PartialEq, Eq, From, Reflect,

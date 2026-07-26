@@ -1,11 +1,13 @@
 use std::ops::Deref;
 
 use bevy::{
+    asset::meta::Settings,
     camera::primitives::Aabb,
     ecs::error::BevyError,
     mesh::Mesh,
     tasks::{BoxedFuture, ConditionalSendFuture},
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{ChildIndex, NodeData, PointCloudNode, PointCloudNodeStatus};
 
@@ -13,8 +15,8 @@ pub trait PointCloudLoader: Send + Sync + Sized + 'static {
     /// The source of this loader
     type Source: Send + Sync + 'static;
 
-    // /// The settings type used by this [`PointCloudLoader`].
-    // type Settings: Settings + Default;
+    /// The settings type used by this [`PointCloudLoader`].
+    type Settings: Settings + Default + Serialize + for<'a> Deserialize<'a>;
 
     /// The data needed to store data
     type Hierarchy: Send + Sync + 'static;

@@ -130,6 +130,15 @@ impl Default for SimplePointCloudMaterial {
     }
 }
 
+impl From<Color> for SimplePointCloudMaterial {
+    fn from(color: Color) -> Self {
+        SimplePointCloudMaterial {
+            base_color: color,
+            ..Default::default()
+        }
+    }
+}
+
 impl Material for SimplePointCloudMaterial {
     fn fragment_shader() -> bevy::shader::ShaderRef {
         shader_ref(bevy::asset::embedded_path!("simple.wgsl"))
