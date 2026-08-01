@@ -15,10 +15,14 @@ use bevy::{
     },
     math::{Affine2, VectorSpace},
     pbr::AtmosphereSettings,
+    platform::collections::HashSet,
     post_process::bloom::Bloom,
     prelude::*,
 };
-use bevy_pointcloud::{prelude::*, CopcLoader, StandardPointCloudMaterial};
+use bevy_pointcloud::{
+    prelude::*, ClassificationExt, CopcLoader, FilterClassification, StandardPointCloudMaterial,
+};
+use las::point::Classification;
 
 // --- RESOURCES AND STRUCTURES ---
 
@@ -162,35 +166,80 @@ fn load_point_cloud(
         ..default()
     });
 
-    let point_cloud_handle = point_cloud_server.load::<CopcLoader<_>>(FileSource::open(
+    let point_cloud_vegetation_handle = point_cloud_server.load_with_settings::<CopcLoader<_>>(FileSource::open(
         "/home/romain/Documents/PointClouds/LidarHD/LHD_FXX_0893_6238_PTS_LAMB93_IGN69.copc.laz",
-    )?);
+    )?, |settings| {
+        settings.filter_classification = FilterClassification::Include(HashSet::from([
+            Classification::HighVegetation.as_u8(),
+            Classification::LowVegetation.as_u8(),
+        ]));
+    });
+
+    let point_cloud_other_handle = point_cloud_server.load_with_settings::<CopcLoader<_>>(FileSource::open(
+        "/home/romain/Documents/PointClouds/LidarHD/LHD_FXX_0893_6238_PTS_LAMB93_IGN69.copc.laz",
+    )?, |settings| {
+        settings.filter_classification = FilterClassification::Exclude(HashSet::from([
+            Classification::HighVegetation.as_u8(),
+            Classification::LowVegetation.as_u8(),
+        ]));
+    });
 
     commands.spawn((
         Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
         Visibility::default(),
-        children![(
-            CopcPointCloud,
-            PointCloud3d(point_cloud_handle),
-            PointCloudMaterial3d(material_handle),
-            SplatSettings {
-                splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-                point_size_mode: PointSizeMode::LocalSpace,
-                point_size: 0.5,
-                // orientation: SplatOrientation::Billboard,
-                orientation: SplatOrientation::FaceNormal,
-                default_normal: Vec3::new(0.0, 0.0, 1.0),
-                uv_mapping: UVMapping::Planar,
-                uv_u: Vec3::new(0.0, 1.0, 0.0),
-                uv_v: Vec3::new(1.0, 0.0, 0.0),
-                uv_transform: Affine2::from_scale_angle_translation(
-                    Vec2 { x: 10.0, y: 10.0 },
-                    0.0,
-                    Vec2::ZERO,
+        children![
+            (
+                CopcPointCloud,
+                PointCloud3d(point_cloud_other_handle),
+                PointCloudMaterial3d(
+                    pc_standard_materials.add(StandardPointCloudMaterial(Color::from(RED).into()))
                 ),
-                ..default()
-            }
-        )],
+                SplatSettings {
+                    splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+                    point_size_mode: PointSizeMode::LocalSpace,
+                    point_size: 0.5,
+                    // radius: Some(0.5),
+                    // orientation: SplatOrientation::Billboard,
+                    orientation: SplatOrientation::FaceNormal,
+                    default_normal: Vec3::new(0.0, 0.0, 1.0),
+                    // uv_mapping: UVMapping::Planar,
+                    // uv_u: Vec3::new(0.0, 1.0, 0.0),
+                    // uv_v: Vec3::new(1.0, 0.0, 0.0),
+                    // uv_transform: Affine2::from_scale_angle_translation(
+                    //     Vec2 { x: 10.0, y: 10.0 },
+                    //     0.0,
+                    //     Vec2::ZERO,
+                    // ),
+                    ..default()
+                }
+            ),
+            (
+                CopcPointCloud,
+                PointCloud3d(point_cloud_vegetation_handle),
+                PointCloudMaterial3d(
+                    pc_standard_materials
+                        .add(StandardPointCloudMaterial(Color::from(GREEN).into()))
+                ),
+                SplatSettings {
+                    splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+                    point_size_mode: PointSizeMode::LocalSpace,
+                    point_size: 0.5,
+                    // radius: Some(0.5),
+                    // orientation: SplatOrientation::Billboard,
+                    orientation: SplatOrientation::FaceNormal,
+                    default_normal: Vec3::new(0.0, 0.0, 1.0),
+                    // uv_mapping: UVMapping::Planar,
+                    // uv_u: Vec3::new(0.0, 1.0, 0.0),
+                    // uv_v: Vec3::new(1.0, 0.0, 0.0),
+                    // uv_transform: Affine2::from_scale_angle_translation(
+                    //     Vec2 { x: 10.0, y: 10.0 },
+                    //     0.0,
+                    //     Vec2::ZERO,
+                    // ),
+                    ..default()
+                }
+            )
+        ],
     ));
 
     Ok(())
