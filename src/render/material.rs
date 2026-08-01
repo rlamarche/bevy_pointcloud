@@ -1433,14 +1433,14 @@ pub fn queue_material_meshes(
                         // way, we know we don't need to re-examine it in future
                         // frames.
                         opaque_phase.update_cache(*visible_entity, None);
-                        warn!("deferred ?");
+                        warn!("DEFERRED");
                         continue;
                     }
                     let Some(draw_function) = material
                         .properties
                         .get_draw_function(MainPassOpaqueDrawFunction)
                     else {
-                        warn!("draw functon not found");
+                        warn!("draw function not found");
                         continue;
                     };
                     let batch_set_key = Opaque3dBatchSetKey {
@@ -1668,7 +1668,6 @@ pub fn base_specialize(
     )
 }
 
-// TODO later
 fn prepass_specialize(
     world: &mut World,
     key: ErasedMaterialPipelineKey,

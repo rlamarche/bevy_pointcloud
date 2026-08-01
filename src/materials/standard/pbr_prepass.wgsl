@@ -1,14 +1,16 @@
-#ifdef PREPASS_FRAGMENT
-
 #import bevy_pbr::{
+    pbr_prepass_functions,
+    pbr_bindings,
+    pbr_bindings::material,
     pbr_types,
-    pbr_functions::alpha_discard,
-    pbr_fragment::pbr_input_from_standard_material,
-    decal::clustered::apply_decals,
+    pbr_functions,
+    pbr_functions::SampleBias,
+    prepass_io,
+    mesh_bindings::mesh,
+    mesh_view_bindings::view,
 }
 
-#endif
-
+#import bevy_render::bindless::{bindless_samplers_filtering, bindless_textures_2d}
 
 // ============================================================================
 // BEGIN CUSTOM PATCH: [PointCloudPlugin] - Point size and depth attenuation
@@ -16,7 +18,6 @@
 // ============================================================================
 #import bevy_pbr::{
     prepass_io::{VertexOutput as PbrVertexOutput, FragmentOutput},
-    pbr_deferred_functions::deferred_output,
 }
 
 #import bevy_pointcloud::prepass_io::VertexOutput
@@ -26,40 +27,16 @@
 // END CUSTOM PATCH: [PointCloudPlugin]
 // ============================================================================
 
-#ifdef VISIBILITY_RANGE_DITHER
-#import bevy_pbr::pbr_functions::visibility_range_dither;
-#endif
-
-#ifdef MESHLET_MESH_MATERIAL_PASS
-#import bevy_pbr::meshlet_visibility_buffer_resolve::resolve_vertex_output
-#endif
-
-#ifdef OIT_ENABLED
-#import bevy_core_pipeline::oit::oit_draw
-#endif // OIT_ENABLED
-
-#ifdef FORWARD_DECAL
-#import bevy_pbr::decal::forward::get_forward_decal_info
-#endif
 
 @fragment
 fn fragment(
-#ifdef MESHLET_MESH_MATERIAL_PASS
-    @builtin(position) frag_coord: vec4<f32>,
-#else
     vertex_output: VertexOutput,
     @builtin(front_facing) is_front: bool,
-#endif
 )
 #ifdef PREPASS_FRAGMENT
--> FragmentOutput
+-> prepass_io::FragmentOutput
 #endif // PREPASS_FRAGMENT
 {
-#ifdef MESHLET_MESH_MATERIAL_PASS
-    let vertex_output = resolve_vertex_output(frag_coord);
-    let is_front = true;
-#endif
-
 #ifdef SHAPE_UVS_A
     #ifdef SPLAT_RADIUS
         // Perfect circle
@@ -73,7 +50,6 @@ fn fragment(
 
     var in: PbrVertexOutput;
 
-#ifdef PREPASS_FRAGMENT
     in.position                    = vertex_output.position;
 
     #ifdef VERTEX_UVS_A
@@ -113,58 +89,113 @@ fn fragment(
         in.visibility_range_dither = vertex_output.visibility_range_dither;
     #endif // VISIBILITY_RANGE_DITHER
 
+    #ifdef UNCLIPPED_DEPTH_ORTHO_EMULATION
+        in.unclipped_depth = vertex_output.unclipped_depth;
+    #endif // UNCLIPPED_DEPTH_ORTHO_EMULATION
+
+#ifdef PREPASS_FRAGMENT
+    let flags = pbr_bindings::material.flags;
+    let uv_transform = pbr_bindings::material.uv_transform;
+
+
     // If we're in the crossfade section of a visibility range, conditionally
     // discard the fragment according to the visibility pattern.
-#ifdef VISIBILITY_RANGE_DITHER
-    visibility_range_dither(in.position, in.visibility_range_dither);
-#endif
+    #ifdef VISIBILITY_RANGE_DITHER
+        visibility_range_dither(in.position, in.visibility_range_dither);
+    #endif
 
-#ifdef FORWARD_DECAL
-    let forward_decal_info = get_forward_decal_info(in);
-    in.world_position = forward_decal_info.world_position;
-    in.uv = forward_decal_info.uv;
-#endif
+    pbr_prepass_functions::prepass_alpha_discard(in);
 
-    // generate a PbrInput struct from the StandardMaterial bindings
-    var pbr_input = pbr_input_from_standard_material(in, is_front);
+    var out: prepass_io::FragmentOutput;
 
-    // alpha discard
-    pbr_input.material.base_color = alpha_discard(pbr_input.material, pbr_input.material.base_color);
+    #ifdef UNCLIPPED_DEPTH_ORTHO_EMULATION
+        out.frag_depth = in.unclipped_depth;
+    #endif // UNCLIPPED_DEPTH_ORTHO_EMULATION
 
-    // clustered decals
-    apply_decals(&pbr_input);
+    #ifdef NORMAL_PREPASS
+        // NOTE: Unlit bit not set means == 0 is true, so the true case is if lit
+        if (flags & pbr_types::STANDARD_MATERIAL_FLAGS_UNLIT_BIT) == 0u {
+            let double_sided = (flags & pbr_types::STANDARD_MATERIAL_FLAGS_DOUBLE_SIDED_BIT) != 0u;
 
-#ifdef PREPASS_PIPELINE
-    // write the gbuffer, lighting pass id, and optionally normal and motion_vector textures
-    let out = deferred_output(in, pbr_input);
-#else
-    // in forward mode, we calculate the lit color immediately, and then apply some post-lighting effects here.
-    // in deferred mode the lit color and these effects will be calculated in the deferred lighting shader
-    var out: FragmentOutput;
-    if (pbr_input.material.flags & STANDARD_MATERIAL_FLAGS_UNLIT_BIT) == 0u {
-        out.color = apply_pbr_lighting(pbr_input);
-    } else {
-        out.color = pbr_input.material.base_color;
-    }
+            let world_normal = pbr_functions::prepare_world_normal(
+                in.world_normal,
+                double_sided,
+                is_front,
+            );
 
-    // apply in-shader post processing (fog, alpha-premultiply, and also tonemapping, debanding if the camera is non-hdr)
-    // note this does not include fullscreen postprocessing effects like bloom.
-    out.color = main_pass_post_lighting_processing(pbr_input, out.color);
-#endif
+            var normal = world_normal;
 
-#ifdef OIT_ENABLED
-    let alpha_mode = pbr_input.material.flags & pbr_types::STANDARD_MATERIAL_FLAGS_ALPHA_MODE_RESERVED_BITS;
-    if alpha_mode != pbr_types::STANDARD_MATERIAL_FLAGS_ALPHA_MODE_OPAQUE {
-        // The fragments will only be drawn during the oit resolve pass.
-        oit_draw(in.position, out.color);
-        discard;
-    }
-#endif // OIT_ENABLED
+    #ifdef VERTEX_UVS
+    #ifdef VERTEX_TANGENTS
+    #ifdef STANDARD_MATERIAL_NORMAL_MAP
 
-#ifdef FORWARD_DECAL
-        out.color.a = min(forward_decal_info.alpha, out.color.a);
-#endif
+    // TODO: Transforming UVs mean we need to apply derivative chain rule for meshlet mesh material pass
+    #ifdef STANDARD_MATERIAL_NORMAL_MAP_UV_B
+            let uv = (uv_transform * vec3(in.uv_b, 1.0)).xy;
+    #else
+            let uv = (uv_transform * vec3(in.uv, 1.0)).xy;
+    #endif
+
+            // Fill in the sample bias so we can sample from textures.
+            var bias: SampleBias;
+    #ifdef MESHLET_MESH_MATERIAL_PASS
+            bias.ddx_uv = in.ddx_uv;
+            bias.ddy_uv = in.ddy_uv;
+    #else   // MESHLET_MESH_MATERIAL_PASS
+            bias.mip_bias = view.mip_bias;
+    #endif  // MESHLET_MESH_MATERIAL_PASS
+
+            let Nt =
+    #ifdef MESHLET_MESH_MATERIAL_PASS
+                textureSampleGrad(
+    #else   // MESHLET_MESH_MATERIAL_PASS
+                textureSampleBias(
+    #endif  // MESHLET_MESH_MATERIAL_PASS
+    #ifdef BINDLESS
+                    bindless_textures_2d[material_indices[slot].normal_map_texture],
+                    bindless_samplers_filtering[material_indices[slot].normal_map_sampler],
+    #else   // BINDLESS
+                    pbr_bindings::normal_map_texture,
+                    pbr_bindings::normal_map_sampler,
+    #endif  // BINDLESS
+                    uv,
+    #ifdef MESHLET_MESH_MATERIAL_PASS
+                    bias.ddx_uv,
+                    bias.ddy_uv,
+    #else   // MESHLET_MESH_MATERIAL_PASS
+                    bias.mip_bias,
+    #endif  // MESHLET_MESH_MATERIAL_PASS
+                ).rgb;
+            let TBN = pbr_functions::calculate_tbn_mikktspace(normal, in.world_tangent);
+
+            normal = pbr_functions::apply_normal_mapping(
+                flags,
+                TBN,
+                double_sided,
+                is_front,
+                Nt,
+            );
+
+    #endif  // STANDARD_MATERIAL_NORMAL_MAP
+    #endif  // VERTEX_TANGENTS
+    #endif  // VERTEX_UVS
+
+            out.normal = vec4(normal * 0.5 + vec3(0.5), 1.0);
+        } else {
+            out.normal = vec4(in.world_normal * 0.5 + vec3(0.5), 1.0);
+        }
+    #endif // NORMAL_PREPASS
+
+    #ifdef MOTION_VECTOR_PREPASS
+    #ifdef MESHLET_MESH_MATERIAL_PASS
+        out.motion_vector = in.motion_vector;
+    #else
+        out.motion_vector = pbr_prepass_functions::calculate_motion_vector(in.world_position, in.previous_world_position);
+    #endif
+    #endif
 
     return out;
+#else // PREPASS_FRAGMENT
+    pbr_prepass_functions::prepass_alpha_discard(in);
 #endif // PREPASS_FRAGMENT
 }

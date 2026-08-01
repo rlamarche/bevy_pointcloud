@@ -5,15 +5,26 @@
     decal::clustered::apply_decals,
 }
 
+#import bevy_pbr::pbr_bindings
+
 // ============================================================================
 // BEGIN CUSTOM PATCH: [PointCloudPlugin] - Point size and depth attenuation
 // `VertexOutput` is no more imported in each case because imported below.
 // ============================================================================
+
+#ifdef PREPASS_PIPELINE
+#import bevy_pbr::{
+    prepass_io::{VertexOutput as PbrVertexOutput, FragmentOutput},
+    pbr_deferred_functions::deferred_output,
+}
+#else
 #import bevy_pbr::{
     forward_io::{VertexOutput as PbrVertexOutput, FragmentOutput},
     pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
     pbr_types::STANDARD_MATERIAL_FLAGS_UNLIT_BIT,
 }
+#endif
+
 
 #import bevy_pointcloud::forward_io::VertexOutput
 #import bevy_pointcloud::pointcloud_bindings::pointcloud
@@ -149,5 +160,15 @@ fn fragment(
         out.color.a = min(forward_decal_info.alpha, out.color.a);
 #endif
 
-        return out;
+    // if ((pbr_bindings::material.flags & pbr_types::STANDARD_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT) != 0u) {
+    //     let texture_color = textureSample(pbr_bindings::base_color_texture, pbr_bindings::base_color_sampler, in.uv);
+    //     #ifdef VERTEX_UVS
+    //     out.color = texture_color;
+    //     #endif
+    // }
+
+    // out.color = pbr_bindings::material.base_color;
+    // out.color = vec4<f32>(in.uv.x, in.uv.y, in.uv.x, 1.0);
+
+    return out;
 }

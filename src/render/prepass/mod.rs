@@ -13,22 +13,18 @@ use bevy::{
             SystemParam, SystemParamItem, SystemState,
         },
     },
-    log::{debug, error, warn},
+    log::{debug, error, info, warn},
     material::{key::ErasedMeshPipelineKey, AlphaMode, OpaqueRendererMethod, RenderPhaseType},
     math::{Mat4, Vec4},
     mesh::{Mesh, MeshVertexBufferLayoutRef},
     pbr::{
         alpha_mode_pipeline_key, collect_meshes_for_gpu_building, set_mesh_motion_vector_flags,
-        setup_morph_and_skinning_defs, DeferredAlphaMaskDrawFunction, DeferredOpaqueDrawFunction,
-        MeshLayouts, MeshPipeline, MeshPipelineKey, PrepassAlphaMaskDrawFunction,
-        PrepassOpaqueDepthOnlyDrawFunction, PrepassOpaqueDrawFunction, RenderLightmaps,
-        RenderMeshInstanceFlags, RenderMeshInstances, SetMaterialBindGroup, ShadowView,
-        MAX_VIEW_LIGHT_PROBES,
+        setup_morph_and_skinning_defs, MeshLayouts, MeshPipeline, MeshPipelineKey, RenderLightmaps,
+        RenderMeshInstanceFlags, RenderMeshInstances, ShadowView, MAX_VIEW_LIGHT_PROBES,
     },
     prelude::{Deref, DerefMut},
     render::{
-        batching::gpu_preprocessing::GpuPreprocessingSupport,
-        camera::{DirtySpecializations, PendingQueues},
+        camera::PendingQueues,
         globals::{GlobalsBuffer, GlobalsUniform},
         mesh::{allocator::MeshAllocator, RenderMesh},
         render_asset::{prepare_assets, RenderAssets},
@@ -61,8 +57,7 @@ use bevy::{
         hash::FixedHasher,
     },
     render::{
-        erased_render_asset::ErasedRenderAssets,
-        sync_world::{MainEntity, MainEntityHashMap},
+        erased_render_asset::ErasedRenderAssets, sync_world::MainEntity,
         RenderSystems::PrepareAssets,
     },
     utils::default,
@@ -71,13 +66,15 @@ use std::{num::NonZero, sync::Arc};
 
 use crate::{
     init_material_pipeline, init_point_cloud_pipeline, BinnedRenderPhaseExt,
-    DeferredFragmentShader, DeferredVertexShader, DrawPointCloudInstanced,
-    ErasedMaterialPipelineKey, ErasedSplatPipelineKey, MaterialPipeline, MaterialProperties,
-    PointCloudChunk3d, PointCloudDirtySpecializations, PointCloudPipeline, PreparedMaterial,
-    PrepassFragmentShader, PrepassVertexShader, RenderPointCloudChunkInstances,
-    RenderPointCloudInstances, RenderPointCloudMaterialInstances, SetMeshBindGroup,
-    SetPointCloudUniformGroup, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
-    SplatPipelineKey, MATERIAL_BIND_GROUP_INDEX,
+    DeferredAlphaMaskDrawFunction, DeferredFragmentShader, DeferredOpaqueDrawFunction,
+    DeferredVertexShader, DrawPointCloudInstanced, ErasedMaterialPipelineKey,
+    ErasedSplatPipelineKey, MaterialPipeline, MaterialProperties, PointCloudChunk3d,
+    PointCloudDirtySpecializations, PointCloudPipeline, PreparedMaterial,
+    PrepassAlphaMaskDrawFunction, PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction,
+    PrepassOpaqueDrawFunction, PrepassVertexShader, RenderPointCloudChunkInstances,
+    RenderPointCloudInstances, RenderPointCloudMaterialInstances, SetMaterialBindGroup,
+    SetMeshBindGroup, SetPointCloudUniformGroup, SpecializedPointCloudPipeline,
+    SpecializedPointCloudPipelines, SplatPipelineKey, MATERIAL_BIND_GROUP_INDEX,
 };
 
 /// Sets up everything required to use the prepass pipeline.
@@ -406,6 +403,7 @@ pub fn init_prepass_pipeline(
         view_layout_motion_vectors,
         view_layout_no_motion_vectors,
         mesh_layouts: mesh_pipeline.mesh_layouts.clone(),
+        // default_prepass_shader: asset_server.load("shaders/prepass_dev.wgsl"),
         default_prepass_shader: load_embedded_asset!(asset_server.as_ref(), "prepass.wgsl"),
         skins_use_uniform_buffers: skins_use_uniform_buffers(&render_device.limits()),
         depth_clip_control_supported,
@@ -476,7 +474,7 @@ fn is_depth_only_opaque_prepass(mesh_key: MeshPipelineKey) -> bool {
 impl PrepassPipeline {
     fn specialize(
         &self,
-        (key, splat_key): (MeshPipelineKey, SplatPipelineKey),
+        (mesh_key, splat_key): (MeshPipelineKey, SplatPipelineKey),
         shader_defs: Vec<ShaderDefVal>,
         splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
@@ -484,7 +482,7 @@ impl PrepassPipeline {
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
         let mut shader_defs = shader_defs;
         let mut bind_group_layouts = vec![
-            if key.contains(MeshPipelineKey::MOTION_VECTOR_PREPASS) {
+            if mesh_key.contains(MeshPipelineKey::MOTION_VECTOR_PREPASS) {
                 self.view_layout_motion_vectors.clone()
             } else {
                 self.view_layout_no_motion_vectors.clone()
@@ -560,10 +558,9 @@ impl PrepassPipeline {
         // For directional light shadow map views, use unclipped depth via either the native GPU
         // feature, or emulated by setting depth in the fragment shader for GPUs that don't
         // support it natively.
-        let emulate_unclipped_depth = key.contains(MeshPipelineKey::UNCLIPPED_DEPTH_ORTHO)
+        let emulate_unclipped_depth = mesh_key.contains(MeshPipelineKey::UNCLIPPED_DEPTH_ORTHO)
             && !self.depth_clip_control_supported;
-
-        if is_depth_only_opaque_prepass(key) && !emulate_unclipped_depth {
+        if is_depth_only_opaque_prepass(mesh_key) && !emulate_unclipped_depth {
             bind_group_layouts.push(self.empty_layout.clone());
         } else {
             bind_group_layouts.push(
@@ -574,11 +571,10 @@ impl PrepassPipeline {
                     .clone(),
             );
         }
-
         #[cfg(all(feature = "webgl", target_arch = "wasm32", not(feature = "webgpu")))]
         shader_defs.push("WEBGL2".into());
         shader_defs.push("VERTEX_OUTPUT_INSTANCE_INDEX".into());
-        let view_projection = key.intersection(MeshPipelineKey::VIEW_PROJECTION_RESERVED_BITS);
+        let view_projection = mesh_key.intersection(MeshPipelineKey::VIEW_PROJECTION_RESERVED_BITS);
         if view_projection == MeshPipelineKey::VIEW_PROJECTION_NONSTANDARD {
             shader_defs.push("VIEW_PROJECTION_NONSTANDARD".into());
         } else if view_projection == MeshPipelineKey::VIEW_PROJECTION_PERSPECTIVE {
@@ -586,13 +582,13 @@ impl PrepassPipeline {
         } else if view_projection == MeshPipelineKey::VIEW_PROJECTION_ORTHOGRAPHIC {
             shader_defs.push("VIEW_PROJECTION_ORTHOGRAPHIC".into());
         }
-        if key.contains(MeshPipelineKey::DEPTH_PREPASS) {
+        if mesh_key.contains(MeshPipelineKey::DEPTH_PREPASS) {
             shader_defs.push("DEPTH_PREPASS".into());
         }
-        if key.contains(MeshPipelineKey::MAY_DISCARD) {
+        if mesh_key.contains(MeshPipelineKey::MAY_DISCARD) {
             shader_defs.push("MAY_DISCARD".into());
         }
-        let blend_key = key.intersection(MeshPipelineKey::BLEND_RESERVED_BITS);
+        let blend_key = mesh_key.intersection(MeshPipelineKey::BLEND_RESERVED_BITS);
         if blend_key == MeshPipelineKey::BLEND_PREMULTIPLIED_ALPHA {
             shader_defs.push("BLEND_PREMULTIPLIED_ALPHA".into());
         }
@@ -613,7 +609,7 @@ impl PrepassPipeline {
             // https://github.com/bevyengine/bevy/pull/8877
             shader_defs.push("PREPASS_FRAGMENT".into());
         }
-        let unclipped_depth = key.contains(MeshPipelineKey::UNCLIPPED_DEPTH_ORTHO)
+        let unclipped_depth = mesh_key.contains(MeshPipelineKey::UNCLIPPED_DEPTH_ORTHO)
             && self.depth_clip_control_supported;
 
         // we always want an output uv
@@ -630,61 +626,75 @@ impl PrepassPipeline {
             shader_defs.push("INSTANCE_UVS_B".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_UV_1.at_shader_location(5));
         }
-        if key.contains(MeshPipelineKey::NORMAL_PREPASS) {
+        if mesh_key.contains(MeshPipelineKey::NORMAL_PREPASS) {
             shader_defs.push("NORMAL_PREPASS".into());
         }
 
-        // we always need normal in prepass for splat orientations
-        shader_defs.push("NORMAL_PREPASS_OR_DEFERRED_PREPASS".into());
+        // we always need the normal, if available, to orient splat
         if instance_layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
             shader_defs.push("INSTANCE_NORMALS".into());
             shader_defs.push("VERTEX_NORMALS".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_NORMAL.at_shader_location(6));
         }
-        if instance_layout.0.contains(Mesh::ATTRIBUTE_TANGENT) {
-            shader_defs.push("VERTEX_TANGENTS".into());
-            vertex_attributes.push(Mesh::ATTRIBUTE_TANGENT.at_shader_location(7));
-        }
 
-        if key
+        if mesh_key.intersects(MeshPipelineKey::NORMAL_PREPASS | MeshPipelineKey::DEFERRED_PREPASS)
+        {
+            shader_defs.push("NORMAL_PREPASS_OR_DEFERRED_PREPASS".into());
+            if !instance_layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
+                warn!(
+                    "The default normal prepass expects the mesh to have vertex normal attributes."
+                );
+            }
+            if instance_layout.0.contains(Mesh::ATTRIBUTE_TANGENT) {
+                shader_defs.push("VERTEX_TANGENTS".into());
+                vertex_attributes.push(Mesh::ATTRIBUTE_TANGENT.at_shader_location(7));
+            }
+        }
+        if mesh_key
             .intersects(MeshPipelineKey::MOTION_VECTOR_PREPASS | MeshPipelineKey::DEFERRED_PREPASS)
         {
             shader_defs.push("MOTION_VECTOR_PREPASS_OR_DEFERRED_PREPASS".into());
         }
-        if key.contains(MeshPipelineKey::DEFERRED_PREPASS) {
+        if mesh_key.contains(MeshPipelineKey::DEFERRED_PREPASS) {
             shader_defs.push("DEFERRED_PREPASS".into());
         }
-        if key.contains(MeshPipelineKey::LIGHTMAPPED) {
+        if mesh_key.contains(MeshPipelineKey::LIGHTMAPPED) {
             shader_defs.push("LIGHTMAP".into());
         }
-        if key.contains(MeshPipelineKey::LIGHTMAP_BICUBIC_SAMPLING) {
+        if mesh_key.contains(MeshPipelineKey::LIGHTMAP_BICUBIC_SAMPLING) {
             shader_defs.push("LIGHTMAP_BICUBIC_SAMPLING".into());
         }
         if instance_layout.0.contains(Mesh::ATTRIBUTE_COLOR) {
             shader_defs.push("VERTEX_COLORS".into());
             vertex_attributes.push(Mesh::ATTRIBUTE_COLOR.at_shader_location(8));
         }
-        if key.contains(MeshPipelineKey::MOTION_VECTOR_PREPASS) {
+        if mesh_key.contains(MeshPipelineKey::MOTION_VECTOR_PREPASS) {
             shader_defs.push("MOTION_VECTOR_PREPASS".into());
         }
-        if key.contains(MeshPipelineKey::HAS_PREVIOUS_SKIN) {
+        if mesh_key.contains(MeshPipelineKey::HAS_PREVIOUS_SKIN) {
             shader_defs.push("HAS_PREVIOUS_SKIN".into());
         }
-        if key.contains(MeshPipelineKey::HAS_PREVIOUS_MORPH) {
+        if mesh_key.contains(MeshPipelineKey::HAS_PREVIOUS_MORPH) {
             shader_defs.push("HAS_PREVIOUS_MORPH".into());
         }
         if self.binding_arrays_are_usable {
             shader_defs.push("MULTIPLE_LIGHTMAPS_IN_ARRAY".into());
         }
-        if key.contains(MeshPipelineKey::VISIBILITY_RANGE_DITHER) {
+        if mesh_key.contains(MeshPipelineKey::VISIBILITY_RANGE_DITHER) {
             shader_defs.push("VISIBILITY_RANGE_DITHER".into());
         }
-
+        if mesh_key.intersects(
+            MeshPipelineKey::NORMAL_PREPASS
+                | MeshPipelineKey::MOTION_VECTOR_PREPASS
+                | MeshPipelineKey::DEFERRED_PREPASS,
+        ) {
+            shader_defs.push("PREPASS_FRAGMENT".into());
+        }
         let bind_group = setup_morph_and_skinning_defs(
             &self.mesh_layouts,
             instance_layout,
             5,
-            &key,
+            &mesh_key,
             &mut shader_defs,
             &mut vertex_attributes,
             self.skins_use_uniform_buffers,
@@ -704,9 +714,9 @@ impl PrepassPipeline {
         // Setup prepass fragment targets - normals in slot 0 (or None if not needed), motion
         // vectors in slot 1
         let mut targets = prepass_target_descriptors(
-            key.contains(MeshPipelineKey::NORMAL_PREPASS),
-            key.contains(MeshPipelineKey::MOTION_VECTOR_PREPASS),
-            key.contains(MeshPipelineKey::DEFERRED_PREPASS),
+            mesh_key.contains(MeshPipelineKey::NORMAL_PREPASS),
+            mesh_key.contains(MeshPipelineKey::MOTION_VECTOR_PREPASS),
+            mesh_key.contains(MeshPipelineKey::DEFERRED_PREPASS),
         );
 
         if targets.iter().all(Option::is_none) {
@@ -719,29 +729,17 @@ impl PrepassPipeline {
         // The fragment shader is only used when the normal prepass or motion vectors prepass
         // is enabled, the material uses alpha cutoff values and doesn't rely on the standard
         // prepass shader, or we are emulating unclipped depth in the fragment shader.
-        // OR we have a splat radius, so we need to discard on fragment.
         let fragment_required = !targets.is_empty()
             || emulate_unclipped_depth
-            || (key.contains(MeshPipelineKey::MAY_DISCARD)
+            || (mesh_key.contains(MeshPipelineKey::MAY_DISCARD)
                 && material_properties
                     .get_shader(PrepassFragmentShader)
                     .is_some())
             || splat_key.contains(SplatPipelineKey::SPLAT_RADIUS);
 
-        // // we always use a fragment shader
-        // let fragment = Some(FragmentState {
-        //     shader: match material_properties.get_shader(PrepassFragmentShader) {
-        //         Some(frag_shader_handle) => frag_shader_handle,
-        //         None => self.default_prepass_shader.clone(),
-        //     },
-        //     shader_defs: shader_defs.clone(),
-        //     targets,
-        //     ..default()
-        // });
-
         let fragment = fragment_required.then(|| {
             // Use the fragment shader from the material
-            let frag_shader_handle = if key.contains(MeshPipelineKey::DEFERRED_PREPASS) {
+            let frag_shader_handle = if mesh_key.contains(MeshPipelineKey::DEFERRED_PREPASS) {
                 match material_properties.get_shader(DeferredFragmentShader) {
                     Some(frag_shader_handle) => frag_shader_handle,
                     None => self.default_prepass_shader.clone(),
@@ -762,7 +760,7 @@ impl PrepassPipeline {
         });
 
         // Use the vertex shader from the material if present
-        let vert_shader_handle = if key.contains(MeshPipelineKey::DEFERRED_PREPASS) {
+        let vert_shader_handle = if mesh_key.contains(MeshPipelineKey::DEFERRED_PREPASS) {
             if let Some(handle) = material_properties.get_shader(DeferredVertexShader) {
                 handle
             } else {
@@ -783,8 +781,9 @@ impl PrepassPipeline {
             fragment,
             layout: bind_group_layouts,
             primitive: PrimitiveState {
-                topology: key.primitive_topology(),
-                strip_index_format: key.strip_index_format(),
+                // don't use [`key.primitive_topology()`] because we want a quad, not points
+                topology: PrimitiveTopology::TriangleList,
+                strip_index_format: mesh_key.strip_index_format(),
                 unclipped_depth,
                 ..default()
             },
@@ -805,7 +804,7 @@ impl PrepassPipeline {
                 },
             }),
             multisample: MultisampleState {
-                count: key.msaa_samples(),
+                count: mesh_key.msaa_samples(),
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
@@ -966,7 +965,7 @@ pub struct ViewKeyPrepassCache(HashMap<RetainedViewEntity, MeshPipelineKey>);
 
 pub fn check_prepass_views_need_specialization(
     mut view_key_cache: ResMut<ViewKeyPrepassCache>,
-    mut dirty_specializations: ResMut<DirtySpecializations>,
+    mut dirty_specializations: ResMut<PointCloudDirtySpecializations>,
     mut views: Query<(
         &ExtractedView,
         &Msaa,
@@ -1116,11 +1115,6 @@ pub(crate) fn specialize_prepass_material_meshes(
                 continue;
             };
 
-            // info!(
-            //     "Got added {} render_visible_mesh_entities for prepass",
-            //     render_visible_mesh_entities.added_entities.len()
-            // );
-
             // Fetch the pending mesh material queues for this view.
             let view_pending_prepass_mesh_material_queues = pending_prepass_mesh_material_queues
                 .prepare_for_new_frame(extracted_view.retained_view_entity);
@@ -1193,6 +1187,11 @@ pub(crate) fn specialize_prepass_material_meshes(
                     .instances
                     .get(&render_point_cloud_chunk_instance.root_entity)
                 else {
+                    warn!(
+                        "material_instance not found for entity {:?} in prepass",
+                        visible_entity
+                    );
+
                     view_pending_prepass_mesh_material_queues
                         .current_frame
                         .insert((*render_entity, *visible_entity));
@@ -1211,12 +1210,22 @@ pub(crate) fn specialize_prepass_material_meshes(
                     continue;
                 };
                 let Some(material) = render_materials.get(material_instance.asset_id) else {
+                    warn!(
+                        "render_material not found for entity {:?} in prepass",
+                        visible_entity
+                    );
+
                     view_pending_prepass_mesh_material_queues
                         .current_frame
                         .insert((*render_entity, *visible_entity));
                     continue;
                 };
                 if !material.properties.prepass_enabled {
+                    warn!(
+                        "prepass not enabled for entity {:?} in prepass",
+                        visible_entity
+                    );
+
                     // If the material was previously specialized for prepass, remove it
                     removals.push((extracted_view.retained_view_entity, *render_entity));
                     continue;
@@ -1271,6 +1280,7 @@ pub(crate) fn specialize_prepass_material_meshes(
                 let deferred = deferred_prepass.is_some() && !forward;
 
                 if deferred {
+                    info!("adding mesh key MeshPipelineKey::DEFERRED_PREPASS");
                     mesh_key |= MeshPipelineKey::DEFERRED_PREPASS;
                 }
 
@@ -1341,6 +1351,7 @@ pub(crate) fn specialize_prepass_material_meshes(
 
     for item in work_items.drain(..) {
         let Some(prepass_specialize) = item.properties.prepass_specialize else {
+            warn!("no prepass specialize, continue");
             continue;
         };
 
@@ -1356,6 +1367,7 @@ pub(crate) fn specialize_prepass_material_meshes(
             .contains(MeshPipelineKey::UNCLIPPED_DEPTH_ORTHO)
             && !depth_clip_control_supported;
         let deferred = item.mesh_key.contains(MeshPipelineKey::DEFERRED_PREPASS);
+
         let draw_function = match item.properties.render_phase_type {
             RenderPhaseType::Opaque => {
                 if deferred {
@@ -1381,6 +1393,7 @@ pub(crate) fn specialize_prepass_material_meshes(
         };
 
         let Some(draw_function) = draw_function else {
+            warn!("no draw function");
             continue;
         };
 
@@ -1456,10 +1469,12 @@ pub fn queue_prepass_material_meshes(
             && opaque_deferred_phase.is_none()
             && alpha_mask_deferred_phase.is_none()
         {
+            warn!("no phase for prepass");
             continue;
         }
 
         let Some(visible_entities_class) = visible_entities.get::<PointCloudChunk3d>() else {
+            warn!("no visible entities for prepass");
             continue;
         };
 
@@ -1512,7 +1527,6 @@ pub fn queue_prepass_material_meshes(
             visible_entities_class,
             &view_pending_prepass_mesh_material_queues.prev_frame,
         ) {
-            bevy::log::info!("Enqueuing entity {:?}", visible_entity);
             let Some(&(_, pipeline_id, draw_function)) =
                 view_specialized_material_pipeline_cache.get(render_entity)
             else {
@@ -1586,6 +1600,7 @@ pub fn queue_prepass_material_meshes(
             match material.properties.render_phase_type {
                 RenderPhaseType::Opaque => {
                     if deferred {
+                        info!("add opaque_deferred_phase for prepass");
                         opaque_deferred_phase.as_mut().unwrap().add(
                             OpaqueNoLightmap3dBatchSetKey {
                                 draw_function,
@@ -1594,10 +1609,11 @@ pub fn queue_prepass_material_meshes(
                                 slabs: mesh_slabs,
                             },
                             OpaqueNoLightmap3dBinKey {
-                                asset_id: mesh_instance.mesh_asset_id().into(),
+                                asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
                             },
                             (
-                                *render_entity, // use the root entity here to correctly handle
+                                *render_entity,
+                                // use the root entity here to correctly handle
                                 // [`GetFullBatchData::get_binned_index`]
                                 // in binned render phases
                                 render_point_cloud_chunk_instance.root_entity,
@@ -1615,6 +1631,7 @@ pub fn queue_prepass_material_meshes(
                             } else {
                                 Some(material.binding.group.0)
                             };
+
                         opaque_phase.add(
                             OpaqueNoLightmap3dBatchSetKey {
                                 draw_function,
@@ -1623,10 +1640,11 @@ pub fn queue_prepass_material_meshes(
                                 slabs: mesh_slabs,
                             },
                             OpaqueNoLightmap3dBinKey {
-                                asset_id: mesh_instance.mesh_asset_id().into(),
+                                asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
                             },
                             (
-                                *render_entity, // use the root entity here to correctly handle
+                                *render_entity,
+                                // use the root entity here to correctly handle
                                 // [`GetFullBatchData::get_binned_index`]
                                 // in binned render phases
                                 render_point_cloud_chunk_instance.root_entity,
@@ -1638,6 +1656,7 @@ pub fn queue_prepass_material_meshes(
                 }
                 RenderPhaseType::AlphaMask => {
                     if deferred {
+                        info!("add alpha_mask_deferred_phase for prepass");
                         alpha_mask_deferred_phase.as_mut().unwrap().add(
                             OpaqueNoLightmap3dBatchSetKey {
                                 draw_function,
@@ -1646,7 +1665,7 @@ pub fn queue_prepass_material_meshes(
                                 slabs: mesh_slabs,
                             },
                             OpaqueNoLightmap3dBinKey {
-                                asset_id: mesh_instance.mesh_asset_id().into(),
+                                asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
                             },
                             (
                                 *render_entity,
@@ -1659,6 +1678,7 @@ pub fn queue_prepass_material_meshes(
                             BinnedRenderPhaseType::UnbatchableMesh,
                         );
                     } else if let Some(alpha_mask_phase) = alpha_mask_phase.as_mut() {
+                        info!("add alpha_mask_phase for prepass");
                         alpha_mask_phase.add(
                             OpaqueNoLightmap3dBatchSetKey {
                                 draw_function,
@@ -1667,7 +1687,7 @@ pub fn queue_prepass_material_meshes(
                                 slabs: mesh_slabs,
                             },
                             OpaqueNoLightmap3dBinKey {
-                                asset_id: mesh_instance.mesh_asset_id().into(),
+                                asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
                             },
                             (
                                 *render_entity,

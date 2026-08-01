@@ -1,4 +1,3 @@
-#import bevy_render::view::position_view_to_world;
 #import bevy_pbr::{
     prepass_bindings,
     mesh_bindings::mesh,
@@ -7,8 +6,12 @@
     morph,
     mesh_view_bindings::view,
     view_transformations::position_world_to_view,
-    prepass_io::FragmentOutput,
 }
+
+#ifdef PREPASS_FRAGMENT
+    #import bevy_pbr::prepass_io::FragmentOutput
+#endif
+
 
 #import bevy_pointcloud::{
     prepass_io::{ShapeInput, InstanceInput, VertexOutput},
@@ -125,24 +128,74 @@ fn vertex(
 #endif // VERTEX_TANGENTS
 #endif // NORMAL_PREPASS_OR_DEFERRED_PREPASS
 
+#ifdef VERTEX_COLORS
+    out.color = vertex.color;
+#endif
+
+
+// Compute the motion vector for TAA among other purposes. For this we need
+// to know where the vertex was last frame.
+#ifdef MOTION_VECTOR_PREPASS
+
+    let prev_vertex = vertex;
+
+
+    // Use vertex_no_morph.instance_index instead of prev_vertex.instance_index to work around a wgpu dx12 bug.
+    // See https://github.com/gfx-rs/naga/issues/2416
+    let prev_model = mesh_functions::get_previous_world_from_local(out.instance_index);
+
+    let prev_point_world_position = mesh_functions::mesh_position_local_to_world(
+        prev_model,
+        vec4<f32>(vertex.position, 1.0)
+    ).xyz;
+
+    // Compute previous vertex positions
+    #ifdef NORMAL_PREPASS_OR_DEFERRED_PREPASS
+        let prev_pos = pointcloud_functions::compute_point_vertex_positions_normal(
+            prev_point_world_position,
+            prev_model,
+            shape.position,
+            shape_normal,
+            radius,
+            normal,
+            tangent,
+        );
+    #else // NORMAL_PREPASS_OR_DEFERRED_PREPASS
+        let prev_pos = pointcloud_functions::compute_point_vertex_positions(
+            prev_point_world_position,
+            prev_model,
+            shape.position,
+            radius,
+            normal,
+            tangent,
+        );
+    #endif // NORMAL_PREPASS_OR_DEFERRED_PREPASS
+
+    out.previous_world_position = vec4<f32>(prev_pos.world_position, 1.0);
+#endif // MOTION_VECTOR_PREPASS
+
 
 #ifdef VISIBILITY_RANGE_DITHER
     let mesh_world_from_local = mesh_functions::get_world_from_local(out.instance_index);
 
     out.visibility_range_dither = mesh_functions::get_visibility_range_dither_level(
-        vertex_no_morph.instance_index, mesh_world_from_local[3]);
+        out.instance_index, mesh_world_from_local[3]);
 #endif  // VISIBILITY_RANGE_DITHER
 
-    #ifdef SHAPE_UVS_A
-        out.shape_uv = shape.uv;
-    #endif // SHAPE_UVS_A
+#ifdef SHAPE_UVS_A
+    out.shape_uv = shape.uv;
+#endif // SHAPE_UVS_A
 
     return out;
 }
 
-#ifdef PREPASS_FRAGMENT
+
 @fragment
-fn fragment(in: VertexOutput) -> FragmentOutput {
+fn fragment(in: VertexOutput)
+#ifdef PREPASS_FRAGMENT
+    -> FragmentOutput
+#endif // PREPASS_FRAGMENT
+{
 #ifdef SHAPE_UVS_A
     #ifdef SPLAT_RADIUS
         // Perfect circle
@@ -154,7 +207,9 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
     #endif // SPLAT_RADIUS
 #endif // SHAPE_UVS_A
 
+#ifdef PREPASS_FRAGMENT
     var out: FragmentOutput;
+#endif // PREPASS_FRAGMENT
 
 #ifdef NORMAL_PREPASS
     out.normal = vec4(in.world_normal * 0.5 + vec3(0.5), 1.0);
@@ -187,6 +242,7 @@ fn fragment(in: VertexOutput) -> FragmentOutput {
     out.deferred_lighting_pass_id = 1u;
 #endif
 
+#ifdef PREPASS_FRAGMENT
     return out;
-}
 #endif // PREPASS_FRAGMENT
+}

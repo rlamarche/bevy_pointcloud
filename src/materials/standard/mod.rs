@@ -159,6 +159,7 @@ impl Material for StandardPointCloudMaterial {
     }
     fn fragment_shader() -> ShaderRef {
         shader_ref(bevy::asset::embedded_path!("pbr.wgsl"))
+        // "shaders/pbr_dev.wgsl".into()
     }
 
     fn alpha_mode(&self) -> bevy::material::prelude::AlphaMode {
@@ -177,21 +178,13 @@ impl Material for StandardPointCloudMaterial {
         <StandardMaterial as SourceMaterial>::reads_view_transmission_texture(self)
     }
 
-    fn enable_prepass() -> bool {
-        <StandardMaterial as SourceMaterial>::enable_prepass()
-    }
-
-    fn enable_shadows() -> bool {
-        <StandardMaterial as SourceMaterial>::enable_shadows()
-    }
-
     fn prepass_vertex_shader() -> ShaderRef {
         ShaderRef::Default
     }
 
     fn prepass_fragment_shader() -> ShaderRef {
         shader_ref(bevy::asset::embedded_path!("pbr_prepass.wgsl"))
-        // "shaders/pbr_dev_prepass.wgsl".into()
+        // "shaders/pbr_prepass_dev.wgsl".into()
     }
 
     fn deferred_vertex_shader() -> ShaderRef {
