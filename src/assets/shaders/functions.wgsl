@@ -284,21 +284,36 @@ fn compute_world_vertex_normal_oriented(
     world_from_local: mat4x4<f32>,
     shape_normal: vec3<f32>,
 ) -> vec3<f32> {
-    let N = normalize(normal);
+    let world_normal = normalize((world_from_local * vec4<f32>(normal, 0.0)).xyz);
+    var up_ref = vec3<f32>(0.0, 1.0, 0.0);
+    if (abs(world_normal.y) > 0.99) {
+        up_ref = vec3<f32>(1.0, 0.0, 0.0);
+    }
 
-    // Choose an axis that is not parallel to N to construct a stable tangent basis
-    let up = select(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), abs(N.z) < 0.999);
-    let T = normalize(cross(up, N));
-    let B = cross(N, T);
+    let world_tangent = normalize(cross(up_ref, world_normal));
+    let world_bitangent = cross(world_normal, world_tangent);
 
-    let tbn = mat3x3<f32>(T, B, N);
-    let local_normal = tbn * shape_normal;
+    let final_world_normal = (world_tangent * shape_normal.x)
+                               + (world_bitangent * shape_normal.y)
+                               + (world_normal * shape_normal.z);
 
-    let world_rot = mat3x3<f32>(
-        world_from_local[0].xyz,
-        world_from_local[1].xyz,
-        world_from_local[2].xyz
-    );
+    return normalize(final_world_normal);
 
-    return normalize(world_rot * local_normal);
+    // let N = normalize(normal);
+
+    // // Choose an axis that is not parallel to N to construct a stable tangent basis
+    // let up = select(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), abs(N.z) < 0.999);
+    // let T = normalize(cross(up, N));
+    // let B = cross(N, T);
+
+    // let tbn = mat3x3<f32>(T, B, N);
+    // let local_normal = tbn * shape_normal;
+
+    // let world_rot = mat3x3<f32>(
+    //     world_from_local[0].xyz,
+    //     world_from_local[1].xyz,
+    //     world_from_local[2].xyz
+    // );
+
+    // return normalize(world_rot * local_normal);
 }
