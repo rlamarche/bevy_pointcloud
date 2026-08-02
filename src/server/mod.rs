@@ -32,8 +32,8 @@ use priority_queue::PriorityQueue;
 use thiserror::Error;
 
 use crate::{
-    InsertNode, NodeId, PointCloud, PointCloudChunk, PointCloudInstances, PointCloudNode,
-    PointCloudNodeKey, PointCloudNodeStatus, PointCloudVisibilitySystems,
+    NodeId, PointCloud, PointCloudChunk, PointCloudInstances, PointCloudNode, PointCloudNodeKey,
+    PointCloudNodeStatus, PointCloudVisibilitySystems,
 };
 
 pub use byte_source::*;
@@ -103,12 +103,14 @@ impl Default for PointCloudServerSettings {
 
 #[derive(Error, Clone, Debug)]
 pub enum PointCloudServerError {
-    #[error("Asset not found")]
+    #[error("asset not found")]
     AssetNotFound,
-    #[error("Loader not found")]
+    #[error("loader not found")]
     LoaderNotFound,
-    #[error("Hierarchy node not found")]
+    #[error("hierarchy node not found")]
     HierarchyNodeNotFound,
+    #[error("pointcloud is not an octree")]
+    NotOctree,
 }
 
 #[derive(Resource, Clone)]
@@ -184,6 +186,9 @@ impl PointCloudServer {
         node_id: NodeId,
     ) -> Result<(), PointCloudServerError> {
         let hierarchy_node = asset
+            .topology
+            .as_octree_mut()
+            .ok_or(PointCloudServerError::NotOctree)?
             .get_node_mut(node_id)
             .ok_or(PointCloudServerError::HierarchyNodeNotFound)?;
 
@@ -238,6 +243,9 @@ impl PointCloudServer {
         node_id: NodeId,
     ) -> Result<(), PointCloudServerError> {
         let hierarchy_node = asset
+            .topology
+            .as_octree()
+            .ok_or(PointCloudServerError::NotOctree)?
             .get_node(node_id)
             .ok_or(PointCloudServerError::HierarchyNodeNotFound)?;
 
@@ -331,7 +339,10 @@ impl PointCloudServerData {
 
         let asset_id = handle.id();
 
-        let mut point_cloud = PointCloud::new();
+        let mut point_cloud = PointCloud::new_octree();
+
+        // Safe to unwrap because it has been instantiated above as octree.
+        let octree = point_cloud.topology.as_octree_mut().unwrap();
 
         let mut initial_hierarchy = loader
             .load_initial_hierarchy()
@@ -371,15 +382,25 @@ impl PointCloudServerData {
 
             let node = std::mem::take(&mut initial_hierarchy[idx]);
 
-            let node_id = point_cloud.insert_node(InsertNode {
-                parent_id,
-                child_index: node.child_index,
-                status: node.status,
-                point_count: node.point_count,
-                data: node.data,
-                aabb: node.aabb,
-                chunk: None,
-            })?;
+            let node_id = match parent_id {
+                Some(parent_id) => octree.try_insert_child(
+                    parent_id,
+                    node.child_index,
+                    node.status,
+                    node.point_count,
+                    node.data,
+                    node.aabb,
+                    None,
+                )?,
+                None => octree.try_insert_root(
+                    node.status,
+                    node.point_count,
+                    node.data,
+                    node.aabb,
+                    None,
+                )?,
+            };
+
             inserted_nodes[idx] = Some(node_id);
 
             for &child_idx in children[idx].iter().rev() {
@@ -437,12 +458,12 @@ impl PointCloudServerData {
         hierarchy_node: &PointCloudNode,
     ) -> Result<(), BevyError> {
         match loader.load_chunk(hierarchy_node).await {
-            Ok(chunk) => self
+            Ok(result) => self
                 .event_sender
                 .send(InternalPointCloudEvent::ChunkLoaded {
                     id,
                     node_id: hierarchy_node.id,
-                    mesh: chunk,
+                    result,
                 })
                 .expect("Failed to send internal point cloud server event"),
             Err(err) => {
@@ -481,7 +502,7 @@ pub(crate) enum InternalPointCloudEvent {
     ChunkLoaded {
         id: AssetId<PointCloud>,
         node_id: NodeId,
-        mesh: Mesh,
+        result: ChunkLoadResult,
     },
     ChunkLoadFailed {
         id: AssetId<PointCloud>,

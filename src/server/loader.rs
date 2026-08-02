@@ -60,7 +60,7 @@ pub trait PointCloudLoader: Send + Sync + Sized + 'static {
     fn load_chunk(
         &self,
         node: &Self::Hierarchy,
-    ) -> impl ConditionalSendFuture<Output = Result<Mesh, Self::Error>>;
+    ) -> impl ConditionalSendFuture<Output = Result<ChunkLoadResult, Self::Error>>;
 }
 
 #[derive(Clone, Debug)]
@@ -90,7 +90,7 @@ pub trait ErasedPointCloudLoader: Send + Sync + 'static {
     fn load_chunk<'a>(
         &'a self,
         node: &'a PointCloudNode,
-    ) -> BoxedFuture<'a, Result<Mesh, BevyError>>;
+    ) -> BoxedFuture<'a, Result<ChunkLoadResult, BevyError>>;
 }
 
 #[derive(Clone, Debug, Default)]
@@ -162,7 +162,7 @@ impl<L: PointCloudLoader> ErasedPointCloudLoader for L {
     fn load_chunk<'a>(
         &'a self,
         node: &'a PointCloudNode,
-    ) -> BoxedFuture<'a, Result<Mesh, BevyError>> {
+    ) -> BoxedFuture<'a, Result<ChunkLoadResult, BevyError>> {
         Box::pin(async move {
             let Ok(loaded_hierarchy) = node
                 .data
@@ -178,4 +178,13 @@ impl<L: PointCloudLoader> ErasedPointCloudLoader for L {
                 .map_err(Into::into)
         })
     }
+}
+
+/// Result of a chunk loading operation, allowing dynamic updates.
+pub struct ChunkLoadResult {
+    /// The actual mesh data. None if the chunk was completely filtered out.
+    pub mesh: Option<Mesh>,
+    /// The actual number of points loaded after filtering.
+    /// This is crucial to update the memory budget and total point count.
+    pub final_point_count: usize,
 }

@@ -16,6 +16,20 @@ new_key_type! { pub struct InternalNodeId; }
 #[reflect(opaque)]
 pub struct NodeId(InternalNodeId);
 
+impl NodeId {
+    /// Returns a null node identifier.
+    ///
+    /// This is typically used as a sentinel value to represent the absence
+    /// of a node, such as for uninitialized or non-existent child nodes.
+    pub fn null() -> Self {
+        Self(InternalNodeId::null())
+    }
+
+    pub fn is_null(&self) -> bool {
+        self.0.is_null()
+    }
+}
+
 #[expect(
     unsafe_code,
     reason = "This implementation is safe because it only reuse [`slotmap::new_key_type`] generated impl."

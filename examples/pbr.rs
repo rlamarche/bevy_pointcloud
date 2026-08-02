@@ -160,7 +160,7 @@ fn load_point_cloud(
         })
         .load("branding/bevy_icon.png");
 
-    let material_handle = pc_standard_materials.add(StandardMaterial {
+    let textured_material_handle = pc_standard_materials.add(StandardMaterial {
         base_color_texture: Some(texture_handle),
         cull_mode: None,
         ..default()
@@ -192,7 +192,9 @@ fn load_point_cloud(
                 CopcPointCloud,
                 PointCloud3d(point_cloud_other_handle),
                 PointCloudMaterial3d(
-                    pc_standard_materials.add(StandardPointCloudMaterial(Color::from(RED).into()))
+                    textured_material_handle /* pc_standard_materials.
+                                              * add(StandardPointCloudMaterial(Color::from(RED).
+                                              * into())) */
                 ),
                 SplatSettings {
                     splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
@@ -202,14 +204,14 @@ fn load_point_cloud(
                     // orientation: SplatOrientation::Billboard,
                     orientation: SplatOrientation::FaceNormal,
                     default_normal: Vec3::new(0.0, 0.0, 1.0),
-                    // uv_mapping: UVMapping::Planar,
-                    // uv_u: Vec3::new(0.0, 1.0, 0.0),
-                    // uv_v: Vec3::new(1.0, 0.0, 0.0),
-                    // uv_transform: Affine2::from_scale_angle_translation(
-                    //     Vec2 { x: 10.0, y: 10.0 },
-                    //     0.0,
-                    //     Vec2::ZERO,
-                    // ),
+                    uv_mapping: UVMapping::Planar,
+                    uv_u: Vec3::new(0.0, 1.0, 0.0),
+                    uv_v: Vec3::new(1.0, 0.0, 0.0),
+                    uv_transform: Affine2::from_scale_angle_translation(
+                        Vec2 { x: 10.0, y: 10.0 },
+                        0.0,
+                        Vec2::ZERO,
+                    ),
                     ..default()
                 }
             ),

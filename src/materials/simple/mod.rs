@@ -139,10 +139,10 @@ impl Material for SimplePointCloudMaterial {
         // "shaders/simple_dev.wgsl".into()
     }
 
-    fn prepass_fragment_shader() -> bevy::shader::ShaderRef {
-        shader_ref(bevy::asset::embedded_path!("prepass.wgsl"))
-        // "shaders/prepass_dev.wgsl".into()
-    }
+    // fn prepass_fragment_shader() -> bevy::shader::ShaderRef {
+    //     shader_ref(bevy::asset::embedded_path!("prepass.wgsl"))
+    //     // "shaders/prepass_dev.wgsl".into()
+    // }
 
     fn enable_prepass() -> bool {
         true

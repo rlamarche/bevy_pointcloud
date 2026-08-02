@@ -4,3 +4,6 @@ pub use crate::{
     PointSizeMode, SimplePointCloudMaterial, SplatOrientation, SplatSettings,
     StandardPointCloudMaterial, UVMapping, UVTransform,
 };
+
+#[cfg(feature = "las")]
+pub use crate::loader::las::LasLoader;

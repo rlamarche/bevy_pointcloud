@@ -4,11 +4,12 @@ use std::path::PathBuf;
 
 use bevy::{
     app::{App, Last, Plugin},
-    asset::{AssetApp, AssetPath, Assets},
+    asset::{AssetApp, AssetEvent, AssetPath, Assets},
     ecs::{
         entity::Entity,
         hierarchy::ChildOf,
         lifecycle::HookContext,
+        message::MessageReader,
         query::Added,
         system::{Commands, Query, Res},
         world::DeferredWorld,
@@ -41,6 +42,9 @@ pub use resources::*;
 #[cfg(feature = "server")]
 pub use server::*;
 pub use visibility::*;
+
+#[cfg(feature = "las")]
+use crate::las::LasLoaderPlugin;
 
 #[derive(Default)]
 pub struct PointCloudPlugin {
@@ -81,7 +85,16 @@ impl Plugin for PointCloudPlugin {
         app.add_plugins(SimplePointCloudMaterialPlugin);
         app.add_plugins(StandardPointCloudMaterialPlugin);
 
-        app.add_systems(Last, spawn_point_cloud_chunks);
+        app.add_systems(
+            Last,
+            (
+                spawn_point_cloud_chunks,
+                spawn_splat_point_cloud_chunks_from_asset_loader,
+            ),
+        );
+
+        #[cfg(feature = "las")]
+        app.add_plugins(LasLoaderPlugin);
     }
 }
 
@@ -200,7 +213,6 @@ pub fn spawn_point_cloud_chunks(
     mut commands: Commands,
     point_clouds: Res<Assets<PointCloud>>,
     point_cloud_chunks: Res<Assets<PointCloudChunk>>,
-    // On cible uniquement les entités qui viennent de recevoir le composant PointCloud3d
     query: Query<(Entity, &PointCloud3d), Added<PointCloud3d>>,
 ) {
     // Map to associate SlotMap's NodeId with Bevy's Entity.
@@ -209,13 +221,16 @@ pub fn spawn_point_cloud_chunks(
 
     for (root_entity, point_cloud_comp) in &query {
         node_to_entity.clear();
-        let Some(pc) = point_clouds.get(point_cloud_comp) else {
+        let Some(point_cloud) = point_clouds.get(point_cloud_comp) else {
+            continue;
+        };
+        let Some(octree) = point_cloud.topology.as_octree() else {
             continue;
         };
 
-        node_to_entity.reserve(pc.nodes.len());
+        node_to_entity.reserve(octree.nodes.len());
 
-        for node in pc.iter_chunks() {
+        for node in octree.iter_loaded_chunks() {
             if let Some(chunk_handle) = &node.chunk {
                 // Link to the chunk to its parent chunk if any, and always to the point cloud
                 let chunk_entity = if let Some(parent_id) = node.parent_id
@@ -255,6 +270,75 @@ pub fn spawn_point_cloud_chunks(
                             .insert(Mesh3d(mesh_handle.clone()));
                     }
                 }
+            }
+        }
+    }
+}
+
+fn spawn_splat_point_cloud_chunks_from_asset_loader(
+    mut events: MessageReader<AssetEvent<PointCloud>>,
+    point_clouds: Res<Assets<PointCloud>>,
+    point_cloud_chunks: Res<Assets<PointCloudChunk>>,
+    point_cloud_instances: Res<PointCloudInstances>,
+    mut commands: Commands,
+) {
+    for event in events.read() {
+        match event {
+            AssetEvent::Added { id } => {
+                info!("PointCloud added: {:?}", id);
+            }
+            AssetEvent::LoadedWithDependencies { id } => {
+                info!("PointCloud loaded with dependencies: {:?}", id);
+
+                let Some(point_cloud) = point_clouds.get(*id) else {
+                    continue;
+                };
+
+                let Some(instances) = point_cloud_instances.get(id) else {
+                    continue;
+                };
+
+                let Some(chunk_handle) = point_cloud.topology.as_flat() else {
+                    continue;
+                };
+
+                let Some(chunk) = point_cloud_chunks.get(chunk_handle) else {
+                    continue;
+                };
+
+                // TODO handle the case where the mesh handle is not yet available ?
+                let Some(mesh_handle) = chunk.mesh_handle.as_ref() else {
+                    continue;
+                };
+
+                let Some(aabb) = chunk.aabb.as_ref() else {
+                    continue;
+                };
+
+                let insert_batch = instances
+                    .keys()
+                    .map(|&entity| {
+                        (
+                            entity,
+                            (
+                                PointCloudChunk3d(chunk_handle.clone()),
+                                Mesh3d(mesh_handle.clone()),
+                                aabb.clone(),
+                            ),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+
+                commands.insert_batch(insert_batch);
+            }
+            AssetEvent::Modified { id } => {
+                info!("PointCloud modified: {:?}", id);
+            }
+            AssetEvent::Removed { id } => {
+                info!("PointCloud removed: {:?}", id);
+            }
+            AssetEvent::Unused { id } => {
+                info!("PointCloud unused: {:?}", id);
             }
         }
     }

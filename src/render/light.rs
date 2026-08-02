@@ -462,7 +462,7 @@ pub fn queue_shadows(
             let Some(&(pipeline_id, draw_function)) =
                 view_specialized_material_pipeline_cache.get(render_entity)
             else {
-                warn!(
+                debug!(
                     "view_specialized_material_pipeline_cache not found for entity {:?}",
                     visible_entity
                 );

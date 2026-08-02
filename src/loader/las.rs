@@ -1,10 +1,10 @@
-use std::io::Cursor;
+use std::io::{Cursor, Seek};
 
 use bevy::{
     app::{App, Plugin},
-    asset::RenderAssetUsages,
-    camera::primitives::Aabb,
-    log::warn,
+    asset::{AssetApp, AssetLoader, RenderAssetUsages},
+    camera::primitives::{Aabb, MeshAabb},
+    log::{info, warn},
     math::Vec3,
     mesh::{Mesh, VertexAttributeValues},
     reflect::TypePath,
@@ -12,16 +12,16 @@ use bevy::{
 use thiserror::Error;
 
 use crate::{
-    ByteSource, ByteSourceError, ChildIndex, LoadedPointCloudNode, PointCloudLoader,
-    PointCloudNodeStatus,
+    ByteSource, ByteSourceError, ChildIndex, ChunkLoadResult, LoadedPointCloudNode, PointCloud,
+    PointCloudChunk, PointCloudLoader, PointCloudNodeStatus, PointCloudTopology,
 };
 
 /// Naive implementation of a las loader because it loads the las file completely in memory
 pub struct LasLoaderPlugin;
 
 impl Plugin for LasLoaderPlugin {
-    fn build(&self, _: &mut App) {
-        // app.register_asset_loader(LasLoader);
+    fn build(&self, app: &mut App) {
+        app.register_asset_loader(LasAssetLoader);
     }
 }
 
@@ -32,12 +32,14 @@ pub enum LasLoaderError {
     #[error("failed to read las: {0}")]
     LoadError(#[from] las::Error),
     /// Failed to load a file.
-    #[error("failed to load las file: {0}")]
+    #[error("failed to load source: {0}")]
     ByteSource(#[from] ByteSourceError),
+    /// Failed to load a file.
+    #[error("failed to load file: {0}")]
+    Io(#[from] std::io::Error),
 }
 
-#[derive(Default)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct LasLoaderSettings {}
 
 #[derive(TypePath)]
@@ -97,7 +99,10 @@ impl<S: ByteSource> PointCloudLoader for LasLoader<S> {
         }])
     }
 
-    async fn load_chunk(&self, &point_count: &Self::Hierarchy) -> Result<Mesh, Self::Error> {
+    async fn load_chunk(
+        &self,
+        &point_count: &Self::Hierarchy,
+    ) -> Result<ChunkLoadResult, Self::Error> {
         let data = self.source.read_to_end(0).await?;
         let cursor = Cursor::new(data);
         let mut las_reader = las::Reader::new(cursor)?;
@@ -140,6 +145,104 @@ impl<S: ByteSource> PointCloudLoader for LasLoader<S> {
             VertexAttributeValues::Float32x4(colors),
         );
 
-        Ok(mesh)
+        Ok(ChunkLoadResult {
+            mesh: Some(mesh),
+            final_point_count: point_count,
+        })
     }
+}
+
+#[derive(TypePath)]
+pub struct LasAssetLoader;
+
+impl AssetLoader for LasAssetLoader {
+    type Asset = PointCloud;
+
+    type Settings = LasLoaderSettings;
+
+    type Error = LasLoaderError;
+
+    async fn load(
+        &self,
+        reader: &mut dyn bevy::asset::io::Reader,
+        _settings: &Self::Settings,
+        load_context: &mut bevy::asset::LoadContext<'_>,
+    ) -> Result<Self::Asset, Self::Error> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).await?;
+        let reader = Cursor::new(bytes);
+
+        let mut las_reader = las::Reader::new(reader)?;
+        let point_count = las_reader.points().count();
+
+        las_reader.seek(0).unwrap();
+
+        let mesh = load_points_as_mesh(point_count, &mut las_reader);
+        let vertex_buffer_size = mesh.get_vertex_buffer_size();
+
+        let aabb = mesh.compute_aabb();
+
+        let mesh_handle = load_context.add_labeled_asset("mesh", mesh);
+
+        let chunk_handle = load_context.add_labeled_asset(
+            "chunk",
+            PointCloudChunk {
+                depth: 0,
+                mesh_handle: Some(mesh_handle),
+                aabb: aabb.clone(),
+                vertex_buffer_size,
+            },
+        );
+
+        Ok(PointCloud {
+            aabb,
+            topology: PointCloudTopology::Flat(chunk_handle),
+        })
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["las", "laz"]
+    }
+}
+
+fn load_points_as_mesh(point_count: usize, las_reader: &mut las::Reader) -> Mesh {
+    let mut positions = Vec::with_capacity(point_count);
+    let mut colors = Vec::with_capacity(point_count);
+
+    for point in las_reader.points() {
+        let point = match point {
+            Ok(point) => point,
+            Err(e) => {
+                warn!("An error occured while parsing a point: {:#}", e);
+                continue;
+            }
+        };
+
+        positions.push([point.x as f32, point.y as f32, point.z as f32]);
+        if let Some(color) = &point.color {
+            colors.push([
+                color.red as f32 / u16::MAX as f32,
+                color.green as f32 / u16::MAX as f32,
+                color.blue as f32 / u16::MAX as f32,
+                1.0,
+            ]);
+        } else {
+            colors.push([0.0, 0.0, 0.0, 0.0]);
+        }
+    }
+
+    let mesh = Mesh::new(
+        bevy::mesh::PrimitiveTopology::PointList,
+        RenderAssetUsages::RENDER_WORLD,
+    )
+    .with_inserted_attribute(
+        Mesh::ATTRIBUTE_POSITION,
+        VertexAttributeValues::Float32x3(positions),
+    )
+    .with_inserted_attribute(
+        Mesh::ATTRIBUTE_COLOR,
+        VertexAttributeValues::Float32x4(colors),
+    );
+
+    mesh
 }

@@ -27,8 +27,9 @@ use crate::{
         budget::PointCloudPointBudget, heap_guard::HeapGuard, stack::StackedPointCloudNodeEntity,
     },
     CameraView, GlobalVisiblePointCloudChunks, GlobalVisiblePointCloudNodes, PointCloud,
-    PointCloud3d, PointCloudInstances, PointCloudLoadTasks, PointCloudVisibilitySettings,
-    ScreenPixelRadiusFilter, SkipPointCloudVisibility, VisiblePointCloudEntities,
+    PointCloud3d, PointCloudChunk3d, PointCloudInstances, PointCloudLoadTasks, PointCloudTopology,
+    PointCloudVisibilitySettings, ScreenPixelRadiusFilter, SkipPointCloudVisibility,
+    VisiblePointCloudFlatEntities, VisiblePointCloudOctreeEntities,
 };
 
 #[derive(Component, Clone, Debug, Default, Reflect)]
@@ -36,19 +37,35 @@ use crate::{
 pub struct CascadesVisiblePointCloudEntities {
     /// Map of view entity to the visible point cloud entities for each cascade frustum.
     #[reflect(ignore, clone)]
-    pub entities: EntityHashMap<Vec<VisiblePointCloudEntities>>,
+    pub entities: EntityHashMap<
+        Vec<(
+            VisiblePointCloudFlatEntities,
+            VisiblePointCloudOctreeEntities,
+        )>,
+    >,
 }
 
 impl CascadesVisiblePointCloudEntities {
-    pub fn get_mut(&mut self, entity: Entity) -> &mut Vec<VisiblePointCloudEntities> {
+    pub fn get_mut(
+        &mut self,
+        entity: Entity,
+    ) -> &mut Vec<(
+        VisiblePointCloudFlatEntities,
+        VisiblePointCloudOctreeEntities,
+    )> {
         self.entities.entry(entity).or_default()
     }
 
     pub fn clear_all(&mut self) {
         // Don't just nuke the hash table; we want to reuse allocations.
         for cascade_point_cloud_entities in self.entities.values_mut() {
-            for visible_point_cloud_entities in cascade_point_cloud_entities {
-                for point_cloud_entities in visible_point_cloud_entities.entities.values_mut() {
+            for (visible_point_cloud_flat_entities, visible_point_cloud_octree_entities) in
+                cascade_point_cloud_entities
+            {
+                visible_point_cloud_flat_entities.clear();
+                for point_cloud_entities in
+                    visible_point_cloud_octree_entities.entities.values_mut()
+                {
                     point_cloud_entities.asset_id = Default::default();
                     point_cloud_entities.node_entities.clear();
                 }
@@ -58,7 +75,7 @@ impl CascadesVisiblePointCloudEntities {
 }
 
 pub fn check_point_cloud_nodes_dir_lights_visibility(
-    entities: Query<(&PointCloud3d, &GlobalTransform)>,
+    entities: Query<(&PointCloud3d, &GlobalTransform, Option<&PointCloudChunk3d>)>,
     // TODO add a way to disable checking of a camera
     mut lights: Query<(
         &DirectionalLight,
@@ -107,8 +124,11 @@ pub fn check_point_cloud_nodes_dir_lights_visibility(
             for (_, visible_point_cloud_entities) in
                 &mut cascade_visible_point_cloud_entities.entities
             {
-                for visible_point_cloud_entity in visible_point_cloud_entities {
-                    visible_point_cloud_entity.changed_this_frame = false;
+                for (visible_point_cloud_flat_entity, visible_point_cloud_octree_entity) in
+                    visible_point_cloud_entities
+                {
+                    visible_point_cloud_flat_entity.changed_this_frame = false;
+                    visible_point_cloud_octree_entity.changed_this_frame = false;
                 }
             }
             continue;
@@ -133,7 +153,7 @@ pub fn check_point_cloud_nodes_dir_lights_visibility(
             cascade_visible_point_cloud_entities
                 .entities
                 .entry(*view)
-                .or_insert_with(|| vec![VisiblePointCloudEntities::default(); frusta.len()]);
+                .or_insert_with(|| vec![Default::default(); frusta.len()]);
         }
 
         for v in views_to_remove {
@@ -153,14 +173,20 @@ pub fn check_point_cloud_nodes_dir_lights_visibility(
                 cascade_visible_point_cloud_entities.get_mut(*view);
 
             // TODO: parallelize
-            for (frustum, frustum_visible_entities, view_cascade, visible_point_cloud_entities) in izip!(
+            for (
+                frustum,
+                frustum_visible_entities,
+                view_cascade,
+                (visible_point_cloud_flat_entities, visible_point_cloud_octree_entities),
+            ) in izip!(
                 view_frusta,
                 view_visible_entities,
                 view_cascades,
-                view_cascade_visible_point_cloud_entities
+                view_cascade_visible_point_cloud_entities,
             ) {
                 // mark as changed
-                visible_point_cloud_entities.changed_this_frame = true;
+                visible_point_cloud_flat_entities.changed_this_frame = true;
+                visible_point_cloud_octree_entities.changed_this_frame = true;
 
                 // Compute the light projection.
                 // It's an orthographic projection because on directionnal lights, all rays are
@@ -181,7 +207,8 @@ pub fn check_point_cloud_nodes_dir_lights_visibility(
 
                 // for each visible point cloud
                 for &entity in &frustum_visible_entities.entities {
-                    let Ok((component, global_transform)) = entities.get(entity) else {
+                    let Ok((component, global_transform, maybe_chunk)) = entities.get(entity)
+                    else {
                         // this is ignorable because `frustum_visible_entities` contains also non
                         // point cloud entities.
                         continue;
@@ -194,17 +221,35 @@ pub fn check_point_cloud_nodes_dir_lights_visibility(
                         continue;
                     };
 
-                    let visible_point_cloud_entity = visible_point_cloud_entities.get_mut(entity);
+                    let octree = match &asset.topology {
+                        PointCloudTopology::Empty => {
+                            continue;
+                        }
+                        // if this is a flat point cloud, just add it to the visible chunks if
+                        // loaded
+                        PointCloudTopology::Flat(_) => {
+                            if let Some(_) = maybe_chunk {
+                                global_visible_point_cloud_chunks.add_visible_chunk(
+                                    entity,
+                                    entity,
+                                    0.0.into(),
+                                );
+                                visible_point_cloud_flat_entities
+                                    .entities
+                                    .insert(entity, component.into());
+                            }
+                            continue;
+                        }
+                        PointCloudTopology::Octree(octree) => octree,
+                    };
+
+                    let visible_point_cloud_entity =
+                        visible_point_cloud_octree_entities.get_mut(entity);
 
                     // update the asset id
                     visible_point_cloud_entity.asset_id = component.into();
 
-                    let Some(_) = asset.root else {
-                        warn!("Point cloud node has not yet hierarchy root loaded.");
-                        continue;
-                    };
-
-                    let Some(node_root) = asset.get_root() else {
+                    let Some(node_root) = octree.get_root() else {
                         warn!("Point cloud node has not yet hierarchy root loaded.");
                         continue;
                     };
@@ -221,7 +266,7 @@ pub fn check_point_cloud_nodes_dir_lights_visibility(
                     priority_stack.push(StackedPointCloudNodeEntity {
                         entity,
                         asset_id: visible_point_cloud_entity.asset_id,
-                        octree: asset,
+                        octree,
                         node: node_root,
                         weight: screen_pixel_radius.unwrap_or(f32::MAX).into(),
                         screen_pixel_radius,
@@ -247,7 +292,7 @@ pub fn check_point_cloud_nodes_dir_lights_visibility(
                     &filter,
                     &mut budget,
                     &mut priority_stack,
-                    visible_point_cloud_entities,
+                    visible_point_cloud_octree_entities,
                     &entities_transform,
                     &mut point_cloud_load_tasks,
                     false,
@@ -265,7 +310,9 @@ pub fn check_point_cloud_nodes_dir_lights_visibility(
 
                 // extract chunk entities for each visible node, if available and populate resource
                 // [`GlobalVisiblePointCloudChunks`].
-                for (entity, point_cloud_entity) in &mut visible_point_cloud_entities.entities {
+                for (entity, point_cloud_entity) in
+                    &mut visible_point_cloud_octree_entities.entities
+                {
                     let Some(point_cloud_instance) =
                         point_cloud_instances.get(&point_cloud_entity.asset_id)
                     else {

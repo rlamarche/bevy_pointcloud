@@ -6,9 +6,9 @@ use crate::{
     },
     ChildrenMask, GlobalVisiblePointCloudChunks, GlobalVisiblePointCloudNodes, LoadRequestType,
     PointCloud, PointCloud3d, PointCloudChunk3d, PointCloudInstances, PointCloudLoadTasks,
-    PointCloudNodeStatus, PointCloudVisibilitySettings, PointCloudVisiblityPlugin,
-    ScreenPixelRadiusFilter, SkipPointCloudVisibility, VisiblePointCloudEntities,
-    VisiblePointCloudNodeEntity,
+    PointCloudNodeStatus, PointCloudTopology, PointCloudVisibilitySettings,
+    PointCloudVisiblityPlugin, ScreenPixelRadiusFilter, SkipPointCloudVisibility,
+    VisiblePointCloudFlatEntities, VisiblePointCloudNodeEntity, VisiblePointCloudOctreeEntities,
 };
 use bevy::{
     asset::Assets,
@@ -33,7 +33,7 @@ use bevy::{
 pub fn check_point_cloud_nodes_visibility(
     mut diagnostics: Diagnostics,
     _time: Res<Time<Real>>,
-    entities: Query<(&PointCloud3d, &GlobalTransform)>,
+    entities: Query<(&PointCloud3d, &GlobalTransform, Option<&PointCloudChunk3d>)>,
     // TODO add a way to disable checking of a camera
     mut views: Query<(
         &VisibleEntities,
@@ -42,7 +42,8 @@ pub fn check_point_cloud_nodes_visibility(
         &GlobalTransform,
         &Projection,
         &PointCloudVisibilitySettings,
-        &mut VisiblePointCloudEntities,
+        &mut VisiblePointCloudOctreeEntities,
+        &mut VisiblePointCloudFlatEntities,
         Option<&SkipPointCloudVisibility>,
     )>,
     point_clouds: Res<Assets<PointCloud>>,
@@ -74,7 +75,8 @@ pub fn check_point_cloud_nodes_visibility(
         camera_global_transform,
         camera_projection,
         visibility_settings,
-        mut visible_point_cloud_entities,
+        mut visible_point_cloud_octree_entities,
+        mut visible_point_cloud_flat_entities,
         skip_point_cloud_visibility,
     ) in &mut views
     {
@@ -83,15 +85,18 @@ pub fn check_point_cloud_nodes_visibility(
         }
 
         if skip_point_cloud_visibility.is_some() {
-            visible_point_cloud_entities.changed_this_frame = false;
+            visible_point_cloud_octree_entities.changed_this_frame = false;
+            visible_point_cloud_flat_entities.changed_this_frame = false;
             continue;
         }
 
         // Reset previously computed visibility
-        visible_point_cloud_entities.clear_all();
+        visible_point_cloud_octree_entities.clear_all();
+        visible_point_cloud_flat_entities.clear();
 
         // mark as changed
-        visible_point_cloud_entities.changed_this_frame = true;
+        visible_point_cloud_octree_entities.changed_this_frame = true;
+        visible_point_cloud_flat_entities.changed_this_frame = true;
 
         let camera_view = CameraView {
             global_transform: camera_global_transform,
@@ -109,7 +114,7 @@ pub fn check_point_cloud_nodes_visibility(
 
         // for each visible point cloud
         for &entity in visible_entities {
-            let Ok((component, global_transform)) = entities.get(entity) else {
+            let Ok((component, global_transform, maybe_chunk)) = entities.get(entity) else {
                 warn!("Unable to read point cloud entity for computing nodes visibility");
                 continue;
             };
@@ -125,17 +130,33 @@ pub fn check_point_cloud_nodes_visibility(
                 continue;
             };
 
-            let visible_point_cloud_entity = visible_point_cloud_entities.get_mut(entity);
+            let octree = match &asset.topology {
+                PointCloudTopology::Empty => {
+                    continue;
+                }
+                // if this is a flat point cloud, just add it to the visible chunks if loaded
+                PointCloudTopology::Flat(_) => {
+                    if let Some(_) = maybe_chunk {
+                        global_visible_point_cloud_chunks.add_visible_chunk(
+                            entity,
+                            entity,
+                            0.0.into(),
+                        );
+                        visible_point_cloud_flat_entities
+                            .entities
+                            .insert(entity, component.into());
+                    }
+                    continue;
+                }
+                PointCloudTopology::Octree(octree) => octree,
+            };
+
+            let visible_point_cloud_entity = visible_point_cloud_octree_entities.get_mut(entity);
 
             // update the asset id
             visible_point_cloud_entity.asset_id = component.into();
 
-            let Some(_) = asset.root else {
-                warn!("Point cloud node has not yet hierarchy root loaded.");
-                continue;
-            };
-
-            let Some(node_root) = asset.get_root() else {
+            let Some(node_root) = octree.get_root() else {
                 warn!("Point cloud node has not yet hierarchy root loaded.");
                 continue;
             };
@@ -152,7 +173,7 @@ pub fn check_point_cloud_nodes_visibility(
             priority_stack.push(StackedPointCloudNodeEntity {
                 entity,
                 asset_id: visible_point_cloud_entity.asset_id,
-                octree: asset,
+                octree,
                 node: node_root,
                 weight: screen_pixel_radius.unwrap_or(f32::MAX).into(),
                 screen_pixel_radius,
@@ -178,7 +199,7 @@ pub fn check_point_cloud_nodes_visibility(
             &filter,
             &mut budget,
             &mut priority_stack,
-            &mut visible_point_cloud_entities,
+            &mut visible_point_cloud_octree_entities,
             &entities_transform,
             &mut point_cloud_load_tasks,
             false,
@@ -188,7 +209,7 @@ pub fn check_point_cloud_nodes_visibility(
         // [`GlobalVisiblePointCloudChunks`].
         // It also fills the [`VisiblePointCloudNodeEntity::entity`] field (not done during the
         // visiblity check to reduce lookups).
-        for (entity, point_cloud_entity) in &mut visible_point_cloud_entities.entities {
+        for (entity, point_cloud_entity) in &mut visible_point_cloud_octree_entities.entities {
             let Some(point_cloud_instance) =
                 point_cloud_instances.get(&point_cloud_entity.asset_id)
             else {
@@ -279,7 +300,7 @@ pub fn compute_visible_nodes_stack(
     filter: &ScreenPixelRadiusFilter,
     budget: &mut PointCloudPointBudget,
     stack: &mut BinaryHeap<StackedPointCloudNodeEntity>,
-    visible_point_cloud_entities: &mut VisiblePointCloudEntities,
+    visible_point_cloud_entities: &mut VisiblePointCloudOctreeEntities,
     entities_transform: &EntityHashMap<&GlobalTransform>,
     load_tasks: &mut PointCloudLoadTasks,
     eager_stop: bool,
@@ -289,7 +310,7 @@ pub fn compute_visible_nodes_stack(
     while let Some(StackedPointCloudNodeEntity {
         entity,
         asset_id,
-        octree: point_cloud,
+        octree,
         node,
         screen_pixel_radius,
         weight,
@@ -439,10 +460,17 @@ pub fn compute_visible_nodes_stack(
                 // useless visibility checks
                 for i in node.children_mask.iter_one_bits() {
                     let child_id = &node.children[i as usize];
-                    let Some(child) = point_cloud.get_node(*child_id) else {
+                    let Some(child) = octree.get_node(*child_id) else {
                         warn!("missing node in hierarchy, shouldn't happen");
                         continue;
                     };
+
+                    // we skip empty loaded nodes
+                    if matches!(child.status, PointCloudNodeStatus::Loaded)
+                        && child.point_count == 0
+                    {
+                        continue;
+                    }
 
                     let Some(aabb) = &child.aabb else {
                         continue;
@@ -459,7 +487,7 @@ pub fn compute_visible_nodes_stack(
                     stack.push(StackedPointCloudNodeEntity {
                         entity,
                         asset_id,
-                        octree: point_cloud,
+                        octree,
                         node: child,
                         screen_pixel_radius: child_screen_pixel_radius,
                         weight: weight.into(),
@@ -481,16 +509,40 @@ pub fn compute_visible_nodes_stack(
 /// entities. This allows the chunks' render phases to be queued later in the render world, exactly
 /// like standard meshes.
 pub fn set_visible_point_cloud_chunk_visibility(
-    mut views: Query<(&VisiblePointCloudEntities, &mut VisibleEntities), With<Camera>>,
+    mut views: Query<
+        (
+            &VisiblePointCloudFlatEntities,
+            &VisiblePointCloudOctreeEntities,
+            &mut VisibleEntities,
+        ),
+        With<Camera>,
+    >,
     mut entities: Query<&mut ViewVisibility>,
 ) {
-    for (visible_point_cloud_entities, mut visible_entities) in &mut views {
+    for (
+        visible_point_cloud_flat_entities,
+        visible_point_cloud_octree_entities,
+        mut visible_entities,
+    ) in &mut views
+    {
         // Retrieve or initialize the specific sub-list for PointCloudChunk3d inside Bevy's
         // VisibleEntities
         let visible_chunk_list = visible_entities.get_mut(TypeId::of::<PointCloudChunk3d>());
 
-        // Iterate through each visible point cloud instance for this view
-        for (_, point_cloud_entity) in &visible_point_cloud_entities.entities {
+        // Iterate through each visible flat point cloud instance for this view
+        for (&chunk_entity, _) in &visible_point_cloud_flat_entities.entities {
+            // Append the chunk entity to Bevy's native visibility list for extraction
+            visible_chunk_list.push(chunk_entity);
+
+            // Update Bevy's internal ViewVisibility component to mark this chunk as visible
+            // this frame
+            if let Ok(mut view_visibility) = entities.get_mut(chunk_entity) {
+                view_visibility.set_visible();
+            }
+        }
+
+        // Iterate through each visible octree point cloud instance for this view
+        for (_, point_cloud_entity) in &visible_point_cloud_octree_entities.entities {
             // Iterate through the visible octree nodes of this point cloud instance
             for node_entity in &point_cloud_entity.node_entities {
                 // Keep only nodes that have a valid chunk entity assigned (ready to be rendered)

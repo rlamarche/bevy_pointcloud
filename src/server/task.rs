@@ -18,10 +18,10 @@ use bevy::{
 use ordered_float::OrderedFloat;
 
 use crate::{
-    server::build_hierarchy_children, ChildChunkOf, InsertNode, InternalPointCloudEvent, NodeId,
-    PointCloud, PointCloudChunk, PointCloudChunk3d, PointCloudChunkKey, PointCloudInstances,
-    PointCloudNodeKey, PointCloudNodeStatus, PointCloudServer, PointCloudServerSettings,
-    PointCloudTotalSize, PointCloudTracking,
+    server::build_hierarchy_children, ChildChunkOf, InternalPointCloudEvent, NodeId, PointCloud,
+    PointCloudChunk, PointCloudChunk3d, PointCloudChunkKey, PointCloudInstances, PointCloudNodeKey,
+    PointCloudNodeStatus, PointCloudServer, PointCloudServerSettings, PointCloudTotalSize,
+    PointCloudTracking,
 };
 
 #[derive(Resource, Default)]
@@ -193,6 +193,10 @@ pub fn handle_internal_point_cloud_events(
                     continue;
                 };
 
+                let Some(octree) = point_cloud.topology.as_octree_mut() else {
+                    continue;
+                };
+
                 if hierarchy_nodes.is_empty() {
                     warn!(
                         "Loaded empty hierarchy for {:?}/{:?}, skipping update.",
@@ -223,7 +227,7 @@ pub fn handle_internal_point_cloud_events(
                 let mut inserted_nodes: Vec<Option<NodeId>> = vec![None; hierarchy_nodes.len()];
 
                 let hierarchy_node = std::mem::take(&mut hierarchy_nodes[root_idx]);
-                match point_cloud.get_node_mut(node_id) {
+                match octree.get_node_mut(node_id) {
                     Some(node) => {
                         node.status = hierarchy_node.status;
                         node.data = hierarchy_node.data;
@@ -254,15 +258,15 @@ pub fn handle_internal_point_cloud_events(
 
                     let node = std::mem::take(&mut hierarchy_nodes[idx]);
 
-                    let new_id = match point_cloud.insert_node(InsertNode {
-                        parent_id: Some(parent_id),
-                        child_index: node.child_index,
-                        status: node.status,
-                        point_count: node.point_count,
-                        data: node.data,
-                        aabb: node.aabb,
-                        chunk: None,
-                    }) {
+                    let new_id = match octree.try_insert_child(
+                        parent_id,
+                        node.child_index,
+                        node.status,
+                        node.point_count,
+                        node.data,
+                        node.aabb,
+                        None,
+                    ) {
                         Ok(node_id) => node_id,
                         Err(error) => {
                             warn!(
@@ -289,7 +293,8 @@ pub fn handle_internal_point_cloud_events(
                 warn!("An error occured loading sub hierarchy: {:#}", error);
 
                 if let Some(mut point_cloud) = point_clouds.get_mut(id)
-                    && let Some(hierarchy_node) = point_cloud.get_node_mut(node_id)
+                    && let Some(octree) = point_cloud.topology.as_octree_mut()
+                    && let Some(hierarchy_node) = octree.get_node_mut(node_id)
                 {
                     hierarchy_node.status = PointCloudNodeStatus::Proxy;
                 } else {
@@ -299,7 +304,11 @@ pub fn handle_internal_point_cloud_events(
                     );
                 }
             }
-            InternalPointCloudEvent::ChunkLoaded { id, node_id, mesh } => {
+            InternalPointCloudEvent::ChunkLoaded {
+                id,
+                node_id,
+                result,
+            } => {
                 let key = PointCloudNodeKey { id, node_id };
 
                 // update in flight hashset
@@ -310,11 +319,26 @@ pub fn handle_internal_point_cloud_events(
                     continue;
                 };
 
-                let Some(node) = point_cloud.get_node_mut(node_id) else {
+                let Some(octree) = point_cloud.topology.as_octree_mut() else {
+                    warn!(
+                        "Point cloud {:?} is not an octree, unable to store node data.",
+                        id
+                    );
+                    continue;
+                };
+
+                let Some(node) = octree.get_node_mut(node_id) else {
                     warn!(
                         "Hierarchy node {:?} not found for asset {:?} when storing chunk.",
                         node_id, id
                     );
+                    continue;
+                };
+
+                // If there is no mesh, it means that this node is empty.
+                // Sets its point count to 0 and continue.
+                let Some(mesh) = result.mesh else {
+                    node.point_count = 0;
                     continue;
                 };
 
@@ -337,13 +361,12 @@ pub fn handle_internal_point_cloud_events(
                 node.chunk = Some(chunk_handle.clone());
 
                 // get again the node immutably
-                let node = point_cloud.get_node(node_id).unwrap(); // was valid just above
+                let node = octree.get_node(node_id).unwrap(); // was valid just above
 
                 if let Some(point_cloud_entities) = point_cloud_instances.get(&id) {
                     for (&point_cloud_entity, chunks) in point_cloud_entities.iter() {
                         if let Some(parent_node_id) = node.parent_id
-                            && let Some(parent_hierarchy_node) =
-                                point_cloud.get_node(parent_node_id)
+                            && let Some(parent_hierarchy_node) = octree.get_node(parent_node_id)
                             && let Some(parent_handle_id) = &parent_hierarchy_node.chunk
                         {
                             let Some(&parent_chunk_entity) = chunks.get(&parent_handle_id.id())
@@ -455,7 +478,15 @@ fn process_hierarchy_loads(
             continue;
         };
 
-        let Some(node) = point_cloud.get_node(task.node_id) else {
+        let Some(octree) = point_cloud.topology.as_octree_mut() else {
+            warn!(
+                "PointCloud asset is not an octree when loading hierarchy: {:?}",
+                task.asset_id
+            );
+            continue;
+        };
+
+        let Some(node) = octree.get_node(task.node_id) else {
             warn!(
                 "Node not found in point_cloud when loading hierarchy: {:?}",
                 task.node_id
@@ -512,7 +543,7 @@ fn process_chunk_loads(
             continue;
         }
 
-        let Some(point_cloud) = point_cloud_assets.get_mut(task.asset_id) else {
+        let Some(point_cloud) = point_cloud_assets.get(task.asset_id) else {
             debug!(
                 "PointCloud asset not found when loading chunk: {:?}",
                 task.asset_id
@@ -520,7 +551,15 @@ fn process_chunk_loads(
             continue;
         };
 
-        let Some(node) = point_cloud.get_node(task.node_id) else {
+        let Some(octree) = point_cloud.topology.as_octree() else {
+            debug!(
+                "PointCloud asset is not an octree when loading chunk: {:?}",
+                task.asset_id
+            );
+            continue;
+        };
+
+        let Some(node) = octree.get_node(task.node_id) else {
             warn!(
                 "Node not found in point_cloud when loading chunk: {:?}",
                 task.node_id

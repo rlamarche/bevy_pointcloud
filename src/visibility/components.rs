@@ -29,18 +29,18 @@ impl Default for PointCloudVisibilitySettings {
     }
 }
 
-/// This component stores the visible nodes for each point cloud at view level (camera) in "main
-/// world".
+/// This component stores the visible nodes for each point cloud octree at view level (camera) in
+/// "main world".
 #[derive(Component, Clone, Debug, Default, Reflect)]
 #[reflect(Component, Default, Clone)]
-pub struct VisiblePointCloudEntities {
+pub struct VisiblePointCloudOctreeEntities {
     #[reflect(ignore, clone)]
-    pub entities: EntityHashMap<VisiblePointCloudEntity>,
+    pub entities: EntityHashMap<VisiblePointCloudOctreeEntity>,
     pub changed_this_frame: bool,
 }
 
-impl VisiblePointCloudEntities {
-    pub fn get_mut(&mut self, entity: Entity) -> &mut VisiblePointCloudEntity {
+impl VisiblePointCloudOctreeEntities {
+    pub fn get_mut(&mut self, entity: Entity) -> &mut VisiblePointCloudOctreeEntity {
         self.entities.entry(entity).or_default()
     }
 
@@ -53,8 +53,22 @@ impl VisiblePointCloudEntities {
     }
 }
 
+#[derive(Component, Clone, Debug, Default, Reflect)]
+#[reflect(Component, Default, Clone)]
+pub struct VisiblePointCloudFlatEntities {
+    #[reflect(ignore, clone)]
+    pub entities: EntityHashMap<AssetId<PointCloud>>,
+    pub changed_this_frame: bool,
+}
+
+impl VisiblePointCloudFlatEntities {
+    pub fn clear(&mut self) {
+        self.entities.clear();
+    }
+}
+
 #[derive(Clone, Debug, Default)]
-pub struct VisiblePointCloudEntity {
+pub struct VisiblePointCloudOctreeEntity {
     pub asset_id: AssetId<PointCloud>,
     pub node_entities: Vec<VisiblePointCloudNodeEntity>,
 }

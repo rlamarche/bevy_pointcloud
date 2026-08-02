@@ -14,7 +14,7 @@ use bevy::{
         system::{Local, Query, Res, ResMut},
     },
     light::{CascadeShadowConfig, Cascades, DirectionalLight, SpotLight, SunDisk, VolumetricLight},
-    log::{debug, warn},
+    log::warn,
     pbr::PreviousGlobalTransform,
     platform::collections::HashMap,
     render::{
@@ -35,14 +35,14 @@ use crate::{
     PointCloudChunk, PointCloudChunk3d, PointCloudTransforms, RenderPointCloudChunkInstance,
     RenderPointCloudChunkInstances, RenderPointCloudInstance, RenderPointCloudInstanceIndex,
     RenderPointCloudInstances, RenderVisiblePointCloudChunkEntity, RenderVisiblePointCloudEntities,
-    SplatMeshes, SplatSettings, VisiblePointCloudEntities,
+    SplatMeshes, SplatSettings, VisiblePointCloudOctreeEntities,
 };
 
 /// This system extracts the visible point cloud chunk entities into the render world while
 /// preserving the hierarchy, it also computes `first_child_index` and `children_mask` specific for
 /// each views, for later visible nodes texture generation.
 pub fn extract_visible_point_cloud_chunks(
-    views: Extract<Query<(RenderEntity, &VisiblePointCloudEntities), With<Camera>>>,
+    views: Extract<Query<(RenderEntity, &VisiblePointCloudOctreeEntities), With<Camera>>>,
     mut extracted_views: Query<&mut RenderVisiblePointCloudEntities, With<ExtractedView>>,
     mapper: Extract<Query<&RenderEntity>>,
     mut render_point_cloud_index: ResMut<RenderPointCloudInstanceIndex>,
@@ -188,7 +188,7 @@ pub fn extract_pointcloud_instances(
             }
 
             let Some(aabb) = maybe_aabb else {
-                debug!(
+                warn!(
                     "Point cloud's aabb of render entity {:?} not yet available.",
                     entity
                 );
@@ -210,7 +210,10 @@ pub fn extract_pointcloud_instances(
                 RenderPointCloudInstance {
                     entity: entity.into(),
                     aabb: *aabb,
-                    spacing: point_cloud.spacing,
+                    spacing: point_cloud
+                        .topology
+                        .as_octree()
+                        .and_then(|octree| octree.spacing),
                     transforms: PointCloudTransforms {
                         world_from_local: world_from_local.into(),
                         previous_world_from_local: previous_world_from_local.into(),
@@ -402,27 +405,40 @@ pub fn extract_cascade_visible_point_cloud_chunks(
                         .or_default()
                         .entities;
                     extracted_entities.clear();
-                    let Some(visible_chunk_entities) =
+                    let Some((visible_flat_chunk_entities, visible_octree_chunk_entities)) =
                         visible_mesh_entities_list.get(subview_index as usize)
                     else {
                         continue;
                     };
-                    extracted_entities.extend(visible_chunk_entities.entities.iter().flat_map(
-                        |(_, visible_point_cloud_entity)| {
-                            // get all node entities which have an associated entity
-                            visible_point_cloud_entity
-                                .node_entities
-                                .iter()
-                                .flat_map(|node| {
-                                    let main_entity = node.entity?;
-                                    let render_entity = match mapper.get(main_entity) {
-                                        Ok(render_entity) => **render_entity,
-                                        Err(_) => Entity::PLACEHOLDER,
-                                    };
-                                    Some((render_entity, MainEntity::from(main_entity)))
-                                })
-                        },
-                    ));
+                    extracted_entities.extend(
+                        visible_flat_chunk_entities.entities.iter().flat_map(
+                            |(&main_entity, _)| {
+                                let render_entity = match mapper.get(main_entity) {
+                                    Ok(render_entity) => **render_entity,
+                                    Err(_) => Entity::PLACEHOLDER,
+                                };
+                                Some((render_entity, MainEntity::from(main_entity)))
+                            },
+                        ),
+                    );
+                    extracted_entities.extend(
+                        visible_octree_chunk_entities.entities.iter().flat_map(
+                            |(_, visible_point_cloud_entity)| {
+                                // get all node entities which have an associated entity
+                                visible_point_cloud_entity
+                                    .node_entities
+                                    .iter()
+                                    .flat_map(|node| {
+                                        let main_entity = node.entity?;
+                                        let render_entity = match mapper.get(main_entity) {
+                                            Ok(render_entity) => **render_entity,
+                                            Err(_) => Entity::PLACEHOLDER,
+                                        };
+                                        Some((render_entity, MainEntity::from(main_entity)))
+                                    })
+                            },
+                        ),
+                    );
                 }
             }
         }

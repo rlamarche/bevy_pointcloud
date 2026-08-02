@@ -1,7 +1,9 @@
 use bevy::{camera::primitives::MeshAabb, mesh::Mesh, reflect::TypePath};
 use thiserror::Error;
 
-use crate::{ChildIndex, LoadedPointCloudNode, PointCloudLoader, PointCloudNodeStatus};
+use crate::{
+    ChildIndex, ChunkLoadResult, LoadedPointCloudNode, PointCloudLoader, PointCloudNodeStatus,
+};
 
 /// An error that occurs when loading a glTF file.
 #[derive(Error, Debug)]
@@ -47,7 +49,10 @@ impl PointCloudLoader for PointCloudMeshLoader {
         }])
     }
 
-    async fn load_chunk(&self, _: &Self::Hierarchy) -> Result<Mesh, Self::Error> {
-        Ok(self.mesh.clone())
+    async fn load_chunk(&self, _: &Self::Hierarchy) -> Result<ChunkLoadResult, Self::Error> {
+        Ok(ChunkLoadResult {
+            mesh: Some(self.mesh.clone()),
+            final_point_count: self.mesh.count_vertices(),
+        })
     }
 }

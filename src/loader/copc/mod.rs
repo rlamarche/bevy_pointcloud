@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    ByteSource, ByteSourceError, ChildIndex, LoadedPointCloudNode, PointCloudLoader,
-    PointCloudNodeStatus,
+    ByteSource, ByteSourceError, ChildIndex, ChunkLoadResult, LoadedPointCloudNode,
+    PointCloudLoader, PointCloudNodeStatus,
 };
 
 /// An error that occurs when loading a glTF file.
@@ -187,7 +187,7 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
         Ok(initial_hierarchy)
     }
 
-    async fn load_chunk(&self, node: &Self::Hierarchy) -> Result<Mesh, Self::Error> {
+    async fn load_chunk(&self, node: &Self::Hierarchy) -> Result<ChunkLoadResult, Self::Error> {
         let key = node.key;
         let reader = self.reader.read().await;
 
@@ -229,6 +229,14 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
                         .filter(&point.classification)
                 })
                 .count();
+        }
+
+        // early exit if there is no points
+        if point_count == 0 {
+            return Ok(ChunkLoadResult {
+                mesh: None,
+                final_point_count: 0,
+            });
         }
 
         // allocate data
@@ -300,7 +308,10 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
             );
         }
 
-        Ok(mesh)
+        Ok(ChunkLoadResult {
+            mesh: Some(mesh),
+            final_point_count: point_count,
+        })
     }
 }
 

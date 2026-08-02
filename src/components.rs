@@ -1,5 +1,3 @@
-#[cfg(feature = "serialize")]
-use bevy::reflect::{ReflectDeserialize, ReflectSerialize};
 use bevy::{
     asset::{AsAssetId, AssetId, Handle, HandleTemplate, UntypedAssetId},
     ecs::{
@@ -13,7 +11,7 @@ use bevy::{
     math::{Affine2, Mat3, Vec2, Vec3},
     mesh::Mesh,
     prelude::{Deref, DerefMut},
-    reflect::{std_traits::ReflectDefault, Reflect},
+    reflect::{std_traits::ReflectDefault, Reflect, ReflectDeserialize, ReflectSerialize},
     render::{extract_component::ExtractComponent, sync_component::SyncComponent},
     transform::components::Transform,
 };
@@ -69,8 +67,6 @@ impl From<&PointCloud3d> for UntypedAssetId {
     Component, FromTemplate, Clone, Debug, Default, Deref, DerefMut, PartialEq, Eq, From, Reflect,
 )]
 #[reflect(Component, PartialEq, Debug, FromWorld, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serialize", reflect(Serialize, Deserialize))]
 pub struct PointCloudChunk3d(pub Handle<PointCloudChunk>);
 
 impl AsAssetId for PointCloudChunk3d {
@@ -107,11 +103,19 @@ impl From<&PointCloudChunk3d> for UntypedAssetId {
     }
 }
 
-#[derive(Component, FromTemplate, Clone, Debug, PartialEq, From, Reflect)]
+#[derive(
+    Component,
+    FromTemplate,
+    Clone,
+    Debug,
+    PartialEq,
+    From,
+    Reflect,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 #[require(Transform)]
 #[reflect(Component, PartialEq, Debug, FromWorld, Clone, Default)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serialize", reflect(Serialize, Deserialize))]
 pub struct SplatSettings {
     // --- Sizing ---
     pub point_size_mode: PointSizeMode,
@@ -140,6 +144,7 @@ pub struct SplatSettings {
     /// The splat mesh. If `None`, will be a quad or triangle.
     /// Defaults to `None`.
     #[template(OptionTemplate<HandleTemplate<Mesh>>)]
+    #[serde(skip)]
     pub splat: Option<Handle<Mesh>>,
 
     /// The splat radius, default to None.
@@ -317,7 +322,18 @@ impl<M: Material> AsAssetId for PointCloudMaterial3d<M> {
 }
 
 /// Determines how the point size is interpreted.
-#[derive(FromTemplate, Reflect, Debug, Clone, Default, PartialEq, Eq, Hash)]
+#[derive(
+    FromTemplate,
+    Reflect,
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 #[reflect(Default, Debug, Clone)]
 pub enum PointSizeMode {
     /// Point size is specified in screen pixels.
@@ -354,7 +370,18 @@ pub enum PointSizeMode {
 }
 
 /// Determines the splat orientation.
-#[derive(FromTemplate, Reflect, Debug, Clone, Default, PartialEq, Eq, Hash)]
+#[derive(
+    FromTemplate,
+    Reflect,
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 #[reflect(Default, Debug, Clone)]
 pub enum SplatOrientation {
     /// The splat always faces the camera (classic billboard).
@@ -367,7 +394,18 @@ pub enum SplatOrientation {
 
 /// Determine the UV mapping coordinates mode when using a
 /// [`SimplePointCloudMaterial::base_color_texture`].
-#[derive(FromTemplate, Reflect, Debug, Clone, Default, PartialEq, Eq, Hash)]
+#[derive(
+    FromTemplate,
+    Reflect,
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 #[reflect(Default, Debug, Clone)]
 pub enum UVMapping {
     /// Combine global UV (from point cloud data) and Local UV (from the point's splat).

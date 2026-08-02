@@ -11,7 +11,7 @@ use bevy::{
     prelude::*,
     transform::systems::propagate_parent_transforms,
 };
-use bevy_pointcloud::{prelude::*, ColorStop, CopcLoader, VisiblePointCloudEntities};
+use bevy_pointcloud::{prelude::*, ColorStop, CopcLoader, VisiblePointCloudOctreeEntities};
 
 fn main() {
     App::new()
@@ -176,7 +176,7 @@ fn setup_point_cloud(
 fn draw_gizmos(
     point_clouds: Res<Assets<PointCloud>>,
     entities: Query<&GlobalTransform, With<PointCloud3d>>,
-    visible_point_cloud_entities: Query<&VisiblePointCloudEntities>,
+    visible_point_cloud_entities: Query<&VisiblePointCloudOctreeEntities>,
     mut gizmos: Gizmos,
 ) {
     // for each view
@@ -193,7 +193,12 @@ fn draw_gizmos(
 
             // for each visible node in this view
             for visible_node in &visible_point_cloud_entity.node_entities {
-                let Some(node) = point_cloud.get_node(visible_node.id) else {
+                // we only draw octree's gizmos
+                let Some(octree) = point_cloud.topology.as_octree() else {
+                    continue;
+                };
+
+                let Some(node) = octree.get_node(visible_node.id) else {
                     continue;
                 };
 
