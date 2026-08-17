@@ -289,7 +289,20 @@ pub fn compute_screen_pixel_radius(
             Some(scaled_radius * proj_factor)
         }
         Projection::Orthographic(orthographic_projection) => {
-            Some(scaled_radius * orthographic_projection.scale)
+            let Some(physical_target_size) = &camera_view.physical_target_size else {
+                return None;
+            };
+
+            let world_height =
+                orthographic_projection.area.height() * orthographic_projection.scale;
+
+            if world_height <= 0.0 {
+                return None;
+            }
+
+            let pixels_per_world_unit = physical_target_size.y as f32 / world_height;
+
+            Some(scaled_radius * pixels_per_world_unit)
         }
         Projection::Custom(_) => None,
     }
