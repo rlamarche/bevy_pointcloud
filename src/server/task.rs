@@ -575,7 +575,7 @@ fn process_chunk_loads(
         }
 
         // Spawn load sub hierarchy task
-        if let Err(error) = server.load_chunk(task.asset_id, &point_cloud, task.node_id) {
+        if let Err(error) = server.load_chunk(task.asset_id, point_cloud, task.node_id) {
             warn!("An error occured when loading chunk data: {:#} ", error);
             continue;
         }

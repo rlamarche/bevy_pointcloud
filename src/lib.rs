@@ -323,7 +323,7 @@ fn spawn_splat_point_cloud_chunks_from_asset_loader(
                             (
                                 PointCloudChunk3d(chunk_handle.clone()),
                                 Mesh3d(mesh_handle.clone()),
-                                aabb.clone(),
+                                *aabb,
                             ),
                         )
                     })

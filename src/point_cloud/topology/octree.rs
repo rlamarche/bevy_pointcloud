@@ -10,6 +10,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Reflect)]
+#[derive(Default)]
 pub struct OctreeTopology {
     #[reflect(ignore, clone)]
     pub nodes: SlotMap<NodeId, PointCloudNode>,
@@ -17,15 +18,6 @@ pub struct OctreeTopology {
     pub spacing: Option<f32>,
 }
 
-impl Default for OctreeTopology {
-    fn default() -> Self {
-        Self {
-            nodes: SlotMap::default(),
-            root: None,
-            spacing: None,
-        }
-    }
-}
 
 impl OctreeTopology {
     pub fn new() -> Self {
@@ -158,8 +150,8 @@ impl<'a> Iterator for OctreeChunksIterator<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(current_id) = self.queue.pop_front() {
-            if let Some(node) = self.topology.get_node(current_id) {
-                if node.chunk.is_some() {
+            if let Some(node) = self.topology.get_node(current_id)
+                && node.chunk.is_some() {
                     for i in node.children_mask.iter_one_bits() {
                         let child_id = node.children[i as usize];
                         if !child_id.is_null() {
@@ -168,7 +160,6 @@ impl<'a> Iterator for OctreeChunksIterator<'a> {
                     }
                     return Some(node);
                 }
-            }
         }
         None
     }

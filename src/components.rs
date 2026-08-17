@@ -11,7 +11,7 @@ use bevy::{
     math::{Affine2, Mat3, Vec2, Vec3},
     mesh::Mesh,
     prelude::{Deref, DerefMut},
-    reflect::{std_traits::ReflectDefault, Reflect, ReflectDeserialize, ReflectSerialize},
+    reflect::{std_traits::ReflectDefault, Reflect},
     render::{extract_component::ExtractComponent, sync_component::SyncComponent},
     transform::components::Transform,
 };

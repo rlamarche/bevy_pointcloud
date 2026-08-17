@@ -65,7 +65,7 @@ webgl = []
 webgpu = []
 experimental_pbr_pcss = []
 pbr_light_textures = []
-potree = ["dep:potree", "potree/async"]
+potree = ["dep:serde_json", "dep:async-trait", "dep:potree", "potree/async"]
 potree_fs = ["potree", "potree/fs"]
 copc = ["dep:copc-streaming", "dep:async-lock"]
 shader_format_glsl = []
@@ -75,6 +75,7 @@ bytemuck = "1"
 slotmap = { version = "1.0.7", default-features = false }
 bitflags = { version = "2.3", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive"] }
+serde_json = { version = "1", default-features = false, optional = true }
 thiserror = "2.0"
 derive_more = { version = "2", default-features = false, features = ["from"] }
 
@@ -95,13 +96,13 @@ ehttp = { version = "0.5", optional = true }
 
 las = { version = "0.9", features = ["laz"], optional = true }
 
-potree = { git = "https://github.com/rlamarche/potree-rs.git", branch = "main", default-features = false, optional = true }
+potree = { path = "../potree-rs", default-features = false, optional = true }
 
 
 copc-streaming = { git = "https://github.com/rlamarche/copc.git", branch = "feat/add-send", optional = true }
 
 async-lock = { version = "3.0", default-features = false, optional = true }
-
+async-trait = { version = "0.1", default-features = false, optional = true }
 
 [dependencies.bevy]
 version = "0.19"
@@ -119,11 +120,12 @@ features = [
   "std",
   "zstd_rust",
   "x11",
+  "dynamic_linking",
 ]
 
 [dev-dependencies]
 bevy = {
-    version = "0.19.0",
+    version = "0.19",
     # path = "../bevy",
     features = [
     "free_camera",
@@ -134,6 +136,7 @@ bevy = {
     "ui",
     "bevy_feathers",
     "bevy_dev_tools",
+    "dynamic_linking",
 ] }
 # bevy_camera_controller = { version = "0.19.0", features = ["free_camera", "pan_camera"] }
 # bevy_remote = { version = "0.19.0" }

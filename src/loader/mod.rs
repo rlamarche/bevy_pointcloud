@@ -10,5 +10,5 @@ pub use mesh::*;
 #[cfg(feature = "copc")]
 pub use copc::*;
 
-// #[cfg(feature = "potree")]
-// pub mod potree;
+#[cfg(feature = "potree")]
+pub mod potree;

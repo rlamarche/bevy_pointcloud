@@ -28,7 +28,7 @@ impl PointCloudLoader for PointCloudMeshLoader {
 
     async fn from_source(
         source: Self::Source,
-        settings: Self::Settings,
+        _settings: Self::Settings,
     ) -> Result<Self, Self::Error> {
         Ok(Self::from(source))
     }

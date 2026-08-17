@@ -228,7 +228,7 @@ pub fn check_point_cloud_nodes_dir_lights_visibility(
                         // if this is a flat point cloud, just add it to the visible chunks if
                         // loaded
                         PointCloudTopology::Flat(_) => {
-                            if let Some(_) = maybe_chunk {
+                            if maybe_chunk.is_some() {
                                 global_visible_point_cloud_chunks.add_visible_chunk(
                                     entity,
                                     entity,

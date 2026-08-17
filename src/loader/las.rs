@@ -4,7 +4,7 @@ use bevy::{
     app::{App, Plugin},
     asset::{AssetApp, AssetLoader, RenderAssetUsages},
     camera::primitives::{Aabb, MeshAabb},
-    log::{info, warn},
+    log::warn,
     math::Vec3,
     mesh::{Mesh, VertexAttributeValues},
     reflect::TypePath,
@@ -61,7 +61,7 @@ impl<S: ByteSource> PointCloudLoader for LasLoader<S> {
 
     async fn from_source(
         source: Self::Source,
-        settings: Self::Settings,
+        _settings: Self::Settings,
     ) -> Result<Self, Self::Error> {
         Ok(Self::from(source))
     }
@@ -189,7 +189,7 @@ impl AssetLoader for LasAssetLoader {
             PointCloudChunk {
                 depth: 0,
                 mesh_handle: Some(mesh_handle),
-                aabb: aabb.clone(),
+                aabb: aabb,
                 vertex_buffer_size,
             },
         );
@@ -231,7 +231,9 @@ fn load_points_as_mesh(point_count: usize, las_reader: &mut las::Reader) -> Mesh
         }
     }
 
-    let mesh = Mesh::new(
+    
+
+    Mesh::new(
         bevy::mesh::PrimitiveTopology::PointList,
         RenderAssetUsages::RENDER_WORLD,
     )
@@ -242,7 +244,5 @@ fn load_points_as_mesh(point_count: usize, las_reader: &mut las::Reader) -> Mesh
     .with_inserted_attribute(
         Mesh::ATTRIBUTE_COLOR,
         VertexAttributeValues::Float32x4(colors),
-    );
-
-    mesh
+    )
 }
