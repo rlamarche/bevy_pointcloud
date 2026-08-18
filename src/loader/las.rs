@@ -1,4 +1,4 @@
-use std::io::{Cursor, Seek};
+use std::io::Cursor;
 
 use bevy::{
     app::{App, Plugin},
@@ -12,8 +12,8 @@ use bevy::{
 use thiserror::Error;
 
 use crate::{
-    ByteSource, ByteSourceError, ChildIndex, ChunkLoadResult, LoadedPointCloudNode, PointCloud,
-    PointCloudChunk, PointCloudLoader, PointCloudNodeStatus, PointCloudTopology,
+    ByteSource, ByteSourceError, ChunkLoadResult, OctreeError, OctreeHierarchyBuilder,
+    OctreeLoader, PointCloud, PointCloudChunk, PointCloudNodeStatus, PointCloudTopology,
 };
 
 /// Naive implementation of a las loader because it loads the las file completely in memory
@@ -37,6 +37,9 @@ pub enum LasLoaderError {
     /// Failed to load a file.
     #[error("failed to load file: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("octree topology error: {0}")]
+    Octree(#[from] OctreeError),
 }
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
@@ -53,7 +56,7 @@ impl<S: ByteSource> From<S> for LasLoader<S> {
     }
 }
 
-impl<S: ByteSource> PointCloudLoader for LasLoader<S> {
+impl<S: ByteSource> OctreeLoader for LasLoader<S> {
     type Source = S;
     type Hierarchy = usize; // just the number of points for faster allocations
     type Error = LasLoaderError;
@@ -68,7 +71,8 @@ impl<S: ByteSource> PointCloudLoader for LasLoader<S> {
 
     async fn load_initial_hierarchy(
         &self,
-    ) -> Result<Vec<LoadedPointCloudNode<Self::Hierarchy>>, Self::Error> {
+        builder: &mut OctreeHierarchyBuilder<Self::Hierarchy>,
+    ) -> Result<(), Self::Error> {
         // TODO find an async las impl that doesn't need to own the data
         let data = self.source.read_to_end(0).await?;
         let cursor = Cursor::new(data);
@@ -89,14 +93,14 @@ impl<S: ByteSource> PointCloudLoader for LasLoader<S> {
 
         let aabb = Aabb::from_min_max(min, max);
 
-        Ok(vec![LoadedPointCloudNode {
-            status: PointCloudNodeStatus::Loaded,
-            child_index: ChildIndex::ROOT,
-            parent_index: None,
-            aabb: Some(aabb),
-            data: point_count,
+        builder.try_insert_root(
+            PointCloudNodeStatus::Loaded,
             point_count,
-        }])
+            point_count,
+            Some(aabb),
+        )?;
+
+        Ok(())
     }
 
     async fn load_chunk(
@@ -189,13 +193,14 @@ impl AssetLoader for LasAssetLoader {
             PointCloudChunk {
                 depth: 0,
                 mesh_handle: Some(mesh_handle),
-                aabb: aabb,
+                aabb,
                 vertex_buffer_size,
             },
         );
 
         Ok(PointCloud {
             aabb,
+            spacing: None,
             topology: PointCloudTopology::Flat(chunk_handle),
         })
     }
@@ -230,8 +235,6 @@ fn load_points_as_mesh(point_count: usize, las_reader: &mut las::Reader) -> Mesh
             colors.push([0.0, 0.0, 0.0, 0.0]);
         }
     }
-
-    
 
     Mesh::new(
         bevy::mesh::PrimitiveTopology::PointList,

@@ -12,11 +12,7 @@ pub enum PointCloudTopology {
     /// Because we need a default value for [`Reflect`].
     #[default]
     Empty,
-    /// A simple, non-streamed point cloud.
-    /// Loaded fully into a single mesh, ideal for small assets.
     Flat(Handle<PointCloudChunk>),
-
-    /// A massive, streamed point cloud utilizing an octree structure.
     Octree(OctreeTopology),
 }
 

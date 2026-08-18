@@ -5,13 +5,13 @@ use std::sync::Arc;
 use bevy::{
     asset::RenderAssetUsages,
     camera::primitives::Aabb,
+    log::warn,
     mesh::{Mesh, VertexAttributeValues},
     platform::collections::HashSet,
     prelude::Deref,
 };
 use potree::{
-    asset::PotreeAsset,
-    hierarchy::HierarchyAsync,
+    hierarchy::{HierarchyAsync, PotreeHierarchyError},
     octree::node::{NodeType, OctreeNode as PotreeOctreeNode},
     point::AttributeType,
     prelude::Hierarchy,
@@ -22,8 +22,8 @@ use thiserror::Error;
 pub use asset::*;
 
 use crate::{
-    ByteSourceError, ChildIndex, ChunkLoadResult, LoadedPointCloudNode, PointCloudLoader,
-    PointCloudNodeStatus,
+    BuilderNodeId, ByteSource, ByteSourceError, ChildIndex, ChunkLoadResult, OctreeError,
+    OctreeHierarchyBuilder, OctreeLoader, PointCloudNodeStatus,
 };
 
 /// An error that occurs when loading Potree point clouds.
@@ -32,14 +32,20 @@ pub enum PotreeLoaderError {
     #[error("error reading byte source: {0}")]
     ByteSource(#[from] ByteSourceError),
 
-    #[error("potree internal error: {0}")]
-    Potree(String),
-
     #[error("root node is missing in the potree hierarchy")]
     RootMissing,
 
     #[error("invalid hierarchy: {0}")]
     InvalidHierarchy(String),
+
+    #[error("metadata loading error: {0}")]
+    Metadata(String),
+
+    #[error("potree internal error: {0}")]
+    Potree(#[from] PotreeHierarchyError),
+
+    #[error("octree topology error: {0}")]
+    Octree(#[from] OctreeError),
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
@@ -65,16 +71,16 @@ impl FilterClassification {
     }
 }
 
-pub struct PotreeLoader<T: PotreeAsset> {
-    hierarchy: Arc<Hierarchy<T>>,
+pub struct PotreeLoader<S: ByteSource> {
+    hierarchy: Arc<Hierarchy<PotreeAssetSource<S>>>,
     settings: PotreeLoaderSettings,
 }
 
 #[derive(Clone, Debug, Deref)]
 pub struct PotreeHierarchy(pub PotreeOctreeNode);
 
-impl<T: PotreeAsset + Send + Sync + 'static> PointCloudLoader for PotreeLoader<T> {
-    type Source = T;
+impl<S: ByteSource + Send + Sync + 'static> OctreeLoader for PotreeLoader<S> {
+    type Source = PotreeAssetSource<S>;
     type Hierarchy = PotreeHierarchy;
     type Error = PotreeLoaderError;
     type Settings = PotreeLoaderSettings;
@@ -83,9 +89,7 @@ impl<T: PotreeAsset + Send + Sync + 'static> PointCloudLoader for PotreeLoader<T
         source: Self::Source,
         settings: Self::Settings,
     ) -> Result<Self, Self::Error> {
-        let hierarchy = Hierarchy::load(source)
-            .await
-            .map_err(|e| PotreeLoaderError::Potree(e.to_string()))?;
+        let hierarchy = Hierarchy::load(source).await?;
 
         Ok(Self {
             hierarchy: Arc::new(hierarchy),
@@ -95,43 +99,27 @@ impl<T: PotreeAsset + Send + Sync + 'static> PointCloudLoader for PotreeLoader<T
 
     async fn load_initial_hierarchy(
         &self,
-    ) -> Result<Vec<LoadedPointCloudNode<Self::Hierarchy>>, Self::Error> {
-        let raw_nodes = self
-            .hierarchy
-            .load_initial_hierarchy()
-            .await
-            .map_err(|e| PotreeLoaderError::Potree(e.to_string()))?;
+        builder: &mut OctreeHierarchyBuilder<Self::Hierarchy>,
+    ) -> Result<(), Self::Error> {
+        let raw_nodes = self.hierarchy.load_initial_hierarchy().await?;
+        build_hierarchy::<S>(builder, raw_nodes)?;
 
-        let nodes = raw_nodes
-            .into_iter()
-            .map(|node| {
-                Ok(LoadedPointCloudNode {
-                    status: match node.node_type {
-                        NodeType::Proxy => PointCloudNodeStatus::Proxy,
-                        _ => PointCloudNodeStatus::Loaded,
-                    },
-                    child_index: ChildIndex::try_from(node.child_index)
-                        .map_err(|e| PotreeLoaderError::InvalidHierarchy(e.to_string()))?,
-                    parent_index: node.parent,
-                    aabb: Some(Aabb::from_min_max(
-                        node.bounding_box.min,
-                        node.bounding_box.max,
-                    )),
-                    point_count: node.num_points as usize,
-                    data: PotreeHierarchy(node),
-                })
-            })
-            .collect::<Result<Vec<_>, Self::Error>>()?;
+        Ok(())
+    }
 
-        Ok(nodes)
+    async fn load_sub_hierarchy(
+        &self,
+        node: &Self::Hierarchy,
+        builder: &mut OctreeHierarchyBuilder<Self::Hierarchy>,
+    ) -> Result<(), Self::Error> {
+        let raw_nodes = self.hierarchy.load_hierarchy(node).await?;
+        build_hierarchy::<S>(builder, raw_nodes)?;
+
+        Ok(())
     }
 
     async fn load_chunk(&self, node: &Self::Hierarchy) -> Result<ChunkLoadResult, Self::Error> {
-        let points = self
-            .hierarchy
-            .load_points(&node.0)
-            .await
-            .map_err(|e| PotreeLoaderError::Potree(e.to_string()))?;
+        let points = self.hierarchy.load_points(&node.0).await?;
 
         // Extract point slice from the raw buffer provided by potree crate
         let raw_point_count = points.buffer.count;
@@ -143,6 +131,11 @@ impl<T: PotreeAsset + Send + Sync + 'static> PointCloudLoader for PotreeLoader<T
             });
         }
 
+        let position_attribute = points
+            .buffer
+            .layout
+            .iter()
+            .find(|attribute_info| attribute_info.r#type.eq(&AttributeType::Position));
         let color_attribute = points
             .buffer
             .layout
@@ -208,8 +201,8 @@ impl<T: PotreeAsset + Send + Sync + 'static> PointCloudLoader for PotreeLoader<T
             };
 
             if let Some(classification_attribute) = classification_attribute {
-                if let Some(class_val) = point.attribute(classification_attribute) {
-                    let class_val = class_val[0];
+                if let Some(classification) = point.attribute(classification_attribute) {
+                    let class_val = classification[0];
 
                     if !self.settings.filter_classification.filter(class_val as u8) {
                         continue;
@@ -219,11 +212,13 @@ impl<T: PotreeAsset + Send + Sync + 'static> PointCloudLoader for PotreeLoader<T
                 }
             }
 
-            let Some(pos) = point.attribute_type(AttributeType::Position) else {
-                // skip points without positions
-                continue;
-            };
-            positions.push([pos[0], pos[1], pos[2]]);
+            if let Some(position_attribute) = position_attribute
+                && let Some(pos) = point.attribute(position_attribute)
+            {
+                positions.push([pos[0], pos[1], pos[2]]);
+            } else {
+                positions.push([0.0, 0.0, 0.0]);
+            }
 
             if let Some(colors) = maybe_colors.as_mut() {
                 if let Some(color_attribute) = color_attribute
@@ -278,4 +273,86 @@ impl<T: PotreeAsset + Send + Sync + 'static> PointCloudLoader for PotreeLoader<T
             final_point_count,
         })
     }
+}
+
+fn build_hierarchy<S: ByteSource + Send + Sync + 'static>(
+    builder: &mut OctreeHierarchyBuilder<PotreeHierarchy>,
+    mut raw_nodes: Vec<PotreeOctreeNode>,
+) -> Result<(), <PotreeLoader<S> as OctreeLoader>::Error> {
+    let (children, roots) = build_hierarchy_children(&raw_nodes);
+    let Some(&root_idx) = roots.first() else {
+        return Err(PotreeLoaderError::InvalidHierarchy(
+            "Loaded octree hierarchy is empty or missing a root node".to_string(),
+        ));
+    };
+    if roots.len() > 1 {
+        warn!(
+            "Loaded octree hierarchy contains {} root nodes; using the first one",
+            roots.len()
+        );
+    }
+    let mut inserted_nodes: Vec<Option<BuilderNodeId>> = vec![None; raw_nodes.len()];
+    let mut stack = vec![(root_idx, None)];
+    Ok(while let Some((idx, parent_id)) = stack.pop() {
+        if inserted_nodes[idx].is_some() {
+            continue;
+        }
+
+        let node = std::mem::take(&mut raw_nodes[idx]);
+        let aabb = Aabb::from_min_max(node.bounding_box.min, node.bounding_box.max);
+        let node_id = if let Some(parent_id) = parent_id {
+            builder.try_insert_child(
+                parent_id,
+                ChildIndex::try_from(node.child_index)
+                    .map_err(|e| PotreeLoaderError::InvalidHierarchy(e.to_string()))?,
+                match node.node_type {
+                    NodeType::Proxy => PointCloudNodeStatus::Proxy,
+                    _ => PointCloudNodeStatus::Loaded,
+                },
+                node.num_points as usize,
+                PotreeHierarchy(node),
+                Some(aabb),
+            )?
+        } else {
+            builder.try_insert_root(
+                match node.node_type {
+                    NodeType::Proxy => PointCloudNodeStatus::Proxy,
+                    _ => PointCloudNodeStatus::Loaded,
+                },
+                node.num_points as usize,
+                PotreeHierarchy(node),
+                Some(aabb),
+            )?
+        };
+        inserted_nodes[idx] = Some(node_id);
+
+        for &child_idx in children[idx].iter().rev() {
+            stack.push((child_idx, Some(node_id)));
+        }
+    })
+}
+
+/// Build a child adjacency list and collect root indices for hierarchy vectors.
+fn build_hierarchy_children(nodes: &[PotreeOctreeNode]) -> (Vec<Vec<usize>>, Vec<usize>) {
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
+    let mut roots = Vec::new();
+
+    for (idx, node) in nodes.iter().enumerate() {
+        if let Some(parent) = node.parent {
+            if parent < nodes.len() {
+                children[parent].push(idx);
+            } else {
+                warn!(
+                    "Hierarchy node {} references parent {} but only {} nodes exist",
+                    idx,
+                    parent,
+                    nodes.len()
+                );
+            }
+        } else {
+            roots.push(idx);
+        }
+    }
+
+    (children, roots)
 }

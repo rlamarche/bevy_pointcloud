@@ -9,15 +9,12 @@ use crate::{
     PointCloudNodeStatus,
 };
 
-#[derive(Debug, Clone, Reflect)]
-#[derive(Default)]
+#[derive(Debug, Clone, Reflect, Default)]
 pub struct OctreeTopology {
     #[reflect(ignore, clone)]
     pub nodes: SlotMap<NodeId, PointCloudNode>,
     pub root: Option<NodeId>,
-    pub spacing: Option<f32>,
 }
-
 
 impl OctreeTopology {
     pub fn new() -> Self {
@@ -30,6 +27,20 @@ impl OctreeTopology {
 
     pub fn get_node(&self, node_id: NodeId) -> Option<&PointCloudNode> {
         self.nodes.get(node_id)
+    }
+
+    pub fn remove_node(&mut self, node_id: NodeId) -> Option<PointCloudNode> {
+        let removed_node = self.nodes.remove(node_id)?;
+
+        if let Some(parent_id) = removed_node.parent_id
+            && let Some(parent) = self.nodes.get_mut(parent_id)
+        {
+            parent.children[removed_node.child_index.index() as usize] = NodeId::null();
+            let child_mask: ChildrenMask = removed_node.children_mask;
+            parent.children_mask &= !child_mask;
+        }
+
+        Some(removed_node)
     }
 
     pub fn get_node_mut(&mut self, node_id: NodeId) -> Option<&mut PointCloudNode> {
@@ -88,14 +99,14 @@ impl OctreeTopology {
         aabb: Option<Aabb>,
         chunk: Option<Handle<PointCloudChunk>>,
     ) -> Result<NodeId, OctreeError> {
-        // 1. Pre-flight checks and parent data extraction
+        // Check parent
         let (parent_depth, new_name) = {
             let parent = self
                 .nodes
                 .get(parent_id)
                 .ok_or(OctreeError::ParentNotExists)?;
 
-            if (parent.children_mask.bits() & (1_u8 << child_index.index())) > 0 {
+            if parent.children_mask.has_child(child_index) {
                 return Err(OctreeError::ChildIndexOccupied);
             }
 
@@ -103,7 +114,7 @@ impl OctreeTopology {
             (parent.depth, new_name)
         };
 
-        // 2. Insert the new node
+        // Insert the child
         let child_id = self.nodes.insert_with_key(|id| PointCloudNode {
             id,
             name: new_name,
@@ -119,7 +130,7 @@ impl OctreeTopology {
             point_count,
         });
 
-        // 3. Update the parent links
+        // Update parent relationships
         // Infallible because we checked existence earlier, but we need a mutable borrow now.
         let parent = self.nodes.get_mut(parent_id).unwrap();
         parent.children[child_index.index() as usize] = child_id;
@@ -151,15 +162,16 @@ impl<'a> Iterator for OctreeChunksIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(current_id) = self.queue.pop_front() {
             if let Some(node) = self.topology.get_node(current_id)
-                && node.chunk.is_some() {
-                    for i in node.children_mask.iter_one_bits() {
-                        let child_id = node.children[i as usize];
-                        if !child_id.is_null() {
-                            self.queue.push_back(child_id);
-                        }
+                && node.chunk.is_some()
+            {
+                for i in node.children_mask.iter_one_bits() {
+                    let child_id = node.children[i as usize];
+                    if !child_id.is_null() {
+                        self.queue.push_back(child_id);
                     }
-                    return Some(node);
                 }
+                return Some(node);
+            }
         }
         None
     }

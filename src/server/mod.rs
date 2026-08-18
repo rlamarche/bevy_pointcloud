@@ -1,7 +1,7 @@
 mod byte_source;
 mod eviction;
 mod infos;
-mod loader;
+mod octree_loader;
 mod task;
 
 use std::{
@@ -20,7 +20,7 @@ use bevy::{
         system::{Commands, Res, ResMut},
         world::FromWorld,
     },
-    log::{error, info, warn},
+    log::{error, info},
     mesh::{Mesh, Mesh3d},
     platform::{collections::HashMap, sync::RwLock},
     prelude::{Deref, DerefMut},
@@ -39,7 +39,7 @@ use crate::{
 pub use byte_source::*;
 pub use eviction::*;
 use infos::*;
-pub use loader::*;
+pub use octree_loader::*;
 pub use task::*;
 
 /// A system set where commands accumulated when handling point cloud events are applied to the
@@ -139,11 +139,11 @@ impl FromWorld for PointCloudServer {
 
 impl PointCloudServer {
     /// Load a point cloud lazily (point cloud content will be loaded on the fly when needed)
-    pub fn load<L: PointCloudLoader>(&self, source: L::Source) -> Handle<PointCloud> {
+    pub fn load<L: OctreeLoader>(&self, source: L::Source) -> Handle<PointCloud> {
         self.load_with_settings::<L>(source, |_| {})
     }
 
-    pub fn load_with_settings<L: PointCloudLoader>(
+    pub fn load_with_settings<L: OctreeLoader>(
         &self,
         source: L::Source,
         settings: impl Fn(&mut L::Settings) + Send + Sync + 'static,
@@ -316,7 +316,7 @@ impl PointCloudServer {
 
 #[derive(Deref, DerefMut)]
 pub struct PointCloudServerLoaders(
-    pub(crate) HashMap<AssetId<PointCloud>, Arc<dyn ErasedPointCloudLoader>>,
+    pub(crate) HashMap<AssetId<PointCloud>, Arc<dyn ErasedOctreeLoader>>,
 );
 
 /// Internal data used by [`PointCloudServer`]. This is intended to be used from within an [`Arc`].
@@ -329,7 +329,7 @@ pub(crate) struct PointCloudServerData {
 }
 
 impl PointCloudServerData {
-    async fn load_internal<L: PointCloudLoader>(
+    async fn load_internal<L: OctreeLoader>(
         &self,
         source: L::Source,
         settings: L::Settings,
@@ -342,71 +342,27 @@ impl PointCloudServerData {
         let mut point_cloud = PointCloud::new_octree();
 
         // Safe to unwrap because it has been instantiated above as octree.
-        let octree = point_cloud.topology.as_octree_mut().unwrap();
+        let octree_topology = point_cloud.topology.as_octree_mut().unwrap();
 
-        let mut initial_hierarchy = loader
-            .load_initial_hierarchy()
+        let mut builder = OctreeHierarchyBuilder::new();
+
+        loader
+            .load_initial_hierarchy(&mut builder)
             .await
-            .map_err(Into::into)?
-            .into_iter()
-            .map(Into::into)
-            .collect::<Vec<ErasedLoadedPointCloudNode>>();
+            .map_err(Into::into)?;
 
-        let (children, roots) = build_hierarchy_children(&initial_hierarchy);
+        let octree_hierarchy: ErasedOctreeHierarchy = builder.into();
 
-        let Some(&root_idx) = roots.first() else {
+        let Some(root) = octree_hierarchy.get_root() else {
             return Err(BevyError::from(
                 "Loaded point cloud hierarchy is empty or missing a root node",
             ));
         };
-
-        if roots.len() > 1 {
-            warn!(
-                "Loaded point cloud hierarchy contains {} root nodes; using the first one",
-                roots.len()
-            );
-        }
-
-        let root = &initial_hierarchy[root_idx];
         if let Some(aabb) = root.aabb {
             point_cloud.aabb = Some(aabb);
         }
 
-        let mut inserted_nodes: Vec<Option<NodeId>> = vec![None; initial_hierarchy.len()];
-        let mut stack = vec![(root_idx, None)];
-
-        while let Some((idx, parent_id)) = stack.pop() {
-            if inserted_nodes[idx].is_some() {
-                continue;
-            }
-
-            let node = std::mem::take(&mut initial_hierarchy[idx]);
-
-            let node_id = match parent_id {
-                Some(parent_id) => octree.try_insert_child(
-                    parent_id,
-                    node.child_index,
-                    node.status,
-                    node.point_count,
-                    node.data,
-                    node.aabb,
-                    None,
-                )?,
-                None => octree.try_insert_root(
-                    node.status,
-                    node.point_count,
-                    node.data,
-                    node.aabb,
-                    None,
-                )?,
-            };
-
-            inserted_nodes[idx] = Some(node_id);
-
-            for &child_idx in children[idx].iter().rev() {
-                stack.push((child_idx, Some(node_id)));
-            }
-        }
+        append_hierarchy(octree_topology, octree_hierarchy, None)?;
 
         info!("Send event InternalPointCloudEvent::Loaded");
         self.event_sender
@@ -423,16 +379,16 @@ impl PointCloudServerData {
     async fn load_sub_hierarchy_internal(
         &self,
         id: AssetId<PointCloud>,
-        loader: Arc<dyn ErasedPointCloudLoader>,
+        loader: Arc<dyn ErasedOctreeLoader>,
         hierarchy_node: &PointCloudNode,
     ) -> Result<(), BevyError> {
-        match loader.load_hierarchy(hierarchy_node).await {
+        match loader.load_sub_hierarchy(hierarchy_node).await {
             Ok(hierarchy_nodes) => {
                 self.event_sender
                     .send(InternalPointCloudEvent::SubHierarchyLoaded {
                         id,
                         node_id: hierarchy_node.id,
-                        hierarchy_nodes,
+                        octree_hierarchy: hierarchy_nodes,
                     })
                     .expect("Failed to send internal point cloud server event");
             }
@@ -454,7 +410,7 @@ impl PointCloudServerData {
     async fn load_chunk_internal(
         &self,
         id: AssetId<PointCloud>,
-        loader: Arc<dyn ErasedPointCloudLoader>,
+        loader: Arc<dyn ErasedOctreeLoader>,
         hierarchy_node: &PointCloudNode,
     ) -> Result<(), BevyError> {
         match loader.load_chunk(hierarchy_node).await {
@@ -487,12 +443,12 @@ pub(crate) enum InternalPointCloudEvent {
     Loaded {
         id: AssetId<PointCloud>,
         loaded_asset: PointCloud,
-        loader: Arc<dyn ErasedPointCloudLoader>,
+        loader: Arc<dyn ErasedOctreeLoader>,
     },
     SubHierarchyLoaded {
         id: AssetId<PointCloud>,
         node_id: NodeId,
-        hierarchy_nodes: Vec<ErasedLoadedPointCloudNode>,
+        octree_hierarchy: ErasedOctreeHierarchy,
     },
     SubHierarchyLoadFailed {
         id: AssetId<PointCloud>,
@@ -516,31 +472,6 @@ pub(crate) enum InternalPointCloudEvent {
 #[derive(Resource, Default)]
 pub struct PointCloudEvictionQueue {
     pub eviction_queue: PriorityQueue<PointCloudNodeKey, Reverse<u128>>,
-}
-
-/// Build a child adjacency list and collect root indices for hierarchy vectors.
-fn build_hierarchy_children(nodes: &[ErasedLoadedPointCloudNode]) -> (Vec<Vec<usize>>, Vec<usize>) {
-    let mut children: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
-    let mut roots = Vec::new();
-
-    for (idx, node) in nodes.iter().enumerate() {
-        if let Some(parent) = node.parent_index {
-            if parent < nodes.len() {
-                children[parent].push(idx);
-            } else {
-                warn!(
-                    "Hierarchy node {} references parent {} but only {} nodes exist",
-                    idx,
-                    parent,
-                    nodes.len()
-                );
-            }
-        } else {
-            roots.push(idx);
-        }
-    }
-
-    (children, roots)
 }
 
 /// Loads the chunk's meshes in the meshes asset, so later in the GPU.

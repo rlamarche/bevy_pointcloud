@@ -15,6 +15,7 @@ pub use topology::*;
 pub struct PointCloud {
     #[reflect(ignore, clone)]
     pub topology: PointCloudTopology,
+    pub spacing: Option<f32>,
     pub aabb: Option<Aabb>,
 }
 

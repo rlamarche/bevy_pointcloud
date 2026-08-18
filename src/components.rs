@@ -11,11 +11,12 @@ use bevy::{
     math::{Affine2, Mat3, Vec2, Vec3},
     mesh::Mesh,
     prelude::{Deref, DerefMut},
-    reflect::{std_traits::ReflectDefault, Reflect},
+    reflect::{std_traits::ReflectDefault, Reflect, ReflectDeserialize, ReflectSerialize},
     render::{extract_component::ExtractComponent, sync_component::SyncComponent},
     transform::components::Transform,
 };
 use derive_more::derive::From;
+use serde::{Deserialize, Serialize};
 
 use crate::{Material, PointCloud, PointCloudChunk};
 
@@ -25,8 +26,6 @@ use crate::{Material, PointCloud, PointCloudChunk};
 #[component(immutable)]
 #[require(Transform, SplatSettings)]
 #[reflect(Component, PartialEq, Debug, FromWorld, Clone, Default)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serialize", reflect(Serialize, Deserialize))]
 pub struct PointCloud3d(pub Handle<PointCloud>);
 
 impl AsAssetId for PointCloud3d {
@@ -218,10 +217,8 @@ impl ExtractComponent for SplatSettings {
     }
 }
 
-#[derive(Component, FromTemplate, Clone, PartialEq, Eq, Debug, Reflect)]
-#[reflect(Component, PartialEq, Debug, FromWorld, Clone)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serialize", reflect(Serialize, Deserialize))]
+#[derive(Component, FromTemplate, Clone, PartialEq, Eq, Debug, Reflect, Serialize, Deserialize)]
+#[reflect(Component, PartialEq, Debug, FromWorld, Clone, Serialize, Deserialize)]
 #[relationship(relationship_target = ChildrenChunks)]
 pub struct ChildChunkOf(#[entities] pub Entity);
 
@@ -244,11 +241,9 @@ impl FromWorld for ChildChunkOf {
     }
 }
 
-#[derive(Component, Default, Debug, PartialEq, Eq, Reflect)]
+#[derive(Component, Default, Debug, PartialEq, Eq, Reflect, Serialize, Deserialize)]
 #[relationship_target(relationship = ChildChunkOf, linked_spawn)]
-#[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serialize", reflect(Serialize, Deserialize))]
-#[reflect(Component, FromWorld, Default)]
+#[reflect(Component, FromWorld, Default, Serialize, Deserialize)]
 pub struct ChildrenChunks(Vec<Entity>);
 
 /// A [material](Material) used for rendering a [`Mesh3d`].

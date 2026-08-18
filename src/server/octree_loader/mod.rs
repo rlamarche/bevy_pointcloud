@@ -1,24 +1,26 @@
+mod builder;
+
 use std::ops::Deref;
 
 use bevy::{
     asset::meta::Settings,
-    camera::primitives::Aabb,
     ecs::error::BevyError,
     mesh::Mesh,
     tasks::{BoxedFuture, ConditionalSendFuture},
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{ChildIndex, NodeData, PointCloudNode, PointCloudNodeStatus};
+use crate::PointCloudNode;
+pub use builder::*;
 
-pub trait PointCloudLoader: Send + Sync + Sized + 'static {
+pub trait OctreeLoader: Send + Sync + Sized + 'static {
     /// The source of this loader
     type Source: Send + Sync + 'static;
 
     /// The settings type used by this [`PointCloudLoader`].
     type Settings: Settings + Default + Serialize + for<'a> Deserialize<'a>;
 
-    /// The data needed to store data
+    /// The data needed to store node level data
     type Hierarchy: Send + Sync + 'static;
 
     /// The type of [error](`std::error::Error`) which could be encountered by this loader.
@@ -36,23 +38,24 @@ pub trait PointCloudLoader: Send + Sync + Sized + 'static {
     /// Every child should also reference its parent through its indice too.
     fn load_initial_hierarchy(
         &self,
-    ) -> impl ConditionalSendFuture<
-        Output = Result<Vec<LoadedPointCloudNode<Self::Hierarchy>>, Self::Error>,
-    >;
+        builder: &mut OctreeHierarchyBuilder<Self::Hierarchy>,
+    ) -> impl ConditionalSendFuture<Output = Result<(), Self::Error>>;
 
     /// This method must load the provided node sub hierarchy.
     /// The return format is the same as described in [`PointCloudLoader::load_initial_hierarchy`].
     /// So, the provided node is expected to be the first in the returned vector.
     /// The provided node **should** be in [`HierarchyNodeStatus::Proxy`] state, or an error might
     /// be thrown.
-    #[expect(unused, reason = "Prevent suffixing parameter with _.")]
+    #[expect(
+        unused_variables,
+        reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
+    )]
     fn load_sub_hierarchy(
         &self,
         node: &Self::Hierarchy,
-    ) -> impl ConditionalSendFuture<
-        Output = Result<Vec<LoadedPointCloudNode<Self::Hierarchy>>, Self::Error>,
-    > {
-        Box::pin(async move { Ok(vec![]) })
+        builder: &mut OctreeHierarchyBuilder<Self::Hierarchy>,
+    ) -> impl ConditionalSendFuture<Output = Result<(), Self::Error>> {
+        Box::pin(async move { Ok(()) })
     }
 
     /// This method must load the chunk data into a gpu friendly format for rendering.
@@ -63,28 +66,17 @@ pub trait PointCloudLoader: Send + Sync + Sized + 'static {
     ) -> impl ConditionalSendFuture<Output = Result<ChunkLoadResult, Self::Error>>;
 }
 
-#[derive(Clone, Debug)]
-pub struct LoadedPointCloudNode<T> {
-    /// The parent index in the returned vec
-    pub parent_index: Option<usize>,
-    pub status: PointCloudNodeStatus,
-    pub point_count: usize,
-    pub child_index: ChildIndex,
-    pub aabb: Option<Aabb>,
-    pub data: T,
-}
-
-pub trait ErasedPointCloudLoader: Send + Sync + 'static {
+pub trait ErasedOctreeLoader: Send + Sync + 'static {
     /// Erased version of [`PointCloudLoader::load_initial_hierarchy`]
     fn load_initial_hierarchy<'a>(
         &'a self,
-    ) -> BoxedFuture<'a, Result<Vec<ErasedLoadedPointCloudNode>, BevyError>>;
+    ) -> BoxedFuture<'a, Result<ErasedOctreeHierarchy, BevyError>>;
 
     /// Erased version of [`PointCloudLoader::load_hierarchy`]
-    fn load_hierarchy<'a>(
+    fn load_sub_hierarchy<'a>(
         &'a self,
         node: &'a PointCloudNode,
-    ) -> BoxedFuture<'a, Result<Vec<ErasedLoadedPointCloudNode>, BevyError>>;
+    ) -> BoxedFuture<'a, Result<ErasedOctreeHierarchy, BevyError>>;
 
     /// Erased version of [`PointCloudLoader::load_chunk`]
     fn load_chunk<'a>(
@@ -93,69 +85,41 @@ pub trait ErasedPointCloudLoader: Send + Sync + 'static {
     ) -> BoxedFuture<'a, Result<ChunkLoadResult, BevyError>>;
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct ErasedLoadedPointCloudNode {
-    /// The parent index in the returned vec
-    pub parent_index: Option<usize>,
-    pub status: PointCloudNodeStatus,
-    pub point_count: usize,
-    pub child_index: ChildIndex,
-    pub aabb: Option<Aabb>,
-    pub data: NodeData,
-}
-
-impl<T> From<LoadedPointCloudNode<T>> for ErasedLoadedPointCloudNode
-where
-    T: Send + Sync + 'static,
-{
-    fn from(value: LoadedPointCloudNode<T>) -> Self {
-        Self {
-            status: value.status,
-            point_count: value.point_count,
-            child_index: value.child_index,
-            parent_index: value.parent_index,
-            aabb: value.aabb,
-            data: NodeData::new(value.data),
-        }
-    }
-}
-
-impl<L: PointCloudLoader> ErasedPointCloudLoader for L {
+impl<L: OctreeLoader> ErasedOctreeLoader for L {
     fn load_initial_hierarchy<'a>(
         &'a self,
-    ) -> BoxedFuture<'a, Result<Vec<ErasedLoadedPointCloudNode>, BevyError>> {
+    ) -> BoxedFuture<'a, Result<ErasedOctreeHierarchy, BevyError>> {
         Box::pin(async move {
-            let initial_hierarchy = <Self as PointCloudLoader>::load_initial_hierarchy(self)
+            let mut builder = OctreeHierarchyBuilder::new();
+
+            <Self as OctreeLoader>::load_initial_hierarchy(self, &mut builder)
                 .await
                 .map_err(Into::into)?;
 
-            Ok(initial_hierarchy
-                .into_iter()
-                .map(ErasedLoadedPointCloudNode::from)
-                .collect())
+            Ok(builder.into())
         })
     }
 
-    fn load_hierarchy<'a>(
+    fn load_sub_hierarchy<'a>(
         &'a self,
         node: &'a PointCloudNode,
-    ) -> BoxedFuture<'a, Result<Vec<ErasedLoadedPointCloudNode>, BevyError>> {
+    ) -> BoxedFuture<'a, Result<ErasedOctreeHierarchy, BevyError>> {
         Box::pin(async move {
             let Ok(node) = node
                 .data
                 .deref()
                 .clone()
-                .downcast::<<Self as PointCloudLoader>::Hierarchy>()
+                .downcast::<<Self as OctreeLoader>::Hierarchy>()
             else {
                 return Err("Unable to downcast loaded hierarchy".into());
             };
 
-            let loaded_nodes = self.load_sub_hierarchy(&node).await.map_err(Into::into)?;
+            let mut builder = OctreeHierarchyBuilder::new();
+            self.load_sub_hierarchy(&node, &mut builder)
+                .await
+                .map_err(Into::into)?;
 
-            Ok(loaded_nodes
-                .into_iter()
-                .map(ErasedLoadedPointCloudNode::from)
-                .collect())
+            Ok(builder.into())
         })
     }
 
@@ -168,7 +132,7 @@ impl<L: PointCloudLoader> ErasedPointCloudLoader for L {
                 .data
                 .deref()
                 .clone()
-                .downcast::<<Self as PointCloudLoader>::Hierarchy>()
+                .downcast::<<Self as OctreeLoader>::Hierarchy>()
             else {
                 return Err("Unable to downcast loaded hierarchy".into());
             };

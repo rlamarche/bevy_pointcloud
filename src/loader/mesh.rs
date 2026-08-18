@@ -2,12 +2,15 @@ use bevy::{camera::primitives::MeshAabb, mesh::Mesh, reflect::TypePath};
 use thiserror::Error;
 
 use crate::{
-    ChildIndex, ChunkLoadResult, LoadedPointCloudNode, PointCloudLoader, PointCloudNodeStatus,
+    ChunkLoadResult, OctreeError, OctreeHierarchyBuilder, OctreeLoader, PointCloudNodeStatus,
 };
 
 /// An error that occurs when loading a glTF file.
 #[derive(Error, Debug)]
-pub enum PointCloudMeshLoaderError {}
+pub enum PointCloudMeshLoaderError {
+    #[error("octree topology error: {0}")]
+    Octree(#[from] OctreeError),
+}
 
 #[derive(TypePath)]
 pub struct PointCloudMeshLoader {
@@ -20,7 +23,7 @@ impl From<Mesh> for PointCloudMeshLoader {
     }
 }
 
-impl PointCloudLoader for PointCloudMeshLoader {
+impl OctreeLoader for PointCloudMeshLoader {
     type Source = Mesh;
     type Hierarchy = ();
     type Error = PointCloudMeshLoaderError;
@@ -35,18 +38,14 @@ impl PointCloudLoader for PointCloudMeshLoader {
 
     async fn load_initial_hierarchy(
         &self,
-    ) -> Result<Vec<LoadedPointCloudNode<Self::Hierarchy>>, Self::Error> {
+        builder: &mut OctreeHierarchyBuilder<Self::Hierarchy>,
+    ) -> Result<(), Self::Error> {
         let point_count = self.mesh.count_vertices();
         let aabb = self.mesh.compute_aabb();
 
-        Ok(vec![LoadedPointCloudNode {
-            status: PointCloudNodeStatus::Loaded,
-            child_index: ChildIndex::ROOT,
-            parent_index: None,
-            aabb,
-            data: (),
-            point_count,
-        }])
+        builder.try_insert_root(PointCloudNodeStatus::Loaded, point_count, (), aabb)?;
+
+        Ok(())
     }
 
     async fn load_chunk(&self, _: &Self::Hierarchy) -> Result<ChunkLoadResult, Self::Error> {

@@ -8,20 +8,21 @@ use bevy::{
     asset::{AssetId, Assets, InvalidGenerationError},
     ecs::{
         component::Component,
+        error::BevyError,
         hierarchy::ChildOf,
         resource::Resource,
         system::{Commands, Res, ResMut},
     },
     log::{debug, info, warn},
-    platform::collections::HashSet,
+    platform::collections::{HashMap, HashSet},
 };
 use ordered_float::OrderedFloat;
 
 use crate::{
-    server::build_hierarchy_children, ChildChunkOf, InternalPointCloudEvent, NodeId, PointCloud,
-    PointCloudChunk, PointCloudChunk3d, PointCloudChunkKey, PointCloudInstances, PointCloudNodeKey,
-    PointCloudNodeStatus, PointCloudServer, PointCloudServerSettings, PointCloudTotalSize,
-    PointCloudTracking,
+    ChildChunkOf, ErasedOctreeHierarchy, InternalPointCloudEvent, NodeId, OctreeTopology,
+    PointCloud, PointCloudChunk, PointCloudChunk3d, PointCloudChunkKey, PointCloudInstances,
+    PointCloudNodeKey, PointCloudNodeStatus, PointCloudServer, PointCloudServerSettings,
+    PointCloudTotalSize, PointCloudTracking,
 };
 
 #[derive(Resource, Default)]
@@ -178,7 +179,7 @@ pub fn handle_internal_point_cloud_events(
             InternalPointCloudEvent::SubHierarchyLoaded {
                 id,
                 node_id,
-                mut hierarchy_nodes,
+                octree_hierarchy,
             } => {
                 let key = PointCloudNodeKey { id, node_id };
 
@@ -193,95 +194,28 @@ pub fn handle_internal_point_cloud_events(
                     continue;
                 };
 
-                let Some(octree) = point_cloud.topology.as_octree_mut() else {
-                    continue;
-                };
-
-                if hierarchy_nodes.is_empty() {
+                let Some(octree_topology) = point_cloud.topology.as_octree_mut() else {
                     warn!(
-                        "Loaded empty hierarchy for {:?}/{:?}, skipping update.",
-                        id, node_id
-                    );
-                    continue;
-                }
-
-                let (children, roots) = build_hierarchy_children(&hierarchy_nodes);
-
-                let Some(root_idx) = roots.first().copied() else {
-                    warn!(
-                        "Loaded hierarchy for {:?}/{:?} is missing a root node.",
-                        id, node_id
+                        "Loading sub hierarchy for a point cloud whose topology is not an octree.",
                     );
                     continue;
                 };
 
-                if roots.len() > 1 {
+                // remove the previous proxy node
+                // let Some(node) = octree_topology.remove_node(node_id) else {
+                //     warn!(
+                //         "Hierarchy node {:?} not found for asset {:?} when updating hierarchy.",
+                //         node_id, id
+                //     );
+                //     continue;
+                // };
+
+                if let Err(e) = append_hierarchy(octree_topology, octree_hierarchy, Some(node_id)) {
                     warn!(
-                        "Loaded hierarchy for {:?}/{:?} contains {} root nodes; using the first one",
+                        "An error occured when appending hierarchy to point cloud octree {:?}: {:#}",
                         id,
-                        node_id,
-                        roots.len()
+                        e,
                     );
-                }
-
-                let mut inserted_nodes: Vec<Option<NodeId>> = vec![None; hierarchy_nodes.len()];
-
-                let hierarchy_node = std::mem::take(&mut hierarchy_nodes[root_idx]);
-                match octree.get_node_mut(node_id) {
-                    Some(node) => {
-                        node.status = hierarchy_node.status;
-                        node.data = hierarchy_node.data;
-                        if let Some(aabb) = hierarchy_node.aabb {
-                            node.aabb = Some(aabb);
-                        }
-                        inserted_nodes[root_idx] = Some(node_id);
-                    }
-                    None => {
-                        warn!(
-                            "Hierarchy node {:?} not found for asset {:?} when updating hierarchy.",
-                            node_id, id
-                        );
-                        continue;
-                    }
-                }
-
-                let mut stack: Vec<(usize, NodeId)> = children[root_idx]
-                    .iter()
-                    .rev()
-                    .map(|&child_idx| (child_idx, node_id))
-                    .collect();
-
-                while let Some((idx, parent_id)) = stack.pop() {
-                    if inserted_nodes[idx].is_some() {
-                        continue;
-                    }
-
-                    let node = std::mem::take(&mut hierarchy_nodes[idx]);
-
-                    let new_id = match octree.try_insert_child(
-                        parent_id,
-                        node.child_index,
-                        node.status,
-                        node.point_count,
-                        node.data,
-                        node.aabb,
-                        None,
-                    ) {
-                        Ok(node_id) => node_id,
-                        Err(error) => {
-                            warn!(
-                                "Unable to insert new hierarchy node for asset {:?}: {:#}",
-                                id, error
-                            );
-                            continue;
-                        }
-                    };
-
-                    inserted_nodes[idx] = Some(new_id);
-
-                    for &child_idx in children[idx].iter().rev() {
-                        stack.push((child_idx, new_id));
-                    }
                 }
             }
             InternalPointCloudEvent::SubHierarchyLoadFailed { id, node_id, error } => {
@@ -583,4 +517,64 @@ fn process_chunk_loads(
         // Set in flight
         load_tasks.chunk_in_flight.insert(key);
     }
+}
+
+pub fn append_hierarchy(
+    octree_topology: &mut OctreeTopology,
+    octree_hierarchy: ErasedOctreeHierarchy,
+    root_id: Option<NodeId>,
+) -> Result<(), BevyError> {
+    let Some(root) = octree_hierarchy.get_root() else {
+        return Err(BevyError::from(
+            "Loaded point cloud hierarchy is empty or missing a root node",
+        ));
+    };
+
+    let mut stack = vec![(root.id, None)];
+    let mut node_map = HashMap::new();
+    while let Some((builder_node_id, parent_id)) = stack.pop() {
+        let Some(node) = octree_hierarchy.get_node(builder_node_id) else {
+            // this shouldn't happen
+            warn!("A node is missing in the octree hierarchy, this should'nt happen.d");
+            continue;
+        };
+
+        let node_id = match parent_id {
+            Some(parent_id) => octree_topology.try_insert_child(
+                parent_id,
+                node.child_index,
+                node.status,
+                node.point_count,
+                node.data.clone(),
+                node.aabb,
+                None,
+            )?,
+            None => {
+                if let Some(root_id) = root_id {
+                    if let Some(root) = octree_topology.get_node_mut(root_id) {
+                        root.status = node.status;
+                        root.point_count = node.point_count;
+                        root.data = node.data.clone();
+                        root.aabb = node.aabb;
+                    }
+                    root_id
+                } else {
+                    octree_topology.try_insert_root(
+                        node.status,
+                        node.point_count,
+                        node.data.clone(),
+                        node.aabb,
+                        None,
+                    )?
+                }
+            }
+        };
+
+        node_map.insert(builder_node_id, node_id);
+
+        for child_index in node.children_mask.iter_one_bits() {
+            stack.push((node.children[child_index as usize], Some(node_id)));
+        }
+    }
+    Ok(())
 }

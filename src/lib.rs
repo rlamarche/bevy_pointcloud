@@ -331,14 +331,14 @@ fn spawn_splat_point_cloud_chunks_from_asset_loader(
 
                 commands.insert_batch(insert_batch);
             }
-            AssetEvent::Modified { id } => {
-                info!("PointCloud modified: {:?}", id);
+            AssetEvent::Modified { id: _ } => {
+                // info!("PointCloud modified: {:?}", id);
             }
-            AssetEvent::Removed { id } => {
-                info!("PointCloud removed: {:?}", id);
+            AssetEvent::Removed { id: _ } => {
+                // info!("PointCloud removed: {:?}", id);
             }
-            AssetEvent::Unused { id } => {
-                info!("PointCloud unused: {:?}", id);
+            AssetEvent::Unused { id: _ } => {
+                // info!("PointCloud unused: {:?}", id);
             }
         }
     }

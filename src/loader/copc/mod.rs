@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    ByteSource, ByteSourceError, ChildIndex, ChunkLoadResult, LoadedPointCloudNode,
-    PointCloudLoader, PointCloudNodeStatus,
+    BuilderNodeId, ByteSource, ByteSourceError, ChildIndex, ChunkLoadResult, OctreeError,
+    OctreeHierarchyBuilder, OctreeLoader, PointCloudNodeStatus,
 };
 
 /// An error that occurs when loading a glTF file.
@@ -36,6 +36,9 @@ pub enum CopcLoaderError {
 
     #[error("an invalid hierarchy has been encountered: {0}")]
     InvalidHierarchy(String),
+
+    #[error("octree topology error: {0}")]
+    Octree(#[from] OctreeError),
 }
 
 impl From<ByteSourceError> for CopcError {
@@ -96,7 +99,7 @@ impl<S: ByteSource> copc_streaming::ByteSource for CopcByteSource<S> {
     }
 }
 
-impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
+impl<S: ByteSource> OctreeLoader for CopcLoader<S> {
     type Source = S;
     type Hierarchy = CopcHierarchy;
     type Error = CopcLoaderError;
@@ -117,7 +120,8 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
 
     async fn load_initial_hierarchy(
         &self,
-    ) -> Result<Vec<LoadedPointCloudNode<Self::Hierarchy>>, Self::Error> {
+        builder: &mut OctreeHierarchyBuilder<Self::Hierarchy>,
+    ) -> Result<(), Self::Error> {
         let mut reader = self.reader.write().await;
 
         // TODO: read the hiearchy in a lazy way (implementing load_sub_hierarchy)
@@ -131,13 +135,11 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
 
         let aabb = copc_info.root_bounds();
 
-        let mut initial_hierarchy = Vec::new();
-
         // contains a mapping between voxel key and index in output vec
-        let mut parent_indexes = HashMap::<VoxelKey, usize>::new();
+        let mut parent_indexes = HashMap::<VoxelKey, BuilderNodeId>::new();
 
         // stack of the nodes to process
-        let mut stack = VecDeque::<(&HierarchyEntry, Option<VoxelKey>)>::new();
+        let mut stack = VecDeque::<(&HierarchyEntry, Option<BuilderNodeId>)>::new();
         let root_hierarchy = reader
             .get(&VoxelKey {
                 level: 0,
@@ -151,40 +153,36 @@ impl<S: ByteSource> PointCloudLoader for CopcLoader<S> {
         stack.push_back((root_hierarchy, None));
 
         // iterate recursively in hierarchy tree to gather hierarchy nodes
-        while let Some((hierarchy_entry, parent_key)) = stack.pop_front() {
-            // add root node to index
-            parent_indexes.insert(hierarchy_entry.key, initial_hierarchy.len());
-
-            // add root node to hierarchy vec
-            initial_hierarchy.push(LoadedPointCloudNode {
-                status: PointCloudNodeStatus::Loaded,
-                child_index: hierarchy_entry.key.into(),
-                // retrieve the parent id in the map
-                parent_index: parent_key
-                    .map(|key| {
-                        parent_indexes.get(&key).copied().ok_or_else(|| {
-                            CopcLoaderError::InvalidHierarchy(format!(
-                                "Voxel key {:?} is missing in parent indexes",
-                                key
-                            ))
-                        })
-                    })
-                    .transpose()?,
-                aabb: Some(copc_aabb_to_aabb(hierarchy_entry.key.bounds(&aabb))),
-                data: CopcHierarchy(hierarchy_entry.clone()),
-                point_count: hierarchy_entry.point_count as usize,
-            });
+        while let Some((hierarchy_entry, parent_id)) = stack.pop_front() {
+            let inserted_id = if let Some(parent_id) = parent_id {
+                builder.try_insert_child(
+                    parent_id,
+                    hierarchy_entry.key.into(),
+                    PointCloudNodeStatus::Loaded,
+                    hierarchy_entry.point_count as usize,
+                    CopcHierarchy(hierarchy_entry.clone()),
+                    Some(copc_aabb_to_aabb(hierarchy_entry.key.bounds(&aabb))),
+                )?
+            } else {
+                builder.try_insert_root(
+                    PointCloudNodeStatus::Loaded,
+                    hierarchy_entry.point_count as usize,
+                    CopcHierarchy(hierarchy_entry.clone()),
+                    Some(copc_aabb_to_aabb(hierarchy_entry.key.bounds(&aabb))),
+                )?
+            };
+            parent_indexes.insert(hierarchy_entry.key, inserted_id);
 
             // load children
             let children = reader.children(&hierarchy_entry.key);
 
             // append children to stack
             for child in children {
-                stack.push_back((child, Some(hierarchy_entry.key)));
+                stack.push_back((child, Some(inserted_id)));
             }
         }
 
-        Ok(initial_hierarchy)
+        Ok(())
     }
 
     async fn load_chunk(&self, node: &Self::Hierarchy) -> Result<ChunkLoadResult, Self::Error> {

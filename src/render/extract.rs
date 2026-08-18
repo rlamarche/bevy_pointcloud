@@ -210,10 +210,7 @@ pub fn extract_pointcloud_instances(
                 RenderPointCloudInstance {
                     entity: entity.into(),
                     aabb: *aabb,
-                    spacing: point_cloud
-                        .topology
-                        .as_octree()
-                        .and_then(|octree| octree.spacing),
+                    spacing: point_cloud.spacing,
                     transforms: PointCloudTransforms {
                         world_from_local: world_from_local.into(),
                         previous_world_from_local: previous_world_from_local.into(),

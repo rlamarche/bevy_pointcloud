@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use potree::{asset::PotreeAsset, metadata::Metadata};
+use potree::asset::PotreeAsset;
 use thiserror::Error;
 
 use crate::{ByteSource, ByteSourceError, FileSource};
@@ -25,9 +25,9 @@ pub enum PotreeAssetSourceError {
 impl<S: ByteSource> PotreeAsset for PotreeAssetSource<S> {
     type Error = PotreeAssetSourceError;
 
-    async fn read_metadata(&self) -> Result<Metadata, Self::Error> {
+    async fn read_metadata(&self) -> Result<Bytes, Self::Error> {
         let buffer = self.metadata.read_to_end(0).await?;
-        Ok(serde_json::from_slice(&buffer)?)
+        Ok(buffer.into())
     }
 
     async fn read_hierarchy(&self, offset: u64, length: usize) -> Result<Bytes, Self::Error> {

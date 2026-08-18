@@ -4,61 +4,72 @@ use bevy::{
     asset::Handle,
     camera::primitives::Aabb,
     prelude::Deref,
-    reflect::{std_traits::ReflectDefault, Reflect},
+    reflect::{std_traits::ReflectDefault, Reflect, ReflectDeserialize, ReflectSerialize},
 };
-use slotmap::{new_key_type, Key, KeyData};
+use serde::{Deserialize, Serialize};
 
-use crate::PointCloudChunk;
+use crate::{impl_node_id_wrapper, PointCloudChunk};
 
-new_key_type! { pub struct InternalNodeId; }
+pub mod wrapper {
+    use slotmap::new_key_type;
 
-#[derive(Clone, Copy, Default, Debug, Reflect, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[reflect(opaque)]
-pub struct NodeId(InternalNodeId);
+    new_key_type! { pub struct InternalNodeId; }
 
-impl NodeId {
-    /// Returns a null node identifier.
-    ///
-    /// This is typically used as a sentinel value to represent the absence
-    /// of a node, such as for uninitialized or non-existent child nodes.
-    pub fn null() -> Self {
-        Self(InternalNodeId::null())
-    }
+    #[macro_export]
+    macro_rules! impl_node_id_wrapper {
+        ($name:ident) => {
+            #[derive(Clone, Copy, Default, Debug, bevy::reflect::Reflect, PartialEq, Eq, PartialOrd, Ord, Hash)]
+            #[reflect(opaque)]
+            pub struct $name($crate::wrapper::InternalNodeId);
 
-    pub fn is_null(&self) -> bool {
-        self.0.is_null()
+            impl $name {
+                /// Returns a null node identifier.
+                ///
+                /// This is typically used as a sentinel value to represent the absence
+                /// of a node, such as for uninitialized or non-existent child nodes.
+                pub fn null() -> Self {
+                    Self(slotmap::Key::null())
+                }
+
+                pub fn is_null(&self) -> bool {
+                    slotmap::Key::is_null(&self.0)
+                }
+            }
+
+            #[expect(
+                unsafe_code,
+                reason = "This implementation is safe because it only reuse [`slotmap::new_key_type`] generated impl."
+            )]
+            /// SAFETY: this implementation is safe because it only reuse [`slotmap::new_key_type`] generated
+            /// impl.
+            unsafe impl slotmap::Key for $name {
+                fn data(&self) -> slotmap::KeyData {
+                    self.0.data()
+                }
+            }
+
+            impl From<$crate::wrapper::InternalNodeId> for $name {
+                fn from(value: $crate::wrapper::InternalNodeId) -> Self {
+                    $name(value)
+                }
+            }
+
+            impl From<$name> for $crate::wrapper::InternalNodeId {
+                fn from(value: $name) -> Self {
+                    value.0
+                }
+            }
+
+            impl From<slotmap::KeyData> for $name {
+                fn from(value: slotmap::KeyData) -> Self {
+                    $crate::wrapper::InternalNodeId::from(value).into()
+                }
+            }
+        };
     }
 }
 
-#[expect(
-    unsafe_code,
-    reason = "This implementation is safe because it only reuse [`slotmap::new_key_type`] generated impl."
-)]
-/// SAFETY: this implementation is safe because it only reuse [`slotmap::new_key_type`] generated
-/// impl.
-unsafe impl Key for NodeId {
-    fn data(&self) -> KeyData {
-        self.0.data()
-    }
-}
-
-impl From<InternalNodeId> for NodeId {
-    fn from(value: InternalNodeId) -> Self {
-        NodeId(value)
-    }
-}
-
-impl From<NodeId> for InternalNodeId {
-    fn from(value: NodeId) -> Self {
-        value.0
-    }
-}
-
-impl From<KeyData> for NodeId {
-    fn from(value: KeyData) -> Self {
-        InternalNodeId::from(value).into()
-    }
-}
+impl_node_id_wrapper!(NodeId);
 
 #[derive(Copy, Clone, Debug, Default, Deref, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ChildIndex(u8);
@@ -107,10 +118,8 @@ impl ChildIndex {
 
 bitflags::bitflags! {
     #[repr(transparent)]
-    #[derive(Default, Hash, Clone, Copy, PartialEq, Eq, Debug, Reflect)]
-    #[cfg_attr(feature = "serialize", derive(serde::Serialize, serde::Deserialize))]
-    #[reflect(opaque, Default, Hash, Clone, PartialEq, Debug)]
-    #[cfg_attr(feature = "serialize", reflect(Serialize, Deserialize))]
+    #[derive(Default, Hash, Clone, Copy, PartialEq, Eq, Debug, Reflect, Serialize, Deserialize)]
+    #[reflect(opaque, Default, Hash, Clone, PartialEq, Debug, Serialize, Deserialize)]
     pub struct ChildrenMask: u8 {
         const X_0_Y_0_Z_0 = 1 << 0;
         const X_0_Y_0_Z_1 = 1 << 1;
@@ -128,6 +137,9 @@ bitflags::bitflags! {
 impl ChildrenMask {
     pub fn iter_one_bits(&self) -> impl Iterator<Item = u8> {
         (0_u8..8).filter(move |&i| (self.bits() & (1 << i)) != 0)
+    }
+    pub fn has_child(&self, child_index: ChildIndex) -> bool {
+        (self.bits() & (1_u8 << child_index.index())) > 0
     }
 }
 
