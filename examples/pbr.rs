@@ -199,7 +199,6 @@ fn load_point_cloud(
                 SplatSettings {
                     splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
                     point_size_mode: PointSizeMode::LocalSpace,
-                    point_size: 0.5,
                     // radius: Some(0.5),
                     // orientation: SplatOrientation::Billboard,
                     orientation: SplatOrientation::FaceNormal,
@@ -225,7 +224,6 @@ fn load_point_cloud(
                 SplatSettings {
                     splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
                     point_size_mode: PointSizeMode::LocalSpace,
-                    point_size: 0.5,
                     // radius: Some(0.5),
                     // orientation: SplatOrientation::Billboard,
                     orientation: SplatOrientation::FaceNormal,

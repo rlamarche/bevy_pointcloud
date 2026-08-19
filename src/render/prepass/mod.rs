@@ -716,7 +716,8 @@ impl PrepassPipeline {
 
         shader_defs.push(ShaderDefVal::UInt(
             "MATERIAL_BIND_GROUP".into(),
-            bind_group_layouts.len() as u32,
+            // the bind group is already added (upper), so minus 1
+            bind_group_layouts.len() as u32 - 1,
         ));
 
         let mut instance_buffer_layout = instance_layout.0.get_layout(&vertex_attributes)?;
