@@ -18,14 +18,16 @@ use bevy::{
         TONEMAPPING_LUT_SAMPLER_BINDING_INDEX, TONEMAPPING_LUT_TEXTURE_BINDING_INDEX,
     },
     render::render_resource::{
-        binding_types::uniform_buffer, BindGroupLayoutEntries, BlendComponent, BlendFactor,
-        BlendOperation, BlendState, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
-        DepthStencilState, Face, MultisampleState, PrimitiveState, ShaderStages, StencilFaceState,
-        StencilState, VertexStepMode,
+        binding_types::{texture_2d, uniform_buffer},
+        BindGroupLayoutEntries, BlendComponent, BlendFactor, BlendOperation, BlendState,
+        ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Face,
+        MultisampleState, PrimitiveState, ShaderStages, StencilFaceState, StencilState,
+        VertexStepMode,
     },
     shader::{Shader, ShaderDefVal},
     utils::default,
 };
+use wgpu::TextureSampleType;
 
 use crate::{
     render::pipeline_specializer::SpecializedPointCloudPipeline, PointCloudUniform,
@@ -42,7 +44,9 @@ pub fn init_point_cloud_pipeline(mut commands: Commands) {
 pub struct PointCloudPipeline {
     shader: Handle<Shader>,
     mesh_pipeline: MeshPipeline,
+    pub empty_layout: BindGroupLayoutDescriptor,
     pub point_cloud_uniform_layout: BindGroupLayoutDescriptor,
+    pub point_cloud_octree_visible_nodes_layout: BindGroupLayoutDescriptor,
 }
 
 impl FromWorld for PointCloudPipeline {
@@ -53,6 +57,7 @@ impl FromWorld for PointCloudPipeline {
         Self {
             shader: load_embedded_asset!(asset_server, "pointcloud.wgsl"),
             mesh_pipeline: mesh_pipeline.clone(),
+            empty_layout: BindGroupLayoutDescriptor::new("pointcloud_empty_layout", &[]),
             point_cloud_uniform_layout: BindGroupLayoutDescriptor::new(
                 "point_cloud_uniform_layout",
                 &BindGroupLayoutEntries::single(
@@ -60,78 +65,17 @@ impl FromWorld for PointCloudPipeline {
                     uniform_buffer::<PointCloudUniform>(false),
                 ),
             ),
+            point_cloud_octree_visible_nodes_layout: BindGroupLayoutDescriptor {
+                label: "point_cloud_octree_visible_nodes_layout".into(),
+                entries: BindGroupLayoutEntries::single(
+                    ShaderStages::VERTEX,
+                    texture_2d(TextureSampleType::Uint),
+                )
+                .to_vec(),
+            },
         }
     }
 }
-
-// impl SpecializedRenderPipeline for PointCloudPipeline {
-//     type Key = (
-//         MeshVertexBufferLayoutRef,
-//         MeshVertexBufferLayoutRef,
-//         MeshPipelineViewLayoutKey,
-//     );
-
-//     fn specialize(&self, key: Self::Key) -> RenderPipelineDescriptor {
-//         let (quad_layout_ref, points_layout_ref, mesh_pipeline_view_layout_key) = key;
-
-//         let view_layout = self
-//             .mesh_pipeline
-//             .get_view_layout(mesh_pipeline_view_layout_key);
-
-//         let quad_layout = quad_layout_ref
-//             .0
-//             .get_layout(&[
-//                 Mesh::ATTRIBUTE_POSITION.at_shader_location(0),
-//                 Mesh::ATTRIBUTE_UV_0.at_shader_location(1),
-//             ])
-//             .unwrap();
-
-//         let mut points_layout = points_layout_ref
-//             .0
-//             .get_layout(&[
-//                 Mesh::ATTRIBUTE_POSITION.at_shader_location(10),
-//                 Mesh::ATTRIBUTE_COLOR.at_shader_location(11),
-//             ])
-//             .unwrap();
-//         points_layout.step_mode = VertexStepMode::Instance; // On change le step_mode ici !
-
-//         let bind_group_layout = vec![
-//             view_layout.main_layout.clone(),
-//             view_layout.binding_array_layout.clone(),
-//         ];
-
-//         RenderPipelineDescriptor {
-//             label: Some("point_cloud_pipeline".into()),
-//             layout: bind_group_layout,
-//             vertex: VertexState {
-//                 shader: self.shader.clone(),
-//                 shader_defs: vec![],
-//                 entry_point: Some("vertex".into()),
-//                 buffers: vec![quad_layout, points_layout],
-//             },
-//             fragment: Some(FragmentState {
-//                 shader: self.shader.clone(),
-//                 shader_defs: vec![],
-//                 entry_point: Some("fragment".into()),
-//                 targets: vec![Some(ColorTargetState {
-//                     format: TextureFormat::Rgba8UnormSrgb, // Format HDR standard de Bevy
-//                     blend: Some(BlendState::ALPHA_BLENDING),
-//                     write_mask: ColorWrites::ALL,
-//                 })],
-//             }),
-//             primitive: PrimitiveState::default(),
-//             depth_stencil: Some(DepthStencilState {
-//                 format: TextureFormat::Depth32Float,
-//                 depth_write_enabled: Some(true),
-//                 depth_compare: Some(CompareFunction::GreaterEqual),
-//                 stencil: StencilState::default(),
-//                 bias: DepthBiasState::default(),
-//             }),
-//             multisample: MultisampleState::default(),
-//             ..default()
-//         }
-//     }
-// }
 
 impl SpecializedPointCloudPipeline for PointCloudPipeline {
     type Key = (MeshPipelineKey, SplatPipelineKey);
@@ -177,6 +121,7 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
                 "SPLAT_ORIENTATION_FACE_NORMAL",
             ),
             (SplatPipelineKey::UV_TRANSFORM, "SPLAT_UV_TRANSFORM"),
+            (SplatPipelineKey::IS_OCTREE, "IS_OCTREE"),
         ] {
             if splat_key.intersects(flags) {
                 shader_defs.push(shader_def.into());
@@ -306,6 +251,12 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
 
         bind_group_layout.push(self.point_cloud_uniform_layout.clone());
 
+        if splat_key.contains(SplatPipelineKey::IS_OCTREE) {
+            bind_group_layout.push(self.point_cloud_octree_visible_nodes_layout.clone());
+        } else {
+            bind_group_layout.push(self.empty_layout.clone());
+        }
+
         if key.contains(MeshPipelineKey::SCREEN_SPACE_AMBIENT_OCCLUSION) {
             shader_defs.push("SCREEN_SPACE_AMBIENT_OCCLUSION".into());
         }
@@ -322,7 +273,7 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
         let pass = key.intersection(MeshPipelineKey::BLEND_RESERVED_BITS);
         let (mut is_opaque, mut alpha_to_coverage_enabled) = (false, false);
         if key.contains(MeshPipelineKey::OIT_ENABLED) && pass == MeshPipelineKey::BLEND_ALPHA {
-            label = "oit_mesh_pipeline".into();
+            label = "oit_pointcloud_pipeline".into();
             // TODO tail blending would need alpha blending
             blend = None;
             shader_defs.push("OIT_ENABLED".into());
@@ -330,13 +281,13 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             // alpha_to_coverage_enabled = true;
             depth_write_enabled = false;
         } else if pass == MeshPipelineKey::BLEND_ALPHA {
-            label = "alpha_blend_mesh_pipeline".into();
+            label = "alpha_blend_pointcloud_pipeline".into();
             blend = Some(BlendState::ALPHA_BLENDING);
             // For the transparent pass, fragments that are closer will be alpha blended
             // but their depth is not written to the depth buffer
             depth_write_enabled = false;
         } else if pass == MeshPipelineKey::BLEND_PREMULTIPLIED_ALPHA {
-            label = "premultiplied_alpha_mesh_pipeline".into();
+            label = "premultiplied_alpha_pointcloud_pipeline".into();
             blend = Some(BlendState::PREMULTIPLIED_ALPHA_BLENDING);
             shader_defs.push("PREMULTIPLY_ALPHA".into());
             shader_defs.push("BLEND_PREMULTIPLIED_ALPHA".into());
@@ -344,7 +295,7 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             // but their depth is not written to the depth buffer
             depth_write_enabled = false;
         } else if pass == MeshPipelineKey::BLEND_MULTIPLY {
-            label = "multiply_mesh_pipeline".into();
+            label = "multiply_pointcloud_pipeline".into();
             blend = Some(BlendState {
                 color: BlendComponent {
                     src_factor: BlendFactor::Dst,
@@ -359,7 +310,7 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             // but their depth is not written to the depth buffer
             depth_write_enabled = false;
         } else if pass == MeshPipelineKey::BLEND_ALPHA_TO_COVERAGE {
-            label = "alpha_to_coverage_mesh_pipeline".into();
+            label = "alpha_to_coverage_pointcloud_pipeline".into();
             // BlendState::REPLACE is not needed here, and None will be potentially much faster in
             // some cases
             blend = None;
@@ -371,7 +322,7 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             alpha_to_coverage_enabled = true;
             shader_defs.push("ALPHA_TO_COVERAGE".into());
         } else {
-            label = "opaque_mesh_pipeline".into();
+            label = "opaque_pointcloud_pipeline".into();
             // BlendState::REPLACE is not needed here, and None will be potentially much faster in
             // some cases
             blend = None;

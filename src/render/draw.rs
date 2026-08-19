@@ -4,7 +4,10 @@ use bevy::{
     core_pipeline::prepass::MotionVectorPrepass,
     ecs::{
         query::{Has, ROQueryItem},
-        system::{lifetimeless::SRes, SystemParamItem},
+        system::{
+            lifetimeless::{Read, SRes},
+            SystemParamItem,
+        },
     },
     log::warn,
     pbr::{MeshBindGroups, MeshMorphBindGroupKey, MorphIndices, RenderMeshInstances, SkinUniforms},
@@ -21,8 +24,8 @@ use bevy::{
 };
 
 use crate::{
-    skins_use_uniform_buffers, PreparedPointCloudUniforms, RenderPointCloudChunkInstances,
-    RenderPointCloudInstances,
+    skins_use_uniform_buffers, PointCloudTopologyKind, PreparedPointCloudUniforms,
+    RenderPointCloudChunkInstances, RenderPointCloudInstances, VisibleNodesTextureBindGroup,
 };
 
 /// A [`RenderCommand`] that sets the pipeline for the [`CachedRenderPipelinePhaseItem`].
@@ -264,6 +267,31 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudUniformGrou
         };
 
         pass.set_bind_group(I, &prepared_point_cloud_uniform.bind_group, &[]);
+        RenderCommandResult::Success
+    }
+}
+
+pub struct SetVisibleNodesTexture<const I: usize>;
+impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetVisibleNodesTexture<I> {
+    type Param = SRes<RenderPointCloudChunkInstances>;
+    type ViewQuery = Read<VisibleNodesTextureBindGroup>;
+    type ItemQuery = ();
+
+    fn render<'w>(
+        item: &P,
+        attribute_pass_view_bind_group: ROQueryItem<'w, '_, Self::ViewQuery>,
+        _entity: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
+        render_point_cloud_chunk_instances: SystemParamItem<'w, '_, Self::Param>,
+        pass: &mut TrackedRenderPass<'w>,
+    ) -> RenderCommandResult {
+        let Some(chunk_instance) = render_point_cloud_chunk_instances.get(&item.entity()) else {
+            return RenderCommandResult::Skip;
+        };
+
+        if matches!(chunk_instance.topology, PointCloudTopologyKind::Octree) {
+            pass.set_bind_group(I, &attribute_pass_view_bind_group.texture, &[]);
+        }
+
         RenderCommandResult::Success
     }
 }

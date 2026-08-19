@@ -69,12 +69,12 @@ use crate::{
     DeferredAlphaMaskDrawFunction, DeferredFragmentShader, DeferredOpaqueDrawFunction,
     DeferredVertexShader, DrawPointCloudInstanced, ErasedMaterialPipelineKey,
     ErasedSplatPipelineKey, MaterialPipeline, MaterialProperties, PointCloudChunk3d,
-    PointCloudDirtySpecializations, PointCloudPipeline, PreparedMaterial,
+    PointCloudDirtySpecializations, PointCloudPipeline, PointCloudTopologyKind, PreparedMaterial,
     PrepassAlphaMaskDrawFunction, PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction,
     PrepassOpaqueDrawFunction, PrepassVertexShader, RenderPointCloudChunkInstances,
     RenderPointCloudInstances, RenderPointCloudMaterialInstances, SetMaterialBindGroup,
-    SetMeshBindGroup, SetPointCloudUniformGroup, SpecializedPointCloudPipeline,
-    SpecializedPointCloudPipelines, SplatPipelineKey, MATERIAL_BIND_GROUP_INDEX,
+    SetMeshBindGroup, SetPointCloudUniformGroup, SetVisibleNodesTexture,
+    SpecializedPointCloudPipeline, SpecializedPointCloudPipelines, SplatPipelineKey,
 };
 
 /// Sets up everything required to use the prepass pipeline.
@@ -517,6 +517,7 @@ impl PrepassPipeline {
                 SplatPipelineKey::SPLAT_ORIENTATION_FACE_NORMAL,
                 "SPLAT_ORIENTATION_FACE_NORMAL",
             ),
+            (SplatPipelineKey::IS_OCTREE, "IS_OCTREE"),
         ] {
             if splat_key.intersects(flags) {
                 shader_defs.push(shader_def.into());
@@ -551,10 +552,6 @@ impl PrepassPipeline {
         // since that's the only time it gets called from a prepass pipeline.)
         shader_defs.push("PREPASS_PIPELINE".into());
 
-        shader_defs.push(ShaderDefVal::UInt(
-            "MATERIAL_BIND_GROUP".into(),
-            MATERIAL_BIND_GROUP_INDEX as u32,
-        ));
         // For directional light shadow map views, use unclipped depth via either the native GPU
         // feature, or emulated by setting depth in the fragment shader for GPUs that don't
         // support it natively.
@@ -705,6 +702,22 @@ impl PrepassPipeline {
             3,
             self.point_cloud_pipeline.point_cloud_uniform_layout.clone(),
         );
+
+        if splat_key.contains(SplatPipelineKey::IS_OCTREE) {
+            bind_group_layouts.insert(
+                4,
+                self.point_cloud_pipeline
+                    .point_cloud_octree_visible_nodes_layout
+                    .clone(),
+            );
+        } else {
+            bind_group_layouts.insert(4, self.empty_layout.clone());
+        }
+
+        shader_defs.push(ShaderDefVal::UInt(
+            "MATERIAL_BIND_GROUP".into(),
+            bind_group_layouts.len() as u32,
+        ));
 
         let mut instance_buffer_layout = instance_layout.0.get_layout(&vertex_attributes)?;
 
@@ -1328,12 +1341,21 @@ pub(crate) fn specialize_prepass_material_meshes(
                     continue;
                 };
 
+                let mut splat_key = (&render_point_cloud_instance.splat_settings).into();
+
+                if matches!(
+                    render_point_cloud_instance.topology,
+                    PointCloudTopologyKind::Octree
+                ) {
+                    splat_key |= SplatPipelineKey::IS_OCTREE;
+                }
+
                 work_items.push(PrepassSpecializationWorkItem {
                     render_entity: *render_entity,
                     visible_entity: *visible_entity,
                     retained_view_entity: extracted_view.retained_view_entity,
                     mesh_key,
-                    splat_key: (&render_point_cloud_instance.splat_settings).into(),
+                    splat_key,
                     splat_layout: shape_mesh.layout.clone(),
                     instance_layout: mesh.layout.clone(),
                     properties: material.properties.clone(),
@@ -1800,7 +1822,8 @@ pub type DrawPrepass = (
     SetPrepassViewEmptyBindGroup<1>,
     SetMeshBindGroup<2>,
     SetPointCloudUniformGroup<3>,
-    SetMaterialBindGroup<MATERIAL_BIND_GROUP_INDEX>,
+    SetVisibleNodesTexture<4>,
+    SetMaterialBindGroup<5>,
     DrawPointCloudInstanced,
 );
 
@@ -1810,6 +1833,7 @@ pub type DrawDepthOnlyPrepass = (
     SetPrepassViewEmptyBindGroup<1>,
     SetMeshBindGroup<2>,
     SetPointCloudUniformGroup<3>,
-    SetPrepassEmptyMaterialBindGroup<MATERIAL_BIND_GROUP_INDEX>,
+    SetVisibleNodesTexture<4>,
+    SetPrepassEmptyMaterialBindGroup<5>,
     DrawPointCloudInstanced,
 );

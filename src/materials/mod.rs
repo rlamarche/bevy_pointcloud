@@ -4,19 +4,15 @@ mod standard;
 use bevy::{
     color::{Color, ColorToComponents, LinearRgba},
     math::Vec4,
-    reflect::{prelude::ReflectDefault, Reflect},
+    reflect::{prelude::ReflectDefault, Reflect, ReflectDeserialize, ReflectSerialize},
     render::render_resource::ShaderType,
 };
+use serde::{Deserialize, Serialize};
 pub use simple::*;
 pub use standard::*;
 
-#[derive(Debug, Copy, Clone, PartialEq, Reflect)]
-#[reflect(Default, PartialEq, Debug)]
-#[cfg_attr(
-    feature = "serialize",
-    derive(serde::Serialize, serde::Deserialize),
-    reflect(Serialize, Deserialize)
-)]
+#[derive(Debug, Copy, Clone, PartialEq, Reflect, Serialize, Deserialize)]
+#[reflect(Default, PartialEq, Debug, Serialize, Deserialize)]
 pub struct ColorStop {
     /// Color
     pub color: Color,

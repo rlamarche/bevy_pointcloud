@@ -69,15 +69,8 @@ fn setup(mut commands: Commands) {
             color: Color::WHITE,
             illuminance: light_consts::lux::OVERCAST_DAY,
             shadow_maps_enabled: true,
-            shadow_depth_bias: 0.05,
-            shadow_normal_bias: 1.2,
             ..default()
         },
-        CascadeShadowConfigBuilder {
-            maximum_distance: 100.0,
-            ..default()
-        }
-        .build(),
         Transform::from_xyz(10.0, 20.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 }
@@ -118,6 +111,7 @@ fn load_point_cloud(
             radius: Some(0.5),
             point_size_mode: PointSizeMode::ScreenPixelsLocal,
             point_size: 80.0,
+            adaptive_point_size: false,
             uv_mapping: UVMapping::SplatOnly,
             uv_transform: Affine2::from_scale_angle_translation(
                 Vec2::splat(2.0),
@@ -140,6 +134,7 @@ fn load_point_cloud(
             radius: Some(0.5),
             point_size_mode: PointSizeMode::LocalSpace,
             point_size: 0.1,
+            adaptive_point_size: false,
             orientation: SplatOrientation::Billboard,
             uv_mapping: UVMapping::Planar,
             uv_u: Vec3::new(0.0, 0.0, -1.0),
@@ -165,6 +160,7 @@ fn load_point_cloud(
             radius: Some(0.5),
             point_size_mode: PointSizeMode::LocalSpace,
             point_size: 0.1,
+            adaptive_point_size: false,
             orientation: SplatOrientation::FaceNormal,
             uv_mapping: UVMapping::Planar,
             uv_u: Vec3::new(0.0, 0.0, -1.0),
@@ -190,6 +186,7 @@ fn load_point_cloud(
             radius: Some(0.5),
             point_size_mode: PointSizeMode::LocalSpace,
             point_size: 0.1,
+            adaptive_point_size: false,
             orientation: SplatOrientation::FaceNormal,
             uv_mapping: UVMapping::Combined,
             uv_transform: Affine2::from_scale_angle_translation(
@@ -223,6 +220,7 @@ fn load_point_cloud(
             radius: Some(0.5),
             point_size_mode: PointSizeMode::LocalSpace,
             point_size: 0.04,
+            adaptive_point_size: false,
             orientation: SplatOrientation::FaceNormal,
             uv_mapping: UVMapping::Combined,
             uv_transform: Affine2::from_scale_angle_translation(
@@ -250,6 +248,7 @@ fn load_point_cloud(
             radius: Some(0.5),
             point_size_mode: PointSizeMode::LocalSpace,
             point_size: 0.04,
+            adaptive_point_size: false,
             orientation: SplatOrientation::Billboard,
             uv_mapping: UVMapping::Combined,
             uv_u: Vec3::new(1.0, 0.0, 0.0),
@@ -284,6 +283,7 @@ fn load_point_cloud(
             radius: Some(0.5),
             point_size_mode: PointSizeMode::LocalSpace,
             point_size: 0.04,
+            adaptive_point_size: false,
             orientation: SplatOrientation::Billboard,
             uv_mapping: UVMapping::Planar,
             uv_u: Vec3::new(1.0, 0.0, 0.0),

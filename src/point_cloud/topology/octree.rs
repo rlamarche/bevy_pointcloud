@@ -1,19 +1,23 @@
 use std::{collections::VecDeque, sync::Arc};
 
-use bevy::{asset::Handle, camera::primitives::Aabb, reflect::Reflect};
+use bevy::{camera::primitives::Aabb, reflect::Reflect};
 use slotmap::SlotMap;
 use thiserror::Error;
 
-use crate::{
-    ChildIndex, ChildrenMask, NodeData, NodeId, PointCloudChunk, PointCloudNode,
-    PointCloudNodeStatus,
-};
+use crate::{ChildIndex, ChildrenMask, NodeData, NodeId, PointCloudNode, PointCloudNodeStatus};
 
 #[derive(Debug, Clone, Reflect, Default)]
 pub struct OctreeTopology {
     #[reflect(ignore, clone)]
     pub nodes: SlotMap<NodeId, PointCloudNode>,
     pub root: Option<NodeId>,
+}
+
+#[derive(Clone, Default, Debug)]
+pub struct InsertNodeParams {
+    pub status: PointCloudNodeStatus,
+    pub point_count: usize,
+    pub aabb: Option<Aabb>,
 }
 
 impl OctreeTopology {
@@ -35,7 +39,11 @@ impl OctreeTopology {
         if let Some(parent_id) = removed_node.parent_id
             && let Some(parent) = self.nodes.get_mut(parent_id)
         {
-            parent.children[removed_node.child_index.index() as usize] = NodeId::null();
+            parent.children[removed_node
+                .child_index
+                .index()
+                .expect("Trying to convert child index which isn't a valid index.")
+                as usize] = NodeId::null();
             let child_mask: ChildrenMask = removed_node.children_mask;
             parent.children_mask &= !child_mask;
         }
@@ -54,14 +62,17 @@ impl OctreeTopology {
 
     /// Inserts the root node into the octree.
     /// Fails if a root already exists.
-    pub fn try_insert_root(
+    pub fn insert_root(
         &mut self,
-        status: PointCloudNodeStatus,
-        point_count: usize,
+        params: InsertNodeParams,
         data: NodeData,
-        aabb: Option<Aabb>,
-        chunk: Option<Handle<PointCloudChunk>>,
     ) -> Result<NodeId, OctreeError> {
+        let InsertNodeParams {
+            status,
+            point_count,
+            aabb,
+        } = params;
+
         if self.root.is_some() {
             return Err(OctreeError::RootAlreadyExists);
         }
@@ -72,15 +83,16 @@ impl OctreeTopology {
             id,
             name,
             status,
+            point_count,
             child_index: ChildIndex::ROOT,
             parent_id: None,
             children: [NodeId::null(); 8],
             children_mask: ChildrenMask::empty(),
             aabb,
             depth: 0,
+            offset: None,
             data,
-            chunk,
-            point_count,
+            chunk: None,
         });
 
         self.root = Some(id);
@@ -89,16 +101,19 @@ impl OctreeTopology {
     }
 
     /// Inserts a child node into an existing parent.
-    pub fn try_insert_child(
+    pub fn insert_child(
         &mut self,
         parent_id: NodeId,
         child_index: ChildIndex,
-        status: PointCloudNodeStatus,
-        point_count: usize,
+        params: InsertNodeParams,
         data: NodeData,
-        aabb: Option<Aabb>,
-        chunk: Option<Handle<PointCloudChunk>>,
     ) -> Result<NodeId, OctreeError> {
+        let InsertNodeParams {
+            status,
+            point_count,
+            aabb,
+        } = params;
+
         // Check parent
         let (parent_depth, new_name) = {
             let parent = self
@@ -110,7 +125,13 @@ impl OctreeTopology {
                 return Err(OctreeError::ChildIndexOccupied);
             }
 
-            let new_name: Arc<str> = Arc::from(format!("{}{}", parent.name, child_index.index()));
+            let new_name: Arc<str> = Arc::from(format!(
+                "{}{}",
+                parent.name,
+                child_index
+                    .index()
+                    .expect("Trying to convert child index which isn't a valid index.")
+            ));
             (parent.depth, new_name)
         };
 
@@ -119,21 +140,25 @@ impl OctreeTopology {
             id,
             name: new_name,
             status,
+            point_count,
             child_index,
             parent_id: Some(parent_id),
             children: [NodeId::null(); 8],
             children_mask: ChildrenMask::empty(),
             aabb,
             depth: parent_depth + 1,
+            offset: None,
             data,
-            chunk,
-            point_count,
+            chunk: None,
         });
 
         // Update parent relationships
         // Infallible because we checked existence earlier, but we need a mutable borrow now.
         let parent = self.nodes.get_mut(parent_id).unwrap();
-        parent.children[child_index.index() as usize] = child_id;
+        parent.children[child_index
+            .index()
+            .expect("Trying to convert child index which isn't a valid index.")
+            as usize] = child_id;
         parent.children_mask |= child_index.into();
 
         Ok(child_id)
@@ -198,7 +223,14 @@ mod tests {
     fn test_insert_root_ok() {
         let mut topology = OctreeTopology::new();
         let root_id = topology
-            .try_insert_root(PointCloudNodeStatus::Loaded, 100, default(), None, None)
+            .insert_root(
+                InsertNodeParams {
+                    status: PointCloudNodeStatus::Loaded,
+                    point_count: 100,
+                    ..default()
+                },
+                default(),
+            )
             .expect("Unable to insert a root node");
 
         assert_eq!(topology.root, Some(root_id));
@@ -211,19 +243,27 @@ mod tests {
     fn test_insert_children_ok() {
         let mut topology = OctreeTopology::new();
         let root_id = topology
-            .try_insert_root(PointCloudNodeStatus::Loaded, 100, default(), None, None)
+            .insert_root(
+                InsertNodeParams {
+                    status: PointCloudNodeStatus::Loaded,
+                    point_count: 100,
+                    ..default()
+                },
+                default(),
+            )
             .unwrap();
 
         for child_index in 0..8 {
             let child_id = topology
-                .try_insert_child(
+                .insert_child(
                     root_id,
                     ChildIndex::try_from(child_index).unwrap(),
-                    PointCloudNodeStatus::Loaded,
-                    50,
+                    InsertNodeParams {
+                        status: PointCloudNodeStatus::Loaded,
+                        point_count: 50,
+                        ..default()
+                    },
                     default(),
-                    None,
-                    None,
                 )
                 .unwrap();
 
@@ -240,11 +280,24 @@ mod tests {
     fn test_err_duplicate_root() {
         let mut topology = OctreeTopology::new();
         topology
-            .try_insert_root(PointCloudNodeStatus::Loaded, 100, default(), None, None)
+            .insert_root(
+                InsertNodeParams {
+                    status: PointCloudNodeStatus::Loaded,
+                    point_count: 100,
+                    ..default()
+                },
+                default(),
+            )
             .unwrap();
 
-        let result =
-            topology.try_insert_root(PointCloudNodeStatus::Loaded, 100, default(), None, None);
+        let result = topology.insert_root(
+            InsertNodeParams {
+                status: PointCloudNodeStatus::Loaded,
+                point_count: 100,
+                ..default()
+            },
+            default(),
+        );
         assert_eq!(result, Err(OctreeError::RootAlreadyExists));
     }
 
@@ -252,29 +305,38 @@ mod tests {
     fn test_err_duplicate_child() {
         let mut topology = OctreeTopology::new();
         let root_id = topology
-            .try_insert_root(PointCloudNodeStatus::Loaded, 100, default(), None, None)
-            .unwrap();
-
-        topology
-            .try_insert_child(
-                root_id,
-                ChildIndex::X_0_Y_0_Z_0,
-                PointCloudNodeStatus::Loaded,
-                50,
+            .insert_root(
+                InsertNodeParams {
+                    status: PointCloudNodeStatus::Loaded,
+                    point_count: 100,
+                    ..default()
+                },
                 default(),
-                None,
-                None,
             )
             .unwrap();
 
-        let result = topology.try_insert_child(
+        topology
+            .insert_child(
+                root_id,
+                ChildIndex::X_0_Y_0_Z_0,
+                InsertNodeParams {
+                    status: PointCloudNodeStatus::Loaded,
+                    point_count: 50,
+                    ..default()
+                },
+                default(),
+            )
+            .unwrap();
+
+        let result = topology.insert_child(
             root_id,
             ChildIndex::X_0_Y_0_Z_0,
-            PointCloudNodeStatus::Loaded,
-            50,
+            InsertNodeParams {
+                status: PointCloudNodeStatus::Loaded,
+                point_count: 50,
+                ..default()
+            },
             default(),
-            None,
-            None,
         );
         assert_eq!(result, Err(OctreeError::ChildIndexOccupied));
     }
@@ -285,14 +347,15 @@ mod tests {
         // creating a fake NodeId
         let fake_node_id = NodeId::default();
 
-        let result = topology.try_insert_child(
+        let result = topology.insert_child(
             fake_node_id,
             ChildIndex::X_0_Y_0_Z_0,
-            PointCloudNodeStatus::Loaded,
-            50,
+            InsertNodeParams {
+                status: PointCloudNodeStatus::Loaded,
+                point_count: 50,
+                ..default()
+            },
             default(),
-            None,
-            None,
         );
         assert_eq!(result, Err(OctreeError::ParentNotExists));
     }

@@ -4,7 +4,12 @@ use bevy::{
     asset::AssetId,
     ecs::{component::Component, entity::Entity},
     platform::collections::HashMap,
-    render::sync_world::{MainEntity, RenderEntity},
+    render::{
+        render_resource::BindGroup,
+        sync_world::{MainEntity, RenderEntity},
+        texture::ColorAttachment,
+        view::RetainedViewEntity,
+    },
 };
 
 use crate::{ChildIndex, ChildrenMask, NodeId, PointCloud, PointCloudChunk};
@@ -51,6 +56,13 @@ impl RenderVisiblePointCloudEntities {
     }
 }
 
+#[derive(Clone, Component, Default, Debug)]
+pub struct RenderShadowMapVisiblePointCloudEntities {
+    /// A mapping from each subview (cascade or cubemap face) to the point cloud entities
+    /// visible from it.
+    pub subviews: HashMap<RetainedViewEntity, RenderVisiblePointCloudEntities>,
+}
+
 #[derive(Clone, Debug)]
 pub struct RenderVisiblePointCloudEntity {
     /// a render entity
@@ -67,12 +79,27 @@ pub struct RenderVisiblePointCloudChunkEntity {
     pub name: Arc<str>,
     pub parent_id: Option<NodeId>,
     pub depth: u32,
+    /// offset applied to point size
+    pub offset: u8,
     pub child_index: ChildIndex,
-    pub first_child_index: ChildIndex,
+    pub first_child_index: usize,
     pub children: [usize; 8],
     pub children_mask: ChildrenMask,
     pub entity: Entity,
     pub main_entity: MainEntity,
+}
+
+/// Stores visible nodes and mapping textures for each view
+#[derive(Component)]
+pub struct VisibleNodesTexture {
+    pub visible_nodes: Option<ColorAttachment>,
+    /// contains node index per octree index (see [`crate::RenderOctreeInstancesIndex`])
+    pub node_index: Vec<HashMap<NodeId, u32>>,
+}
+
+#[derive(Component)]
+pub struct VisibleNodesTextureBindGroup {
+    pub texture: BindGroup,
 }
 
 // impl From<&VisiblePointCloudNodeEntity> for RenderVisiblePointCloudNodeEntity {

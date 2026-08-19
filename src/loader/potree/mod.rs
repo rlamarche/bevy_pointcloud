@@ -6,6 +6,7 @@ use bevy::{
     asset::RenderAssetUsages,
     camera::primitives::Aabb,
     log::warn,
+    math::DVec3,
     mesh::{Mesh, VertexAttributeValues},
     platform::collections::HashSet,
     prelude::Deref,
@@ -22,8 +23,8 @@ use thiserror::Error;
 pub use asset::*;
 
 use crate::{
-    BuilderNodeId, ByteSource, ByteSourceError, ChildIndex, ChunkLoadResult, OctreeError,
-    OctreeHierarchyBuilder, OctreeLoader, PointCloudNodeStatus,
+    BuilderNodeId, ByteSource, ByteSourceError, ChildIndex, ChunkLoadResult, InsertNodeParams,
+    OctreeError, OctreeHierarchyBuilder, OctreeLoader, OctreeMetadata, PointCloudNodeStatus,
 };
 
 /// An error that occurs when loading Potree point clouds.
@@ -97,6 +98,19 @@ impl<S: ByteSource + Send + Sync + 'static> OctreeLoader for PotreeLoader<S> {
         })
     }
 
+    async fn load_metadata(&self) -> Result<OctreeMetadata, Self::Error> {
+        let metadata = self.hierarchy.metadata();
+
+        Ok(OctreeMetadata {
+            point_count: Some(metadata.points),
+            aabb: Some(Aabb::from_min_max(
+                DVec3::from_array(metadata.bounding_box.min).as_vec3(),
+                DVec3::from_array(metadata.bounding_box.max).as_vec3(),
+            )),
+            spacing: Some(metadata.spacing),
+        })
+    }
+
     async fn load_initial_hierarchy(
         &self,
         builder: &mut OctreeHierarchyBuilder<Self::Hierarchy>,
@@ -120,6 +134,8 @@ impl<S: ByteSource + Send + Sync + 'static> OctreeLoader for PotreeLoader<S> {
 
     async fn load_chunk(&self, node: &Self::Hierarchy) -> Result<ChunkLoadResult, Self::Error> {
         let points = self.hierarchy.load_points(&node.0).await?;
+        // magic formula from Potree
+        let offset = (points.density as f32).log2() / 2.0 - 1.5;
 
         // Extract point slice from the raw buffer provided by potree crate
         let raw_point_count = points.buffer.count;
@@ -127,6 +143,7 @@ impl<S: ByteSource + Send + Sync + 'static> OctreeLoader for PotreeLoader<S> {
         if raw_point_count == 0 {
             return Ok(ChunkLoadResult {
                 mesh: None,
+                offset: None,
                 final_point_count: 0,
             });
         }
@@ -174,6 +191,7 @@ impl<S: ByteSource + Send + Sync + 'static> OctreeLoader for PotreeLoader<S> {
         if target_point_count == 0 {
             return Ok(ChunkLoadResult {
                 mesh: None,
+                offset: None,
                 final_point_count: 0,
             });
         }
@@ -270,6 +288,7 @@ impl<S: ByteSource + Send + Sync + 'static> OctreeLoader for PotreeLoader<S> {
 
         Ok(ChunkLoadResult {
             mesh: Some(mesh),
+            offset: Some(offset),
             final_point_count,
         })
     }
@@ -301,27 +320,31 @@ fn build_hierarchy<S: ByteSource + Send + Sync + 'static>(
         let node = std::mem::take(&mut raw_nodes[idx]);
         let aabb = Aabb::from_min_max(node.bounding_box.min, node.bounding_box.max);
         let node_id = if let Some(parent_id) = parent_id {
-            builder.try_insert_child(
+            builder.insert_child(
                 parent_id,
                 ChildIndex::try_from(node.child_index)
                     .map_err(|e| PotreeLoaderError::InvalidHierarchy(e.to_string()))?,
-                match node.node_type {
-                    NodeType::Proxy => PointCloudNodeStatus::Proxy,
-                    _ => PointCloudNodeStatus::Loaded,
+                InsertNodeParams {
+                    status: match node.node_type {
+                        NodeType::Proxy => PointCloudNodeStatus::Proxy,
+                        _ => PointCloudNodeStatus::Loaded,
+                    },
+                    point_count: node.num_points as usize,
+                    aabb: Some(aabb),
                 },
-                node.num_points as usize,
                 PotreeHierarchy(node),
-                Some(aabb),
             )?
         } else {
-            builder.try_insert_root(
-                match node.node_type {
-                    NodeType::Proxy => PointCloudNodeStatus::Proxy,
-                    _ => PointCloudNodeStatus::Loaded,
+            builder.insert_root(
+                InsertNodeParams {
+                    status: match node.node_type {
+                        NodeType::Proxy => PointCloudNodeStatus::Proxy,
+                        _ => PointCloudNodeStatus::Loaded,
+                    },
+                    point_count: node.num_points as usize,
+                    aabb: Some(aabb),
                 },
-                node.num_points as usize,
                 PotreeHierarchy(node),
-                Some(aabb),
             )?
         };
         inserted_nodes[idx] = Some(node_id);

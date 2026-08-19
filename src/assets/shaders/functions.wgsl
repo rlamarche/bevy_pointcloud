@@ -317,3 +317,26 @@ fn compute_world_vertex_normal_oriented(
 
     // return normalize(world_rot * local_normal);
 }
+
+
+
+fn is_bit_set(number: u32, index: u32) -> bool {
+    return (number & (1u << index)) != 0u;
+}
+
+fn count_one_bits_compat(x: u32) -> u32 {
+    var v = x;
+    v = v - ((v >> 1u) & 0x55555555u);
+    v = (v & 0x33333333u) + ((v >> 2u) & 0x33333333u);
+    return (((v + (v >> 4u)) & 0x0F0F0F0Fu) * 0x01010101u) >> 24u;
+}
+
+// Count number of bits before provided index
+fn count_bits_before(mask: u32, index: u32) -> u32 {
+    // Create a mask for bits before index
+    let before_mask = (1u << index) - 1u;
+
+    // TODO add ifdef to use native version if available
+    return count_one_bits_compat(mask & before_mask);
+//    return countOneBits(mask & before_mask);
+}

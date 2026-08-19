@@ -15,10 +15,12 @@ use bevy::{
     },
     light::{CascadeShadowConfig, Cascades, DirectionalLight, SpotLight, SunDisk, VolumetricLight},
     log::warn,
-    pbr::PreviousGlobalTransform,
+    pbr::{ExtractedDirectionalLight, PreviousGlobalTransform},
     platform::collections::HashMap,
     render::{
+        mesh::{allocator::MeshAllocator, RenderMesh},
         occlusion_culling::OcclusionCulling,
+        render_asset::RenderAssets,
         sync_world::{MainEntity, RenderEntity},
         view::{
             ExtractedView, RenderExtractedShadowMapVisibleEntities, RenderShadowMapVisibleEntities,
@@ -31,11 +33,12 @@ use bevy::{
 };
 
 use crate::{
-    CascadesVisiblePointCloudEntities, ChildIndex, ChildrenMask, NodeId, PointCloud, PointCloud3d,
-    PointCloudChunk, PointCloudChunk3d, PointCloudTransforms, RenderPointCloudChunkInstance,
-    RenderPointCloudChunkInstances, RenderPointCloudInstance, RenderPointCloudInstanceIndex,
-    RenderPointCloudInstances, RenderVisiblePointCloudChunkEntity, RenderVisiblePointCloudEntities,
-    SplatMeshes, SplatSettings, VisiblePointCloudOctreeEntities,
+    CascadesVisiblePointCloudEntities, ChildrenMask, NodeId, PointCloud, PointCloud3d,
+    PointCloudChunk, PointCloudChunk3d, PointCloudTopologyKind, PointCloudTransforms,
+    RenderOctreeInstancesIndex, RenderPointCloudChunk, RenderPointCloudChunkInstance,
+    RenderPointCloudChunkInstances, RenderPointCloudInstance, RenderPointCloudInstances,
+    RenderShadowMapVisiblePointCloudEntities, RenderVisiblePointCloudChunkEntity,
+    RenderVisiblePointCloudEntities, SplatMeshes, SplatSettings, VisiblePointCloudOctreeEntities,
 };
 
 /// This system extracts the visible point cloud chunk entities into the render world while
@@ -45,7 +48,11 @@ pub fn extract_visible_point_cloud_chunks(
     views: Extract<Query<(RenderEntity, &VisiblePointCloudOctreeEntities), With<Camera>>>,
     mut extracted_views: Query<&mut RenderVisiblePointCloudEntities, With<ExtractedView>>,
     mapper: Extract<Query<&RenderEntity>>,
-    mut render_point_cloud_index: ResMut<RenderPointCloudInstanceIndex>,
+    render_point_cloud_instances: Res<RenderPointCloudInstances>,
+    render_point_cloud_chunks: Res<RenderAssets<RenderPointCloudChunk>>,
+    render_meshes: Res<RenderAssets<RenderMesh>>,
+    mesh_allocator: Res<MeshAllocator>,
+    mut render_octree_index: ResMut<RenderOctreeInstancesIndex>,
 ) {
     for (render_entity, visible_point_cloud_entities) in views.iter() {
         let Ok(mut render_visible_point_cloud_entities) = extracted_views.get_mut(render_entity)
@@ -72,22 +79,62 @@ pub fn extract_visible_point_cloud_chunks(
                 warn!("Render entity for PointCloud3d {} not found", main_entity);
                 continue;
             };
+            let main_entity = MainEntity::from(main_entity);
 
-            // makes sure an index exists for this entity (used in visible texture nodes)
-            render_point_cloud_index.add(render_entity.id());
+            let Some(render_point_cloud_instance) = render_point_cloud_instances.get(&main_entity)
+            else {
+                continue;
+            };
+
+            if matches!(
+                render_point_cloud_instance.topology,
+                PointCloudTopologyKind::Octree
+            ) {
+                // makes sure an index exists for this entity (used in visible texture nodes)
+                render_octree_index.add(render_entity.id());
+            }
 
             // get the render entry
             let render_visible_point_cloud_chunk_entity = render_visible_point_cloud_entities
-                .get_or_insert_mut(
-                    MainEntity::from(main_entity),
-                    render_entity,
-                    point_cloud_entity.asset_id,
-                );
+                .get_or_insert_mut(main_entity, render_entity, point_cloud_entity.asset_id);
 
             // reset parent/child index
             render_node_index.clear();
 
-            for node_entity in &point_cloud_entity.node_entities {
+            let mut sorted_octree_nodes = point_cloud_entity.node_entities.clone();
+
+            // remove the missing nodes or unallocated nodes
+            sorted_octree_nodes.retain(|node| {
+                let Some(chunk_id) = node.chunk_id else {
+                    return false;
+                };
+                let Some(render_chunk) = render_point_cloud_chunks.get(chunk_id) else {
+                    return false;
+                };
+
+                let Some(mesh_handle) = render_chunk.mesh.as_ref() else {
+                    return false;
+                };
+
+                if render_meshes.get(mesh_handle.id()).is_none() {
+                    return false;
+                };
+
+                // TODO: is it needed to check this far?
+                if mesh_allocator
+                    .mesh_vertex_slice(&mesh_handle.id())
+                    .is_none()
+                {
+                    return false;
+                };
+
+                true
+            });
+
+            sorted_octree_nodes
+                .sort_unstable_by(|a, b| a.depth.cmp(&b.depth).then_with(|| a.name.cmp(&b.name)));
+
+            for node_entity in &sorted_octree_nodes {
                 if let (Some(chunk_entity), Some(chunk_id)) =
                     (node_entity.entity, node_entity.chunk_id)
                 {
@@ -105,10 +152,13 @@ pub fn extract_visible_point_cloud_chunks(
                             .chunk_entities[parent_index];
 
                         parent_chunk.children_mask |= node_entity.child_index.into();
-                        parent_chunk.children[node_entity.child_index.index() as usize] =
-                            current_index;
-                        if node_entity.child_index < parent_chunk.first_child_index {
-                            parent_chunk.first_child_index = node_entity.child_index;
+                        parent_chunk.children[node_entity
+                            .child_index
+                            .index()
+                            .expect("Trying to convert child index which isn't a valid index.")
+                            as usize] = current_index;
+                        if current_index < parent_chunk.first_child_index {
+                            parent_chunk.first_child_index = current_index;
                         }
                     }
 
@@ -119,6 +169,10 @@ pub fn extract_visible_point_cloud_chunks(
 
                     let main_entity = MainEntity::from(chunk_entity);
 
+                    // transform offset in u8
+                    let offset =
+                        ((node_entity.offset.unwrap_or(0.0) + 10.0) * 10.0).min(255.0) as u8;
+
                     // insert the visible chunk in
                     render_visible_point_cloud_chunk_entity.chunk_entities.push(
                         RenderVisiblePointCloudChunkEntity {
@@ -127,8 +181,9 @@ pub fn extract_visible_point_cloud_chunks(
                             name: node_entity.name.clone(),
                             parent_id: node_entity.parent_id,
                             depth: node_entity.depth,
+                            offset,
                             child_index: node_entity.child_index,
-                            first_child_index: ChildIndex::NONE,
+                            first_child_index: usize::MAX,
                             // empty children list, will be filled when adding children
                             children: [0; 8],
                             // same here, will be recomputed
@@ -137,6 +192,200 @@ pub fn extract_visible_point_cloud_chunks(
                             main_entity,
                         },
                     );
+                }
+            }
+        }
+    }
+}
+
+/// This system extracts the visible point cloud chunk entities for each light, view & cascade, into
+/// the render world while preserving the hierarchy, it also computes `first_child_index` and
+/// `children_mask` specific for each views, for later visible nodes texture generation.
+pub fn extract_cascade_visible_point_cloud_chunks(
+    views: Extract<
+        Query<(Entity, RenderEntity, &CascadesVisiblePointCloudEntities), With<DirectionalLight>>,
+    >,
+    // mut extracted_views: Query<&mut RenderShadowMapVisiblePointCloudEntities,
+    // With<ExtractedView>>,
+    mut extracted_directional_lights: Query<(
+        Entity,
+        &MainEntity,
+        &ExtractedDirectionalLight,
+        &RenderLayers,
+        &mut RenderShadowMapVisiblePointCloudEntities,
+    )>,
+    mapper: Extract<Query<&RenderEntity>>,
+    render_point_cloud_instances: Res<RenderPointCloudInstances>,
+    render_point_cloud_chunks: Res<RenderAssets<RenderPointCloudChunk>>,
+    render_meshes: Res<RenderAssets<RenderMesh>>,
+    mesh_allocator: Res<MeshAllocator>,
+    mut render_octree_index: ResMut<RenderOctreeInstancesIndex>,
+) {
+    for (main_entity, render_entity, cascade_visible_point_cloud_entities) in views.iter() {
+        let Ok((_, _, _, _, mut render_shadow_map_visible_point_cloud_entities)) =
+            extracted_directional_lights.get_mut(render_entity)
+        else {
+            warn!("Missing extracted directional light {:?}", render_entity);
+            continue;
+        };
+
+        for (&main_auxiliary_entity, visible_point_cloud_entities) in
+            &cascade_visible_point_cloud_entities.entities
+        {
+            for (subview_index, (_, visible_point_cloud_octree_entities)) in
+                visible_point_cloud_entities.iter().enumerate()
+            {
+                let retained_view_entity = RetainedViewEntity {
+                    main_entity: MainEntity::from(main_entity),
+                    auxiliary_entity: MainEntity::from(main_auxiliary_entity),
+                    subview_index: subview_index as u32,
+                };
+
+                let mut render_visible_point_cloud_entities =
+                    render_shadow_map_visible_point_cloud_entities
+                        .subviews
+                        .entry(retained_view_entity)
+                        .or_default();
+
+                if !visible_point_cloud_octree_entities.changed_this_frame {
+                    render_visible_point_cloud_entities.changed_this_frame = false;
+                    continue;
+                }
+
+                // reset
+                render_visible_point_cloud_entities.clear_all();
+
+                // this index will contain, for each added chunk's node id, its index in the render
+                // visible chunks
+                let mut render_node_index = HashMap::<NodeId, usize>::new();
+
+                for (&main_entity, point_cloud_entity) in
+                    &visible_point_cloud_octree_entities.entities
+                {
+                    let Ok(&render_entity) = mapper.get(main_entity) else {
+                        warn!("Render entity for PointCloud3d {} not found", main_entity);
+                        continue;
+                    };
+                    let main_entity = MainEntity::from(main_entity);
+
+                    let Some(render_point_cloud_instance) =
+                        render_point_cloud_instances.get(&main_entity)
+                    else {
+                        continue;
+                    };
+
+                    if matches!(
+                        render_point_cloud_instance.topology,
+                        PointCloudTopologyKind::Octree
+                    ) {
+                        // makes sure an index exists for this entity (used in visible texture
+                        // nodes)
+                        render_octree_index.add(render_entity.id());
+                    }
+
+                    // get the render entry
+                    let render_visible_point_cloud_chunk_entity =
+                        render_visible_point_cloud_entities.get_or_insert_mut(
+                            main_entity,
+                            render_entity,
+                            point_cloud_entity.asset_id,
+                        );
+
+                    // reset parent/child index
+                    render_node_index.clear();
+
+                    let mut sorted_octree_nodes = point_cloud_entity.node_entities.clone();
+
+                    // remove the missing nodes or unallocated nodes
+                    sorted_octree_nodes.retain(|node| {
+                        let Some(chunk_id) = node.chunk_id else {
+                            return false;
+                        };
+                        let Some(render_chunk) = render_point_cloud_chunks.get(chunk_id) else {
+                            return false;
+                        };
+
+                        let Some(mesh_handle) = render_chunk.mesh.as_ref() else {
+                            return false;
+                        };
+
+                        if render_meshes.get(mesh_handle.id()).is_none() {
+                            return false;
+                        };
+
+                        // TODO: is it needed to check this far?
+                        if mesh_allocator
+                            .mesh_vertex_slice(&mesh_handle.id())
+                            .is_none()
+                        {
+                            return false;
+                        };
+
+                        true
+                    });
+
+                    sorted_octree_nodes.sort_unstable_by(|a, b| {
+                        a.depth.cmp(&b.depth).then_with(|| a.name.cmp(&b.name))
+                    });
+
+                    for node_entity in &sorted_octree_nodes {
+                        if let (Some(chunk_entity), Some(chunk_id)) =
+                            (node_entity.entity, node_entity.chunk_id)
+                        {
+                            let current_index =
+                                render_visible_point_cloud_chunk_entity.chunk_entities.len();
+
+                            // we store the future index of the node
+                            render_node_index.insert(node_entity.id, current_index);
+
+                            // if there is a parent, update its children_mask / children array
+                            if let Some(parent_node_id) = node_entity.parent_id
+                                && let Some(&parent_index) = render_node_index.get(&parent_node_id)
+                            {
+                                let parent_chunk = &mut render_visible_point_cloud_chunk_entity
+                                    .chunk_entities[parent_index];
+
+                                parent_chunk.children_mask |= node_entity.child_index.into();
+                                parent_chunk.children[node_entity.child_index.index().expect(
+                                    "Trying to convert child index which isn't a valid index.",
+                                ) as usize] = current_index;
+                                if current_index < parent_chunk.first_child_index {
+                                    parent_chunk.first_child_index = current_index;
+                                }
+                            }
+
+                            let render_entity = mapper
+                                .get(chunk_entity)
+                                .expect("render entity not available for a chunk entity")
+                                .id();
+
+                            let main_entity = MainEntity::from(chunk_entity);
+
+                            // transform offset in u8
+                            let offset = ((node_entity.offset.unwrap_or(0.0) + 10.0) * 10.0)
+                                .min(255.0) as u8;
+
+                            // insert the visible chunk in
+                            render_visible_point_cloud_chunk_entity.chunk_entities.push(
+                                RenderVisiblePointCloudChunkEntity {
+                                    id: node_entity.id,
+                                    chunk_id,
+                                    name: node_entity.name.clone(),
+                                    parent_id: node_entity.parent_id,
+                                    depth: node_entity.depth,
+                                    offset,
+                                    child_index: node_entity.child_index,
+                                    first_child_index: usize::MAX,
+                                    // empty children list, will be filled when adding children
+                                    children: [0; 8],
+                                    // same here, will be recomputed
+                                    children_mask: ChildrenMask::empty(),
+                                    entity: render_entity,
+                                    main_entity,
+                                },
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -167,6 +416,7 @@ pub fn extract_pointcloud_instances(
             Option<&RenderLayers>,
         )>,
     >,
+    mapper: Extract<Query<&RenderEntity>>,
     point_clouds: Extract<Res<Assets<PointCloud>>>,
     splat_meshes: Extract<Res<SplatMeshes>>,
 ) {
@@ -205,12 +455,20 @@ pub fn extract_pointcloud_instances(
                 return;
             };
 
+            let Ok(render_entity) = mapper.get(entity) else {
+                warn!("Render entity for PointCloud3d {} not found", entity);
+                return;
+            };
+
             queue.push((
                 entity,
                 RenderPointCloudInstance {
                     entity: entity.into(),
+                    render_entity: render_entity.id(),
                     aabb: *aabb,
+                    model_aabb: point_cloud.aabb.unwrap_or_default(),
                     spacing: point_cloud.spacing,
+                    topology: (&point_cloud.topology).into(),
                     transforms: PointCloudTransforms {
                         world_from_local: world_from_local.into(),
                         previous_world_from_local: previous_world_from_local.into(),
@@ -296,6 +554,7 @@ pub fn extract_pointcloud_chunk_instances(
                     is_root,
                     root_entity: root_entity.into(),
                     mesh_asset_id: mesh_handle.id(),
+                    topology: chunk.topology,
                 },
             ));
         },
@@ -315,7 +574,7 @@ pub fn extract_pointcloud_chunk_instances(
     }
 }
 
-pub fn extract_cascade_visible_point_cloud_chunks(
+pub fn extract_lights_visible_point_cloud_chunks(
     directional_lights: Extract<
         Query<
             (
@@ -372,7 +631,8 @@ pub fn extract_cascade_visible_point_cloud_chunks(
                 mut existing_shadow_map_visible_entities,
             )) = existing_render_shadow_map_visible_entities.get_mut(entity)
             else {
-                warn!("Directional light {:?}/{:?} has no existing extracted data, that shoudn't happen.", main_entity, entity);
+                // It happens on the first loop only because the resource is not yet populated with
+                // shadow maps.
                 continue;
             };
 

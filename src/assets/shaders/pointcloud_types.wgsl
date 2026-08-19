@@ -3,6 +3,8 @@
 struct PointCloud {
     aabb_min: vec4<f32>,
     aabb_max: vec4<f32>,
+    model_center: vec4<f32>,
+    model_half_extents: vec4<f32>,
     // Affine 4x3 matrices transposed to 3x4
     // Use bevy_render::maths::affine3_to_square to unpack
     world_from_local: mat3x4<f32>,
@@ -15,6 +17,7 @@ struct PointCloud {
     local_from_world_transpose_a: mat2x4<f32>,
     local_from_world_transpose_b: f32,
     material_bind_group_slot: u32,
+    octree_index: u32,
     spacing: f32,
 
     // Splat settings

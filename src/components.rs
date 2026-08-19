@@ -123,7 +123,7 @@ pub struct SplatSettings {
     /// [`SplatSettings::point_size_mode`].
     /// Using orthographic projection, the size in pixels will always match this size. Using
     /// perspective projection, the point size will fade with distance, and grow. Defaults to
-    /// `30.0` in [`PointSizeMode::ScreenPixels`].
+    /// `1.0` in [`PointSizeMode::ScreenPixels`].
     /// Note: the transform scale is applied to the point size.
     pub point_size: f32,
 
@@ -187,7 +187,7 @@ impl Default for SplatSettings {
     fn default() -> Self {
         Self {
             point_size_mode: PointSizeMode::ScreenPixels,
-            point_size: 30.0,
+            point_size: 1.0,
             adaptive_point_size: true,
             min_point_size: None,
             max_point_size: None,

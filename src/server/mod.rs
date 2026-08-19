@@ -346,6 +346,10 @@ impl PointCloudServerData {
 
         let mut builder = OctreeHierarchyBuilder::new();
 
+        let metadata = loader.load_metadata().await.map_err(Into::into)?;
+        point_cloud.aabb = metadata.aabb;
+        point_cloud.spacing = metadata.spacing;
+
         loader
             .load_initial_hierarchy(&mut builder)
             .await
@@ -358,7 +362,10 @@ impl PointCloudServerData {
                 "Loaded point cloud hierarchy is empty or missing a root node",
             ));
         };
-        if let Some(aabb) = root.aabb {
+
+        if point_cloud.aabb.is_none()
+            && let Some(aabb) = root.aabb
+        {
             point_cloud.aabb = Some(aabb);
         }
 

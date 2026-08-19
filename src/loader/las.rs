@@ -12,8 +12,9 @@ use bevy::{
 use thiserror::Error;
 
 use crate::{
-    ByteSource, ByteSourceError, ChunkLoadResult, OctreeError, OctreeHierarchyBuilder,
-    OctreeLoader, PointCloud, PointCloudChunk, PointCloudNodeStatus, PointCloudTopology,
+    ByteSource, ByteSourceError, ChunkLoadResult, InsertNodeParams, OctreeError,
+    OctreeHierarchyBuilder, OctreeLoader, PointCloud, PointCloudChunk, PointCloudNodeStatus,
+    PointCloudTopology,
 };
 
 /// Naive implementation of a las loader because it loads the las file completely in memory
@@ -93,11 +94,13 @@ impl<S: ByteSource> OctreeLoader for LasLoader<S> {
 
         let aabb = Aabb::from_min_max(min, max);
 
-        builder.try_insert_root(
-            PointCloudNodeStatus::Loaded,
+        builder.insert_root(
+            InsertNodeParams {
+                status: PointCloudNodeStatus::Loaded,
+                point_count,
+                aabb: Some(aabb),
+            },
             point_count,
-            point_count,
-            Some(aabb),
         )?;
 
         Ok(())
@@ -151,6 +154,7 @@ impl<S: ByteSource> OctreeLoader for LasLoader<S> {
 
         Ok(ChunkLoadResult {
             mesh: Some(mesh),
+            offset: None,
             final_point_count: point_count,
         })
     }
@@ -191,7 +195,9 @@ impl AssetLoader for LasAssetLoader {
         let chunk_handle = load_context.add_labeled_asset(
             "chunk",
             PointCloudChunk {
+                topology: crate::PointCloudTopologyKind::Flat,
                 depth: 0,
+                offset: None,
                 mesh_handle: Some(mesh_handle),
                 aabb,
                 vertex_buffer_size,

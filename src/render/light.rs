@@ -40,7 +40,7 @@ use bevy::{
 
 use crate::{
     BinnedRenderPhaseExt, ErasedMaterialPipelineKey, ErasedSplatPipelineKey, MaterialProperties,
-    PointCloudChunk3d, PointCloudDirtySpecializations, PreparedMaterial,
+    PointCloudChunk3d, PointCloudDirtySpecializations, PointCloudTopologyKind, PreparedMaterial,
     RenderPointCloudChunkInstances, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
     ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction, SplatPipelineKey,
 };
@@ -306,12 +306,21 @@ pub(crate) fn specialize_shadows(
                     continue;
                 };
 
+                let mut splat_key = (&render_point_cloud_instance.splat_settings).into();
+
+                if matches!(
+                    render_point_cloud_instance.topology,
+                    PointCloudTopologyKind::Octree
+                ) {
+                    splat_key |= SplatPipelineKey::IS_OCTREE;
+                }
+
                 work_items.push(ShadowSpecializationWorkItem {
                     render_entity: *render_entity,
                     // visible_entity: *visible_entity,
                     retained_view_entity: extracted_view_light.retained_view_entity,
                     mesh_key,
-                    splat_key: (&render_point_cloud_instance.splat_settings).into(),
+                    splat_key,
                     splat_layout: splat_mesh.layout.clone(),
                     instance_layout: mesh.layout.clone(),
                     properties: material.properties.clone(),

@@ -71,7 +71,7 @@ pub mod wrapper {
 
 impl_node_id_wrapper!(NodeId);
 
-#[derive(Copy, Clone, Debug, Default, Deref, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Default, Deref, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ChildIndex(u8);
 
 impl TryFrom<u8> for ChildIndex {
@@ -96,11 +96,18 @@ impl ChildIndex {
         self.0 == 8
     }
 
+    /// Returns child index if valid
     #[inline]
-    pub fn index(&self) -> u8 {
+    pub fn index(&self) -> Option<u8> {
         if self.0 > 0b111 {
-            panic!("Trying to convert child index which isn't a valid index.")
+            return None;
         }
+        Some(self.0)
+    }
+
+    /// Returns unchecked index
+    #[inline]
+    pub fn raw_index(&self) -> u8 {
         self.0
     }
 
@@ -139,7 +146,12 @@ impl ChildrenMask {
         (0_u8..8).filter(move |&i| (self.bits() & (1 << i)) != 0)
     }
     pub fn has_child(&self, child_index: ChildIndex) -> bool {
-        (self.bits() & (1_u8 << child_index.index())) > 0
+        (self.bits()
+            & (1_u8
+                << child_index
+                    .index()
+                    .expect("Trying to convert child index which isn't a valid index.")))
+            > 0
     }
 }
 
@@ -159,8 +171,8 @@ pub struct PointCloudNode {
     ///
     /// Examples: r, r0, r3, r4, r01, r07, r30, ...
     pub name: Arc<str>,
-    pub point_count: usize,
     pub status: PointCloudNodeStatus,
+    pub point_count: usize,
     /// the child index of the current node
     pub child_index: ChildIndex,
     pub parent_id: Option<NodeId>,
@@ -170,6 +182,7 @@ pub struct PointCloudNode {
     pub children_mask: ChildrenMask,
     pub aabb: Option<Aabb>,
     pub depth: u32,
+    pub offset: Option<f32>,
     /// the custom data that the loader may reuse to load children
     pub data: NodeData,
     pub chunk: Option<Handle<PointCloudChunk>>,

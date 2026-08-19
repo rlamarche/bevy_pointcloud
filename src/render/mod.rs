@@ -10,7 +10,6 @@ mod phase;
 mod pipeline;
 mod pipeline_specializer;
 mod point_cloud;
-mod point_cloud_bindings;
 mod prepare;
 mod prepass;
 mod resources;
@@ -28,7 +27,7 @@ use bevy::{
         Vec3,
     },
     mesh::Mesh,
-    pbr::{extract_lights, MeshPipelineSystems},
+    pbr::{extract_lights, ExtractedDirectionalLight, MeshPipelineSystems},
     render::{
         camera::extract_cameras,
         extract_component::ExtractComponentPlugin,
@@ -50,7 +49,6 @@ pub use phase::*;
 pub use pipeline::*;
 pub use pipeline_specializer::*;
 pub use point_cloud::*;
-pub use point_cloud_bindings::*;
 pub use prepare::*;
 pub use prepass::*;
 pub use resources::*;
@@ -99,7 +97,7 @@ impl Plugin for RenderPointCloudPlugin {
             )
             .init_resource::<RenderPointCloudInstances>()
             .init_resource::<RenderPointCloudChunkInstances>()
-            .init_resource::<RenderPointCloudInstanceIndex>()
+            .init_resource::<RenderOctreeInstancesIndex>()
             .init_resource::<PreparedPointCloudUniforms>()
             .init_resource::<SpecializedPointCloudPipelines<PointCloudPipeline>>()
             .init_resource::<PendingPointCloudPhaseItemQueues>()
@@ -115,10 +113,11 @@ impl Plugin for RenderPointCloudPlugin {
                 (
                     extract_visible_point_cloud_chunks
                         .in_set(PointCloudExtractionSystems::ExtractVisiblePointCloudChunks),
+                    extract_cascade_visible_point_cloud_chunks.in_set(PointCloudExtractionSystems::ExtractVisiblePointCloudChunks),
                     extract_pointcloud_instances
                         .in_set(PointCloudExtractionSystems::ExtractPointClouds),
                     extract_pointcloud_chunk_instances.in_set(PointCloudExtractionSystems::ExtractPointCloudChunks), //.after(extract_meshes_for_cpu_building),
-                    extract_cascade_visible_point_cloud_chunks
+                    extract_lights_visible_point_cloud_chunks
                         .in_set(PointCloudExtractionSystems::ExtractCascadeVisiblePointCloudChunks)
                         .before(extract_lights)
                     ,
@@ -127,6 +126,10 @@ impl Plugin for RenderPointCloudPlugin {
             .add_systems(
                 Render,
                 (
+                    prepare_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
+                    prepare_visible_nodes_texture_for_lights.in_set(RenderSystems::PrepareResources),
+                    prepare_visible_nodes_texture_bind_group
+                        .in_set(RenderSystems::PrepareBindGroups),
                     prepare_point_cloud_uniforms.in_set(RenderSystems::PrepareBindGroups),
                     check_views_need_specialization
                         .after(RenderSystems::PrepareAssets)
@@ -139,6 +142,10 @@ impl Plugin for RenderPointCloudPlugin {
         render_app
             .world_mut()
             .register_required_components::<ExtractedView, RenderVisiblePointCloudEntities>();
+
+        render_app
+            .world_mut()
+            .register_required_components::<ExtractedDirectionalLight, RenderShadowMapVisiblePointCloudEntities>();
     }
 }
 

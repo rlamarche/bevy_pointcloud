@@ -32,7 +32,10 @@ impl PointCloud {
 #[derive(Asset, Debug, Clone, Default, Reflect)]
 #[reflect(Debug, FromWorld, Clone, Default)]
 pub struct PointCloudChunk {
+    pub topology: PointCloudTopologyKind,
     pub depth: u32,
+    /// offset applied to point size
+    pub offset: Option<f32>,
     pub mesh_handle: Option<Handle<Mesh>>,
     pub aabb: Option<Aabb>,
     pub vertex_buffer_size: usize,

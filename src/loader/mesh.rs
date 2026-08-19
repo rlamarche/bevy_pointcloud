@@ -2,7 +2,8 @@ use bevy::{camera::primitives::MeshAabb, mesh::Mesh, reflect::TypePath};
 use thiserror::Error;
 
 use crate::{
-    ChunkLoadResult, OctreeError, OctreeHierarchyBuilder, OctreeLoader, PointCloudNodeStatus,
+    ChunkLoadResult, InsertNodeParams, OctreeError, OctreeHierarchyBuilder, OctreeLoader,
+    PointCloudNodeStatus,
 };
 
 /// An error that occurs when loading a glTF file.
@@ -43,7 +44,14 @@ impl OctreeLoader for PointCloudMeshLoader {
         let point_count = self.mesh.count_vertices();
         let aabb = self.mesh.compute_aabb();
 
-        builder.try_insert_root(PointCloudNodeStatus::Loaded, point_count, (), aabb)?;
+        builder.insert_root(
+            InsertNodeParams {
+                status: PointCloudNodeStatus::Loaded,
+                point_count,
+                aabb,
+            },
+            (),
+        )?;
 
         Ok(())
     }
@@ -51,6 +59,7 @@ impl OctreeLoader for PointCloudMeshLoader {
     async fn load_chunk(&self, _: &Self::Hierarchy) -> Result<ChunkLoadResult, Self::Error> {
         Ok(ChunkLoadResult {
             mesh: Some(self.mesh.clone()),
+            offset: None,
             final_point_count: self.mesh.count_vertices(),
         })
     }

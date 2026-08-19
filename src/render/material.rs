@@ -86,14 +86,12 @@ use crate::{
     DrawPointCloudInstanced, DrawPrepass, ErasedSplatPipelineKey, GlobalVisiblePointCloudChunks,
     MySetItemPipeline, PendingShadowQueues, PointCloud3d, PointCloudChunk3d,
     PointCloudDirtySpecializations, PointCloudMaterial3d, PointCloudPipeline,
-    PointCloudPipelineSystems, PrepassPipeline, PrepassPipelinePlugin, PrepassPipelineSpecializer,
-    PrepassPlugin, RenderPointCloudChunkInstances, RenderPointCloudInstances, SetMeshBindGroup,
-    SetPointCloudUniformGroup, SimplePointCloudMaterial, SpecializedPointCloudPipeline,
-    SpecializedPointCloudPipelines, SpecializedShadowMaterialPipelineCache, SplatPipelineKey,
-    SplatSettings,
+    PointCloudPipelineSystems, PointCloudTopologyKind, PrepassPipeline, PrepassPipelinePlugin,
+    PrepassPipelineSpecializer, PrepassPlugin, RenderPointCloudChunkInstances,
+    RenderPointCloudInstances, SetMeshBindGroup, SetPointCloudUniformGroup, SetVisibleNodesTexture,
+    SimplePointCloudMaterial, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
+    SpecializedShadowMaterialPipelineCache, SplatPipelineKey, SplatSettings,
 };
-
-pub const MATERIAL_BIND_GROUP_INDEX: usize = 4;
 
 /// Materials are used alongside [`MaterialPlugin`], [`PointCloud3d`], and [`PointCloudMaterial3d`]
 /// to spawn entities that are rendered with a specific [`Material`] type. They serve as an easy to
@@ -444,14 +442,16 @@ impl SpecializedPointCloudPipeline for MaterialPipelineSpecializer {
             instance_layout,
         )?;
 
+        let material_bind_group_index = descriptor.layout.len();
+
         descriptor.vertex.shader_defs.push(ShaderDefVal::UInt(
             "MATERIAL_BIND_GROUP".into(),
-            MATERIAL_BIND_GROUP_INDEX as u32,
+            material_bind_group_index as u32,
         ));
         if let Some(ref mut fragment) = descriptor.fragment {
             fragment.shader_defs.push(ShaderDefVal::UInt(
                 "MATERIAL_BIND_GROUP".into(),
-                MATERIAL_BIND_GROUP_INDEX as u32,
+                material_bind_group_index as u32,
             ));
         };
         if let Some(vertex_shader) = self.properties.get_shader(MaterialVertexShader) {
@@ -462,10 +462,9 @@ impl SpecializedPointCloudPipeline for MaterialPipelineSpecializer {
             descriptor.fragment.as_mut().unwrap().shader = fragment_shader.clone();
         }
 
-        descriptor.layout.insert(
-            MATERIAL_BIND_GROUP_INDEX,
-            self.properties.material_layout.as_ref().unwrap().clone(),
-        );
+        descriptor
+            .layout
+            .push(self.properties.material_layout.as_ref().unwrap().clone());
 
         if let Some(specialize) = self.properties.user_specialize {
             specialize(
@@ -501,7 +500,8 @@ pub type DrawMaterial = (
     SetMeshViewBindingArrayBindGroup<1>,
     SetMeshBindGroup<2>,
     SetPointCloudUniformGroup<3>,
-    SetMaterialBindGroup<MATERIAL_BIND_GROUP_INDEX>,
+    SetVisibleNodesTexture<4>,
+    SetMaterialBindGroup<5>,
     DrawPointCloudInstanced,
 );
 
@@ -1169,13 +1169,22 @@ pub(crate) fn specialize_material_meshes(
                     }
                 }
 
+                let mut splat_key = (&render_point_cloud_instance.splat_settings).into();
+
+                if matches!(
+                    render_point_cloud_instance.topology,
+                    PointCloudTopologyKind::Octree
+                ) {
+                    splat_key |= SplatPipelineKey::IS_OCTREE;
+                }
+
                 work_items.push(SpecializationWorkItem {
                     // this point to a PointCloud3d
                     render_entity: *render_entity,
                     visible_entity: *visible_entity,
                     retained_view_entity: view.retained_view_entity,
                     mesh_key,
-                    splat_key: (&render_point_cloud_instance.splat_settings).into(),
+                    splat_key,
                     splat_layout: splat_mesh.layout.clone(),
                     instance_layout: mesh.layout.clone(),
                     properties: material.properties.clone(),

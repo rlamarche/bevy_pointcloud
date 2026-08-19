@@ -82,6 +82,8 @@ pub struct VisiblePointCloudNodeEntity {
     pub name: Arc<str>,
     pub parent_id: Option<NodeId>,
     pub depth: u32,
+    /// offset applied to point size
+    pub offset: Option<f32>,
     pub child_index: ChildIndex,
     pub children: [usize; 8],
     pub children_mask: ChildrenMask,
@@ -98,6 +100,7 @@ impl VisiblePointCloudNodeEntity {
             name: value.name.clone(),
             parent_id: value.parent_id,
             depth: value.depth,
+            offset: value.offset,
             child_index: value.child_index,
             children: [0_usize; 8],
             children_mask: ChildrenMask::empty(),

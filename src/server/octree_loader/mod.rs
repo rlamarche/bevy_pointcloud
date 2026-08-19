@@ -4,6 +4,7 @@ use std::ops::Deref;
 
 use bevy::{
     asset::meta::Settings,
+    camera::primitives::Aabb,
     ecs::error::BevyError,
     mesh::Mesh,
     tasks::{BoxedFuture, ConditionalSendFuture},
@@ -12,6 +13,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::PointCloudNode;
 pub use builder::*;
+
+/// This structs contains global octree metadata.
+/// It must be returned when loading initial hierarchy.
+#[derive(Clone, Default, Debug)]
+pub struct OctreeMetadata {
+    pub point_count: Option<u64>,
+    pub aabb: Option<Aabb>,
+    pub spacing: Option<f32>,
+}
 
 pub trait OctreeLoader: Send + Sync + Sized + 'static {
     /// The source of this loader
@@ -32,10 +42,15 @@ pub trait OctreeLoader: Send + Sync + Sized + 'static {
         settings: Self::Settings,
     ) -> impl ConditionalSendFuture<Output = Result<Self, Self::Error>>;
 
-    /// This method must load the initial point cloud octree hierarchy in a flat structure.
-    /// The return value is a vector, the first item is the root,
-    /// then all children are referenced in the parent with their indice in the vec.
-    /// Every child should also reference its parent through its indice too.
+    /// This method must return the octree metadatas. It is always called **before**
+    /// [`OctreeLoader::load_initial_hierarchy`].
+    fn load_metadata(
+        &self,
+    ) -> impl ConditionalSendFuture<Output = Result<OctreeMetadata, Self::Error>> {
+        Box::pin(async move { Ok(OctreeMetadata::default()) })
+    }
+
+    /// This method must build the initial hierarchy of the octree using the provided builder.
     fn load_initial_hierarchy(
         &self,
         builder: &mut OctreeHierarchyBuilder<Self::Hierarchy>,
@@ -67,6 +82,9 @@ pub trait OctreeLoader: Send + Sync + Sized + 'static {
 }
 
 pub trait ErasedOctreeLoader: Send + Sync + 'static {
+    /// Erased version of [`PointCloudLoader::load_metadata`]
+    fn load_metadata<'a>(&'a self) -> BoxedFuture<'a, Result<OctreeMetadata, BevyError>>;
+
     /// Erased version of [`PointCloudLoader::load_initial_hierarchy`]
     fn load_initial_hierarchy<'a>(
         &'a self,
@@ -86,6 +104,16 @@ pub trait ErasedOctreeLoader: Send + Sync + 'static {
 }
 
 impl<L: OctreeLoader> ErasedOctreeLoader for L {
+    fn load_metadata<'a>(&'a self) -> BoxedFuture<'a, Result<OctreeMetadata, BevyError>> {
+        Box::pin(async move {
+            let metadata = <Self as OctreeLoader>::load_metadata(self)
+                .await
+                .map_err(Into::into)?;
+
+            Ok(metadata)
+        })
+    }
+
     fn load_initial_hierarchy<'a>(
         &'a self,
     ) -> BoxedFuture<'a, Result<ErasedOctreeHierarchy, BevyError>> {
@@ -145,9 +173,12 @@ impl<L: OctreeLoader> ErasedOctreeLoader for L {
 }
 
 /// Result of a chunk loading operation, allowing dynamic updates.
+#[derive(Clone, Default, Debug)]
 pub struct ChunkLoadResult {
     /// The actual mesh data. None if the chunk was completely filtered out.
     pub mesh: Option<Mesh>,
+    /// offset applied to point size
+    pub offset: Option<f32>,
     /// The actual number of points loaded after filtering.
     /// This is crucial to update the memory budget and total point count.
     pub final_point_count: usize,

@@ -1,7 +1,11 @@
 use bevy::{
     asset::{AssetId, Handle},
     camera::{primitives::Aabb, visibility::RenderLayers},
-    ecs::{component::Component, entity::EntityHashMap, resource::Resource},
+    ecs::{
+        component::Component,
+        entity::{Entity, EntityHashMap},
+        resource::Resource,
+    },
     math::{Affine2, Affine3, Affine3Ext, Vec4},
     mesh::Mesh,
     pbr::MaterialBindGroupSlot,
@@ -14,11 +18,15 @@ use bevy::{
 };
 use bitflags::bitflags;
 
-use crate::{PointCloudChunk, PointSizeMode, SplatOrientation, SplatSettings, UVMapping};
+use crate::{
+    PointCloudChunk, PointCloudTopologyKind, PointSizeMode, SplatOrientation, SplatSettings,
+    UVMapping,
+};
 
 #[derive(Debug, Clone)]
 pub struct RenderPointCloudChunk {
     pub mesh: Option<Handle<Mesh>>,
+    pub offset: Option<f32>,
 }
 
 impl RenderAsset for RenderPointCloudChunk {
@@ -34,6 +42,7 @@ impl RenderAsset for RenderPointCloudChunk {
     ) -> Result<Self, bevy::render::render_asset::PrepareAssetError<Self::SourceAsset>> {
         Ok(RenderPointCloudChunk {
             mesh: source_asset.mesh_handle.clone(),
+            offset: source_asset.offset,
         })
     }
 }
@@ -50,63 +59,22 @@ pub struct RenderPointCloudInstance {
     /// The entity that point to the root chunk entity, used for loading the corresponding
     /// [`PreparedPointCloudUniform`] in the draw command [`crate::SetPointCloudUniformGroup`].
     pub entity: MainEntity,
+    pub render_entity: Entity,
     pub aabb: Aabb,
+    pub model_aabb: Aabb,
     pub spacing: Option<f32>,
+    pub topology: PointCloudTopologyKind,
     /// The transform of the mesh.
     ///
     /// This will be written into the [`MeshUniform`] at the appropriate time.
     pub transforms: PointCloudTransforms,
     /// The set of render layers that this mesh belongs to.
     pub render_layers: Option<RenderLayers>,
-
     pub splat_settings: SplatSettings,
-
     pub splat: AssetId<Mesh>,
 }
 
-// #[derive(Component, Clone)]
-// pub struct RenderPointCloudSplatSettings {
-//     pub point_size_mode: PointSizeMode,
-//     pub point_size: f32,
-//     pub adaptive_point_size: bool,
-//     pub min_point_size: Option<f32>,
-//     pub max_point_size: Option<f32>,
-//     pub splat: AssetId<Mesh>,
-//     pub radius: Option<f32>,
-//     pub orientation: ShapeOrientation,
-//     pub default_normal: Vec3,
-//     pub uv_mapping: UVMapping,
-//     pub uv_u: Vec3,
-//     pub uv_v: Vec3,
-//     pub uv_transform: UVTransform,
-// }
-
-// impl From<&PointCloudSplatSettings> for RenderPointCloudSplatSettings {
-//     fn from(settings: &PointCloudSplatSettings) -> Self {
-//         RenderPointCloudSplatSettings {
-//             point_size_mode: settings.point_size_mode.clone(),
-//             point_size: settings.point_size,
-//             adaptive_point_size: settings.adaptive_point_size,
-//             min_point_size: settings.min_point_size,
-//             max_point_size: settings.max_point_size,
-//             splat: settings
-//                 .splat
-//                 .as_ref()
-//                 .map(|v| v.id())
-//                 .unwrap_or_else(|| AssetId::invalid()),
-//             radius: settings.splat_radius,
-//             orientation: settings.orientation.clone(),
-//             default_normal: settings.default_normal,
-//             uv_mapping: settings.uv_mapping.clone(),
-//             uv_u: settings.uv_u,
-//             uv_v: settings.uv_v,
-//             uv_transform: settings.uv_transform.clone(),
-//         }
-//     }
-// }
-
 bitflags! {
-    /// The pipeline key for `StandardMaterial`, packed into 64 bits.
     #[repr(C)]
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct SplatPipelineKey: u64 {
@@ -136,6 +104,8 @@ bitflags! {
         const UV_MAPPING_PLANAR        = Self::UV_MAPPING_BITS_0.bits() | Self::UV_MAPPING_BITS_1.bits();
 
         const UV_TRANSFORM             = 1_u64 <<  7;
+
+        const IS_OCTREE                = 1_u64 << 8;
     }
 }
 
@@ -217,6 +187,7 @@ pub struct RenderPointCloudChunkInstance {
     pub root_entity: MainEntity,
     pub is_root: bool,
     pub mesh_asset_id: AssetId<Mesh>,
+    pub topology: PointCloudTopologyKind,
 }
 
 #[derive(Component)]
@@ -230,6 +201,8 @@ pub struct PointCloudUniform {
     // --- Transformations & Bounds ---
     pub aabb_min: Vec4,
     pub aabb_max: Vec4,
+    pub model_center: Vec4,
+    pub model_half_extents: Vec4,
     // Affine 4x3 matrices transposed to 3x4
     pub world_from_local: [Vec4; 3],
     pub previous_world_from_local: [Vec4; 3],
@@ -240,6 +213,8 @@ pub struct PointCloudUniform {
     pub local_from_world_transpose_a: [Vec4; 2],
     pub local_from_world_transpose_b: f32,
     pub material_bind_group_slot: u32,
+    // octree index in the visible nodes texture
+    pub octree_index: u32,
     pub spacing: f32,
 
     // --- Splat Settings Numeric Values ---
@@ -262,6 +237,8 @@ pub struct PointCloudUniform {
 impl PointCloudUniform {
     pub fn new(
         aabb: &Aabb,
+        model_aabb: &Aabb,
+        octree_index: u32,
         spacing: f32,
         mesh_transforms: &PointCloudTransforms,
         material_bind_group_slot: MaterialBindGroupSlot,
@@ -291,6 +268,9 @@ impl PointCloudUniform {
         Self {
             aabb_min: aabb.min().extend(1.0),
             aabb_max: aabb.max().extend(1.0),
+            model_center: model_aabb.center.extend(1.0),
+            model_half_extents: model_aabb.half_extents.extend(1.0),
+            octree_index,
             spacing,
             world_from_local: mesh_transforms.world_from_local.to_transpose(),
             previous_world_from_local: mesh_transforms.previous_world_from_local.to_transpose(),

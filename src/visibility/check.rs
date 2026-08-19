@@ -454,7 +454,11 @@ pub fn compute_visible_nodes_stack(
                     if let Some(parent_index) = parent_index {
                         let parent = &mut visible_point_cloud_entity.node_entities[parent_index];
 
-                        parent.children[node.child_index.index() as usize] = current_index;
+                        parent.children[node
+                            .child_index
+                            .index()
+                            .expect("Trying to convert child index which isn't a valid index.")
+                            as usize] = current_index;
                         parent.children_mask |= ChildrenMask::from(node.child_index);
                     }
                 }

@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    BuilderNodeId, ByteSource, ByteSourceError, ChildIndex, ChunkLoadResult, OctreeError,
-    OctreeHierarchyBuilder, OctreeLoader, PointCloudNodeStatus,
+    BuilderNodeId, ByteSource, ByteSourceError, ChildIndex, ChunkLoadResult, InsertNodeParams,
+    OctreeError, OctreeHierarchyBuilder, OctreeLoader, OctreeMetadata, PointCloudNodeStatus,
 };
 
 /// An error that occurs when loading a glTF file.
@@ -118,6 +118,21 @@ impl<S: ByteSource> OctreeLoader for CopcLoader<S> {
         })
     }
 
+    async fn load_metadata(&self) -> Result<OctreeMetadata, Self::Error> {
+        let reader = self.reader.read().await;
+        let copc_info = reader.copc_info();
+        let aabb = copc_info.root_bounds();
+
+        Ok(OctreeMetadata {
+            point_count: None,
+            aabb: Some(Aabb::from_min_max(
+                DVec3::from_array(aabb.min).as_vec3(),
+                DVec3::from_array(aabb.max).as_vec3(),
+            )),
+            spacing: Some(copc_info.spacing as f32),
+        })
+    }
+
     async fn load_initial_hierarchy(
         &self,
         builder: &mut OctreeHierarchyBuilder<Self::Hierarchy>,
@@ -155,20 +170,24 @@ impl<S: ByteSource> OctreeLoader for CopcLoader<S> {
         // iterate recursively in hierarchy tree to gather hierarchy nodes
         while let Some((hierarchy_entry, parent_id)) = stack.pop_front() {
             let inserted_id = if let Some(parent_id) = parent_id {
-                builder.try_insert_child(
+                builder.insert_child(
                     parent_id,
                     hierarchy_entry.key.into(),
-                    PointCloudNodeStatus::Loaded,
-                    hierarchy_entry.point_count as usize,
+                    InsertNodeParams {
+                        status: PointCloudNodeStatus::Loaded,
+                        point_count: hierarchy_entry.point_count as usize,
+                        aabb: Some(copc_aabb_to_aabb(hierarchy_entry.key.bounds(&aabb))),
+                    },
                     CopcHierarchy(hierarchy_entry.clone()),
-                    Some(copc_aabb_to_aabb(hierarchy_entry.key.bounds(&aabb))),
                 )?
             } else {
-                builder.try_insert_root(
-                    PointCloudNodeStatus::Loaded,
-                    hierarchy_entry.point_count as usize,
+                builder.insert_root(
+                    InsertNodeParams {
+                        status: PointCloudNodeStatus::Loaded,
+                        point_count: hierarchy_entry.point_count as usize,
+                        aabb: Some(copc_aabb_to_aabb(hierarchy_entry.key.bounds(&aabb))),
+                    },
                     CopcHierarchy(hierarchy_entry.clone()),
-                    Some(copc_aabb_to_aabb(hierarchy_entry.key.bounds(&aabb))),
                 )?
             };
             parent_indexes.insert(hierarchy_entry.key, inserted_id);
@@ -233,6 +252,7 @@ impl<S: ByteSource> OctreeLoader for CopcLoader<S> {
         if point_count == 0 {
             return Ok(ChunkLoadResult {
                 mesh: None,
+                offset: None,
                 final_point_count: 0,
             });
         }
@@ -308,6 +328,7 @@ impl<S: ByteSource> OctreeLoader for CopcLoader<S> {
 
         Ok(ChunkLoadResult {
             mesh: Some(mesh),
+            offset: None, // TODO compute density then offset
             final_point_count: point_count,
         })
     }

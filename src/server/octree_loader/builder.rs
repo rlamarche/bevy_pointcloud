@@ -4,25 +4,11 @@ use bevy::camera::primitives::Aabb;
 use slotmap::SlotMap;
 
 use crate::{
-    impl_node_id_wrapper, ChildIndex, ChildrenMask, NodeData, OctreeError, PointCloudNodeStatus,
+    impl_node_id_wrapper, ChildIndex, ChildrenMask, InsertNodeParams, NodeData, OctreeError,
+    PointCloudNodeStatus,
 };
 
 impl_node_id_wrapper!(BuilderNodeId);
-
-#[derive(Clone, Debug)]
-pub struct UncommittedOctreeNode<T> {
-    pub id: BuilderNodeId,
-    pub name: Arc<str>,
-    pub status: PointCloudNodeStatus,
-    pub point_count: usize,
-    pub child_index: ChildIndex,
-    pub parent_id: Option<BuilderNodeId>,
-    pub children: [BuilderNodeId; 8],
-    pub children_mask: ChildrenMask,
-    pub aabb: Option<Aabb>,
-    pub depth: u32,
-    pub data: Arc<T>,
-}
 
 #[derive(Clone, Debug, Default)]
 pub struct ErasedUncommittedOctreeNode {
@@ -37,27 +23,6 @@ pub struct ErasedUncommittedOctreeNode {
     pub aabb: Option<Aabb>,
     pub depth: u32,
     pub data: NodeData,
-}
-
-impl<T> From<&ErasedUncommittedOctreeNode> for UncommittedOctreeNode<T>
-where
-    T: Send + Sync + 'static,
-{
-    fn from(value: &ErasedUncommittedOctreeNode) -> Self {
-        Self {
-            id: value.id,
-            name: value.name.clone(),
-            status: value.status,
-            point_count: value.point_count,
-            child_index: value.child_index,
-            parent_id: value.parent_id,
-            children: value.children,
-            children_mask: value.children_mask,
-            aabb: value.aabb,
-            depth: value.depth,
-            data: value.data.0.clone().downcast().unwrap(),
-        }
-    }
 }
 
 /// A temporary builder used by workers and loaders to assemble sub-hierarchies
@@ -105,13 +70,16 @@ where
     }
 
     /// Inserts the root node for this hierarchy builder.
-    pub fn try_insert_root(
+    pub fn insert_root(
         &mut self,
-        status: PointCloudNodeStatus,
-        point_count: usize,
+        params: InsertNodeParams,
         data: T,
-        aabb: Option<Aabb>,
     ) -> Result<BuilderNodeId, OctreeError> {
+        let InsertNodeParams {
+            status,
+            point_count,
+            aabb,
+        } = params;
         if self.root.is_some() {
             return Err(OctreeError::RootAlreadyExists);
         }
@@ -139,15 +107,19 @@ where
     }
 
     /// Inserts a child node under an existing parent.
-    pub fn try_insert_child(
+    pub fn insert_child(
         &mut self,
         parent_id: BuilderNodeId,
         child_index: ChildIndex,
-        status: PointCloudNodeStatus,
-        point_count: usize,
+        params: InsertNodeParams,
         data: T,
-        aabb: Option<Aabb>,
     ) -> Result<BuilderNodeId, OctreeError> {
+        let InsertNodeParams {
+            status,
+            point_count,
+            aabb,
+        } = params;
+
         // Check parent
         let (parent_depth, new_name) = {
             let parent = self
@@ -159,7 +131,13 @@ where
                 return Err(OctreeError::ChildIndexOccupied);
             }
 
-            let new_name: Arc<str> = Arc::from(format!("{}{}", parent.name, child_index.index()));
+            let new_name: Arc<str> = Arc::from(format!(
+                "{}{}",
+                parent.name,
+                child_index
+                    .index()
+                    .expect("Trying to convert child index which isn't a valid index.")
+            ));
             (parent.depth, new_name)
         };
 
@@ -183,7 +161,10 @@ where
         // Update parent relationships
         // Infallible because we checked existence earlier, but we need a mutable borrow now.
         let parent = self.nodes.get_mut(parent_id).unwrap();
-        parent.children[child_index.index() as usize] = child_id;
+        parent.children[child_index
+            .index()
+            .expect("Trying to convert child index which isn't a valid index.")
+            as usize] = child_id;
         parent.children_mask |= child_index.into();
 
         Ok(child_id)

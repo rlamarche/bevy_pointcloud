@@ -85,6 +85,7 @@ indexmap = { version = "2.5.0", default-features = false }
 
 smallvec = { version = "1", default-features = false }
 nonmax = "0.5"
+wgpu = { version = "29.0.3", default-features = false }
 itertools = "0.14"
 
 futures = { version = "0.3" }

@@ -49,6 +49,7 @@ fn vertex(
     let point_view_position = position_world_to_view(point_world_position);
 
     let radius = pointcloud_functions::compute_point_radius(
+        vertex.position,
         world_from_local,
         point_view_position
     );

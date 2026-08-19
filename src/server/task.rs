@@ -19,10 +19,10 @@ use bevy::{
 use ordered_float::OrderedFloat;
 
 use crate::{
-    ChildChunkOf, ErasedOctreeHierarchy, InternalPointCloudEvent, NodeId, OctreeTopology,
-    PointCloud, PointCloudChunk, PointCloudChunk3d, PointCloudChunkKey, PointCloudInstances,
-    PointCloudNodeKey, PointCloudNodeStatus, PointCloudServer, PointCloudServerSettings,
-    PointCloudTotalSize, PointCloudTracking,
+    ChildChunkOf, ErasedOctreeHierarchy, InsertNodeParams, InternalPointCloudEvent, NodeId,
+    OctreeTopology, PointCloud, PointCloudChunk, PointCloudChunk3d, PointCloudChunkKey,
+    PointCloudInstances, PointCloudNodeKey, PointCloudNodeStatus, PointCloudServer,
+    PointCloudServerSettings, PointCloudTotalSize, PointCloudTracking,
 };
 
 #[derive(Resource, Default)]
@@ -253,6 +253,7 @@ pub fn handle_internal_point_cloud_events(
                     continue;
                 };
 
+                let topology = (&point_cloud.topology).into();
                 let Some(octree) = point_cloud.topology.as_octree_mut() else {
                     warn!(
                         "Point cloud {:?} is not an octree, unable to store node data.",
@@ -279,7 +280,9 @@ pub fn handle_internal_point_cloud_events(
                 let vertex_buffer_size = mesh.get_vertex_buffer_size();
 
                 let chunk_handle = chunks.add(PointCloudChunk {
+                    topology,
                     depth: node.depth,
+                    offset: result.offset,
                     mesh_handle: None,
                     aabb: node.aabb,
                     vertex_buffer_size,
@@ -293,6 +296,7 @@ pub fn handle_internal_point_cloud_events(
                 point_cloud_tracking.loaded_chunks.push((chunk_key, mesh));
 
                 node.chunk = Some(chunk_handle.clone());
+                node.offset = result.offset;
 
                 // get again the node immutably
                 let node = octree.get_node(node_id).unwrap(); // was valid just above
@@ -540,14 +544,15 @@ pub fn append_hierarchy(
         };
 
         let node_id = match parent_id {
-            Some(parent_id) => octree_topology.try_insert_child(
+            Some(parent_id) => octree_topology.insert_child(
                 parent_id,
                 node.child_index,
-                node.status,
-                node.point_count,
+                InsertNodeParams {
+                    status: node.status,
+                    point_count: node.point_count,
+                    aabb: node.aabb,
+                },
                 node.data.clone(),
-                node.aabb,
-                None,
             )?,
             None => {
                 if let Some(root_id) = root_id {
@@ -559,12 +564,13 @@ pub fn append_hierarchy(
                     }
                     root_id
                 } else {
-                    octree_topology.try_insert_root(
-                        node.status,
-                        node.point_count,
+                    octree_topology.insert_root(
+                        InsertNodeParams {
+                            status: node.status,
+                            point_count: node.point_count,
+                            aabb: node.aabb,
+                        },
                         node.data.clone(),
-                        node.aabb,
-                        None,
                     )?
                 }
             }

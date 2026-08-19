@@ -23,6 +23,10 @@
     }
 }
 
+#ifdef IS_OCTREE
+#import bevy_pointcloud::pointcloud_bindings::visible_nodes
+#endif // IS_OCTREE
+
 fn get_world_from_local() -> mat4x4<f32> {
     return affine3_to_square(pointcloud.world_from_local);
 }
@@ -75,9 +79,11 @@ fn mesh_position_local_to_clip(world_from_local: mat4x4<f32>, vertex_position: v
 /// the configured size mode (`PointSizeMode`) and optional adaptive size bounds.
 ///
 /// # Arguments
+/// * `position` - The raw position of the point in the point cloud (not transformed). Used only for adaptive point sizing.
 /// * `world_from_local` - The 4x3 world-from-local transformation matrix of the point cloud.
 /// * `view_position` - The point/vertex position in view or world space.
 fn compute_point_radius(
+    position: vec3<f32>,
     world_from_local: mat4x4<f32>,
     view_position: vec3<f32>,
 ) -> f32 {
@@ -122,6 +128,15 @@ fn compute_point_radius(
             max_size
         );
     #endif
+
+    #ifdef ADAPTIVE_POINT_SIZE
+        #ifdef IS_OCTREE
+            let max_relative_depth = get_max_relative_depth(position);
+            let attenuation = exp2(max_relative_depth);
+            let spacing = select(1.0, pointcloud.spacing, pointcloud.spacing > 0.0);
+            radius = radius * spacing * 1.7 / attenuation;
+        #endif // IS_OCTREE
+    #endif // ADAPTIVE_POINT_SIZE
 
     return radius;
 }
@@ -380,3 +395,59 @@ fn compute_point_uv(
         return base_uv;
     #endif
 }
+
+
+#ifdef IS_OCTREE
+fn get_max_relative_depth(
+    position: vec3<f32>
+) -> f32 {
+    var current_index = 0u;
+    var relative_depth: i32 = 0;
+
+    var center = pointcloud.model_center.xyz;
+    var half_extents = pointcloud.model_half_extents.xyz;
+
+    for (var i = 0; i <= 30; i ++) {
+        let current_node = textureLoad(visible_nodes, vec2<u32>(current_index, pointcloud.octree_index), 0);
+
+        // Extract data
+        let children_mask = current_node.r;  // u8 dans le canal R
+
+        let first_child_index = current_node.b | (current_node.a << 8u);  // u16 reconstruit à partir de B et A
+
+        // Determiner in which octant is the position
+        let relative_position = position - center;
+
+        // index3d contains 0 or 1 for each axe
+        let index3d = step(vec3(0.0), relative_position);
+
+        // compute the child_index
+        let child_index = u32(round(4.0 * index3d.x + 2.0 * index3d.y + index3d.z));
+
+        // check if a children exists at this index
+        if functions::is_bit_set(children_mask, child_index) {
+            // compute child offset
+            var child_offset: u32 = 0u;
+            if child_index > 0 {
+                child_offset = functions::count_bits_before(children_mask, child_index);
+            }
+
+            let actual_child_index = first_child_index + child_offset;
+
+            relative_depth ++;
+
+            current_index = actual_child_index;
+            half_extents = half_extents  * 0.5;
+
+            let offset = (index3d * 2.0 - 1.0) * half_extents;
+            center = center + offset;
+        } else {
+            let offset = f32(current_node.g) / 10.0 - 10.0;
+            return f32(relative_depth) + offset;
+        }
+
+    }
+
+    return f32(relative_depth);
+}
+#endif // IS_OCTREE

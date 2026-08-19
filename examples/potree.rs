@@ -120,9 +120,7 @@ fn setup_sun(mut commands: Commands) {
         .build(),
         Transform::from_rotation(Quat::from_rotation_x(-PI / 4.0)),
         PointCloudVisibilitySettings {
-            // min_radius: Some(30.0),
-            min_radius: None,
-            // point_budget: None,
+            min_radius: Some(30.0),
             point_budget: Some(10_000_000),
             ..default()
         },
@@ -157,12 +155,8 @@ fn load_point_cloud(
                 PointCloud3d(point_cloud_handle),
                 PointCloudMaterial3d(material_handle),
                 SplatSettings {
-                    splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
                     point_size_mode: PointSizeMode::LocalSpace,
-                    point_size: 0.025,
-                    // radius: Some(0.5),
-                    // orientation: SplatOrientation::Billboard,
-                    orientation: SplatOrientation::FaceNormal,
+                    orientation: SplatOrientation::Billboard,
                     default_normal: Vec3::new(0.0, 0.0, 1.0),
                     ..default()
                 }
