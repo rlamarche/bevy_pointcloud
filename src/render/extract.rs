@@ -14,7 +14,7 @@ use bevy::{
         system::{Local, Query, Res, ResMut},
     },
     light::{CascadeShadowConfig, Cascades, DirectionalLight, SpotLight, SunDisk, VolumetricLight},
-    log::warn,
+    log::{info, warn},
     pbr::{ExtractedDirectionalLight, PreviousGlobalTransform},
     platform::collections::HashMap,
     render::{
@@ -54,147 +54,23 @@ pub fn extract_visible_point_cloud_chunks(
     mesh_allocator: Res<MeshAllocator>,
     mut render_octree_index: ResMut<RenderOctreeInstancesIndex>,
 ) {
-    for (render_entity, visible_point_cloud_entities) in views.iter() {
+    for (render_entity, visible_point_cloud_octree_entities) in views.iter() {
         let Ok(mut render_visible_point_cloud_entities) = extracted_views.get_mut(render_entity)
         else {
             warn!("Missing RenderVisiblePointCloudEntities for extracted view");
             continue;
         };
 
-        // skip extraction if it has not changed
-        if !visible_point_cloud_entities.changed_this_frame {
-            render_visible_point_cloud_entities.changed_this_frame = false;
-            continue;
-        }
-
-        // reset
-        render_visible_point_cloud_entities.clear_all();
-
-        // this index will contain, for each added chunk's node id, its index in the render visible
-        // chunks
-        let mut render_node_index = HashMap::<NodeId, usize>::new();
-
-        for (&main_entity, point_cloud_entity) in &visible_point_cloud_entities.entities {
-            let Ok(&render_entity) = mapper.get(main_entity) else {
-                warn!("Render entity for PointCloud3d {} not found", main_entity);
-                continue;
-            };
-            let main_entity = MainEntity::from(main_entity);
-
-            let Some(render_point_cloud_instance) = render_point_cloud_instances.get(&main_entity)
-            else {
-                continue;
-            };
-
-            if matches!(
-                render_point_cloud_instance.topology,
-                PointCloudTopologyKind::Octree
-            ) {
-                // makes sure an index exists for this entity (used in visible texture nodes)
-                render_octree_index.add(render_entity.id());
-            }
-
-            // get the render entry
-            let render_visible_point_cloud_chunk_entity = render_visible_point_cloud_entities
-                .get_or_insert_mut(main_entity, render_entity, point_cloud_entity.asset_id);
-
-            // reset parent/child index
-            render_node_index.clear();
-
-            let mut sorted_octree_nodes = point_cloud_entity.node_entities.clone();
-
-            // remove the missing nodes or unallocated nodes
-            sorted_octree_nodes.retain(|node| {
-                let Some(chunk_id) = node.chunk_id else {
-                    return false;
-                };
-                let Some(render_chunk) = render_point_cloud_chunks.get(chunk_id) else {
-                    return false;
-                };
-
-                let Some(mesh_handle) = render_chunk.mesh.as_ref() else {
-                    return false;
-                };
-
-                if render_meshes.get(mesh_handle.id()).is_none() {
-                    return false;
-                };
-
-                // TODO: is it needed to check this far?
-                if mesh_allocator
-                    .mesh_vertex_slice(&mesh_handle.id())
-                    .is_none()
-                {
-                    return false;
-                };
-
-                true
-            });
-
-            sorted_octree_nodes
-                .sort_unstable_by(|a, b| a.depth.cmp(&b.depth).then_with(|| a.name.cmp(&b.name)));
-
-            for node_entity in &sorted_octree_nodes {
-                if let (Some(chunk_entity), Some(chunk_id)) =
-                    (node_entity.entity, node_entity.chunk_id)
-                {
-                    let current_index =
-                        render_visible_point_cloud_chunk_entity.chunk_entities.len();
-
-                    // we store the future index of the node
-                    render_node_index.insert(node_entity.id, current_index);
-
-                    // if there is a parent, update its children_mask / children array
-                    if let Some(parent_node_id) = node_entity.parent_id
-                        && let Some(&parent_index) = render_node_index.get(&parent_node_id)
-                    {
-                        let parent_chunk = &mut render_visible_point_cloud_chunk_entity
-                            .chunk_entities[parent_index];
-
-                        parent_chunk.children_mask |= node_entity.child_index.into();
-                        parent_chunk.children[node_entity
-                            .child_index
-                            .index()
-                            .expect("Trying to convert child index which isn't a valid index.")
-                            as usize] = current_index;
-                        if current_index < parent_chunk.first_child_index {
-                            parent_chunk.first_child_index = current_index;
-                        }
-                    }
-
-                    let render_entity = mapper
-                        .get(chunk_entity)
-                        .expect("render entity not available for a chunk entity")
-                        .id();
-
-                    let main_entity = MainEntity::from(chunk_entity);
-
-                    // transform offset in u8
-                    let offset =
-                        ((node_entity.offset.unwrap_or(0.0) + 10.0) * 10.0).min(255.0) as u8;
-
-                    // insert the visible chunk in
-                    render_visible_point_cloud_chunk_entity.chunk_entities.push(
-                        RenderVisiblePointCloudChunkEntity {
-                            id: node_entity.id,
-                            chunk_id,
-                            name: node_entity.name.clone(),
-                            parent_id: node_entity.parent_id,
-                            depth: node_entity.depth,
-                            offset,
-                            child_index: node_entity.child_index,
-                            first_child_index: usize::MAX,
-                            // empty children list, will be filled when adding children
-                            children: [0; 8],
-                            // same here, will be recomputed
-                            children_mask: ChildrenMask::empty(),
-                            entity: render_entity,
-                            main_entity,
-                        },
-                    );
-                }
-            }
-        }
+        compute_visible_entities(
+            &mapper,
+            &render_point_cloud_instances,
+            &render_point_cloud_chunks,
+            &render_meshes,
+            &mesh_allocator,
+            &mut render_octree_index,
+            visible_point_cloud_octree_entities,
+            &mut render_visible_point_cloud_entities,
+        );
     }
 }
 
@@ -241,152 +117,172 @@ pub fn extract_cascade_visible_point_cloud_chunks(
                     subview_index: subview_index as u32,
                 };
 
-                let mut render_visible_point_cloud_entities =
+                let render_visible_point_cloud_entities =
                     render_shadow_map_visible_point_cloud_entities
                         .subviews
                         .entry(retained_view_entity)
                         .or_default();
 
-                if !visible_point_cloud_octree_entities.changed_this_frame {
-                    render_visible_point_cloud_entities.changed_this_frame = false;
-                    continue;
-                }
+                compute_visible_entities(
+                    &mapper,
+                    &render_point_cloud_instances,
+                    &render_point_cloud_chunks,
+                    &render_meshes,
+                    &mesh_allocator,
+                    &mut render_octree_index,
+                    visible_point_cloud_octree_entities,
+                    render_visible_point_cloud_entities,
+                );
+            }
+        }
+    }
+}
 
-                // reset
-                render_visible_point_cloud_entities.clear_all();
+/// Computes visible nodes and add them to `render_visible_point_cloud_entities` while calculating
+/// the new visible nodes mask and first child index. The nodes are sorted by depth then child index
+/// order.
+fn compute_visible_entities(
+    mapper: &Extract<'_, '_, Query<'_, '_, &RenderEntity>>,
+    render_point_cloud_instances: &RenderPointCloudInstances,
+    render_point_cloud_chunks: &RenderAssets<RenderPointCloudChunk>,
+    render_meshes: &RenderAssets<RenderMesh>,
+    mesh_allocator: &MeshAllocator,
+    render_octree_index: &mut RenderOctreeInstancesIndex,
+    visible_point_cloud_octree_entities: &VisiblePointCloudOctreeEntities,
+    render_visible_point_cloud_entities: &mut RenderVisiblePointCloudEntities,
+) {
+    if !visible_point_cloud_octree_entities.changed_this_frame {
+        render_visible_point_cloud_entities.changed_this_frame = false;
+        return;
+    }
+    // reset
+    render_visible_point_cloud_entities.clear_all();
 
-                // this index will contain, for each added chunk's node id, its index in the render
-                // visible chunks
-                let mut render_node_index = HashMap::<NodeId, usize>::new();
+    // this index will contain, for each added chunk's node id, its index in the render
+    // visible chunks
+    let mut render_node_index = HashMap::<NodeId, usize>::new();
 
-                for (&main_entity, point_cloud_entity) in
-                    &visible_point_cloud_octree_entities.entities
+    for (&main_entity, point_cloud_entity) in &visible_point_cloud_octree_entities.entities {
+        let Ok(&render_entity) = mapper.get(main_entity) else {
+            warn!("Render entity for PointCloud3d {} not found", main_entity);
+            continue;
+        };
+        let main_entity = MainEntity::from(main_entity);
+
+        let Some(render_point_cloud_instance) = render_point_cloud_instances.get(&main_entity)
+        else {
+            continue;
+        };
+
+        if matches!(
+            render_point_cloud_instance.topology,
+            PointCloudTopologyKind::Octree
+        ) {
+            // makes sure an index exists for this entity (used in visible texture
+            // nodes)
+            render_octree_index.add(render_entity.id());
+        }
+
+        // get the render entry
+        let render_visible_point_cloud_chunk_entity = render_visible_point_cloud_entities
+            .get_or_insert_mut(main_entity, render_entity, point_cloud_entity.asset_id);
+
+        // reset parent/child index
+        render_node_index.clear();
+
+        let mut sorted_octree_nodes = point_cloud_entity.node_entities.clone();
+
+        // remove the missing nodes or unallocated nodes
+        sorted_octree_nodes.retain(|node| {
+            let Some(chunk_id) = node.chunk_id else {
+                info!("chunk asset_id not yet available");
+                return false;
+            };
+            // let Some(render_chunk) = render_point_cloud_chunks.get(chunk_id) else {
+            //     info!("render_chunk not yet available");
+            //     return false;
+            // };
+
+            // let Some(mesh_handle) = render_chunk.mesh.as_ref() else {
+            //     info!("mesh not yet available");
+            //     return false;
+            // };
+
+            // if render_meshes.get(mesh_handle.id()).is_none() {
+            //     info!("render mesh not yet available");
+            //     return false;
+            // };
+
+            // TODO: is it needed to check this far?
+            // if mesh_allocator
+            //     .mesh_vertex_slice(&mesh_handle.id())
+            //     .is_none()
+            // {
+            //     info!("mesh_vertex_slice not yet available");
+            //     return false;
+            // };
+
+            true
+        });
+
+        sorted_octree_nodes
+            .sort_unstable_by(|a, b| a.depth.cmp(&b.depth).then_with(|| a.name.cmp(&b.name)));
+
+        for node_entity in &sorted_octree_nodes {
+            if let (Some(chunk_entity), Some(chunk_id)) = (node_entity.entity, node_entity.chunk_id)
+            {
+                let current_index = render_visible_point_cloud_chunk_entity.chunk_entities.len();
+
+                // we store the future index of the node
+                render_node_index.insert(node_entity.id, current_index);
+
+                // if there is a parent, update its children_mask / children array
+                if let Some(parent_node_id) = node_entity.parent_id
+                    && let Some(&parent_index) = render_node_index.get(&parent_node_id)
                 {
-                    let Ok(&render_entity) = mapper.get(main_entity) else {
-                        warn!("Render entity for PointCloud3d {} not found", main_entity);
-                        continue;
-                    };
-                    let main_entity = MainEntity::from(main_entity);
+                    let parent_chunk =
+                        &mut render_visible_point_cloud_chunk_entity.chunk_entities[parent_index];
 
-                    let Some(render_point_cloud_instance) =
-                        render_point_cloud_instances.get(&main_entity)
-                    else {
-                        continue;
-                    };
-
-                    if matches!(
-                        render_point_cloud_instance.topology,
-                        PointCloudTopologyKind::Octree
-                    ) {
-                        // makes sure an index exists for this entity (used in visible texture
-                        // nodes)
-                        render_octree_index.add(render_entity.id());
-                    }
-
-                    // get the render entry
-                    let render_visible_point_cloud_chunk_entity =
-                        render_visible_point_cloud_entities.get_or_insert_mut(
-                            main_entity,
-                            render_entity,
-                            point_cloud_entity.asset_id,
-                        );
-
-                    // reset parent/child index
-                    render_node_index.clear();
-
-                    let mut sorted_octree_nodes = point_cloud_entity.node_entities.clone();
-
-                    // remove the missing nodes or unallocated nodes
-                    sorted_octree_nodes.retain(|node| {
-                        let Some(chunk_id) = node.chunk_id else {
-                            return false;
-                        };
-                        let Some(render_chunk) = render_point_cloud_chunks.get(chunk_id) else {
-                            return false;
-                        };
-
-                        let Some(mesh_handle) = render_chunk.mesh.as_ref() else {
-                            return false;
-                        };
-
-                        if render_meshes.get(mesh_handle.id()).is_none() {
-                            return false;
-                        };
-
-                        // TODO: is it needed to check this far?
-                        if mesh_allocator
-                            .mesh_vertex_slice(&mesh_handle.id())
-                            .is_none()
-                        {
-                            return false;
-                        };
-
-                        true
-                    });
-
-                    sorted_octree_nodes.sort_unstable_by(|a, b| {
-                        a.depth.cmp(&b.depth).then_with(|| a.name.cmp(&b.name))
-                    });
-
-                    for node_entity in &sorted_octree_nodes {
-                        if let (Some(chunk_entity), Some(chunk_id)) =
-                            (node_entity.entity, node_entity.chunk_id)
-                        {
-                            let current_index =
-                                render_visible_point_cloud_chunk_entity.chunk_entities.len();
-
-                            // we store the future index of the node
-                            render_node_index.insert(node_entity.id, current_index);
-
-                            // if there is a parent, update its children_mask / children array
-                            if let Some(parent_node_id) = node_entity.parent_id
-                                && let Some(&parent_index) = render_node_index.get(&parent_node_id)
-                            {
-                                let parent_chunk = &mut render_visible_point_cloud_chunk_entity
-                                    .chunk_entities[parent_index];
-
-                                parent_chunk.children_mask |= node_entity.child_index.into();
-                                parent_chunk.children[node_entity.child_index.index().expect(
-                                    "Trying to convert child index which isn't a valid index.",
-                                ) as usize] = current_index;
-                                if current_index < parent_chunk.first_child_index {
-                                    parent_chunk.first_child_index = current_index;
-                                }
-                            }
-
-                            let render_entity = mapper
-                                .get(chunk_entity)
-                                .expect("render entity not available for a chunk entity")
-                                .id();
-
-                            let main_entity = MainEntity::from(chunk_entity);
-
-                            // transform offset in u8
-                            let offset = ((node_entity.offset.unwrap_or(0.0) + 10.0) * 10.0)
-                                .min(255.0) as u8;
-
-                            // insert the visible chunk in
-                            render_visible_point_cloud_chunk_entity.chunk_entities.push(
-                                RenderVisiblePointCloudChunkEntity {
-                                    id: node_entity.id,
-                                    chunk_id,
-                                    name: node_entity.name.clone(),
-                                    parent_id: node_entity.parent_id,
-                                    depth: node_entity.depth,
-                                    offset,
-                                    child_index: node_entity.child_index,
-                                    first_child_index: usize::MAX,
-                                    // empty children list, will be filled when adding children
-                                    children: [0; 8],
-                                    // same here, will be recomputed
-                                    children_mask: ChildrenMask::empty(),
-                                    entity: render_entity,
-                                    main_entity,
-                                },
-                            );
-                        }
+                    parent_chunk.children_mask |= node_entity.child_index.into();
+                    parent_chunk.children[node_entity
+                        .child_index
+                        .index()
+                        .expect("Trying to convert child index which isn't a valid index.")
+                        as usize] = current_index;
+                    if current_index < parent_chunk.first_child_index {
+                        parent_chunk.first_child_index = current_index;
                     }
                 }
+
+                let render_entity = mapper
+                    .get(chunk_entity)
+                    .expect("render entity not available for a chunk entity")
+                    .id();
+
+                let main_entity = MainEntity::from(chunk_entity);
+
+                // transform offset in u8
+                let offset = ((node_entity.offset.unwrap_or(0.0) + 10.0) * 10.0).min(255.0) as u8;
+
+                // insert the visible chunk in
+                render_visible_point_cloud_chunk_entity.chunk_entities.push(
+                    RenderVisiblePointCloudChunkEntity {
+                        id: node_entity.id,
+                        chunk_id,
+                        name: node_entity.name.clone(),
+                        parent_id: node_entity.parent_id,
+                        depth: node_entity.depth,
+                        offset,
+                        child_index: node_entity.child_index,
+                        first_child_index: usize::MAX,
+                        // empty children list, will be filled when adding children
+                        children: [0; 8],
+                        // same here, will be recomputed
+                        children_mask: ChildrenMask::empty(),
+                        entity: render_entity,
+                        main_entity,
+                    },
+                );
             }
         }
     }

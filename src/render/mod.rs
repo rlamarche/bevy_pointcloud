@@ -32,7 +32,7 @@ use bevy::{
         camera::extract_cameras,
         extract_component::ExtractComponentPlugin,
         extract_resource::{ExtractResource, ExtractResourcePlugin},
-        render_asset::RenderAssetPlugin,
+        render_asset::{AssetExtractionSystems, RenderAssetPlugin},
         view::ExtractedView,
         ExtractSchedule, GpuResourceAppExt, Render, RenderApp, RenderStartup, RenderSystems,
     },
@@ -63,9 +63,7 @@ pub struct PointCloudPipelineSystems;
 #[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
 pub enum PointCloudExtractionSystems {
     ExtractPointClouds,
-    ExtractPointCloudChunks,
     ExtractVisiblePointCloudChunks,
-    ExtractCascadeVisiblePointCloudChunks,
 }
 
 impl Plugin for RenderPointCloudPlugin {
@@ -87,13 +85,14 @@ impl Plugin for RenderPointCloudPlugin {
         render_app
             .configure_sets(
                 RenderStartup,
+                PointCloudPipelineSystems.after(MeshPipelineSystems),
+            )
+            .configure_sets(
+                ExtractSchedule,
                 (
-                    PointCloudPipelineSystems.after(MeshPipelineSystems),
-                    PointCloudExtractionSystems::ExtractVisiblePointCloudChunks
-                        .after(extract_cameras),
-                    PointCloudExtractionSystems::ExtractCascadeVisiblePointCloudChunks
-                        .before(extract_lights),
-                ),
+                    PointCloudExtractionSystems::ExtractPointClouds,
+                    PointCloudExtractionSystems::ExtractVisiblePointCloudChunks.after(AssetExtractionSystems),
+                ).chain()
             )
             .init_resource::<RenderPointCloudInstances>()
             .init_resource::<RenderPointCloudChunkInstances>()
@@ -111,23 +110,25 @@ impl Plugin for RenderPointCloudPlugin {
             .add_systems(
                 ExtractSchedule,
                 (
-                    extract_visible_point_cloud_chunks
-                        .in_set(PointCloudExtractionSystems::ExtractVisiblePointCloudChunks),
-                    extract_cascade_visible_point_cloud_chunks.in_set(PointCloudExtractionSystems::ExtractVisiblePointCloudChunks),
                     extract_pointcloud_instances
                         .in_set(PointCloudExtractionSystems::ExtractPointClouds),
-                    extract_pointcloud_chunk_instances.in_set(PointCloudExtractionSystems::ExtractPointCloudChunks), //.after(extract_meshes_for_cpu_building),
+                    extract_pointcloud_chunk_instances.in_set(PointCloudExtractionSystems::ExtractPointClouds), //.after(extract_meshes_for_cpu_building),
                     extract_lights_visible_point_cloud_chunks
-                        .in_set(PointCloudExtractionSystems::ExtractCascadeVisiblePointCloudChunks)
-                        .before(extract_lights)
-                    ,
+                        .in_set(PointCloudExtractionSystems::ExtractPointClouds)
+                        .before(extract_lights),
+                    extract_visible_point_cloud_chunks
+                        .in_set(PointCloudExtractionSystems::ExtractVisiblePointCloudChunks)
+                        .after(extract_cameras),
+                    extract_cascade_visible_point_cloud_chunks.in_set(PointCloudExtractionSystems::ExtractVisiblePointCloudChunks)
+                        .after(extract_lights),
+
                 ),
             )
             .add_systems(
                 Render,
                 (
-                    prepare_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
-                    prepare_visible_nodes_texture_for_lights.in_set(RenderSystems::PrepareResources),
+                    prepare_camera_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
+                    prepare_cascades_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
                     prepare_visible_nodes_texture_bind_group
                         .in_set(RenderSystems::PrepareBindGroups),
                     prepare_point_cloud_uniforms.in_set(RenderSystems::PrepareBindGroups),

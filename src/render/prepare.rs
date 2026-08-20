@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use bevy::{
     core_pipeline::core_3d::Opaque3d,
     ecs::{
@@ -126,14 +128,13 @@ impl ::core::fmt::Debug for VisibleOctreeNodeUniform {
     }
 }
 
-pub fn prepare_visible_nodes_texture(
+pub fn prepare_camera_visible_nodes_texture(
     mut commands: Commands,
     mut texture_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
     render_octree_index: Res<RenderOctreeInstancesIndex>,
     opaque_phases: Res<ViewBinnedRenderPhases<Opaque3d>>,
-    shadow_phases: Res<ViewBinnedRenderPhases<Shadow>>,
     views_3d: Query<
         (Entity, &ExtractedView, &RenderVisiblePointCloudEntities),
         With<ExtractedCamera>,
@@ -144,156 +145,29 @@ pub fn prepare_visible_nodes_texture(
     for (entity, extracted_view, visible_nodes) in &views_3d {
         // skip if no phases
         // TODO: add other phases types here ?
-        if !opaque_phases.contains_key(&extracted_view.retained_view_entity)
-            && !shadow_phases.contains_key(&extracted_view.retained_view_entity)
-        {
+        if !opaque_phases.contains_key(&extracted_view.retained_view_entity) {
             continue;
         };
 
-        let octrees_count = visible_nodes
-            .entities
-            .values()
-            .filter(|visible_entity| {
-                render_octree_index
-                    .index
-                    .contains_key(&visible_entity.entity)
-            })
-            .count();
-
-        if octrees_count == 0 {
-            warn!("skip phase for view {:?} because octree count = 0", entity);
-            // TODO use static empty texture
-
-            // // Get the texture for containing visible nodes data
-            // let visible_nodes_texture = {
-            //     // The size of the depth texture
-            //     let size = Extent3d {
-            //         width: 1,
-            //         height: 1,
-            //         depth_or_array_layers: 1,
-            //     };
-
-            //     let descriptor = TextureDescriptor {
-            //         label: Some("pcl_visible_nodes_texture"),
-            //         size,
-            //         mip_level_count: 1,
-            //         sample_count: 1,
-            //         dimension: TextureDimension::D2,
-            //         format: Rgba8Uint,
-            //         usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-            //         view_formats: &[],
-            //     };
-
-            //     texture_cache.get(&render_device, descriptor)
-            // };
-
-            // commands.entity(entity).insert(VisibleNodesTexture {
-            //     visible_nodes: Some(ColorAttachment::new(
-            //         visible_nodes_texture,
-            //         None,
-            //         None,
-            //         Some(WgpuColor::TRANSPARENT),
-            //     )),
-            //     node_index: Default::default(),
-            // });
-
-            continue;
-        }
-
-        let required_buffer_size = octrees_count * MAX_NODES;
-
-        // prepare the buffer only once
-        if visible_nodes_buffer.len() < required_buffer_size {
-            visible_nodes_buffer.resize(required_buffer_size, VisibleOctreeNodeUniform::default());
-        }
-
-        // Get the texture for containing visible nodes data
-        let visible_nodes_texture = {
-            // The size of the depth texture
-            let size = Extent3d {
-                width: MAX_NODES as u32,
-                height: octrees_count as u32,
-                depth_or_array_layers: 1,
-            };
-
-            let descriptor = TextureDescriptor {
-                label: Some("pcl_visible_nodes_texture"),
-                size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: TextureDimension::D2,
-                format: Rgba8Uint,
-                usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-                view_formats: &[],
-            };
-
-            texture_cache.get(&render_device, descriptor)
-        };
-
-        let mut node_index =
-            vec![HashMap::<NodeId, u32>::default(); render_octree_index.slab.len()];
-
-        for (_main_entity, visible_point_cloud) in &visible_nodes.entities {
-            let octree_index = render_octree_index
-                .get(visible_point_cloud.entity)
-                .expect("octree index out of bounds")
-                .index() as usize;
-
-            let node_mapping = &mut node_index[octree_index];
-            let base_offset = octree_index * MAX_NODES;
-
-            for (i, visible_node) in visible_point_cloud.chunk_entities.iter().enumerate() {
-                if i >= MAX_NODES {
-                    // warn!("Too many nodes in octree, some will be ignored.");
-                    break;
-                }
-
-                let offset = visible_node.offset;
-
-                visible_nodes_buffer[base_offset + i] = VisibleOctreeNodeUniform {
-                    children_mask: visible_node.children_mask.bits(),
-                    offset,
-                    first_child_index: visible_node.first_child_index as u16,
-                };
-
-                node_mapping.insert(visible_node.id, i as u32);
-            }
-        }
-
-        render_queue.write_texture(
-            visible_nodes_texture.texture.as_image_copy(),
-            bytemuck::cast_slice(&visible_nodes_buffer),
-            TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some((MAX_NODES * 4) as u32), // 4 bytes par texel RGBA8Uint
-                rows_per_image: Some(octrees_count as u32),
-            },
-            Extent3d {
-                width: MAX_NODES as u32,
-                height: octrees_count as u32,
-                depth_or_array_layers: 1,
-            },
+        prepare_visible_nodes_texture(
+            &mut commands,
+            &mut texture_cache,
+            &render_device,
+            &render_queue,
+            &render_octree_index,
+            &mut visible_nodes_buffer,
+            entity,
+            visible_nodes,
         );
-
-        commands.entity(entity).insert(VisibleNodesTexture {
-            visible_nodes: Some(ColorAttachment::new(
-                visible_nodes_texture,
-                None,
-                None,
-                Some(WgpuColor::TRANSPARENT),
-            )),
-            node_index,
-        });
     }
 }
 
-pub fn prepare_visible_nodes_texture_for_lights(
+pub fn prepare_cascades_visible_nodes_texture(
     mut commands: Commands,
     mut texture_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
     render_octree_index: Res<RenderOctreeInstancesIndex>,
-    opaque_phases: Res<ViewBinnedRenderPhases<Opaque3d>>,
     shadow_phases: Res<ViewBinnedRenderPhases<Shadow>>,
     views_3d: Query<(Entity, &ExtractedView, &LightEntity)>,
     mut visible_nodes_buffer: Local<Vec<VisibleOctreeNodeUniform>>,
@@ -302,10 +176,7 @@ pub fn prepare_visible_nodes_texture_for_lights(
     // for each view
     for (entity, extracted_view, light_entity) in &views_3d {
         // skip if no phases
-        // TODO: add other phases types here ?
-        if !opaque_phases.contains_key(&extracted_view.retained_view_entity)
-            && !shadow_phases.contains_key(&extracted_view.retained_view_entity)
-        {
+        if !shadow_phases.contains_key(&extracted_view.retained_view_entity) {
             continue;
         };
 
@@ -332,109 +203,16 @@ pub fn prepare_visible_nodes_texture_for_lights(
             continue;
         };
 
-        let octrees_count = visible_nodes
-            .entities
-            .values()
-            .filter(|visible_entity| {
-                render_octree_index
-                    .index
-                    .contains_key(&visible_entity.entity)
-            })
-            .count();
-
-        if octrees_count == 0 {
-            warn!(
-                "skip phase for light view {:?} because octree count = 0",
-                extracted_view.retained_view_entity
-            );
-
-            continue;
-        }
-
-        let required_buffer_size = octrees_count * MAX_NODES;
-
-        // prepare the buffer only once
-        if visible_nodes_buffer.len() < required_buffer_size {
-            visible_nodes_buffer.resize(required_buffer_size, VisibleOctreeNodeUniform::default());
-        }
-
-        // Get the texture for containing visible nodes data
-        let visible_nodes_texture = {
-            // The size of the depth texture
-            let size = Extent3d {
-                width: MAX_NODES as u32,
-                height: octrees_count as u32,
-                depth_or_array_layers: 1,
-            };
-
-            let descriptor = TextureDescriptor {
-                label: Some("pcl_visible_nodes_texture"),
-                size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: TextureDimension::D2,
-                format: Rgba8Uint,
-                usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-                view_formats: &[],
-            };
-
-            texture_cache.get(&render_device, descriptor)
-        };
-
-        let mut node_index =
-            vec![HashMap::<NodeId, u32>::default(); render_octree_index.slab.len()];
-
-        for (_main_entity, visible_point_cloud) in &visible_nodes.entities {
-            let octree_index = render_octree_index
-                .get(visible_point_cloud.entity)
-                .expect("octree index out of bounds")
-                .index() as usize;
-
-            let node_mapping = &mut node_index[octree_index];
-            let base_offset = octree_index * MAX_NODES;
-
-            for (i, visible_node) in visible_point_cloud.chunk_entities.iter().enumerate() {
-                if i >= MAX_NODES {
-                    // warn!("Too many nodes in octree, some will be ignored.");
-                    break;
-                }
-
-                let offset = visible_node.offset;
-
-                visible_nodes_buffer[base_offset + i] = VisibleOctreeNodeUniform {
-                    children_mask: visible_node.children_mask.bits(),
-                    offset,
-                    first_child_index: visible_node.first_child_index as u16,
-                };
-
-                node_mapping.insert(visible_node.id, i as u32);
-            }
-        }
-
-        render_queue.write_texture(
-            visible_nodes_texture.texture.as_image_copy(),
-            bytemuck::cast_slice(&visible_nodes_buffer),
-            TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some((MAX_NODES * 4) as u32), // 4 bytes par texel RGBA8Uint
-                rows_per_image: Some(octrees_count as u32),
-            },
-            Extent3d {
-                width: MAX_NODES as u32,
-                height: octrees_count as u32,
-                depth_or_array_layers: 1,
-            },
+        prepare_visible_nodes_texture(
+            &mut commands,
+            &mut texture_cache,
+            &render_device,
+            &render_queue,
+            &render_octree_index,
+            &mut visible_nodes_buffer,
+            entity,
+            visible_nodes,
         );
-
-        commands.entity(entity).insert(VisibleNodesTexture {
-            visible_nodes: Some(ColorAttachment::new(
-                visible_nodes_texture,
-                None,
-                None,
-                Some(WgpuColor::TRANSPARENT),
-            )),
-            node_index,
-        });
     }
 }
 
@@ -465,4 +243,108 @@ pub fn prepare_visible_nodes_texture_bind_group(
                 ),
             });
     }
+}
+
+/// Prepare a visible nodes texture for given visible nodes `visible_nodes`
+fn prepare_visible_nodes_texture(
+    commands: &mut Commands<'_, '_>,
+    texture_cache: &mut TextureCache,
+    render_device: &RenderDevice,
+    render_queue: &RenderQueue,
+    render_octree_index: &RenderOctreeInstancesIndex,
+    visible_nodes_buffer: &mut Vec<VisibleOctreeNodeUniform>,
+    entity: Entity,
+    visible_nodes: &RenderVisiblePointCloudEntities,
+) {
+    let octrees_count = visible_nodes
+        .entities
+        .values()
+        .filter(|visible_entity| {
+            render_octree_index
+                .index
+                .contains_key(&visible_entity.entity)
+        })
+        .count();
+    if octrees_count == 0 {
+        return;
+    }
+    let required_buffer_size = octrees_count * MAX_NODES;
+
+    // reuse allocations
+    if visible_nodes_buffer.len() < required_buffer_size {
+        visible_nodes_buffer.resize(required_buffer_size, VisibleOctreeNodeUniform::default());
+    }
+
+    // get the texture for containing visible nodes data
+    let visible_nodes_texture = {
+        // The size of the depth texture
+        let size = Extent3d {
+            width: MAX_NODES as u32,
+            height: octrees_count as u32,
+            depth_or_array_layers: 1,
+        };
+
+        let descriptor = TextureDescriptor {
+            label: Some("pcl_visible_nodes_texture"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: Rgba8Uint,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[],
+        };
+
+        texture_cache.get(render_device, descriptor)
+    };
+    let mut node_index = vec![HashMap::<NodeId, u32>::default(); render_octree_index.slab.len()];
+    for (_main_entity, visible_point_cloud) in &visible_nodes.entities {
+        let octree_index = render_octree_index
+            .get(visible_point_cloud.entity)
+            .expect("octree index out of bounds")
+            .index() as usize;
+
+        let node_mapping = &mut node_index[octree_index];
+        let base_offset = octree_index * MAX_NODES;
+
+        for (i, visible_node) in visible_point_cloud.chunk_entities.iter().enumerate() {
+            if i >= MAX_NODES {
+                // warn!("Too many nodes in octree, some will be ignored.");
+                break;
+            }
+
+            let offset = visible_node.offset;
+
+            visible_nodes_buffer[base_offset + i] = VisibleOctreeNodeUniform {
+                children_mask: visible_node.children_mask.bits(),
+                offset,
+                first_child_index: visible_node.first_child_index as u16,
+            };
+
+            node_mapping.insert(visible_node.id, i as u32);
+        }
+    }
+    render_queue.write_texture(
+        visible_nodes_texture.texture.as_image_copy(),
+        bytemuck::cast_slice(&*visible_nodes_buffer),
+        TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some((MAX_NODES * 4) as u32), // 4 bytes par texel RGBA8Uint
+            rows_per_image: Some(octrees_count as u32),
+        },
+        Extent3d {
+            width: MAX_NODES as u32,
+            height: octrees_count as u32,
+            depth_or_array_layers: 1,
+        },
+    );
+    commands.entity(entity).insert(VisibleNodesTexture {
+        visible_nodes: Some(ColorAttachment::new(
+            visible_nodes_texture,
+            None,
+            None,
+            Some(WgpuColor::TRANSPARENT),
+        )),
+        node_index,
+    });
 }
