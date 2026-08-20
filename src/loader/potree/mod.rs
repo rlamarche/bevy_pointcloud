@@ -312,7 +312,7 @@ fn build_hierarchy<S: ByteSource + Send + Sync + 'static>(
     }
     let mut inserted_nodes: Vec<Option<BuilderNodeId>> = vec![None; raw_nodes.len()];
     let mut stack = vec![(root_idx, None)];
-    Ok(while let Some((idx, parent_id)) = stack.pop() {
+    while let Some((idx, parent_id)) = stack.pop() {
         if inserted_nodes[idx].is_some() {
             continue;
         }
@@ -352,7 +352,9 @@ fn build_hierarchy<S: ByteSource + Send + Sync + 'static>(
         for &child_idx in children[idx].iter().rev() {
             stack.push((child_idx, Some(node_id)));
         }
-    })
+    }
+
+    Ok(())
 }
 
 /// Build a child adjacency list and collect root indices for hierarchy vectors.

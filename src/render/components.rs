@@ -12,7 +12,7 @@ use bevy::{
     },
 };
 
-use crate::{ChildIndex, ChildrenMask, NodeId, PointCloud, PointCloudChunk};
+use crate::{ChildIndex, NodeId, PointCloud, PointCloudChunk};
 
 /// This component stores the visible nodes for each point cloud at view level (camera) in "render
 /// world".
@@ -80,11 +80,8 @@ pub struct RenderVisiblePointCloudChunkEntity {
     pub parent_id: Option<NodeId>,
     pub depth: u32,
     /// offset applied to point size
-    pub offset: u8,
+    pub offset: Option<f32>,
     pub child_index: ChildIndex,
-    pub first_child_index: usize,
-    pub children: [usize; 8],
-    pub children_mask: ChildrenMask,
     pub entity: Entity,
     pub main_entity: MainEntity,
 }

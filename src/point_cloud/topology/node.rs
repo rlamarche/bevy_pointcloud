@@ -111,6 +111,10 @@ impl ChildIndex {
         self.0
     }
 
+    pub fn mask(&self) -> ChildrenMask {
+        ChildrenMask::from_bits_retain(1 << self.0)
+    }
+
     pub const X_0_Y_0_Z_0: ChildIndex = ChildIndex(0b000);
     pub const X_0_Y_0_Z_1: ChildIndex = ChildIndex(0b001);
     pub const X_0_Y_1_Z_0: ChildIndex = ChildIndex(0b010);

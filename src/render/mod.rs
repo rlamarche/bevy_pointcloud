@@ -32,7 +32,7 @@ use bevy::{
         camera::extract_cameras,
         extract_component::ExtractComponentPlugin,
         extract_resource::{ExtractResource, ExtractResourcePlugin},
-        render_asset::{AssetExtractionSystems, RenderAssetPlugin},
+        render_asset::RenderAssetPlugin,
         view::ExtractedView,
         ExtractSchedule, GpuResourceAppExt, Render, RenderApp, RenderStartup, RenderSystems,
     },
@@ -91,7 +91,7 @@ impl Plugin for RenderPointCloudPlugin {
                 ExtractSchedule,
                 (
                     PointCloudExtractionSystems::ExtractPointClouds,
-                    PointCloudExtractionSystems::ExtractVisiblePointCloudChunks.after(AssetExtractionSystems),
+                    PointCloudExtractionSystems::ExtractVisiblePointCloudChunks,
                 ).chain()
             )
             .init_resource::<RenderPointCloudInstances>()

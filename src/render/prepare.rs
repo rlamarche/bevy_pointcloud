@@ -1,5 +1,3 @@
-use std::ops::ControlFlow;
-
 use bevy::{
     core_pipeline::core_3d::Opaque3d,
     ecs::{
@@ -12,6 +10,8 @@ use bevy::{
     platform::collections::{hash_map::Entry, HashMap},
     render::{
         camera::ExtractedCamera,
+        mesh::{allocator::MeshAllocator, RenderMesh},
+        render_asset::RenderAssets,
         render_phase::ViewBinnedRenderPhases,
         render_resource::{
             BindGroupEntries, Extent3d, PipelineCache, TexelCopyBufferLayout, TextureDescriptor,
@@ -20,7 +20,7 @@ use bevy::{
         renderer::{RenderDevice, RenderQueue},
         sync_world::MainEntity,
         texture::{ColorAttachment, TextureCache},
-        view::{ExtractedView, Msaa},
+        view::ExtractedView,
     },
 };
 use bytemuck::{Pod, Zeroable};
@@ -29,7 +29,7 @@ use wgpu::Color as WgpuColor;
 use crate::{
     NodeId, PointCloud3d, PointCloudPipeline, PointCloudUniform, PreparedPointCloudUniform,
     PreparedPointCloudUniforms, RenderMaterialBindings, RenderOctreeInstancesIndex,
-    RenderPointCloudInstances, RenderPointCloudMaterialInstances,
+    RenderPointCloudChunk, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
     RenderShadowMapVisiblePointCloudEntities, RenderVisiblePointCloudEntities, VisibleNodesTexture,
     VisibleNodesTextureBindGroup,
 };
@@ -74,7 +74,7 @@ pub fn prepare_point_cloud_uniforms(
             render_octree_instances_index
                 .index
                 .get(&point_cloud_instance.render_entity)
-                .map(|index| index.index())
+                .map(super::resources::OctreeInstanceIndex::index)
                 .unwrap_or(u32::MAX),
             point_cloud_instance.spacing.unwrap_or_default(),
             &point_cloud_instance.transforms,
@@ -130,6 +130,9 @@ impl ::core::fmt::Debug for VisibleOctreeNodeUniform {
 
 pub fn prepare_camera_visible_nodes_texture(
     mut commands: Commands,
+    render_point_cloud_chunks: Res<RenderAssets<RenderPointCloudChunk>>,
+    render_meshes: Res<RenderAssets<RenderMesh>>,
+    mesh_allocator: Res<MeshAllocator>,
     mut texture_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
@@ -151,6 +154,9 @@ pub fn prepare_camera_visible_nodes_texture(
 
         prepare_visible_nodes_texture(
             &mut commands,
+            &render_point_cloud_chunks,
+            &render_meshes,
+            &mesh_allocator,
             &mut texture_cache,
             &render_device,
             &render_queue,
@@ -164,6 +170,9 @@ pub fn prepare_camera_visible_nodes_texture(
 
 pub fn prepare_cascades_visible_nodes_texture(
     mut commands: Commands,
+    render_point_cloud_chunks: Res<RenderAssets<RenderPointCloudChunk>>,
+    render_meshes: Res<RenderAssets<RenderMesh>>,
+    mesh_allocator: Res<MeshAllocator>,
     mut texture_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
@@ -205,6 +214,9 @@ pub fn prepare_cascades_visible_nodes_texture(
 
         prepare_visible_nodes_texture(
             &mut commands,
+            &render_point_cloud_chunks,
+            &render_meshes,
+            &mesh_allocator,
             &mut texture_cache,
             &render_device,
             &render_queue,
@@ -248,6 +260,9 @@ pub fn prepare_visible_nodes_texture_bind_group(
 /// Prepare a visible nodes texture for given visible nodes `visible_nodes`
 fn prepare_visible_nodes_texture(
     commands: &mut Commands<'_, '_>,
+    render_point_cloud_chunks: &RenderAssets<RenderPointCloudChunk>,
+    render_meshes: &RenderAssets<RenderMesh>,
+    mesh_allocator: &MeshAllocator,
     texture_cache: &mut TextureCache,
     render_device: &RenderDevice,
     render_queue: &RenderQueue,
@@ -299,29 +314,87 @@ fn prepare_visible_nodes_texture(
     };
     let mut node_index = vec![HashMap::<NodeId, u32>::default(); render_octree_index.slab.len()];
     for (_main_entity, visible_point_cloud) in &visible_nodes.entities {
+        let mut sorted_octree_nodes = visible_point_cloud.chunk_entities.clone();
+
+        // remove the missing nodes or unallocated nodes
+        sorted_octree_nodes.retain(|node| {
+            let Some(render_chunk) = render_point_cloud_chunks.get(node.chunk_id) else {
+                info!("render_chunk not yet available");
+                return false;
+            };
+
+            let Some(mesh_handle) = render_chunk.mesh.as_ref() else {
+                info!("mesh not yet available");
+                return false;
+            };
+
+            if render_meshes.get(mesh_handle.id()).is_none() {
+                info!("render mesh not yet available");
+                return false;
+            };
+
+            // TODO: is it needed to check this far?
+            if mesh_allocator
+                .mesh_vertex_slice(&mesh_handle.id())
+                .is_none()
+            {
+                info!("mesh_vertex_slice not yet available");
+                return false;
+            };
+
+            true
+        });
+
+        sorted_octree_nodes
+            .sort_unstable_by(|a, b| a.depth.cmp(&b.depth).then_with(|| a.name.cmp(&b.name)));
+
+        // this index will contain, for each added chunk's node id, its index in the render
+        // visible chunks
+        let mut render_node_index = HashMap::<NodeId, usize>::new();
+
         let octree_index = render_octree_index
             .get(visible_point_cloud.entity)
             .expect("octree index out of bounds")
             .index() as usize;
 
         let node_mapping = &mut node_index[octree_index];
+
+        // let mut chunk_entities: Vec<VisibleOctreeNodeUniform> = Vec::new();
         let base_offset = octree_index * MAX_NODES;
 
-        for (i, visible_node) in visible_point_cloud.chunk_entities.iter().enumerate() {
+        for (i, node_entity) in sorted_octree_nodes.into_iter().enumerate() {
             if i >= MAX_NODES {
                 // warn!("Too many nodes in octree, some will be ignored.");
                 break;
             }
 
-            let offset = visible_node.offset;
+            // we store the future index of the node
+            render_node_index.insert(node_entity.id, i);
 
+            // if there is a parent, update its children_mask / children array
+            if let Some(parent_node_id) = node_entity.parent_id
+                && let Some(&parent_index) = render_node_index.get(&parent_node_id)
+            {
+                let parent_chunk = &mut visible_nodes_buffer[base_offset + parent_index];
+
+                parent_chunk.children_mask |= node_entity.child_index.mask().bits();
+                let current_index = i as u16;
+                if current_index < parent_chunk.first_child_index {
+                    parent_chunk.first_child_index = current_index;
+                }
+            }
+
+            // transform offset in u8
+            let offset = ((node_entity.offset.unwrap_or(0.0) + 10.0) * 10.0).min(255.0) as u8;
+
+            // insert the visible chunk in
             visible_nodes_buffer[base_offset + i] = VisibleOctreeNodeUniform {
-                children_mask: visible_node.children_mask.bits(),
+                children_mask: 0,
                 offset,
-                first_child_index: visible_node.first_child_index as u16,
+                first_child_index: u16::MAX,
             };
 
-            node_mapping.insert(visible_node.id, i as u32);
+            node_mapping.insert(node_entity.id, i as u32);
         }
     }
     render_queue.write_texture(
