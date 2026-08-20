@@ -11,7 +11,7 @@ use bevy::{
     platform::collections::{HashMap, HashSet},
     prelude::Deref,
 };
-use copc_streaming::{CopcError, CopcStreamingReader, HierarchyEntry, VoxelKey};
+use copc_streaming::{CopcError, CopcStreamingReader, Fields, HierarchyEntry, VoxelKey};
 use las::point::Classification;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -214,11 +214,9 @@ impl<S: ByteSource> OctreeLoader for CopcLoader<S> {
         // TODO use settings
         let has_normal = false;
 
-        let chunk = reader.fetch_chunk(&key).await?;
-
         // let spacing = reader.copc_info().spacing;
         // let aabb = node.key.bounds(&reader.copc_info().root_bounds());
-        let points = reader.read_points(&chunk)?;
+        let points = reader.fetch_points(&key).await?;
 
         drop(reader);
 

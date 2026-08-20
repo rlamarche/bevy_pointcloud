@@ -83,7 +83,7 @@ impl<S: ByteSource> OctreeLoader for LasLoader<S> {
         let mut max = Vec3::new(f32::MIN, f32::MIN, f32::MIN);
         let mut point_count = 0;
 
-        las_reader.points().for_each(|point| {
+        las_reader.read_all()?.points().for_each(|point| {
             let point = point.unwrap();
             let vec = Vec3::new(point.x as f32, point.y as f32, point.z as f32);
 
@@ -117,7 +117,7 @@ impl<S: ByteSource> OctreeLoader for LasLoader<S> {
         let mut positions = Vec::with_capacity(point_count);
         let mut colors = Vec::with_capacity(point_count);
 
-        for point in las_reader.points() {
+        for point in las_reader.read_all()?.points() {
             let point = match point {
                 Ok(point) => point,
                 Err(e) => {
@@ -181,11 +181,11 @@ impl AssetLoader for LasAssetLoader {
         let reader = Cursor::new(bytes);
 
         let mut las_reader = las::Reader::new(reader)?;
-        let point_count = las_reader.points().count();
+        let point_count = las_reader.read_all()?.points().count();
 
         las_reader.seek(0).unwrap();
 
-        let mesh = load_points_as_mesh(point_count, &mut las_reader);
+        let mesh = load_points_as_mesh(point_count, &mut las_reader)?;
         let vertex_buffer_size = mesh.get_vertex_buffer_size();
 
         let aabb = mesh.compute_aabb();
@@ -216,11 +216,14 @@ impl AssetLoader for LasAssetLoader {
     }
 }
 
-fn load_points_as_mesh(point_count: usize, las_reader: &mut las::Reader) -> Mesh {
+fn load_points_as_mesh(
+    point_count: usize,
+    las_reader: &mut las::Reader,
+) -> Result<Mesh, las::Error> {
     let mut positions = Vec::with_capacity(point_count);
     let mut colors = Vec::with_capacity(point_count);
 
-    for point in las_reader.points() {
+    for point in las_reader.read_all()?.points() {
         let point = match point {
             Ok(point) => point,
             Err(e) => {
@@ -242,7 +245,7 @@ fn load_points_as_mesh(point_count: usize, las_reader: &mut las::Reader) -> Mesh
         }
     }
 
-    Mesh::new(
+    Ok(Mesh::new(
         bevy::mesh::PrimitiveTopology::PointList,
         RenderAssetUsages::RENDER_WORLD,
     )
@@ -253,5 +256,5 @@ fn load_points_as_mesh(point_count: usize, las_reader: &mut las::Reader) -> Mesh
     .with_inserted_attribute(
         Mesh::ATTRIBUTE_COLOR,
         VertexAttributeValues::Float32x4(colors),
-    )
+    ))
 }
