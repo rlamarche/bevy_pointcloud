@@ -94,7 +94,7 @@ pub struct PointCloudServerSettings {
 impl Default for PointCloudServerSettings {
     fn default() -> Self {
         Self {
-            max_size: 512 * 1024 * 1024 * 1024, // 512 MB
+            max_size: 512 * 1024 * 1024, // 512 MB
             max_concurrent_hierarchy_load_task: 4,
             max_concurrent_chunks_load_task: 8,
         }

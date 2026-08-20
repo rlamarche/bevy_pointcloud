@@ -61,11 +61,11 @@ http_source = ["dep:ehttp"]
 multi_threaded = ["bevy/multi_threaded"]
 trace = []
 trace_tracy = ["trace", "bevy/trace_tracy"]
-webgl = []
-webgpu = []
+webgl2 = ["bevy/webgl2"]
+webgpu = ["bevy/webgpu"]
 experimental_pbr_pcss = []
 pbr_light_textures = []
-potree = ["dep:serde_json", "dep:async-trait", "dep:potree", "potree/async"]
+potree = ["dep:serde_json", "dep:potree", "potree/async"]
 potree_fs = ["potree", "potree/fs"]
 copc = ["dep:copc-streaming", "dep:async-lock"]
 shader_format_glsl = []
@@ -100,10 +100,13 @@ las = { version = "0.9", features = ["laz"], optional = true }
 potree = { path = "../potree-rs", default-features = false, optional = true }
 
 
-copc-streaming = { git = "https://github.com/rlamarche/copc.git", branch = "feat/add-send", optional = true }
+copc-streaming = {
+    path = "/home/romain/code/vendor/copc/copc-streaming",
+    # git = "https://github.com/rlamarche/copc.git", branch = "feat/add-send",
+    optional = true
+}
 
 async-lock = { version = "3.0", default-features = false, optional = true }
-async-trait = { version = "0.1", default-features = false, optional = true }
 
 [dependencies.bevy]
 version = "0.19"
@@ -133,7 +136,7 @@ bevy = {
     "pan_camera",
     "bevy_remote",
     "debug",
-    "file_watcher",
+    # "file_watcher",
     "ui",
     "bevy_feathers",
     "bevy_dev_tools",
@@ -154,3 +157,18 @@ opt-level = 1
 [profile.dev.package."*"]
 opt-level = 3
 debug = 1
+
+
+# Optimize for size in the wasm-release profile to reduce load times and bandwidth usage on web.
+[profile.wasm-release]
+# Default to release profile values.
+inherits = "release"
+# Optimize with size in mind (also try "z", sometimes it is better).
+# Slightly slows compile times, great improvements to file size and runtime performance.
+opt-level = "s"
+
+# toggle to reduce wasm size (at the cost of longer build)
+# lto = true
+
+# Strip all debugging information from the binary to slightly reduce file size.
+strip = "debuginfo"

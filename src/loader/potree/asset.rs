@@ -1,11 +1,10 @@
 use std::path::PathBuf;
 
-use async_trait::async_trait;
 use bytes::Bytes;
 use potree::asset::PotreeAsset;
 use thiserror::Error;
 
-use crate::{ByteSource, ByteSourceError, FileSource};
+use crate::{ByteSource, ByteSourceError, FileSource, HttpSource};
 
 pub struct PotreeAssetSource<S: ByteSource> {
     metadata: S,
@@ -21,7 +20,6 @@ pub enum PotreeAssetSourceError {
     Json(#[from] serde_json::Error),
 }
 
-#[async_trait]
 impl<S: ByteSource> PotreeAsset for PotreeAssetSource<S> {
     type Error = PotreeAssetSourceError;
 
@@ -51,6 +49,34 @@ impl PotreeAssetSource<FileSource> {
             metadata: FileSource::open(path.join("metadata.json"))?,
             hierarchy: FileSource::open(path.join("hierarchy.bin"))?,
             octree: FileSource::open(path.join("octree.bin"))?,
+        })
+    }
+}
+
+impl PotreeAssetSource<HttpSource> {
+    pub fn from_url(url: &str) -> Result<PotreeAssetSource<HttpSource>, ByteSourceError> {
+        let base_url = if url.ends_with('/') {
+            // remove leading /
+            url.trim_end_matches('/').to_string()
+        } else {
+            match url.rfind('/') {
+                // remove last part of the url if it ends with (metadata.json, hierarchy.bin or
+                // octree.bin)
+                Some(index) => {
+                    let (path, end) = url.split_at(index);
+                    match &end[1..] {
+                        "metadata.json" | "hierarchy.bin" | "octree.bin" => path.to_string(),
+                        _ => url.to_string(),
+                    }
+                }
+                None => url.to_string(),
+            }
+        };
+
+        Ok(PotreeAssetSource {
+            metadata: HttpSource::open(&format!("{}/metadata.json", base_url))?,
+            hierarchy: HttpSource::open(&format!("{}/hierarchy.bin", base_url))?,
+            octree: HttpSource::open(&format!("{}/octree.bin", base_url))?,
         })
     }
 }

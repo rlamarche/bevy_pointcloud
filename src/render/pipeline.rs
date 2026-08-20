@@ -370,7 +370,7 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             shader_defs.push("VIEW_PROJECTION_ORTHOGRAPHIC".into());
         }
 
-        #[cfg(all(feature = "webgl", target_arch = "wasm32", not(feature = "webgpu")))]
+        #[cfg(all(feature = "webgl2", target_arch = "wasm32", not(feature = "webgpu")))]
         shader_defs.push("WEBGL2".into());
 
         #[cfg(feature = "experimental_pbr_pcss")]
