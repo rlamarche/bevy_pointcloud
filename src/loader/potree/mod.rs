@@ -163,6 +163,23 @@ impl<S: ByteSource + Send + Sync + 'static> OctreeLoader for PotreeLoader<S> {
             .layout
             .iter()
             .find(|attribute_info| attribute_info.r#type.eq(&AttributeType::Normal));
+
+        let normal_x_attribute = points
+            .buffer
+            .layout
+            .iter()
+            .find(|attribute_info| attribute_info.r#type.eq(&AttributeType::NormalX));
+        let normal_y_attribute = points
+            .buffer
+            .layout
+            .iter()
+            .find(|attribute_info| attribute_info.r#type.eq(&AttributeType::NormalY));
+        let normal_z_attribute = points
+            .buffer
+            .layout
+            .iter()
+            .find(|attribute_info| attribute_info.r#type.eq(&AttributeType::NormalZ));
+
         let classification_attribute = points
             .buffer
             .layout
@@ -205,7 +222,11 @@ impl<S: ByteSource + Send + Sync + 'static> OctreeLoader for PotreeLoader<S> {
             None
         };
 
-        let mut maybe_normals: Option<Vec<[f32; 3]>> = if normal_attribute.is_some() {
+        let mut maybe_normals: Option<Vec<[f32; 3]>> = if normal_attribute.is_some()
+            || (normal_x_attribute.is_some()
+                && normal_y_attribute.is_some()
+                && normal_z_attribute.is_some())
+        {
             Some(Vec::with_capacity(target_point_count))
         } else {
             None
@@ -254,6 +275,18 @@ impl<S: ByteSource + Send + Sync + 'static> OctreeLoader for PotreeLoader<S> {
                     && let Some(normal) = point.attribute(normal_attribute)
                 {
                     normals.push([normal[0], normal[1], normal[2]]);
+                } else if let (
+                    Some(normal_x_attribute),
+                    Some(normal_y_attribute),
+                    Some(normal_z_attribute),
+                ) = (normal_x_attribute, normal_y_attribute, normal_z_attribute)
+                    && let (Some(normal_x), Some(normal_y), Some(normal_z)) = (
+                        point.attribute(normal_x_attribute),
+                        point.attribute(normal_y_attribute),
+                        point.attribute(normal_z_attribute),
+                    )
+                {
+                    normals.push([normal_x[0], normal_y[0], normal_z[0]]);
                 } else {
                     // if color is missing, push an empty color
                     normals.push([0.0, 0.0, 0.0]);
