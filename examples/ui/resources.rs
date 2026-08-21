@@ -15,6 +15,8 @@ pub struct UiSettings {
     pub edl_neighbour_count: u32,
     pub min_node_size: f32,
     pub point_budget: usize,
+    pub light_min_node_size: f32,
+    pub light_point_budget: usize,
     pub skip_visibility: bool,
 }
 
@@ -26,7 +28,9 @@ impl Default for UiSettings {
             edl_strength: 0.4,
             edl_neighbour_count: 4,
             min_node_size: 30.0,
-            point_budget: 10_000_000,
+            point_budget: 1_000_000,
+            light_min_node_size: 30.0,
+            light_point_budget: 1_000_000,
             skip_visibility: false,
         }
     }

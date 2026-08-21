@@ -6,7 +6,7 @@ use bevy::{
         system::{Commands, Local, Query, Res, ResMut},
     },
     log::{info, warn},
-    pbr::{LightEntity, Shadow},
+    pbr::{LightEntity, MeshUniform, RenderMeshInstances, Shadow},
     platform::collections::{hash_map::Entry, HashMap},
     render::{
         camera::ExtractedCamera,
@@ -14,24 +14,24 @@ use bevy::{
         render_asset::RenderAssets,
         render_phase::ViewBinnedRenderPhases,
         render_resource::{
-            BindGroupEntries, Extent3d, PipelineCache, TexelCopyBufferLayout, TextureDescriptor,
-            TextureDimension, TextureFormat::Rgba8Uint, TextureUsages, UniformBuffer,
+            BindGroupEntries, Extent3d, GpuArrayBuffer, PipelineCache, TexelCopyBufferLayout,
+            TextureDescriptor, TextureDimension, TextureFormat::Rgba8Uint, TextureUsages,
+            UniformBuffer,
         },
         renderer::{RenderDevice, RenderQueue},
         sync_world::MainEntity,
-        texture::{ColorAttachment, TextureCache},
+        texture::TextureCache,
         view::ExtractedView,
     },
 };
 use bytemuck::{Pod, Zeroable};
-use wgpu::Color as WgpuColor;
 
 use crate::{
-    NodeId, PointCloud3d, PointCloudPipeline, PointCloudUniform, PreparedPointCloudUniform,
-    PreparedPointCloudUniforms, RenderMaterialBindings, RenderOctreeInstancesIndex,
-    RenderPointCloudChunk, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
-    RenderShadowMapVisiblePointCloudEntities, RenderVisiblePointCloudEntities, VisibleNodesTexture,
-    VisibleNodesTextureBindGroup,
+    FallbackVisibleNodesTexture, NodeId, PointCloud3d, PointCloudPipeline, PointCloudUniform,
+    PreparedPointCloudUniform, PreparedPointCloudUniforms, RenderMaterialBindings,
+    RenderOctreeInstancesIndex, RenderPointCloudChunk, RenderPointCloudInstances,
+    RenderPointCloudMaterialInstances, RenderShadowMapVisiblePointCloudEntities,
+    RenderVisiblePointCloudEntities, ViewPointCloudBindGroups, VisibleNodesTexture,
 };
 
 pub const MAX_NODES: usize = 2048;
@@ -41,19 +41,16 @@ pub const MAX_NODES: usize = 2048;
 /// reduce bindings upon rendering.
 pub fn prepare_point_cloud_uniforms(
     point_cloud_instances: Res<RenderPointCloudInstances>,
+    mesh_instances: Res<RenderMeshInstances>,
+    mesh_allocator: Res<MeshAllocator>,
     mesh_material_ids: Res<RenderPointCloudMaterialInstances>,
     render_material_bindings: Res<RenderMaterialBindings>,
     mut prepared_point_cloud_uniforms: ResMut<PreparedPointCloudUniforms>,
     items: Query<&MainEntity, With<PointCloud3d>>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
-    point_cloud_pipeline: Res<PointCloudPipeline>,
     render_octree_instances_index: Res<RenderOctreeInstancesIndex>,
-    pipeline_cache: Res<PipelineCache>,
 ) {
-    let bind_group_layout =
-        pipeline_cache.get_bind_group_layout(&point_cloud_pipeline.point_cloud_uniform_layout);
-
     for main_entity in items {
         let Some(point_cloud_instance) = point_cloud_instances.get(main_entity) else {
             // if the instance is missing, it means that it is not visible
@@ -67,6 +64,25 @@ pub fn prepare_point_cloud_uniforms(
             .get(&point_cloud_material)
             .copied()
             .unwrap_or_default();
+
+        let Some(mesh_asset_id) = mesh_instances.mesh_asset_id(*main_entity) else {
+            warn!("Mesh asset id missing for point cloud {:?}", main_entity);
+            continue;
+        };
+        let first_vertex_index = match mesh_allocator.mesh_vertex_slice(&mesh_asset_id) {
+            Some(mesh_vertex_slice) => mesh_vertex_slice.range.start,
+            None => 0,
+        };
+
+        let mesh_uniform = MeshUniform::new(
+            &point_cloud_instance.transforms,
+            first_vertex_index,
+            material_bindings_index.slot,
+            None,
+            None,
+            None,
+            None,
+        );
 
         let point_cloud_uniform = PointCloudUniform::new(
             &point_cloud_instance.aabb,
@@ -86,18 +102,27 @@ pub fn prepare_point_cloud_uniforms(
         match prepared_point_cloud_uniforms.entry(point_cloud_instance.entity) {
             Entry::Occupied(mut entry) => {
                 let value = entry.get_mut();
-                value.buffer.set(point_cloud_uniform);
-                value.buffer.write_buffer(&render_device, &render_queue);
+                value.mesh_uniform_buffer.clear();
+                value.mesh_uniform_buffer.push(mesh_uniform);
+                value
+                    .mesh_uniform_buffer
+                    .write_buffer(&render_device, &render_queue);
+                value.point_cloud_uniform_buffer.set(point_cloud_uniform);
+                value
+                    .point_cloud_uniform_buffer
+                    .write_buffer(&render_device, &render_queue);
             }
             Entry::Vacant(entry) => {
-                let mut buffer = UniformBuffer::from(point_cloud_uniform);
-                buffer.write_buffer(&render_device, &render_queue);
-                let bind_group = render_device.create_bind_group(
-                    "point_cloud_uniform",
-                    &bind_group_layout,
-                    &BindGroupEntries::single(&buffer),
-                );
-                entry.insert(PreparedPointCloudUniform { buffer, bind_group });
+                let mut mesh_uniform_buffer = GpuArrayBuffer::new(&render_device.limits());
+                mesh_uniform_buffer.push(mesh_uniform);
+                mesh_uniform_buffer.write_buffer(&render_device, &render_queue);
+                let mut point_cloud_uniform_buffer = UniformBuffer::from(point_cloud_uniform);
+                point_cloud_uniform_buffer.write_buffer(&render_device, &render_queue);
+
+                entry.insert(PreparedPointCloudUniform {
+                    mesh_uniform_buffer,
+                    point_cloud_uniform_buffer,
+                });
             }
         };
 
@@ -206,7 +231,7 @@ pub fn prepare_cascades_visible_nodes_texture(
             .get(&extracted_view.retained_view_entity)
         else {
             warn!(
-                "Shadow map visible entities not foud for {:?}",
+                "Shadow map visible entities not found for {:?}",
                 extracted_view.retained_view_entity
             );
             continue;
@@ -228,32 +253,56 @@ pub fn prepare_cascades_visible_nodes_texture(
     }
 }
 
-pub fn prepare_visible_nodes_texture_bind_group(
+pub fn prepare_visible_nodes_texture_bind_groups(
     mut commands: Commands,
     pipeline_cache: Res<PipelineCache>,
     point_cloud_pipeline: Res<PointCloudPipeline>,
     render_device: Res<RenderDevice>,
-    views: Query<(Entity, &VisibleNodesTexture)>,
+    views: Query<(Entity, Option<&VisibleNodesTexture>)>,
+    mut existing_view_point_cloud_bind_groups: Query<&mut ViewPointCloudBindGroups>,
+    prepared_point_cloud_uniforms: Res<PreparedPointCloudUniforms>,
+    items: Query<&MainEntity, With<PointCloud3d>>,
+    fallback_visible_nodes_texture: Res<FallbackVisibleNodesTexture>,
 ) {
-    let layout = &pipeline_cache
-        .get_bind_group_layout(&point_cloud_pipeline.point_cloud_octree_visible_nodes_layout);
-    for (entity, prepass_textures) in &views {
-        let Some(texture) = &prepass_textures.visible_nodes else {
-            warn!("No visible nodes pass texture for {}", entity);
-            continue;
+    let layout = &pipeline_cache.get_bind_group_layout(&point_cloud_pipeline.point_cloud_layout);
+    for (entity, visible_nodes_texture) in &views {
+        let texture_view = match visible_nodes_texture {
+            Some(visible_nodes_texture) => visible_nodes_texture.texture.default_view.clone(),
+            None => fallback_visible_nodes_texture.texture_view.clone(),
         };
 
-        let texture_view = texture.texture.default_view.clone();
+        // Fetch or create the `ViewPointCloudBindGroups` component
+        let mut view_point_cloud_bind_groups =
+            match existing_view_point_cloud_bind_groups.get_mut(entity) {
+                Ok(ref mut view_point_cloud_bind_groups) => {
+                    std::mem::take(&mut **view_point_cloud_bind_groups)
+                }
+                Err(_) => ViewPointCloudBindGroups::default(),
+            };
 
-        commands
-            .entity(entity)
-            .insert(VisibleNodesTextureBindGroup {
-                texture: render_device.create_bind_group(
-                    "pointcloud_octree_visible_nodes",
-                    layout,
-                    &BindGroupEntries::single(&texture_view),
-                ),
-            });
+        for main_entity in items {
+            let Some(prepared_uniform) = prepared_point_cloud_uniforms.get(main_entity) else {
+                continue;
+            };
+
+            // TODO reuse previous bind group ?
+            let bind_group = render_device.create_bind_group(
+                "view_point_cloud",
+                layout,
+                &BindGroupEntries::sequential((
+                    prepared_uniform.mesh_uniform_buffer.binding().unwrap(),
+                    &prepared_uniform.point_cloud_uniform_buffer,
+                    &texture_view,
+                )),
+            );
+
+            view_point_cloud_bind_groups
+                .bind_groups
+                .insert(*main_entity, bind_group);
+        }
+
+        let mut entity_commands = commands.entity(entity);
+        entity_commands.insert(view_point_cloud_bind_groups);
     }
 }
 
@@ -291,7 +340,7 @@ fn prepare_visible_nodes_texture(
     }
 
     // get the texture for containing visible nodes data
-    let visible_nodes_texture = {
+    let texture = {
         // The size of the depth texture
         let size = Extent3d {
             width: MAX_NODES as u32,
@@ -398,7 +447,7 @@ fn prepare_visible_nodes_texture(
         }
     }
     render_queue.write_texture(
-        visible_nodes_texture.texture.as_image_copy(),
+        texture.texture.as_image_copy(),
         bytemuck::cast_slice(&*visible_nodes_buffer),
         TexelCopyBufferLayout {
             offset: 0,
@@ -412,12 +461,7 @@ fn prepare_visible_nodes_texture(
         },
     );
     commands.entity(entity).insert(VisibleNodesTexture {
-        visible_nodes: Some(ColorAttachment::new(
-            visible_nodes_texture,
-            None,
-            None,
-            Some(WgpuColor::TRANSPARENT),
-        )),
+        texture,
         node_index,
     });
 }

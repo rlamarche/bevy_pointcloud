@@ -21,8 +21,8 @@ RUSTFLAGS="-C target-feature=+atomics,+bulk-memory,+mutable-globals \
   -C link-arg=--export=__tls_align \
   -C link-arg=--export=__tls_base \
   --cfg getrandom_backend=\"wasm_js\"" \
-  cargo +nightly build --features "webgpu potree" --example $1 --target wasm32-unknown-unknown -Z build-std=std,panic_abort --profile wasm-release
+  cargo +nightly build --features "webgpu potree copc" --example $1 --target wasm32-unknown-unknown -Z build-std=std,panic_abort --profile wasm-release
 
 
 wasm-bindgen --target web  --out-dir ./wasm --out-name "bevy_pointcloud"  ./target/wasm32-unknown-unknown/wasm-release/examples/$1.wasm
-# wasm-opt -O -ol 100 -s 100 -o wasm/bevy_pointcloud_bg.wasm wasm/bevy_pointcloud_bg.wasm
+wasm-opt -O -ol 100 -s 100 -o wasm/bevy_pointcloud_bg.wasm wasm/bevy_pointcloud_bg.wasm

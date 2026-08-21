@@ -1,5 +1,4 @@
 #import bevy_pbr::{
-    mesh_functions,
     view_transformations::position_world_to_view,
 }
 
@@ -24,11 +23,8 @@ fn vertex(
 
     let world_from_local = pointcloud_functions::get_world_from_local();
 
-    // TODO remove world_from_local from PointCloudUniform and use this above
-    // let world_from_local = mesh_functions::get_world_from_local(out.instance_index);
-
     let point_world_position =
-        mesh_functions::mesh_position_local_to_world(
+        pointcloud_functions::mesh_position_local_to_world(
             world_from_local,
             vec4<f32>(vertex.position, 1.0)
         ).xyz;
@@ -86,10 +82,9 @@ fn vertex(
     #endif
 
     #ifdef VERTEX_TANGENTS
-        out.world_tangent = mesh_functions::mesh_tangent_local_to_world(
+        out.world_tangent = pointcloud_functions::mesh_tangent_local_to_world(
             world_from_local,
             vertex.tangent,
-            out.instance_index,
         );
     #endif
 

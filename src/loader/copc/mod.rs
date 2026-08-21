@@ -11,7 +11,7 @@ use bevy::{
     platform::collections::{HashMap, HashSet},
     prelude::Deref,
 };
-use copc_streaming::{CopcError, CopcStreamingReader, Fields, HierarchyEntry, VoxelKey};
+use copc_streaming::{CopcError, CopcStreamingReader, HierarchyEntry, VoxelKey};
 use las::point::Classification;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

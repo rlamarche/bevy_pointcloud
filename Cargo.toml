@@ -85,7 +85,6 @@ indexmap = { version = "2.5.0", default-features = false }
 
 smallvec = { version = "1", default-features = false }
 nonmax = "0.5"
-wgpu = { version = "29.0.3", default-features = false }
 itertools = "0.14"
 
 futures = { version = "0.3" }
@@ -99,7 +98,11 @@ las = { version = "0.10", features = ["laz"], optional = true }
 
 potree = { git = "https://github.com/rlamarche/potree-rs.git", branch = "main", default-features = false, optional = true }
 
-copc-streaming = { git = "https://github.com/rlamarche/copc.git", branch = "feat/add-send", optional = true }
+copc-streaming = {
+    # path = "/home/romain/code/vendor/copc/copc-streaming",
+    git = "https://github.com/rlamarche/copc.git", branch = "feat/add-send",
+    optional = true
+}
 
 async-lock = { version = "3.0", default-features = false, optional = true }
 
@@ -163,7 +166,7 @@ inherits = "release"
 opt-level = "s"
 
 # toggle to reduce wasm size (at the cost of longer build)
-# lto = true
+lto = true
 
 # Strip all debugging information from the binary to slightly reduce file size.
 strip = "debuginfo"

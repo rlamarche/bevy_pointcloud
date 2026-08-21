@@ -6,7 +6,6 @@
     pbr_functions,
     pbr_functions::SampleBias,
     prepass_io,
-    mesh_bindings::mesh,
     mesh_view_bindings::view,
 }
 

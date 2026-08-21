@@ -1,8 +1,20 @@
 use bevy::{
-    ecs::{entity::Entity, resource::Resource},
+    ecs::{
+        entity::Entity,
+        resource::Resource,
+        world::{FromWorld, World},
+    },
     platform::collections::HashMap,
     prelude::{Deref, DerefMut},
-    render::{camera::PendingQueues, sync_world::MainEntity},
+    render::{
+        camera::PendingQueues,
+        render_resource::{
+            Extent3d, Texture, TextureDescriptor, TextureDimension, TextureFormat::Rgba8Uint,
+            TextureUsages, TextureView, TextureViewDescriptor, TextureViewDimension,
+        },
+        renderer::RenderDevice,
+        sync_world::MainEntity,
+    },
 };
 use slotmap::{new_key_type, Key, SlotMap};
 
@@ -68,3 +80,45 @@ impl RenderOctreeInstancesIndex {
 
 #[derive(Resource, Default, Deref, DerefMut)]
 pub struct PreparedPointCloudUniforms(HashMap<MainEntity, PreparedPointCloudUniform>);
+
+#[derive(Resource)]
+pub struct FallbackVisibleNodesTexture {
+    pub texture: Texture,
+    pub texture_view: TextureView,
+}
+
+impl FromWorld for FallbackVisibleNodesTexture {
+    fn from_world(world: &mut World) -> Self {
+        let render_device = world.resource::<RenderDevice>();
+
+        let size = Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        };
+
+        let descriptor = TextureDescriptor {
+            label: Some("fallback_visible_nodes_texture"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: Rgba8Uint,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[],
+        };
+
+        let texture = render_device.create_texture(&descriptor);
+
+        let texture_view = texture.create_view(&TextureViewDescriptor {
+            dimension: Some(TextureViewDimension::D2),
+            array_layer_count: Some(size.depth_or_array_layers),
+            ..TextureViewDescriptor::default()
+        });
+
+        Self {
+            texture,
+            texture_view,
+        }
+    }
+}

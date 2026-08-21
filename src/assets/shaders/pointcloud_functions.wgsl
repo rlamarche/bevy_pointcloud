@@ -3,8 +3,11 @@
 #import bevy_render::view::position_view_to_world;
 
 #import bevy_pbr::{
-    mesh_view_bindings::view,
-    mesh_bindings::mesh,
+    mesh_view_bindings::{
+        view,
+        visibility_ranges,
+        VISIBILITY_RANGE_UNIFORM_BUFFER_SIZE,
+    },
     mesh_types::MESH_FLAGS_SIGN_DETERMINANT_MODEL_3X3_BIT,
     view_transformations::{
         position_world_to_view,
@@ -74,6 +77,78 @@ fn mesh_position_local_to_clip(world_from_local: mat4x4<f32>, vertex_position: v
     let world_position = mesh_position_local_to_world(world_from_local, vertex_position);
     return position_world_to_clip(world_position.xyz);
 }
+
+
+fn mesh_tangent_local_to_world(world_from_local: mat4x4<f32>, vertex_tangent: vec4<f32>) -> vec4<f32> {
+    // NOTE: The mikktspace method of normal mapping requires that the world tangent is
+    // re-normalized in the vertex shader to match the way mikktspace bakes vertex tangents
+    // and normal maps so that the exact inverse process is applied when shading. Blender, Unity,
+    // Unreal Engine, Godot, and more all use the mikktspace method.
+    // We only skip normalization for invalid tangents so that they don't become NaN.
+    // Do not change this code unless you really know what you are doing.
+    // http://www.mikktspace.com/
+    if any(vertex_tangent != vec4<f32>(0.0)) {
+        return vec4<f32>(
+            normalize(
+                mat3x3<f32>(
+                    world_from_local[0].xyz,
+                    world_from_local[1].xyz,
+                    world_from_local[2].xyz,
+                ) * vertex_tangent.xyz
+            ),
+            // NOTE: Multiplying by the sign of the determinant of the 3x3 model matrix accounts for
+            // situations such as negative scaling.
+            vertex_tangent.w * sign_determinant_model_3x3m(pointcloud.mesh_flags)
+        );
+    } else {
+        return vertex_tangent;
+    }
+}
+
+// Calculates the sign of the determinant of the 3x3 model matrix based on a
+// mesh flag
+fn sign_determinant_model_3x3m(mesh_flags: u32) -> f32 {
+    // bool(u32) is false if 0u else true
+    // f32(bool) is 1.0 if true else 0.0
+    // * 2.0 - 1.0 remaps 0.0 or 1.0 to -1.0 or 1.0 respectively
+    return f32(bool(mesh_flags & MESH_FLAGS_SIGN_DETERMINANT_MODEL_3X3_BIT)) * 2.0 - 1.0;
+}
+
+
+// Returns an appropriate dither level for the current mesh instance.
+//
+// This looks up the LOD range in the `visibility_ranges` table and compares the
+// camera distance to determine the dithering level.
+#ifdef VISIBILITY_RANGE_DITHER
+fn get_visibility_range_dither_level(world_position: vec4<f32>) -> i32 {
+#if AVAILABLE_STORAGE_BUFFER_BINDINGS >= 6
+    // If we're using a storage buffer, then the length is variable.
+    let visibility_buffer_array_len = arrayLength(&visibility_ranges);
+#else   // AVAILABLE_STORAGE_BUFFER_BINDINGS >= 6
+    // If we're using a uniform buffer, then the length is constant
+    let visibility_buffer_array_len = VISIBILITY_RANGE_UNIFORM_BUFFER_SIZE;
+#endif  // AVAILABLE_STORAGE_BUFFER_BINDINGS >= 6
+
+    let visibility_buffer_index = pointcloud.mesh_flags & 0xffffu;
+    if (visibility_buffer_index > visibility_buffer_array_len) {
+        return -16;
+    }
+
+    let lod_range = visibility_ranges[visibility_buffer_index];
+    let camera_distance = length(view.lod_view_world_position.xyz - world_position.xyz);
+
+    // This encodes the following mapping:
+    //
+    //     `lod_range.`          x        y        z        w           camera distance
+    //                   ←───────┼────────┼────────┼────────┼────────→
+    //     Dither Level  -16    -16       0        0        16      16  Dither Level
+    let offset = select(-16, 0, camera_distance >= lod_range.z);
+    let bounds = select(lod_range.xy, lod_range.zw, camera_distance >= lod_range.z);
+    let level = i32(round((camera_distance - bounds.x) / (bounds.y - bounds.x) * 16.0));
+    return offset + clamp(level, 0, 16);
+}
+#endif
+
 
 /// Computes the final splat/point radius in World Space or Screen Space based on
 /// the configured size mode (`PointSizeMode`) and optional adaptive size bounds.

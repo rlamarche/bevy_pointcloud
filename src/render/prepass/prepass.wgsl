@@ -1,7 +1,5 @@
 #import bevy_pbr::{
     prepass_bindings,
-    mesh_bindings::mesh,
-    mesh_functions,
     skinning,
     morph,
     mesh_view_bindings::view,
@@ -37,11 +35,8 @@ fn vertex(
 
     let world_from_local = pointcloud_functions::get_world_from_local();
 
-    // TODO remove world_from_local from PointCloudUniform and use this above
-    // let world_from_local = mesh_functions::get_world_from_local(out.instance_index);
-
     let point_world_position =
-        mesh_functions::mesh_position_local_to_world(
+        pointcloud_functions::mesh_position_local_to_world(
             world_from_local,
             vec4<f32>(vertex.position, 1.0)
         ).xyz;
@@ -121,10 +116,9 @@ fn vertex(
 #endif // VERTEX_NORMALS
 
 #ifdef VERTEX_TANGENTS
-    out.world_tangent = mesh_functions::mesh_tangent_local_to_world(
+    out.world_tangent = pointcloud_functions::mesh_tangent_local_to_world(
         world_from_local,
         vertex.tangent,
-        out.instance_index,
     );
 #endif // VERTEX_TANGENTS
 #endif // NORMAL_PREPASS_OR_DEFERRED_PREPASS
@@ -143,9 +137,9 @@ fn vertex(
 
     // Use vertex_no_morph.instance_index instead of prev_vertex.instance_index to work around a wgpu dx12 bug.
     // See https://github.com/gfx-rs/naga/issues/2416
-    let prev_model = mesh_functions::get_previous_world_from_local(out.instance_index);
+    let prev_model = pointcloud_functions::get_previous_world_from_local();
 
-    let prev_point_world_position = mesh_functions::mesh_position_local_to_world(
+    let prev_point_world_position = pointcloud_functions::mesh_position_local_to_world(
         prev_model,
         vec4<f32>(vertex.position, 1.0)
     ).xyz;
@@ -177,10 +171,9 @@ fn vertex(
 
 
 #ifdef VISIBILITY_RANGE_DITHER
-    let mesh_world_from_local = mesh_functions::get_world_from_local(out.instance_index);
+    let mesh_world_from_local = pointcloud_functions::get_world_from_local();
 
-    out.visibility_range_dither = mesh_functions::get_visibility_range_dither_level(
-        out.instance_index, mesh_world_from_local[3]);
+    out.visibility_range_dither = pointcloud_functions::get_visibility_range_dither_level(mesh_world_from_local[3]);
 #endif  // VISIBILITY_RANGE_DITHER
 
 #ifdef SHAPE_UVS_A

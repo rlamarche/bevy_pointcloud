@@ -24,8 +24,8 @@ use bevy::{
 };
 
 use crate::{
-    skins_use_uniform_buffers, PointCloudTopologyKind, PreparedPointCloudUniforms,
-    RenderPointCloudChunkInstances, RenderPointCloudInstances, VisibleNodesTextureBindGroup,
+    skins_use_uniform_buffers, RenderPointCloudChunkInstances, RenderPointCloudInstances,
+    ViewPointCloudBindGroups,
 };
 
 /// A [`RenderCommand`] that sets the pipeline for the [`CachedRenderPipelinePhaseItem`].
@@ -229,72 +229,64 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetMeshBindGroup<I> {
     }
 }
 
-pub struct SetPointCloudUniformGroup<const I: usize>;
-impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudUniformGroup<I> {
-    type Param = (
-        SRes<RenderPointCloudChunkInstances>,
-        SRes<PreparedPointCloudUniforms>,
-    );
-    type ViewQuery = ();
+pub struct SetPointCloudBindGroup<const I: usize>;
+impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudBindGroup<I> {
+    type Param = SRes<RenderPointCloudChunkInstances>;
+    type ViewQuery = Read<ViewPointCloudBindGroups>;
     type ItemQuery = ();
 
     fn render<'w>(
         item: &P,
-        _view: ROQueryItem<'w, '_, Self::ViewQuery>,
+        view_point_cloud_bind_groups: ROQueryItem<'w, '_, Self::ViewQuery>,
         _: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
-        (render_point_cloud_chunk_instances, prepared_point_cloud_uniforms): SystemParamItem<
-            'w,
-            '_,
-            Self::Param,
-        >,
+        render_point_cloud_chunk_instances: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let prepared_point_cloud_uniforms = prepared_point_cloud_uniforms.into_inner();
-
         let Some(chunk_instance) = render_point_cloud_chunk_instances.get(&item.entity()) else {
             warn!("render_point_cloud_chunk_instance missing 2");
             return RenderCommandResult::Skip;
         };
 
-        let Some(prepared_point_cloud_uniform) =
-            prepared_point_cloud_uniforms.get(&chunk_instance.root_entity)
+        let Some(bind_group) = view_point_cloud_bind_groups
+            .bind_groups
+            .get(&chunk_instance.root_entity)
         else {
             warn!(
-                "prepared_point_cloud_uniform missing for root entity {:?}",
+                "view point cloud bind group missing for point cloud {:?}",
                 chunk_instance.root_entity
             );
             return RenderCommandResult::Skip;
         };
 
-        pass.set_bind_group(I, &prepared_point_cloud_uniform.bind_group, &[]);
+        pass.set_bind_group(I, bind_group, &[]);
         RenderCommandResult::Success
     }
 }
 
-pub struct SetVisibleNodesTexture<const I: usize>;
-impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetVisibleNodesTexture<I> {
-    type Param = SRes<RenderPointCloudChunkInstances>;
-    type ViewQuery = Read<VisibleNodesTextureBindGroup>;
-    type ItemQuery = ();
+// pub struct SetVisibleNodesTexture<const I: usize>;
+// impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetVisibleNodesTexture<I> {
+//     type Param = SRes<RenderPointCloudChunkInstances>;
+//     type ViewQuery = Read<ViewPointCloudBindGroups>;
+//     type ItemQuery = ();
 
-    fn render<'w>(
-        item: &P,
-        attribute_pass_view_bind_group: ROQueryItem<'w, '_, Self::ViewQuery>,
-        _entity: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
-        render_point_cloud_chunk_instances: SystemParamItem<'w, '_, Self::Param>,
-        pass: &mut TrackedRenderPass<'w>,
-    ) -> RenderCommandResult {
-        let Some(chunk_instance) = render_point_cloud_chunk_instances.get(&item.entity()) else {
-            return RenderCommandResult::Skip;
-        };
+//     fn render<'w>(
+//         item: &P,
+//         view_point_cloud_bind_group: ROQueryItem<'w, '_, Self::ViewQuery>,
+//         _entity: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
+//         render_point_cloud_chunk_instances: SystemParamItem<'w, '_, Self::Param>,
+//         pass: &mut TrackedRenderPass<'w>,
+//     ) -> RenderCommandResult {
+//         let Some(chunk_instance) = render_point_cloud_chunk_instances.get(&item.entity()) else {
+//             return RenderCommandResult::Skip;
+//         };
 
-        if matches!(chunk_instance.topology, PointCloudTopologyKind::Octree) {
-            pass.set_bind_group(I, &attribute_pass_view_bind_group.texture, &[]);
-        }
+//         if matches!(chunk_instance.topology, PointCloudTopologyKind::Octree) {
+//             pass.set_bind_group(I, &view_point_cloud_bind_group.bind_group, &[]);
+//         }
 
-        RenderCommandResult::Success
-    }
-}
+//         RenderCommandResult::Success
+//     }
+// }
 
 pub struct DrawPointCloudInstanced;
 

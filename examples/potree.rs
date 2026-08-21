@@ -1,25 +1,29 @@
 #![expect(missing_docs, reason = "Not all docs are written yet.")]
+mod ui;
 
-use std::f32::consts::PI;
+use std::{f32::consts::PI, ops::Neg};
 
 use bevy::{
-    camera::{primitives::Aabb, ScalingMode},
-    camera_controller::free_camera::{FreeCamera, FreeCameraPlugin},
+    camera::primitives::Aabb,
     core_pipeline::tonemapping::Tonemapping,
+    feathers::{dark_theme::create_dark_theme, theme::UiTheme, FeathersPlugins},
     light::{
-        atmosphere::ScatteringMedium, Atmosphere, AtmosphereEnvironmentMapLight,
-        CascadeShadowConfigBuilder, SunDisk, VolumetricFog,
+        atmosphere::ScatteringMedium, Atmosphere, AtmosphereEnvironmentMapLight, SunDisk,
+        VolumetricFog,
     },
     math::VectorSpace,
     pbr::AtmosphereSettings,
     post_process::bloom::Bloom,
     prelude::*,
 };
+use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_pointcloud::{
     potree::{PotreeAssetSource, PotreeLoader},
     prelude::*,
-    StandardPointCloudMaterial,
+    HttpSource, StandardPointCloudMaterial,
 };
+
+use crate::ui::{MyUiPlugin, UiSettings, UiState};
 
 // --- RESOURCES AND STRUCTURES ---
 
@@ -49,9 +53,12 @@ struct MyPointCloud;
 // --- MAIN FUNCTION ---
 
 fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins)
-        .add_plugins(FreeCameraPlugin)
+    let mut app = App::new();
+
+    app.add_plugins(DefaultPlugins)
+        .add_plugins(PanOrbitCameraPlugin)
+        .add_plugins(FeathersPlugins)
+        .add_plugins(MyUiPlugin)
         .add_plugins(PointCloudPlugin::default())
         // Initialization and Resources
         .init_resource::<DayCycle>()
@@ -61,7 +68,11 @@ fn main() {
         .add_systems(Update, (toggle_day_cycle, update_day_cycle))
         // PostUpdate Systems
         .add_systems(PostUpdate, center_point_cloud)
-        .run();
+        .add_systems(PreUpdate, update_camera_control);
+
+    app.insert_resource(UiTheme(create_dark_theme()));
+
+    app.run();
 }
 
 fn setup(mut commands: Commands, mut scattering_mediums: ResMut<Assets<ScatteringMedium>>) {
@@ -84,11 +95,11 @@ fn setup(mut commands: Commands, mut scattering_mediums: ResMut<Assets<Scatterin
         //     },
         //     area: Rect::new(-1.0, -1.0, 1.0, 1.0),
         // }),
-        Transform::from_xyz(1.0, 1.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
-        FreeCamera::default(),
+        Transform::from_xyz(20.0, 20.0, 0.0).looking_at(Vec3::new(0.0, 10.0, 0.0), Vec3::Y),
+        PanOrbitCamera::default(),
         PointCloudVisibilitySettings {
             min_radius: Some(30.0),
-            point_budget: Some(10_000_000),
+            point_budget: Some(1_000_000),
             ..default()
         },
         AtmosphereSettings::default(),
@@ -112,16 +123,10 @@ fn setup_sun(mut commands: Commands) {
             ..default()
         },
         SunDisk::EARTH,
-        CascadeShadowConfigBuilder {
-            maximum_distance: 2000.0,
-            first_cascade_far_bound: 1.0,
-            ..default()
-        }
-        .build(),
         Transform::from_rotation(Quat::from_rotation_x(-PI / 4.0)),
         PointCloudVisibilitySettings {
             min_radius: Some(30.0),
-            point_budget: Some(10_000_000),
+            point_budget: Some(1_000_000),
             ..default()
         },
     ));
@@ -139,9 +144,14 @@ fn load_point_cloud(
         ..default()
     });
 
+    // let point_cloud_handle =
+    //     point_cloud_server.load::<PotreeLoader<_>>(PotreeAssetSource::<FileSource>::from_path(
+    //         "assets/potree/heidentor",
+    //     )?);
+
     let point_cloud_handle =
-        point_cloud_server.load::<PotreeLoader<_>>(PotreeAssetSource::<FileSource>::from_path(
-            "assets/potree/heidentor",
+        point_cloud_server.load::<PotreeLoader<_>>(PotreeAssetSource::<HttpSource>::from_url(
+            "https://pub-e2043f8abc6f45d983f8f77641ea772e.r2.dev/potree/heidentor",
         )?);
 
     commands.spawn((
@@ -156,6 +166,7 @@ fn load_point_cloud(
                 PointCloudMaterial3d(material_handle),
                 SplatSettings {
                     point_size_mode: PointSizeMode::LocalSpace,
+                    radius: Some(0.5),
                     orientation: SplatOrientation::Billboard,
                     default_normal: Vec3::new(0.0, 0.0, 1.0),
                     ..default()
@@ -171,7 +182,7 @@ fn load_point_cloud(
             perceptual_roughness: 0.8,
             ..default()
         })),
-        Transform::from_xyz(0.0, 2.5, 0.0),
+        Transform::from_xyz(0.0, 1.8, 0.0),
     ));
 
     Ok(())
@@ -239,13 +250,15 @@ fn update_day_cycle(
 }
 
 fn center_point_cloud(
-    loaded_point_clouds: Query<
-        (Entity, &Aabb),
-        (With<PointCloud3d>, With<MyPointCloud>, Added<Aabb>),
-    >,
     mut commands: Commands,
+    mut camera: Query<
+        (&mut Transform, &mut PanOrbitCamera),
+        (With<Camera3d>, Without<PointCloud3d>),
+    >,
+    query: Query<(Entity, &Aabb), (With<PointCloud3d>, With<MyPointCloud>, Added<Aabb>)>,
 ) {
-    for (entity, aabb) in loaded_point_clouds {
+    let mut last_aabb = None;
+    for (entity, aabb) in query {
         let center = aabb.center;
         commands
             .entity(entity)
@@ -254,5 +267,75 @@ fn center_point_cloud(
                 y: -center.y,
                 z: 0.0, // Keep the original altitude
             }));
+
+        last_aabb = Some(aabb);
+    }
+    // let Some((aabb, mut transform)) = query.iter_mut().next() else {
+    //     return;
+    // };
+
+    // // Center point cloud
+    // *transform = Transform::from_translation(
+    //     (aabb.center.neg() + Vec3A::new(0.0, aabb.half_extents.y, 0.0)).into(),
+    // );
+
+    let Some(aabb) = last_aabb else {
+        return;
+    };
+
+    let (camera_transform, mut pan_orbit_camera) = camera.single_mut().unwrap();
+
+    let target_focus = Vec3::new(0.0, aabb.half_extents.y, 0.0);
+    let (yaw, pitch, radius) = calculate_from_translation_and_focus(
+        camera_transform.translation,
+        target_focus,
+        pan_orbit_camera.axis,
+    );
+
+    pan_orbit_camera.target_yaw = yaw;
+    pan_orbit_camera.target_pitch = pitch;
+    pan_orbit_camera.target_radius = radius;
+    pan_orbit_camera.target_focus = target_focus;
+}
+
+fn calculate_from_translation_and_focus(
+    translation: Vec3,
+    focus: Vec3,
+    axis: [Vec3; 3],
+) -> (f32, f32, f32) {
+    let axis = Mat3::from_cols(axis[0], axis[1], axis[2]);
+    let comp_vec = translation - focus;
+    let mut radius = comp_vec.length();
+    if radius == 0.0 {
+        radius = 0.05; // Radius 0 causes problems
+    }
+    let comp_vec = axis * comp_vec;
+    let yaw = comp_vec.x.atan2(comp_vec.z);
+    let pitch = (comp_vec.y / radius).asin();
+    (yaw, pitch, radius)
+}
+
+fn update_camera_control(
+    mut cameras: Query<
+        (
+            Option<&mut PanOrbitCamera>,
+            &mut PointCloudVisibilitySettings,
+        ),
+        Without<DirectionalLight>,
+    >,
+    mut lights: Query<&mut PointCloudVisibilitySettings, With<DirectionalLight>>,
+    ui_state: Res<UiState>,
+    ui_settings: Res<UiSettings>,
+) {
+    for (pan_orbit_camera, mut visibility_settings) in &mut cameras {
+        if let Some(mut pan_orbit_camera) = pan_orbit_camera {
+            pan_orbit_camera.enabled = !ui_state.dragging && !ui_state.hovering;
+        }
+        visibility_settings.point_budget = Some(ui_settings.point_budget);
+        visibility_settings.min_radius = Some(ui_settings.min_node_size);
+    }
+    for mut visibility_settings in &mut lights {
+        visibility_settings.point_budget = Some(ui_settings.light_point_budget);
+        visibility_settings.min_radius = Some(ui_settings.light_min_node_size);
     }
 }

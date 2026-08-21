@@ -4,7 +4,10 @@ use bevy::{
     asset::Assets,
     camera::{
         primitives::{Aabb, CascadesFrusta},
-        visibility::{CascadesVisibleEntities, RenderLayers, ViewVisibility},
+        visibility::{
+            CascadesVisibleEntities, NoFrustumCulling, RenderLayers, ViewVisibility,
+            VisibilityRange,
+        },
         Camera,
     },
     ecs::{
@@ -13,9 +16,12 @@ use bevy::{
         query::{Changed, Has, Or, With, Without},
         system::{Local, Query, Res, ResMut},
     },
-    light::{CascadeShadowConfig, Cascades, DirectionalLight, SpotLight, SunDisk, VolumetricLight},
-    log::warn,
-    pbr::{ExtractedDirectionalLight, PreviousGlobalTransform},
+    light::{
+        CascadeShadowConfig, Cascades, DirectionalLight, NotShadowReceiver, SpotLight, SunDisk,
+        TransmittedShadowReceiver, VolumetricLight,
+    },
+    log::{debug, warn},
+    pbr::{ExtractedDirectionalLight, MeshFlags, MeshTransforms, PreviousGlobalTransform},
     render::{
         mesh::{allocator::MeshAllocator, RenderMesh},
         occlusion_culling::OcclusionCulling,
@@ -23,19 +29,20 @@ use bevy::{
         sync_world::{MainEntity, RenderEntity},
         view::{
             ExtractedView, RenderExtractedShadowMapVisibleEntities, RenderShadowMapVisibleEntities,
-            RetainedViewEntity, VisibilityExtractionSystemParam,
+            RenderVisibilityRanges, RetainedViewEntity, VisibilityExtractionSystemParam,
         },
         Extract,
     },
     transform::components::GlobalTransform,
     utils::Parallel,
 };
+use nonmax::NonMaxU16;
 
 use crate::{
     CascadesVisiblePointCloudEntities, PointCloud, PointCloud3d, PointCloudChunk,
-    PointCloudChunk3d, PointCloudTopologyKind, PointCloudTransforms, RenderOctreeInstancesIndex,
-    RenderPointCloudChunk, RenderPointCloudChunkInstance, RenderPointCloudChunkInstances,
-    RenderPointCloudInstance, RenderPointCloudInstances, RenderShadowMapVisiblePointCloudEntities,
+    PointCloudChunk3d, PointCloudTopologyKind, RenderOctreeInstancesIndex, RenderPointCloudChunk,
+    RenderPointCloudChunkInstance, RenderPointCloudChunkInstances, RenderPointCloudInstance,
+    RenderPointCloudInstances, RenderShadowMapVisiblePointCloudEntities,
     RenderVisiblePointCloudChunkEntity, RenderVisiblePointCloudEntities, SplatMeshes,
     SplatSettings, VisiblePointCloudOctreeEntities,
 };
@@ -213,6 +220,7 @@ pub fn extract_pointcloud_instances(
     mut render_point_cloud_instance_queues: Local<
         Parallel<Vec<(Entity, RenderPointCloudInstance)>>,
     >,
+    render_visibility_ranges: Res<RenderVisibilityRanges>,
     entities: Extract<
         Query<(
             Entity,
@@ -222,6 +230,10 @@ pub fn extract_pointcloud_instances(
             &ViewVisibility,
             &GlobalTransform,
             Option<&PreviousGlobalTransform>,
+            Has<NoFrustumCulling>,
+            Has<NotShadowReceiver>,
+            Has<TransmittedShadowReceiver>,
+            Option<&VisibilityRange>,
             Option<&RenderLayers>,
         )>,
     >,
@@ -240,6 +252,10 @@ pub fn extract_pointcloud_instances(
             view_visibility,
             transform,
             previous_transform,
+            no_frustum_culling,
+            not_shadow_receiver,
+            transmitted_receiver,
+            visibility_range,
             render_layers,
         )| {
             if !view_visibility.get() {
@@ -247,7 +263,7 @@ pub fn extract_pointcloud_instances(
             }
 
             let Some(aabb) = maybe_aabb else {
-                warn!(
+                debug!(
                     "Point cloud's aabb of render entity {:?} not yet available.",
                     entity
                 );
@@ -269,6 +285,20 @@ pub fn extract_pointcloud_instances(
                 return;
             };
 
+            let mut lod_index = None;
+            if visibility_range.is_some() {
+                lod_index = render_visibility_ranges.lod_index_for_entity(entity.into());
+            }
+
+            let mesh_flags = mesh_flags_from_components(
+                transform,
+                lod_index,
+                visibility_range,
+                no_frustum_culling,
+                not_shadow_receiver,
+                transmitted_receiver,
+            );
+
             queue.push((
                 entity,
                 RenderPointCloudInstance {
@@ -278,9 +308,10 @@ pub fn extract_pointcloud_instances(
                     model_aabb: point_cloud.aabb.unwrap_or_default(),
                     spacing: point_cloud.spacing,
                     topology: (&point_cloud.topology).into(),
-                    transforms: PointCloudTransforms {
+                    transforms: MeshTransforms {
                         world_from_local: world_from_local.into(),
                         previous_world_from_local: previous_world_from_local.into(),
+                        flags: mesh_flags.bits(),
                     },
                     render_layers: render_layers.cloned(),
                     // TODO put default asset id if not filled
@@ -509,4 +540,41 @@ pub fn extract_lights_visible_point_cloud_chunks(
             }
         }
     }
+}
+
+/// Copied from [`MeshFlags::from_components`]
+fn mesh_flags_from_components(
+    transform: &GlobalTransform,
+    lod_index: Option<NonMaxU16>,
+    visibility_range: Option<&VisibilityRange>,
+    no_frustum_culling: bool,
+    not_shadow_receiver: bool,
+    transmitted_receiver: bool,
+) -> MeshFlags {
+    let mut mesh_flags = if not_shadow_receiver {
+        MeshFlags::empty()
+    } else {
+        MeshFlags::SHADOW_RECEIVER
+    };
+    if visibility_range.is_some_and(|visibility_range| visibility_range.use_aabb) {
+        mesh_flags |= MeshFlags::AABB_BASED_VISIBILITY_RANGE;
+    }
+    if no_frustum_culling {
+        mesh_flags |= MeshFlags::NO_FRUSTUM_CULLING;
+    }
+    if transmitted_receiver {
+        mesh_flags |= MeshFlags::TRANSMITTED_SHADOW_RECEIVER;
+    }
+    if transform.affine().matrix3.determinant().is_sign_positive() {
+        mesh_flags |= MeshFlags::SIGN_DETERMINANT_MODEL_3X3;
+    }
+
+    let lod_index_bits = match lod_index {
+        None => u16::MAX,
+        Some(lod_index) => u16::from(lod_index),
+    };
+    mesh_flags |=
+        MeshFlags::from_bits_retain((lod_index_bits as u32) << MeshFlags::LOD_INDEX_SHIFT);
+
+    mesh_flags
 }

@@ -2,17 +2,16 @@ use bevy::{
     asset::{AssetId, Handle},
     camera::{primitives::Aabb, visibility::RenderLayers},
     ecs::{
-        component::Component,
         entity::{Entity, EntityHashMap},
         resource::Resource,
     },
-    math::{Affine2, Affine3, Affine3Ext, Vec4},
+    math::{Affine2, Affine3Ext, Vec4},
     mesh::Mesh,
-    pbr::MaterialBindGroupSlot,
+    pbr::{MaterialBindGroupSlot, MeshTransforms, MeshUniform},
     prelude::{Deref, DerefMut},
     render::{
         render_asset::RenderAsset,
-        render_resource::{BindGroup, ShaderType, UniformBuffer},
+        render_resource::{GpuArrayBuffer, ShaderType, UniformBuffer},
         sync_world::{MainEntity, MainEntityHashMap},
     },
 };
@@ -67,7 +66,7 @@ pub struct RenderPointCloudInstance {
     /// The transform of the mesh.
     ///
     /// This will be written into the [`MeshUniform`] at the appropriate time.
-    pub transforms: PointCloudTransforms,
+    pub transforms: MeshTransforms,
     /// The set of render layers that this mesh belongs to.
     pub render_layers: Option<RenderLayers>,
     pub splat_settings: SplatSettings,
@@ -190,12 +189,6 @@ pub struct RenderPointCloudChunkInstance {
     pub topology: PointCloudTopologyKind,
 }
 
-#[derive(Component)]
-pub struct PointCloudTransforms {
-    pub world_from_local: Affine3,
-    pub previous_world_from_local: Affine3,
-}
-
 #[derive(ShaderType, Clone)]
 pub struct PointCloudUniform {
     // --- Transformations & Bounds ---
@@ -212,6 +205,8 @@ pub struct PointCloudUniform {
     //   [2].z
     pub local_from_world_transpose_a: [Vec4; 2],
     pub local_from_world_transpose_b: f32,
+    // Same flags as `MeshUniform::flags`
+    pub mesh_flags: u32,
     pub material_bind_group_slot: u32,
     // octree index in the visible nodes texture
     pub octree_index: u32,
@@ -240,7 +235,7 @@ impl PointCloudUniform {
         model_aabb: &Aabb,
         octree_index: u32,
         spacing: f32,
-        mesh_transforms: &PointCloudTransforms,
+        mesh_transforms: &MeshTransforms,
         material_bind_group_slot: MaterialBindGroupSlot,
         splat_settings: &SplatSettings,
     ) -> Self {
@@ -276,6 +271,7 @@ impl PointCloudUniform {
             previous_world_from_local: mesh_transforms.previous_world_from_local.to_transpose(),
             local_from_world_transpose_a,
             local_from_world_transpose_b,
+            mesh_flags: mesh_transforms.flags,
             material_bind_group_slot,
 
             // Splat properties mapping
@@ -295,6 +291,6 @@ impl PointCloudUniform {
 }
 
 pub struct PreparedPointCloudUniform {
-    pub buffer: UniformBuffer<PointCloudUniform>,
-    pub bind_group: BindGroup,
+    pub mesh_uniform_buffer: GpuArrayBuffer<MeshUniform>,
+    pub point_cloud_uniform_buffer: UniformBuffer<PointCloudUniform>,
 }

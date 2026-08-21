@@ -32,6 +32,7 @@ use bevy::{
         camera::extract_cameras,
         extract_component::ExtractComponentPlugin,
         extract_resource::{ExtractResource, ExtractResourcePlugin},
+        init_gpu_resource,
         render_asset::RenderAssetPlugin,
         view::ExtractedView,
         ExtractSchedule, GpuResourceAppExt, Render, RenderApp, RenderStartup, RenderSystems,
@@ -129,9 +130,9 @@ impl Plugin for RenderPointCloudPlugin {
                 (
                     prepare_camera_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
                     prepare_cascades_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
-                    prepare_visible_nodes_texture_bind_group
+                    prepare_point_cloud_uniforms.in_set(RenderSystems::PrepareResources),
+                    prepare_visible_nodes_texture_bind_groups
                         .in_set(RenderSystems::PrepareBindGroups),
-                    prepare_point_cloud_uniforms.in_set(RenderSystems::PrepareBindGroups),
                     check_views_need_specialization
                         .after(RenderSystems::PrepareAssets)
                         .before(RenderSystems::Specialize),
@@ -147,6 +148,17 @@ impl Plugin for RenderPointCloudPlugin {
         render_app
             .world_mut()
             .register_required_components::<ExtractedDirectionalLight, RenderShadowMapVisiblePointCloudEntities>();
+    }
+
+    fn finish(&self, app: &mut bevy::app::App) {
+        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
+            return;
+        };
+
+        render_app.add_systems(
+            RenderStartup,
+            init_gpu_resource::<FallbackVisibleNodesTexture>,
+        );
     }
 }
 

@@ -6,8 +6,8 @@ use bevy::{
     platform::collections::HashMap,
     render::{
         render_resource::BindGroup,
-        sync_world::{MainEntity, RenderEntity},
-        texture::ColorAttachment,
+        sync_world::{MainEntity, MainEntityHashMap, RenderEntity},
+        texture::CachedTexture,
         view::RetainedViewEntity,
     },
 };
@@ -89,14 +89,15 @@ pub struct RenderVisiblePointCloudChunkEntity {
 /// Stores visible nodes and mapping textures for each view
 #[derive(Component)]
 pub struct VisibleNodesTexture {
-    pub visible_nodes: Option<ColorAttachment>,
+    pub texture: CachedTexture,
     /// contains node index per octree index (see [`crate::RenderOctreeInstancesIndex`])
     pub node_index: Vec<HashMap<NodeId, u32>>,
 }
 
-#[derive(Component)]
-pub struct VisibleNodesTextureBindGroup {
-    pub texture: BindGroup,
+#[derive(Component, Clone, Default)]
+pub struct ViewPointCloudBindGroups {
+    // contains one bind group per point cloud
+    pub bind_groups: MainEntityHashMap<BindGroup>,
 }
 
 // impl From<&VisiblePointCloudNodeEntity> for RenderVisiblePointCloudNodeEntity {

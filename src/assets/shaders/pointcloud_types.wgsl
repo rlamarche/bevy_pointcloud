@@ -13,9 +13,10 @@ struct PointCloud {
     // [0].xyz, [1].x,
     // [1].yz, [2].xy
     // [2].z
-    // Use bevy_pbr::mesh_functions::mat2x4_f32_to_mat3x3_unpack to unpack
+    // Use bevy_render::maths::mat2x4_f32_to_mat3x3_unpack to unpack
     local_from_world_transpose_a: mat2x4<f32>,
     local_from_world_transpose_b: f32,
+    mesh_flags: u32,
     material_bind_group_slot: u32,
     octree_index: u32,
     spacing: f32,

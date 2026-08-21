@@ -3,8 +3,7 @@ use bevy::{
     core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT,
     ecs::{
         resource::Resource,
-        system::Commands,
-        world::{FromWorld, World},
+        system::{Commands, Res},
     },
     material::{
         descriptor::{
@@ -14,20 +13,22 @@ use bevy::{
     },
     mesh::{Mesh, MeshVertexBufferLayoutRef},
     pbr::{
-        setup_morph_and_skinning_defs, MeshPipeline, MeshPipelineKey,
+        setup_morph_and_skinning_defs, MeshPipeline, MeshPipelineKey, MeshUniform,
         TONEMAPPING_LUT_SAMPLER_BINDING_INDEX, TONEMAPPING_LUT_TEXTURE_BINDING_INDEX,
     },
-    render::render_resource::{
-        binding_types::{texture_2d, uniform_buffer},
-        BindGroupLayoutEntries, BlendComponent, BlendFactor, BlendOperation, BlendState,
-        ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Face,
-        MultisampleState, PrimitiveState, ShaderStages, StencilFaceState, StencilState,
-        VertexStepMode,
+    render::{
+        render_resource::{
+            binding_types::{texture_2d, uniform_buffer},
+            BindGroupLayoutEntries, BlendComponent, BlendFactor, BlendOperation, BlendState,
+            ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState,
+            Face, GpuArrayBuffer, MultisampleState, PrimitiveState, ShaderStages, StencilFaceState,
+            StencilState, TextureSampleType, VertexStepMode,
+        },
+        renderer::RenderDevice,
     },
     shader::{Shader, ShaderDefVal},
     utils::default,
 };
-use wgpu::TextureSampleType;
 
 use crate::{
     render::pipeline_specializer::SpecializedPointCloudPipeline, PointCloudUniform,
@@ -36,45 +37,36 @@ use crate::{
 
 pub(crate) const IRRADIANCE_VOLUMES_ARE_USABLE: bool = cfg!(not(target_arch = "wasm32"));
 
-pub fn init_point_cloud_pipeline(mut commands: Commands) {
-    commands.init_resource::<PointCloudPipeline>();
-}
-
 #[derive(Resource, Clone)]
 pub struct PointCloudPipeline {
     shader: Handle<Shader>,
     mesh_pipeline: MeshPipeline,
     pub empty_layout: BindGroupLayoutDescriptor,
-    pub point_cloud_uniform_layout: BindGroupLayoutDescriptor,
-    pub point_cloud_octree_visible_nodes_layout: BindGroupLayoutDescriptor,
+    pub point_cloud_layout: BindGroupLayoutDescriptor,
 }
 
-impl FromWorld for PointCloudPipeline {
-    fn from_world(world: &mut World) -> Self {
-        let asset_server = world.resource::<AssetServer>();
-        let mesh_pipeline = world.resource::<MeshPipeline>();
-
-        Self {
-            shader: load_embedded_asset!(asset_server, "pointcloud.wgsl"),
-            mesh_pipeline: mesh_pipeline.clone(),
-            empty_layout: BindGroupLayoutDescriptor::new("pointcloud_empty_layout", &[]),
-            point_cloud_uniform_layout: BindGroupLayoutDescriptor::new(
-                "point_cloud_uniform_layout",
-                &BindGroupLayoutEntries::single(
-                    ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+pub fn init_point_cloud_pipeline(
+    mut commands: Commands,
+    render_device: Res<RenderDevice>,
+    asset_server: Res<AssetServer>,
+    mesh_pipeline: Res<MeshPipeline>,
+) {
+    commands.insert_resource(PointCloudPipeline {
+        shader: load_embedded_asset!(asset_server.as_ref(), "pointcloud.wgsl"),
+        mesh_pipeline: mesh_pipeline.clone(),
+        empty_layout: BindGroupLayoutDescriptor::new("pointcloud_empty_layout", &[]),
+        point_cloud_layout: BindGroupLayoutDescriptor::new(
+            "point_cloud_layout",
+            &BindGroupLayoutEntries::sequential(
+                ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                (
+                    GpuArrayBuffer::<MeshUniform>::binding_layout(&render_device.limits()),
                     uniform_buffer::<PointCloudUniform>(false),
+                    texture_2d(TextureSampleType::Uint).visibility(ShaderStages::VERTEX),
                 ),
             ),
-            point_cloud_octree_visible_nodes_layout: BindGroupLayoutDescriptor {
-                label: "point_cloud_octree_visible_nodes_layout".into(),
-                entries: BindGroupLayoutEntries::single(
-                    ShaderStages::VERTEX,
-                    texture_2d(TextureSampleType::Uint),
-                )
-                .to_vec(),
-            },
-        }
-    }
+        ),
+    });
 }
 
 impl SpecializedPointCloudPipeline for PointCloudPipeline {
@@ -239,7 +231,8 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             shader_defs.push("MULTISAMPLED".into());
         };
 
-        bind_group_layout.push(setup_morph_and_skinning_defs(
+        // TODO is this needed
+        let _ = setup_morph_and_skinning_defs(
             &self.mesh_pipeline.mesh_layouts,
             instance_layout,
             6,
@@ -247,15 +240,15 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             &mut shader_defs,
             &mut vertex_attributes,
             self.mesh_pipeline.skins_use_uniform_buffers,
-        ));
+        );
 
-        bind_group_layout.push(self.point_cloud_uniform_layout.clone());
+        bind_group_layout.push(self.point_cloud_layout.clone());
 
-        if splat_key.contains(SplatPipelineKey::IS_OCTREE) {
-            bind_group_layout.push(self.point_cloud_octree_visible_nodes_layout.clone());
-        } else {
-            bind_group_layout.push(self.empty_layout.clone());
-        }
+        // if splat_key.contains(SplatPipelineKey::IS_OCTREE) {
+        //     bind_group_layout.push(self.point_cloud_octree_visible_nodes_layout.clone());
+        // } else {
+        //     bind_group_layout.push(self.empty_layout.clone());
+        // }
 
         if key.contains(MeshPipelineKey::SCREEN_SPACE_AMBIENT_OCCLUSION) {
             shader_defs.push("SCREEN_SPACE_AMBIENT_OCCLUSION".into());

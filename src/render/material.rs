@@ -88,8 +88,8 @@ use crate::{
     PointCloudDirtySpecializations, PointCloudMaterial3d, PointCloudPipeline,
     PointCloudPipelineSystems, PointCloudTopologyKind, PrepassPipeline, PrepassPipelinePlugin,
     PrepassPipelineSpecializer, PrepassPlugin, RenderPointCloudChunkInstances,
-    RenderPointCloudInstances, SetMeshBindGroup, SetPointCloudUniformGroup, SetVisibleNodesTexture,
-    SimplePointCloudMaterial, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
+    RenderPointCloudInstances, SetPointCloudBindGroup, SimplePointCloudMaterial,
+    SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
     SpecializedShadowMaterialPipelineCache, SplatPipelineKey, SplatSettings,
 };
 
@@ -498,10 +498,8 @@ pub type DrawMaterial = (
     MySetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetMeshViewBindingArrayBindGroup<1>,
-    SetMeshBindGroup<2>,
-    SetPointCloudUniformGroup<3>,
-    SetVisibleNodesTexture<4>,
-    SetMaterialBindGroup<5>,
+    SetPointCloudBindGroup<2>,
+    SetMaterialBindGroup<3>,
     DrawPointCloudInstanced,
 );
 

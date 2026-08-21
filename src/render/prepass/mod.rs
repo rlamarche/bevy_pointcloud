@@ -73,8 +73,8 @@ use crate::{
     PrepassAlphaMaskDrawFunction, PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction,
     PrepassOpaqueDrawFunction, PrepassVertexShader, RenderPointCloudChunkInstances,
     RenderPointCloudInstances, RenderPointCloudMaterialInstances, SetMaterialBindGroup,
-    SetMeshBindGroup, SetPointCloudUniformGroup, SetVisibleNodesTexture,
-    SpecializedPointCloudPipeline, SpecializedPointCloudPipelines, SplatPipelineKey,
+    SetPointCloudBindGroup, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
+    SplatPipelineKey,
 };
 
 /// Sets up everything required to use the prepass pipeline.
@@ -435,6 +435,7 @@ impl SpecializedPointCloudPipeline for PrepassPipelineSpecializer {
         instance_layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
         let mut shader_defs = Vec::new();
+
         if self.properties.bindless {
             shader_defs.push("BINDLESS".into());
         }
@@ -687,7 +688,9 @@ impl PrepassPipeline {
         ) {
             shader_defs.push("PREPASS_FRAGMENT".into());
         }
-        let bind_group = setup_morph_and_skinning_defs(
+
+        // TODO is this needed ?
+        let _ = setup_morph_and_skinning_defs(
             &self.mesh_layouts,
             instance_layout,
             5,
@@ -696,23 +699,19 @@ impl PrepassPipeline {
             &mut vertex_attributes,
             self.skins_use_uniform_buffers,
         );
-        bind_group_layouts.insert(2, bind_group);
 
-        bind_group_layouts.insert(
-            3,
-            self.point_cloud_pipeline.point_cloud_uniform_layout.clone(),
-        );
+        bind_group_layouts.insert(2, self.point_cloud_pipeline.point_cloud_layout.clone());
 
-        if splat_key.contains(SplatPipelineKey::IS_OCTREE) {
-            bind_group_layouts.insert(
-                4,
-                self.point_cloud_pipeline
-                    .point_cloud_octree_visible_nodes_layout
-                    .clone(),
-            );
-        } else {
-            bind_group_layouts.insert(4, self.empty_layout.clone());
-        }
+        // if splat_key.contains(SplatPipelineKey::IS_OCTREE) {
+        //     bind_group_layouts.insert(
+        //         3,
+        //         self.point_cloud_pipeline
+        //             .point_cloud_octree_visible_nodes_layout
+        //             .clone(),
+        //     );
+        // } else {
+        //     bind_group_layouts.insert(3, self.empty_layout.clone());
+        // }
 
         shader_defs.push(ShaderDefVal::UInt(
             "MATERIAL_BIND_GROUP".into(),
@@ -1821,10 +1820,8 @@ pub type DrawPrepass = (
     SetItemPipeline,
     SetPrepassViewBindGroup<0>,
     SetPrepassViewEmptyBindGroup<1>,
-    SetMeshBindGroup<2>,
-    SetPointCloudUniformGroup<3>,
-    SetVisibleNodesTexture<4>,
-    SetMaterialBindGroup<5>,
+    SetPointCloudBindGroup<2>,
+    SetMaterialBindGroup<3>,
     DrawPointCloudInstanced,
 );
 
@@ -1832,9 +1829,7 @@ pub type DrawDepthOnlyPrepass = (
     SetItemPipeline,
     SetPrepassViewBindGroup<0>,
     SetPrepassViewEmptyBindGroup<1>,
-    SetMeshBindGroup<2>,
-    SetPointCloudUniformGroup<3>,
-    SetVisibleNodesTexture<4>,
-    SetPrepassEmptyMaterialBindGroup<5>,
+    SetPointCloudBindGroup<2>,
+    SetPrepassEmptyMaterialBindGroup<3>,
     DrawPointCloudInstanced,
 );

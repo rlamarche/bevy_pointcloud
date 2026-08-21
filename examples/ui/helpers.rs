@@ -43,25 +43,26 @@ pub fn settings_panel() -> impl Scene {
         ui_hover_observer()
         Children [
             settings_title(),
+            settings_section_title("Use <space> to toggle sun movement"),
             // settings_checkbox(),
-            settings_section(
-                "EDL radius",
-                settings_slider(0.0, 10.0, 1.4, 0.01, 2, |ui_settings, value| {
-                    ui_settings.edl_radius = value;
-                })
-            ),
-            settings_section(
-                "EDL strength",
-                settings_slider(0.0, 10.0, 0.4, 0.01, 2, |ui_settings, value| {
-                    ui_settings.edl_strength = value;
-                })
-            ),
-            settings_section(
-                "EDL neighbour count",
-                settings_slider(4.0, 8.0, 4.0, 4.0, -1, |ui_settings, value| {
-                    ui_settings.edl_neighbour_count = value as u32;
-                })
-            ),
+            // settings_section(
+            //     "EDL radius",
+            //     settings_slider(0.0, 10.0, 1.4, 0.01, 2, |ui_settings, value| {
+            //         ui_settings.edl_radius = value;
+            //     })
+            // ),
+            // settings_section(
+            //     "EDL strength",
+            //     settings_slider(0.0, 10.0, 0.4, 0.01, 2, |ui_settings, value| {
+            //         ui_settings.edl_strength = value;
+            //     })
+            // ),
+            // settings_section(
+            //     "EDL neighbour count",
+            //     settings_slider(4.0, 8.0, 4.0, 4.0, -1, |ui_settings, value| {
+            //         ui_settings.edl_neighbour_count = value as u32;
+            //     })
+            // ),
             settings_section(
                 "Min Node Size",
                 settings_slider(30.0, 1000.0, 150.0, 10.0, 0, |ui_settings, value| {
@@ -72,12 +73,31 @@ pub fn settings_panel() -> impl Scene {
                 "Point Budget",
                 settings_slider(
                     100_000.0,
-                    100_000_000.0,
                     10_000_000.0,
+                    1_000_000.0,
                     100.0,
                     -2,
                     |ui_settings, value| {
                         ui_settings.point_budget = value as usize;
+                    }
+                )
+            ),
+            settings_section(
+                "Light Min Node Size",
+                settings_slider(30.0, 1000.0, 150.0, 10.0, 0, |ui_settings, value| {
+                    ui_settings.light_min_node_size = value;
+                })
+            ),
+            settings_section(
+                "Light Point Budget",
+                settings_slider(
+                    100_000.0,
+                    10_000_000.0,
+                    1_000_000.0,
+                    100.0,
+                    -2,
+                    |ui_settings, value| {
+                        ui_settings.light_point_budget = value as usize;
                     }
                 )
             ),
