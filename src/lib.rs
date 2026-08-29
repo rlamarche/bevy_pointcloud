@@ -17,6 +17,7 @@ use bevy::{
     log::{info, warn},
     mesh::Mesh3d,
     platform::collections::HashMap,
+    render::batching::NoAutomaticBatching,
     shader::{load_shader_library, ShaderRef},
 };
 
@@ -95,6 +96,9 @@ impl Plugin for PointCloudPlugin {
 
         #[cfg(feature = "las")]
         app.add_plugins(LasLoaderPlugin);
+
+        // prevents automatic batching of point clouds (for transparent phases)
+        app.register_required_components::<PointCloud3d, NoAutomaticBatching>();
     }
 }
 

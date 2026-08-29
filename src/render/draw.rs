@@ -91,8 +91,6 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetMeshBindGroup<I> {
         let skin_uniforms = skin_uniforms.into_inner();
         let morph_indices = morph_indices.into_inner();
 
-        let entity = &item.main_entity();
-
         let Some(chunk_instance) = render_point_cloud_chunk_instances.get(&item.entity()) else {
             warn!(
                 "render_point_cloud_chunk_instance missing 1 for entity {:?} main {:?}",
@@ -101,6 +99,8 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetMeshBindGroup<I> {
             );
             return RenderCommandResult::Skip;
         };
+
+        let entity = &chunk_instance.root_entity;
 
         // get mesh instance from the root
         let Some(mesh_asset_id) = mesh_instances.mesh_asset_id(chunk_instance.root_entity) else {
@@ -318,7 +318,8 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
             return RenderCommandResult::Skip;
         };
 
-        let Some(pointcloud_instance) = render_point_cloud_instances.get(&item.main_entity())
+        let Some(pointcloud_instance) =
+            render_point_cloud_instances.get(&chunk_instance.root_entity)
         else {
             return RenderCommandResult::Skip;
         };
@@ -334,9 +335,6 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
             return RenderCommandResult::Failure("unable to get quad vertex slice");
         };
 
-        // let Some(mesh_asset_id) = mesh_instances.mesh_asset_id(item.main_entity()) else {
-        //     return RenderCommandResult::Skip;
-        // };
         let Some(vertex_buffer_slice) =
             mesh_allocator.mesh_vertex_slice(&chunk_instance.mesh_asset_id)
         else {

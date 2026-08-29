@@ -1307,6 +1307,7 @@ pub fn queue_material_meshes(
                 *render_entity,
                 render_point_cloud_chunk_instance.root_entity,
             );
+
             transparent_phase.remove(
                 *render_entity,
                 render_point_cloud_chunk_instance.root_entity,
@@ -1517,17 +1518,18 @@ pub fn queue_material_meshes(
                     else {
                         continue;
                     };
+
                     transparent_phase.add_retained(Transparent3d {
                         sorting_info: TransparentSortingInfo3d::Sorted {
                             mesh_center: get_mesh_instance_world_from_local(
-                                *visible_entity,
+                                render_point_cloud_chunk_instance.root_entity,
                                 mesh_instance.current_uniform_index,
                                 &render_mesh_instances,
                                 maybe_batched_instance_buffers.as_deref(),
                             )
                             .transform_point3(
                                 mesh_assets
-                                    .get(mesh_instance.mesh_asset_id())
+                                    .get(render_point_cloud_chunk_instance.mesh_asset_id)
                                     .unwrap()
                                     .aabb_center,
                             ),
