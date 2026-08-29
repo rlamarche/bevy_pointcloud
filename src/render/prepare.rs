@@ -20,7 +20,7 @@ use bevy::{
         },
         renderer::{RenderDevice, RenderQueue},
         sync_world::MainEntity,
-        texture::TextureCache,
+        texture::{CachedTexture, TextureCache},
         view::ExtractedView,
     },
 };
@@ -168,6 +168,8 @@ pub fn prepare_camera_visible_nodes_texture(
         With<ExtractedCamera>,
     >,
     mut visible_nodes_buffer: Local<Vec<VisibleOctreeNodeUniform>>,
+    mut existing_visible_node_textures: Query<&mut VisibleNodesTexture>,
+    fallback_visible_nodes_texture: Res<FallbackVisibleNodesTexture>,
 ) {
     // for each view
     for (entity, extracted_view, visible_nodes) in &views_3d {
@@ -177,8 +179,17 @@ pub fn prepare_camera_visible_nodes_texture(
             continue;
         };
 
+        // Fetch or create the `VisibleNodesTexture` component
+        let visible_nodes_texture = match existing_visible_node_textures.get_mut(entity) {
+            Ok(ref mut existing_visibles_node_texture) => {
+                std::mem::take(&mut **existing_visibles_node_texture)
+            }
+            Err(_) => VisibleNodesTexture::default(),
+        };
+
         prepare_visible_nodes_texture(
             &mut commands,
+            visible_nodes_texture,
             &render_point_cloud_chunks,
             &render_meshes,
             &mesh_allocator,
@@ -189,6 +200,7 @@ pub fn prepare_camera_visible_nodes_texture(
             &mut visible_nodes_buffer,
             entity,
             visible_nodes,
+            &fallback_visible_nodes_texture,
         );
     }
 }
@@ -206,6 +218,8 @@ pub fn prepare_cascades_visible_nodes_texture(
     views_3d: Query<(Entity, &ExtractedView, &LightEntity)>,
     mut visible_nodes_buffer: Local<Vec<VisibleOctreeNodeUniform>>,
     shadow_map_visible_entities: Query<&RenderShadowMapVisiblePointCloudEntities>,
+    mut existing_visible_node_textures: Query<&mut VisibleNodesTexture>,
+    fallback_visible_nodes_texture: Res<FallbackVisibleNodesTexture>,
 ) {
     // for each view
     for (entity, extracted_view, light_entity) in &views_3d {
@@ -237,8 +251,17 @@ pub fn prepare_cascades_visible_nodes_texture(
             continue;
         };
 
+        // Fetch or create the `VisibleNodesTexture` component
+        let visible_nodes_texture = match existing_visible_node_textures.get_mut(entity) {
+            Ok(ref mut existing_visibles_node_texture) => {
+                std::mem::take(&mut **existing_visibles_node_texture)
+            }
+            Err(_) => VisibleNodesTexture::default(),
+        };
+
         prepare_visible_nodes_texture(
             &mut commands,
+            visible_nodes_texture,
             &render_point_cloud_chunks,
             &render_meshes,
             &mesh_allocator,
@@ -249,66 +272,15 @@ pub fn prepare_cascades_visible_nodes_texture(
             &mut visible_nodes_buffer,
             entity,
             visible_nodes,
+            &fallback_visible_nodes_texture,
         );
-    }
-}
-
-pub fn prepare_visible_nodes_texture_bind_groups(
-    mut commands: Commands,
-    pipeline_cache: Res<PipelineCache>,
-    point_cloud_pipeline: Res<PointCloudPipeline>,
-    render_device: Res<RenderDevice>,
-    views: Query<(Entity, Option<&VisibleNodesTexture>)>,
-    mut existing_view_point_cloud_bind_groups: Query<&mut ViewPointCloudBindGroups>,
-    prepared_point_cloud_uniforms: Res<PreparedPointCloudUniforms>,
-    items: Query<&MainEntity, With<PointCloud3d>>,
-    fallback_visible_nodes_texture: Res<FallbackVisibleNodesTexture>,
-) {
-    let layout = &pipeline_cache.get_bind_group_layout(&point_cloud_pipeline.point_cloud_layout);
-    for (entity, visible_nodes_texture) in &views {
-        let texture_view = match visible_nodes_texture {
-            Some(visible_nodes_texture) => visible_nodes_texture.texture.default_view.clone(),
-            None => fallback_visible_nodes_texture.texture_view.clone(),
-        };
-
-        // Fetch or create the `ViewPointCloudBindGroups` component
-        let mut view_point_cloud_bind_groups =
-            match existing_view_point_cloud_bind_groups.get_mut(entity) {
-                Ok(ref mut view_point_cloud_bind_groups) => {
-                    std::mem::take(&mut **view_point_cloud_bind_groups)
-                }
-                Err(_) => ViewPointCloudBindGroups::default(),
-            };
-
-        for main_entity in items {
-            let Some(prepared_uniform) = prepared_point_cloud_uniforms.get(main_entity) else {
-                continue;
-            };
-
-            // TODO reuse previous bind group ?
-            let bind_group = render_device.create_bind_group(
-                "view_point_cloud",
-                layout,
-                &BindGroupEntries::sequential((
-                    prepared_uniform.mesh_uniform_buffer.binding().unwrap(),
-                    &prepared_uniform.point_cloud_uniform_buffer,
-                    &texture_view,
-                )),
-            );
-
-            view_point_cloud_bind_groups
-                .bind_groups
-                .insert(*main_entity, bind_group);
-        }
-
-        let mut entity_commands = commands.entity(entity);
-        entity_commands.insert(view_point_cloud_bind_groups);
     }
 }
 
 /// Prepare a visible nodes texture for given visible nodes `visible_nodes`
 fn prepare_visible_nodes_texture(
     commands: &mut Commands<'_, '_>,
+    mut visible_nodes_texture: VisibleNodesTexture,
     render_point_cloud_chunks: &RenderAssets<RenderPointCloudChunk>,
     render_meshes: &RenderAssets<RenderMesh>,
     mesh_allocator: &MeshAllocator,
@@ -319,6 +291,7 @@ fn prepare_visible_nodes_texture(
     visible_nodes_buffer: &mut Vec<VisibleOctreeNodeUniform>,
     entity: Entity,
     visible_nodes: &RenderVisiblePointCloudEntities,
+    fallback_visible_nodes_texture: &FallbackVisibleNodesTexture,
 ) {
     let octrees_count = visible_nodes
         .entities
@@ -329,9 +302,57 @@ fn prepare_visible_nodes_texture(
                 .contains_key(&visible_entity.entity)
         })
         .count();
+
+    // if the visible nodes texture is not yet allocated or needs to be resized
+    if visible_nodes_texture
+        .texture
+        .as_ref()
+        .map(|cached_texture| {
+            cached_texture.texture.width() != MAX_NODES as u32
+                || cached_texture.texture.height() != octrees_count as u32
+        })
+        .unwrap_or(true)
+    {
+        let texture = if octrees_count == 0 {
+            CachedTexture {
+                texture: fallback_visible_nodes_texture.texture.clone(),
+                default_view: fallback_visible_nodes_texture.texture_view.clone(),
+            }
+        } else {
+            // get the texture for containing visible nodes data
+
+            // The size of the depth texture
+            let size = Extent3d {
+                width: MAX_NODES as u32,
+                height: octrees_count as u32,
+                depth_or_array_layers: 1,
+            };
+
+            let descriptor = TextureDescriptor {
+                label: Some("pcl_visible_nodes_texture"),
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: TextureDimension::D2,
+                format: Rgba8Uint,
+                usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+                view_formats: &[],
+            };
+
+            texture_cache.get(render_device, descriptor)
+        };
+
+        visible_nodes_texture.texture = Some(texture);
+        visible_nodes_texture.has_changed = true;
+    }
+
     if octrees_count == 0 {
         return;
     }
+
+    // at this point, the texture is allocated
+    let texture = visible_nodes_texture.texture.as_ref().unwrap();
+
     let required_buffer_size = octrees_count * MAX_NODES;
 
     // reuse allocations
@@ -339,28 +360,6 @@ fn prepare_visible_nodes_texture(
         visible_nodes_buffer.resize(required_buffer_size, VisibleOctreeNodeUniform::default());
     }
 
-    // get the texture for containing visible nodes data
-    let texture = {
-        // The size of the depth texture
-        let size = Extent3d {
-            width: MAX_NODES as u32,
-            height: octrees_count as u32,
-            depth_or_array_layers: 1,
-        };
-
-        let descriptor = TextureDescriptor {
-            label: Some("pcl_visible_nodes_texture"),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: TextureDimension::D2,
-            format: Rgba8Uint,
-            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-            view_formats: &[],
-        };
-
-        texture_cache.get(render_device, descriptor)
-    };
     let mut node_index = vec![HashMap::<NodeId, u32>::default(); render_octree_index.slab.len()];
     for (_main_entity, visible_point_cloud) in &visible_nodes.entities {
         let mut sorted_octree_nodes = visible_point_cloud.chunk_entities.clone();
@@ -460,8 +459,55 @@ fn prepare_visible_nodes_texture(
             depth_or_array_layers: 1,
         },
     );
-    commands.entity(entity).insert(VisibleNodesTexture {
-        texture,
-        node_index,
-    });
+    commands.entity(entity).insert(visible_nodes_texture);
+}
+
+pub fn prepare_visible_nodes_texture_bind_groups(
+    mut commands: Commands,
+    pipeline_cache: Res<PipelineCache>,
+    point_cloud_pipeline: Res<PointCloudPipeline>,
+    render_device: Res<RenderDevice>,
+    views: Query<(Entity, &VisibleNodesTexture)>,
+    mut existing_view_point_cloud_bind_groups: Query<&mut ViewPointCloudBindGroups>,
+    prepared_point_cloud_uniforms: Res<PreparedPointCloudUniforms>,
+    items: Query<&MainEntity, With<PointCloud3d>>,
+) {
+    let layout = &pipeline_cache.get_bind_group_layout(&point_cloud_pipeline.point_cloud_layout);
+    for (entity, visible_nodes_texture) in &views {
+        // Fetch or create the `ViewPointCloudBindGroups` component
+        let mut view_point_cloud_bind_groups =
+            match existing_view_point_cloud_bind_groups.get_mut(entity) {
+                Ok(ref mut view_point_cloud_bind_groups) => {
+                    std::mem::take(&mut **view_point_cloud_bind_groups)
+                }
+                Err(_) => ViewPointCloudBindGroups::default(),
+            };
+
+        for main_entity in items {
+            let Some(prepared_uniform) = prepared_point_cloud_uniforms.get(main_entity) else {
+                continue;
+            };
+
+            if visible_nodes_texture.has_changed
+                && let Some(ref texture) = visible_nodes_texture.texture
+            {
+                let bind_group = render_device.create_bind_group(
+                    "view_point_cloud",
+                    layout,
+                    &BindGroupEntries::sequential((
+                        prepared_uniform.mesh_uniform_buffer.binding().unwrap(),
+                        &prepared_uniform.point_cloud_uniform_buffer,
+                        &texture.default_view,
+                    )),
+                );
+
+                view_point_cloud_bind_groups
+                    .bind_groups
+                    .insert(*main_entity, bind_group);
+            }
+        }
+
+        let mut entity_commands = commands.entity(entity);
+        entity_commands.insert(view_point_cloud_bind_groups);
+    }
 }

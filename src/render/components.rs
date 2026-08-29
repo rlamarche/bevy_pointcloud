@@ -87,11 +87,13 @@ pub struct RenderVisiblePointCloudChunkEntity {
 }
 
 /// Stores visible nodes and mapping textures for each view
-#[derive(Component)]
+#[derive(Component, Default)]
 pub struct VisibleNodesTexture {
-    pub texture: CachedTexture,
+    pub texture: Option<CachedTexture>,
     /// contains node index per octree index (see [`crate::RenderOctreeInstancesIndex`])
     pub node_index: Vec<HashMap<NodeId, u32>>,
+    /// if true, needs to reallocate the associated bind group
+    pub has_changed: bool,
 }
 
 #[derive(Component, Clone, Default)]
