@@ -177,14 +177,22 @@ pub fn on_discard_point_cloud_chunk_3d(
         world.get::<ChildOf>(entity),
     ) {
         let point_cloud_entity = {
-            if let Some(&ChildOf(parent_entity)) = maybe_parent
-                && world.entity(parent_entity).contains::<PointCloud3d>()
-            {
-                parent_entity
+            if let Some(&ChildOf(parent_entity)) = maybe_parent {
+                if let Ok(parent) = world.get_entity(parent_entity) {
+                    if parent.contains::<PointCloud3d>() {
+                        parent_entity
+                    } else {
+                        entity
+                    }
+                } else {
+                    // the entity has been despawned, return early
+                    return;
+                }
             } else {
                 entity
             }
         };
+
         if let Some(PointCloud3d(point_cloud_handle)) =
             world.get::<PointCloud3d>(point_cloud_entity).cloned()
         {

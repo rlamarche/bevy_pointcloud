@@ -4,11 +4,12 @@ use crate::{
     visibility::{
         budget::PointCloudPointBudget, heap_guard::HeapGuard, stack::StackedPointCloudNodeEntity,
     },
-    ChildrenMask, GlobalVisiblePointCloudChunks, GlobalVisiblePointCloudNodes, LoadRequestType,
-    PointCloud, PointCloud3d, PointCloudChunk3d, PointCloudInstances, PointCloudLoadTasks,
-    PointCloudNodeStatus, PointCloudTopology, PointCloudVisibilitySettings,
-    PointCloudVisiblityPlugin, ScreenPixelRadiusFilter, SkipPointCloudVisibility,
-    VisiblePointCloudFlatEntities, VisiblePointCloudNodeEntity, VisiblePointCloudOctreeEntities,
+    CascadesVisiblePointCloudEntities, ChildrenMask, GlobalVisiblePointCloudChunks,
+    GlobalVisiblePointCloudNodes, LoadRequestType, PointCloud, PointCloud3d, PointCloudChunk3d,
+    PointCloudInstances, PointCloudLoadTasks, PointCloudNodeStatus, PointCloudTopology,
+    PointCloudVisibilitySettings, PointCloudVisiblityPlugin, ScreenPixelRadiusFilter,
+    SkipPointCloudVisibility, VisiblePointCloudFlatEntities, VisiblePointCloudNodeEntity,
+    VisiblePointCloudOctreeEntities,
 };
 use bevy::{
     asset::Assets,
@@ -20,6 +21,7 @@ use bevy::{
     diagnostic::Diagnostics,
     ecs::{
         entity::EntityHashMap,
+        lifecycle::RemovedComponents,
         query::With,
         system::{Local, Query, Res, ResMut},
     },
@@ -572,6 +574,31 @@ pub fn set_visible_point_cloud_chunk_visibility(
                     if let Ok(mut view_visibility) = entities.get_mut(chunk_entity) {
                         view_visibility.set_visible();
                     }
+                }
+            }
+        }
+    }
+}
+
+/// Cleanup point cloud visibility after despawned
+pub fn update_removed_point_clouds_visibility(
+    mut removed_items: RemovedComponents<PointCloud3d>,
+    mut visible_point_cloud_octrees_entities: Query<&mut VisiblePointCloudOctreeEntities>,
+    mut cascades_visible_point_clouds_entities: Query<&mut CascadesVisiblePointCloudEntities>,
+) {
+    for entity in removed_items.read() {
+        for mut visible_point_cloud_octree_entities in &mut visible_point_cloud_octrees_entities {
+            visible_point_cloud_octree_entities.remove(&entity);
+        }
+        for mut cascades_visible_point_cloud_entities in &mut cascades_visible_point_clouds_entities
+        {
+            for (_, cascade_visible_point_cloud_entities) in
+                &mut cascades_visible_point_cloud_entities.entities
+            {
+                for (_, visible_point_cloud_entities) in
+                    cascade_visible_point_cloud_entities.iter_mut()
+                {
+                    visible_point_cloud_entities.remove(&entity);
                 }
             }
         }

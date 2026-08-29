@@ -122,7 +122,7 @@ impl Plugin for RenderPointCloudPlugin {
                         .after(extract_cameras),
                     extract_cascade_visible_point_cloud_chunks.in_set(PointCloudExtractionSystems::ExtractVisiblePointCloudChunks)
                         .after(extract_lights),
-
+                    free_removed_point_cloud_uniforms,
                 ),
             )
             .add_systems(

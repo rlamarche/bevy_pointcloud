@@ -44,6 +44,10 @@ impl VisiblePointCloudOctreeEntities {
         self.entities.entry(entity).or_default()
     }
 
+    pub fn remove(&mut self, entity: &Entity) -> Option<VisiblePointCloudOctreeEntity> {
+        self.entities.remove(entity)
+    }
+
     pub fn clear_all(&mut self) {
         // Don't just nuke the hash table; we want to reuse allocations.
         for point_cloud_entities in self.entities.values_mut() {

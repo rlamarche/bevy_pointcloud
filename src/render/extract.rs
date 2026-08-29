@@ -13,6 +13,7 @@ use bevy::{
     ecs::{
         entity::{ContainsEntity, Entity},
         hierarchy::ChildOf,
+        lifecycle::RemovedComponents,
         query::{Changed, Has, Or, With, Without},
         system::{Local, Query, Res, ResMut},
     },
@@ -40,11 +41,12 @@ use nonmax::NonMaxU16;
 
 use crate::{
     CascadesVisiblePointCloudEntities, PointCloud, PointCloud3d, PointCloudChunk,
-    PointCloudChunk3d, PointCloudTopologyKind, RenderOctreeInstancesIndex, RenderPointCloudChunk,
-    RenderPointCloudChunkInstance, RenderPointCloudChunkInstances, RenderPointCloudInstance,
-    RenderPointCloudInstances, RenderShadowMapVisiblePointCloudEntities,
-    RenderVisiblePointCloudChunkEntity, RenderVisiblePointCloudEntities, SplatMeshes,
-    SplatSettings, VisiblePointCloudOctreeEntities,
+    PointCloudChunk3d, PointCloudTopologyKind, PreparedPointCloudUniforms,
+    RenderOctreeInstancesIndex, RenderPointCloudChunk, RenderPointCloudChunkInstance,
+    RenderPointCloudChunkInstances, RenderPointCloudInstance, RenderPointCloudInstances,
+    RenderShadowMapVisiblePointCloudEntities, RenderVisiblePointCloudChunkEntity,
+    RenderVisiblePointCloudEntities, SplatMeshes, SplatSettings, ViewPointCloudBindGroups,
+    VisiblePointCloudOctreeEntities,
 };
 
 /// This system extracts the visible point cloud chunk entities into the render world while
@@ -281,7 +283,7 @@ pub fn extract_pointcloud_instances(
             };
 
             let Ok(render_entity) = mapper.get(entity) else {
-                warn!("Render entity for PointCloud3d {} not found", entity);
+                warn!("Render entity for PointCloud3d {} not found 2", entity);
                 return;
             };
 
@@ -400,7 +402,15 @@ pub fn extract_pointcloud_chunk_instances(
         },
     );
 
-    // Collect the render mesh instances.
+    // destructure for double mutable borrow
+    let RenderPointCloudChunkInstances {
+        entities, previous, ..
+    } = &mut *render_point_cloud_chunk_instances;
+
+    // keep previous extracted render point cloud chunk instances
+    std::mem::swap(entities, previous);
+
+    // Collect the render mesh instances
     render_point_cloud_chunk_instances.clear();
     for queue in render_point_cloud_chunk_instance_queues.iter_mut() {
         for (entity, render_point_cloud_chunk_instance) in queue.drain(..) {
@@ -577,4 +587,21 @@ fn mesh_flags_from_components(
         MeshFlags::from_bits_retain((lod_index_bits as u32) << MeshFlags::LOD_INDEX_SHIFT);
 
     mesh_flags
+}
+
+/// Free allocated buffers & bindgroups for removed point clouds
+pub fn free_removed_point_cloud_uniforms(
+    mut removed_items: Extract<RemovedComponents<PointCloud3d>>,
+    mut prepared_point_cloud_uniforms: ResMut<PreparedPointCloudUniforms>,
+    mut view_point_clouds_bind_groups: Query<&mut ViewPointCloudBindGroups>,
+) {
+    for entity in removed_items.read() {
+        let main_entity = MainEntity::from(entity);
+        for mut view_point_cloud_bind_groups in &mut view_point_clouds_bind_groups {
+            view_point_cloud_bind_groups
+                .bind_groups
+                .remove(&main_entity);
+        }
+        prepared_point_cloud_uniforms.remove(&main_entity);
+    }
 }

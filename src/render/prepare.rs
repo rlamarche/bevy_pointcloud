@@ -1,5 +1,5 @@
 use bevy::{
-    core_pipeline::core_3d::Opaque3d,
+    core_pipeline::core_3d::{Opaque3d, Transparent3d},
     ecs::{
         entity::Entity,
         query::With,
@@ -12,7 +12,7 @@ use bevy::{
         camera::ExtractedCamera,
         mesh::{allocator::MeshAllocator, RenderMesh},
         render_asset::RenderAssets,
-        render_phase::ViewBinnedRenderPhases,
+        render_phase::{ViewBinnedRenderPhases, ViewSortedRenderPhases},
         render_resource::{
             BindGroupEntries, Extent3d, GpuArrayBuffer, PipelineCache, TexelCopyBufferLayout,
             TextureDescriptor, TextureDimension, TextureFormat::Rgba8Uint, TextureUsages,
@@ -163,6 +163,7 @@ pub fn prepare_camera_visible_nodes_texture(
     render_queue: Res<RenderQueue>,
     render_octree_index: Res<RenderOctreeInstancesIndex>,
     opaque_phases: Res<ViewBinnedRenderPhases<Opaque3d>>,
+    transparent_phases: Res<ViewSortedRenderPhases<Transparent3d>>,
     views_3d: Query<
         (Entity, &ExtractedView, &RenderVisiblePointCloudEntities),
         With<ExtractedCamera>,
@@ -175,7 +176,9 @@ pub fn prepare_camera_visible_nodes_texture(
     for (entity, extracted_view, visible_nodes) in &views_3d {
         // skip if no phases
         // TODO: add other phases types here ?
-        if !opaque_phases.contains_key(&extracted_view.retained_view_entity) {
+        if !opaque_phases.contains_key(&extracted_view.retained_view_entity)
+            && !transparent_phases.contains_key(&extracted_view.retained_view_entity)
+        {
             continue;
         };
 
@@ -485,25 +488,32 @@ pub fn prepare_visible_nodes_texture_bind_groups(
 
         for main_entity in items {
             let Some(prepared_uniform) = prepared_point_cloud_uniforms.get(main_entity) else {
+                // free unused bind groups
+                view_point_cloud_bind_groups.bind_groups.remove(main_entity);
+
                 continue;
             };
 
-            if visible_nodes_texture.has_changed
-                && let Some(ref texture) = visible_nodes_texture.texture
-            {
-                let bind_group = render_device.create_bind_group(
-                    "view_point_cloud",
-                    layout,
-                    &BindGroupEntries::sequential((
-                        prepared_uniform.mesh_uniform_buffer.binding().unwrap(),
-                        &prepared_uniform.point_cloud_uniform_buffer,
-                        &texture.default_view,
-                    )),
-                );
+            if visible_nodes_texture.has_changed {
+                // first remove the previous bind group
+                view_point_cloud_bind_groups.bind_groups.remove(main_entity);
 
-                view_point_cloud_bind_groups
-                    .bind_groups
-                    .insert(*main_entity, bind_group);
+                // then create a new if a texture is available
+                if let Some(ref texture) = visible_nodes_texture.texture {
+                    let bind_group = render_device.create_bind_group(
+                        "view_point_cloud",
+                        layout,
+                        &BindGroupEntries::sequential((
+                            prepared_uniform.mesh_uniform_buffer.binding().unwrap(),
+                            &prepared_uniform.point_cloud_uniform_buffer,
+                            &texture.default_view,
+                        )),
+                    );
+
+                    view_point_cloud_bind_groups
+                        .bind_groups
+                        .insert(*main_entity, bind_group);
+                }
             }
         }
 

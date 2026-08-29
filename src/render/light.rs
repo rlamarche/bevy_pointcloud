@@ -442,8 +442,9 @@ pub fn queue_shadows(
             extracted_view_light.retained_view_entity,
             visible_entities_class,
         ) {
-            let Some(render_point_cloud_chunk_instance) =
-                render_point_cloud_chunk_instances.get(render_entity)
+            let Some(render_point_cloud_chunk_instance) = render_point_cloud_chunk_instances
+                .previous
+                .get(render_entity)
             else {
                 warn!(
                     "RenderPointCloudChunkInstance not found for entity {:?} when removing shadow phase",

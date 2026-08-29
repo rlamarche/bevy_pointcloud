@@ -37,17 +37,6 @@ pub fn expire_specializations_for_views(
 }
 
 /// Duplicated from Bevy to prevent collisions
-/// Stores information about all entities that have changed in such a way as to
-/// potentially require their pipelines to be re-specialized.
-///
-/// This is conservative; there's no harm, other than performance, in having an
-/// entity in this list that doesn't actually need to be re-specialized. Note
-/// that the presence of an entity in this list doesn't mean that a new shader
-/// will necessarily be compiled; the pipeline cache is checked first.
-///
-/// This handles 2D meshes, 3D meshes, and sprites. For 2D and 3D wireframes,
-/// see [`DirtyWireframeSpecializations`]. The reason for having two separate
-/// lists is that a single entity can have both a mesh and a wireframe.
 #[derive(Clone, Resource, Default)]
 pub struct PointCloudDirtySpecializations {
     /// All renderable objects that must be re-specialized this frame.

@@ -176,7 +176,13 @@ impl From<SplatPipelineKey> for u64 {
 /// The set of information needed is different depending on whether CPU or GPU
 /// [`MeshUniform`] building is in use.
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct RenderPointCloudChunkInstances(EntityHashMap<RenderPointCloudChunkInstance>);
+pub struct RenderPointCloudChunkInstances {
+    #[deref]
+    pub entities: EntityHashMap<RenderPointCloudChunkInstance>,
+
+    /// stores the previous render point cloud chunk instances for handling the removing of phases
+    pub previous: EntityHashMap<RenderPointCloudChunkInstance>,
+}
 
 /// CPU data that the render world keeps for each entity, when *not* using GPU
 /// mesh uniform building.

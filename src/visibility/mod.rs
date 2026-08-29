@@ -77,6 +77,8 @@ impl Plugin for PointCloudVisiblityPlugin {
             .add_systems(
                 PostUpdate,
                 (
+                    update_removed_point_clouds_visibility
+                        .before(check_point_cloud_nodes_visibility),
                     check_point_cloud_nodes_visibility
                         .in_set(PointCloudVisibilitySystems::CheckPointCloudNodesVisibility),
                     set_visible_point_cloud_chunk_visibility
