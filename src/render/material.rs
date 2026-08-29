@@ -728,7 +728,6 @@ pub fn late_sweep_material_instances(
 /// specific entities require pipeline specialization before the draw phase.
 pub fn extract_entities_needs_specialization<M>(
     entities_needing_specialization: Extract<Res<EntitiesNeedingSpecialization<M>>>,
-    mapper: Extract<Query<&RenderEntity>>,
     mut dirty_specializations: ResMut<PointCloudDirtySpecializations>,
 ) where
     M: Material,
@@ -737,8 +736,6 @@ pub fn extract_entities_needs_specialization<M>(
     // into the render-world `DirtySpecializations` table.
     for (entity, render_entity) in entities_needing_specialization.changed.iter() {
         let main_entity = MainEntity::from(*entity);
-
-        info!("extract_entities_needs_specialization {:?}", main_entity);
 
         dirty_specializations
             .changed_renderables
