@@ -317,7 +317,7 @@ impl Material for StandardPointCloudMaterial {
         };
 
         if let Some(label) = &mut descriptor.label {
-            *label = format!("pbr_{}", *label).into();
+            *label = format!("pbr_pcl_{}", *label).into();
         }
         if let Some(depth_stencil) = descriptor.depth_stencil.as_mut() {
             depth_stencil.bias.constant =

@@ -1445,7 +1445,6 @@ pub fn queue_material_meshes(
                         // way, we know we don't need to re-examine it in future
                         // frames.
                         opaque_phase.update_cache(*visible_entity, None);
-                        warn!("DEFERRED");
                         continue;
                     }
                     let Some(draw_function) = material

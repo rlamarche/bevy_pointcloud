@@ -25,8 +25,12 @@
 }
 #endif
 
-
+#ifdef PREPASS_PIPELINE
+#import bevy_pointcloud::prepass_io::VertexOutput
+#else
 #import bevy_pointcloud::forward_io::VertexOutput
+#endif
+
 #import bevy_pointcloud::pointcloud_bindings::pointcloud
 
 // ============================================================================

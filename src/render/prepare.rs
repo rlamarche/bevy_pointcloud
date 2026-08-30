@@ -1,5 +1,8 @@
 use bevy::{
-    core_pipeline::core_3d::{Opaque3d, Transparent3d},
+    core_pipeline::{
+        core_3d::{Opaque3d, Transparent3d},
+        deferred::{AlphaMask3dDeferred, Opaque3dDeferred},
+    },
     ecs::{
         entity::Entity,
         query::With,
@@ -163,6 +166,8 @@ pub fn prepare_camera_visible_nodes_texture(
     render_queue: Res<RenderQueue>,
     render_octree_index: Res<RenderOctreeInstancesIndex>,
     opaque_phases: Res<ViewBinnedRenderPhases<Opaque3d>>,
+    opaque_deferred_render_phases: Res<ViewBinnedRenderPhases<Opaque3dDeferred>>,
+    alpha_mask_deferred_render_phases: Res<ViewBinnedRenderPhases<AlphaMask3dDeferred>>,
     transparent_phases: Res<ViewSortedRenderPhases<Transparent3d>>,
     views_3d: Query<
         (Entity, &ExtractedView, &RenderVisiblePointCloudEntities),
@@ -178,6 +183,8 @@ pub fn prepare_camera_visible_nodes_texture(
         // TODO: add other phases types here ?
         if !opaque_phases.contains_key(&extracted_view.retained_view_entity)
             && !transparent_phases.contains_key(&extracted_view.retained_view_entity)
+            && !opaque_deferred_render_phases.contains_key(&extracted_view.retained_view_entity)
+            && !alpha_mask_deferred_render_phases.contains_key(&extracted_view.retained_view_entity)
         {
             continue;
         };

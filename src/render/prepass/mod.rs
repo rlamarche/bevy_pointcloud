@@ -1537,10 +1537,16 @@ pub fn queue_prepass_material_meshes(
                 );
             }
             if let Some(ref mut opaque_deferred_phase) = opaque_deferred_phase {
-                opaque_deferred_phase.remove(*main_entity);
+                opaque_deferred_phase.remove_unbatchable_entity_pair(
+                    render_entity,
+                    &render_point_cloud_chunk_instance.root_entity,
+                );
             }
             if let Some(ref mut alpha_mask_deferred_phase) = alpha_mask_deferred_phase {
-                alpha_mask_deferred_phase.remove(*main_entity);
+                alpha_mask_deferred_phase.remove_unbatchable_entity_pair(
+                    render_entity,
+                    &render_point_cloud_chunk_instance.root_entity,
+                );
             }
         }
 
@@ -1623,7 +1629,6 @@ pub fn queue_prepass_material_meshes(
             match material.properties.render_phase_type {
                 RenderPhaseType::Opaque => {
                     if deferred {
-                        info!("add opaque_deferred_phase for prepass");
                         opaque_deferred_phase.as_mut().unwrap().add(
                             OpaqueNoLightmap3dBatchSetKey {
                                 draw_function,
