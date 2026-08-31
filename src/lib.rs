@@ -122,7 +122,13 @@ pub fn on_discard_point_cloud_3d(
     // remove previous point cloud asset tracking
     if let Some(PointCloud3d(handle)) = world.get::<PointCloud3d>(entity).cloned() {
         let mut instances = world.resource_mut::<PointCloudInstances>();
-        let entities = instances.entry(handle.id()).or_default();
+        let Some(entities) = instances.get_mut(&handle.id()) else {
+            warn!(
+                "No entries found in PointCloudInstances when despawning point cloud {:?}",
+                entity
+            );
+            return;
+        };
         entities.remove(&entity);
 
         // info!("on_discard_point_cloud_3d: {:#?}", instances);
@@ -186,6 +192,7 @@ pub fn on_discard_point_cloud_chunk_3d(
                     }
                 } else {
                     // the entity has been despawned, return early
+                    warn!("Parent not found when despawning chunk {:?}", entity);
                     return;
                 }
             } else {
@@ -193,20 +200,31 @@ pub fn on_discard_point_cloud_chunk_3d(
             }
         };
 
+        // do not cleanup the root here
+        if point_cloud_entity == entity {
+            return;
+        }
+
         if let Some(PointCloud3d(point_cloud_handle)) =
             world.get::<PointCloud3d>(point_cloud_entity).cloned()
         {
             let mut instances = world.resource_mut::<PointCloudInstances>();
-            let entities = instances.entry(point_cloud_handle.id()).or_default();
-            let chunk_entities = entities.entry(point_cloud_entity).or_default();
-            chunk_entities.insert(chunk_handle.id(), entity);
+            let Some(entities) = instances.get_mut(&point_cloud_handle.id()) else {
+                warn!(
+                    "No entries found in PointCloudInstances when despawning chunk {:?}",
+                    entity
+                );
+                return;
+            };
+            let Some(chunk_entities) = entities.get_mut(&point_cloud_entity) else {
+                warn!(
+                    "No chunk_entities found in PointCloudInstances when despawning chunk {:?}",
+                    entity
+                );
+                return;
+            };
 
-            let mut instances = world.resource_mut::<PointCloudInstances>();
-            let entities = instances.entry(point_cloud_handle.id()).or_default();
-            let chunk_entities = entities.entry(point_cloud_entity).or_default();
             chunk_entities.remove(&chunk_handle.id());
-
-            // info!("on_discard_point_cloud_chunk_3d: {:#?}", instances);
         } else {
             warn!("on_insert_point_cloud_chunk_3d: PointCloud3d entity not found.");
         }
@@ -270,7 +288,6 @@ pub fn spawn_point_cloud_chunks(
                 if node.depth == 0 {
                     // Set the aabb if any
                     if let Some(aabb) = node.aabb {
-                        info!("spawn aabb for chunk {:?}", chunk_entity);
                         commands.entity(chunk_entity).insert(aabb);
                     }
                     // Now look for the mesh

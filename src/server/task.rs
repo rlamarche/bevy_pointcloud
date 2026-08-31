@@ -161,6 +161,7 @@ pub fn handle_internal_point_cloud_events(
                 }
 
                 // store the loader in the server
+                // TODO: cleanup loaders
                 {
                     let mut loaders = server.write_loaders();
                     loaders.insert(id, loader);
@@ -297,6 +298,7 @@ pub fn handle_internal_point_cloud_events(
 
                 node.chunk = Some(chunk_handle.clone());
                 node.offset = result.offset;
+                node.point_count = result.final_point_count;
 
                 // get again the node immutably
                 let node = octree.get_node(node_id).unwrap(); // was valid just above
@@ -339,16 +341,6 @@ pub fn handle_internal_point_cloud_events(
                 load_tasks.chunk_in_flight.remove(&key);
 
                 warn!("An error occured loading chunk: {:#}", error);
-
-                // let Some(point_cloud) = point_clouds.get_mut(id) else {
-                //     debug!(
-                //         "No asset found for {:?}, unable to append loaded hierarchy nodes.",
-                //         id
-                //     );
-                //     continue;
-                // };
-
-                // let _ = point_cloud.unset_node_data_loading(node_id);
             }
         }
     }

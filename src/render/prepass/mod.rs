@@ -1513,12 +1513,15 @@ pub fn queue_prepass_material_meshes(
         for (render_entity, main_entity) in dirty_specializations
             .iter_to_dequeue(extracted_view.retained_view_entity, visible_entities_class)
         {
-            let Some(render_point_cloud_chunk_instance) = render_point_cloud_chunk_instances
+            let Some(render_point_cloud_chunk_instance) = (match render_point_cloud_chunk_instances
                 .previous
                 .get(render_entity)
-            else {
+            {
+                Some(value) => Some(value),
+                None => render_point_cloud_chunk_instances.get(render_entity),
+            }) else {
                 warn!(
-                    "RenderPointCloudChunkInstance not found for entity {:?} when removing phase",
+                    "RenderPointCloudChunkInstance not found for entity {:?} when removing prepass phase",
                     main_entity
                 );
                 continue;

@@ -18,7 +18,7 @@ use bevy::{
     },
     ecs::{
         change_detection::Tick,
-        entity::EntityHashMap,
+        entity::{EntityHashMap, EntityHashSet},
         prelude::*,
         system::{
             lifetimeless::{SRes, SResMut},
@@ -32,7 +32,7 @@ use bevy::{
         AlphaMode, OpaqueRendererMethod, RenderPhaseType,
     },
     math::{Affine3, Affine3Ext as _},
-    mesh::{mark_3d_meshes_as_changed_if_their_assets_changed, Mesh3d, MeshVertexBufferLayoutRef},
+    mesh::{mark_3d_meshes_as_changed_if_their_assets_changed, MeshVertexBufferLayoutRef},
     pbr::{
         alpha_mode_pipeline_key, check_views_lights_need_specialization,
         collect_meshes_for_gpu_building, prepare_lights, set_mesh_motion_vector_flags,
@@ -78,18 +78,17 @@ use core::{
     marker::PhantomData,
 };
 use smallvec::SmallVec;
-use std::sync::Arc;
+use std::{fmt::Debug, sync::Arc};
 
 use crate::{
     clear_dirty_specializations, expire_specializations_for_views, queue_shadows,
-    specialize_shadows, BinnedRenderPhaseExt, ChildChunkOf, DrawDepthOnlyPrepass,
-    DrawPointCloudInstanced, DrawPrepass, ErasedSplatPipelineKey, GlobalVisiblePointCloudChunks,
-    MySetItemPipeline, PendingShadowQueues, PointCloud3d, PointCloudChunk3d,
-    PointCloudDirtySpecializations, PointCloudMaterial3d, PointCloudPipeline,
-    PointCloudPipelineSystems, PointCloudTopologyKind, PrepassPipeline, PrepassPipelinePlugin,
-    PrepassPipelineSpecializer, PrepassPlugin, RenderPointCloudChunkInstances,
-    RenderPointCloudInstances, SetPointCloudBindGroup, SimplePointCloudMaterial,
-    SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
+    specialize_shadows, BinnedRenderPhaseExt, DrawDepthOnlyPrepass, DrawPointCloudInstanced,
+    DrawPrepass, ErasedSplatPipelineKey, GlobalVisiblePointCloudChunks, MySetItemPipeline,
+    PendingShadowQueues, PointCloud3d, PointCloudChunk3d, PointCloudDirtySpecializations,
+    PointCloudMaterial3d, PointCloudPipeline, PointCloudPipelineSystems, PointCloudTopologyKind,
+    PrepassPipeline, PrepassPipelinePlugin, PrepassPipelineSpecializer, PrepassPlugin,
+    RenderPointCloudChunkInstances, RenderPointCloudInstances, SetPointCloudBindGroup,
+    SimplePointCloudMaterial, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
     SpecializedShadowMaterialPipelineCache, SplatPipelineKey, SplatSettings,
 };
 
@@ -728,6 +727,7 @@ pub fn late_sweep_material_instances(
 /// specific entities require pipeline specialization before the draw phase.
 pub fn extract_entities_needs_specialization<M>(
     entities_needing_specialization: Extract<Res<EntitiesNeedingSpecialization<M>>>,
+    mapper: Extract<Query<&RenderEntity>>,
     mut dirty_specializations: ResMut<PointCloudDirtySpecializations>,
 ) where
     M: Material,
@@ -735,7 +735,17 @@ pub fn extract_entities_needs_specialization<M>(
     // Drain the list of entities needing specialization from the main world
     // into the render-world `DirtySpecializations` table.
     for (entity, render_entity) in entities_needing_specialization.changed.iter() {
+        let mut render_entity = *render_entity;
         let main_entity = MainEntity::from(*entity);
+        if render_entity.id().eq(&Entity::PLACEHOLDER) {
+            render_entity = match mapper.get(*entity) {
+                Ok(render_entity) => *render_entity,
+                Err(_) => {
+                    warn!("Render entity for PointCloud3d {} not found in extract_entities_needs_specialization", entity);
+                    continue;
+                }
+            };
+        }
 
         dirty_specializations
             .changed_renderables
@@ -747,11 +757,23 @@ pub fn extract_entities_needs_specialization<M>(
 /// removed to the appropriate table in [`DirtySpecializations`].
 pub fn extract_entities_that_need_specializations_removed<M>(
     entities_needing_specialization: Extract<Res<EntitiesNeedingSpecialization<M>>>,
+    mapper: Extract<Query<&RenderEntity>>,
     mut dirty_specializations: ResMut<PointCloudDirtySpecializations>,
 ) where
     M: Material,
 {
     for (entity, render_entity) in entities_needing_specialization.removed.iter() {
+        let mut render_entity = *render_entity;
+        if render_entity.id().eq(&Entity::PLACEHOLDER) {
+            render_entity = match mapper.get(*entity) {
+                Ok(render_entity) => *render_entity,
+                Err(_) => {
+                    warn!("Render entity for PointCloud3d {} not found in extract_entities_that_need_specializations_removed", entity);
+                    continue;
+                }
+            };
+        }
+
         dirty_specializations
             .removed_renderables
             .insert(render_entity.entity(), MainEntity::from(*entity));
@@ -761,7 +783,7 @@ pub fn extract_entities_that_need_specializations_removed<M>(
 /// Temporarily stores entities that were determined to either need their
 /// specialized pipelines updated or to have their specialized pipelines
 /// removed.
-#[derive(Resource, Clone, Debug)]
+#[derive(Resource, Clone)]
 pub struct EntitiesNeedingSpecialization<M> {
     /// Entities that need to have their pipelines updated.
     pub changed: Vec<(Entity, RenderEntity)>,
@@ -773,6 +795,15 @@ pub struct EntitiesNeedingSpecialization<M> {
     /// [`on_remove_point_cloud_chunk_3d`].
     pub removed: EntityHashMap<RenderEntity>,
     _marker: PhantomData<M>,
+}
+
+impl<M> Debug for EntitiesNeedingSpecialization<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EntitiesNeedingSpecialization")
+            .field("changed", &self.changed)
+            .field("removed", &self.removed)
+            .finish()
+    }
 }
 
 impl<M> Default for EntitiesNeedingSpecialization<M> {
@@ -836,7 +867,7 @@ pub struct SpecializedPointCloudMaterialViewPipelineCache {
 /// specialization and adds them to the [`EntitiesNeedingSpecialization`] list.
 pub fn check_entities_needing_specialization<M>(
     needs_specialization: Query<
-        (Entity, &RenderEntity),
+        Entity,
         (
             Or<(
                 Changed<PointCloud3d>,
@@ -850,22 +881,17 @@ pub fn check_entities_needing_specialization<M>(
         ),
     >,
     chunks_needing_specialization: Query<
-        (Entity, &RenderEntity),
+        Entity,
         (
-            Or<(
-                Changed<PointCloudChunk3d>,
-                AssetChanged<PointCloudChunk3d>,
-                Changed<Mesh3d>,
-                AssetChanged<Mesh3d>,
-            )>,
-            (With<ChildChunkOf>, With<PointCloudChunk3d>),
+            Or<(Changed<PointCloudChunk3d>, AssetChanged<PointCloudChunk3d>)>,
+            With<PointCloudChunk3d>,
         ),
     >,
     global_visible_point_cloud_chunks: Res<GlobalVisiblePointCloudChunks>,
-    mut par_local: Local<Parallel<Vec<(Entity, RenderEntity)>>>,
+    mut par_local: Local<Parallel<Vec<Entity>>>,
     mut entities_needing_specialization: ResMut<EntitiesNeedingSpecialization<M>>,
     // reused hashset to prevent duplicates
-    mut deduplicate_entities_hash_set: Local<EntityHashMap<RenderEntity>>,
+    mut deduplicate_entities_hash_set: Local<EntityHashSet>,
 ) where
     M: Material,
 {
@@ -875,45 +901,41 @@ pub fn check_entities_needing_specialization<M>(
 
     // When a [`PointCloud3d`] or its material changed, we need to re-specialize all it's
     // children.
-    needs_specialization
-        .par_iter()
-        .for_each(|(entity, &render_entity)| {
-            // When a [`PointCloud3d`] or its material changed, we need to re-specialize all it's
-            // children.
-            if let Some(chunks) = global_visible_point_cloud_chunks.get(&entity) {
-                for chunk_entity in chunks.keys() {
-                    par_local
-                        .borrow_local_mut()
-                        .push((*chunk_entity, render_entity));
-                }
+    needs_specialization.par_iter().for_each(|entity| {
+        // When a [`PointCloud3d`] or its material changed, we need to re-specialize all it's
+        // children.
+        if let Some(chunks) = global_visible_point_cloud_chunks.get(&entity) {
+            for chunk_entity in chunks.keys() {
+                par_local.borrow_local_mut().push(*chunk_entity);
             }
-        });
-    for (entity, render_entity) in par_local.drain() {
-        deduplicate_entities_hash_set.insert(entity, render_entity);
+        }
+    });
+    for entity in par_local.drain() {
+        deduplicate_entities_hash_set.insert(entity);
     }
 
     // Gather all entities that need their specializations regenerated.
     // TODO: we get also get not visible chunks loaded here, do something to ignore them ?
-    chunks_needing_specialization
-        .par_iter()
-        .for_each(|(entity, &render_entity)| {
-            par_local.borrow_local_mut().push((entity, render_entity));
-        });
-    for (entity, render_entity) in par_local.drain() {
-        deduplicate_entities_hash_set.insert(entity, render_entity);
+    chunks_needing_specialization.par_iter().for_each(|entity| {
+        par_local.borrow_local_mut().push(entity);
+    });
+    for entity in par_local.drain() {
+        deduplicate_entities_hash_set.insert(entity);
     }
 
     entities_needing_specialization
         .changed
         .reserve(deduplicate_entities_hash_set.len());
-    for queue in deduplicate_entities_hash_set.drain() {
-        entities_needing_specialization.changed.push(queue);
+    for entity in deduplicate_entities_hash_set.drain() {
+        entities_needing_specialization
+            .changed
+            .push((entity, RenderEntity::from(Entity::PLACEHOLDER)));
     }
 
-    for (entity, render_entity) in deduplicate_entities_hash_set.drain() {
+    for entity in deduplicate_entities_hash_set.drain() {
         entities_needing_specialization
             .removed
-            .insert(entity, render_entity);
+            .insert(entity, RenderEntity::from(Entity::PLACEHOLDER));
     }
 }
 
@@ -1288,10 +1310,13 @@ pub fn queue_material_meshes(
         for (render_entity, main_entity) in
             dirty_specializations.iter_to_dequeue(view.retained_view_entity, visible_entities_class)
         {
-            let Some(render_point_cloud_chunk_instance) = render_point_cloud_chunk_instances
+            let Some(render_point_cloud_chunk_instance) = (match render_point_cloud_chunk_instances
                 .previous
                 .get(render_entity)
-            else {
+            {
+                Some(value) => Some(value),
+                None => render_point_cloud_chunk_instances.get(render_entity),
+            }) else {
                 warn!(
                     "RenderPointCloudChunkInstance not found for entity {:?} when removing phase",
                     main_entity

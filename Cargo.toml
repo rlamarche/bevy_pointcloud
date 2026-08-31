@@ -139,6 +139,7 @@ bevy = {
     "bevy_feathers",
     "bevy_dev_tools",
     "dynamic_linking",
+    "debug",
 ] }
 # bevy_camera_controller = { version = "0.19.0", features = ["free_camera", "pan_camera"] }
 # bevy_remote = { version = "0.19.0" }

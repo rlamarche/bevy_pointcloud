@@ -96,13 +96,6 @@ pub fn check_point_cloud_nodes_dir_lights_visibility(
     point_cloud_instances: Res<PointCloudInstances>,
     shadow_map_config: Res<DirectionalLightShadowMap>,
 ) {
-    point_cloud_load_tasks.hierarchy_heap.clear();
-    point_cloud_load_tasks.chunk_heap.clear();
-
-    // Clear previous iteration visible point cloud nodes
-    global_visible_point_cloud_nodes.clear();
-    global_visible_point_cloud_chunks.clear();
-
     // for each view
     for (
         _dir_light,

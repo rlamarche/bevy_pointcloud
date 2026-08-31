@@ -254,10 +254,7 @@ pub fn prepare_cascades_visible_nodes_texture(
             .subviews
             .get(&extracted_view.retained_view_entity)
         else {
-            warn!(
-                "Shadow map visible entities not found for {:?}",
-                extracted_view.retained_view_entity
-            );
+            // should happen on the first frame for a light
             continue;
         };
 

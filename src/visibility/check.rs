@@ -62,10 +62,15 @@ pub fn check_point_cloud_nodes_visibility(
     )
     .entered();
     let start = Instant::now();
+
+    // TODO clear outside of here to prevent conflicts with lights (see
+    // `check_point_cloud_nodes_dir_lights_visibility`)
     point_cloud_load_tasks.hierarchy_heap.clear();
     point_cloud_load_tasks.chunk_heap.clear();
 
     // Clear previous iteration visible point cloud nodes
+    // TODO clear outside of here to prevent conflicts with lights (see
+    // `check_point_cloud_nodes_dir_lights_visibility`)
     global_visible_point_cloud_nodes.clear();
     global_visible_point_cloud_chunks.clear();
 

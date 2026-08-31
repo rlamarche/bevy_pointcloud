@@ -322,6 +322,7 @@ impl<M: Material> AsAssetId for PointCloudMaterial3d<M> {
     Reflect,
     Debug,
     Clone,
+    Copy,
     Default,
     PartialEq,
     Eq,
@@ -329,7 +330,7 @@ impl<M: Material> AsAssetId for PointCloudMaterial3d<M> {
     serde::Serialize,
     serde::Deserialize,
 )]
-#[reflect(Default, Debug, Clone)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 pub enum PointSizeMode {
     /// Point size is specified in screen pixels.
     ///
@@ -370,6 +371,7 @@ pub enum PointSizeMode {
     Reflect,
     Debug,
     Clone,
+    Copy,
     Default,
     PartialEq,
     Eq,
@@ -377,7 +379,7 @@ pub enum PointSizeMode {
     serde::Serialize,
     serde::Deserialize,
 )]
-#[reflect(Default, Debug, Clone)]
+#[reflect(Default, Debug, Clone, Serialize, Deserialize)]
 pub enum SplatOrientation {
     /// The splat always faces the camera (classic billboard).
     #[default]
@@ -394,6 +396,7 @@ pub enum SplatOrientation {
     Reflect,
     Debug,
     Clone,
+    Copy,
     Default,
     PartialEq,
     Eq,
@@ -422,7 +425,7 @@ pub enum UVMapping {
     Planar,
 }
 
-#[derive(FromTemplate, Reflect, Debug, Clone, Default, PartialEq)]
+#[derive(FromTemplate, Reflect, Debug, Clone, Copy, Default, PartialEq)]
 pub struct UVTransform {
     /// Décalage U et V (translation)
     pub offset: Vec2,
