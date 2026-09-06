@@ -31,7 +31,10 @@
 #import bevy_pointcloud::forward_io::VertexOutput
 #endif
 
-#import bevy_pointcloud::pointcloud_bindings::pointcloud
+#import bevy_pointcloud::{
+    functions,
+    pointcloud_bindings::pointcloud,
+}
 
 // ============================================================================
 // END CUSTOM PATCH: [PointCloudPlugin]
@@ -99,7 +102,10 @@ fn fragment(
         in.world_tangent           = vertex_output.world_tangent;
     #endif // VERTEX_TANGENTS
     #ifdef VERTEX_COLORS
-        in.color                   = vertex_output.color;
+        in.color = vec4<f32>(
+            functions::srgb_to_rgb_simple(vertex_output.color.xyz),
+            vertex_output.color.a,
+        );
     #endif // VERTEX_COLORS
     #ifdef VERTEX_OUTPUT_INSTANCE_INDEX
         in.instance_index          = vertex_output.instance_index;
