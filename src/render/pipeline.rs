@@ -39,8 +39,8 @@ pub(crate) const IRRADIANCE_VOLUMES_ARE_USABLE: bool = cfg!(not(target_arch = "w
 
 #[derive(Resource, Clone)]
 pub struct PointCloudPipeline {
-    shader: Handle<Shader>,
-    mesh_pipeline: MeshPipeline,
+    pub shader: Handle<Shader>,
+    pub mesh_pipeline: MeshPipeline,
     pub empty_layout: BindGroupLayoutDescriptor,
     pub point_cloud_layout: BindGroupLayoutDescriptor,
 }

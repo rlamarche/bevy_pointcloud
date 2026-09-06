@@ -4,7 +4,8 @@ use bevy::{
         prelude::AssetChanged, Asset, AssetApp, AssetEventSystems, AssetId, AssetServer, Handle,
         UntypedAssetId,
     },
-    camera::visibility::ViewVisibility,
+    camera::{visibility::ViewVisibility, MainPassResolutionOverride, Viewport},
+    color::LinearRgba,
     core_pipeline::{
         core_3d::{
             AlphaMask3d, Opaque3d, Opaque3dBatchSetKey, Opaque3dBinKey, Transparent3d,
@@ -15,7 +16,9 @@ use bevy::{
             AlphaMask3dPrepass, Opaque3dPrepass, OpaqueNoLightmap3dBatchSetKey,
             OpaqueNoLightmap3dBinKey,
         },
+        Core3d, Core3dSystems,
     },
+    diagnostic::FrameCount,
     ecs::{
         change_detection::Tick,
         entity::{EntityHashMap, EntityHashSet},
@@ -25,6 +28,7 @@ use bevy::{
             SystemParam, SystemParamItem, SystemState,
         },
     },
+    image::ToExtents,
     log::prelude::*,
     material::{
         key::{ErasedMaterialKey, ErasedMeshPipelineKey},
@@ -50,8 +54,9 @@ use bevy::{
         batching::gpu_preprocessing::BatchedInstanceBuffers,
         camera::{
             clear_dirty_wireframe_specializations, expire_wireframe_specializations_for_views,
-            DirtySpecializationSystems, PendingQueues,
+            DirtySpecializationSystems, ExtractedCamera, PendingQueues,
         },
+        diagnostic::RecordDiagnostics,
         erased_render_asset::{
             ErasedRenderAsset, ErasedRenderAssetPlugin, ErasedRenderAssets, PrepareAssetError,
         },
@@ -59,12 +64,13 @@ use bevy::{
         prelude::*,
         render_asset::{prepare_assets, RenderAssets},
         render_phase::*,
-        render_resource::*,
-        renderer::{RenderDevice, RenderQueue},
+        render_resource::{TextureFormat::Rgba16Float, *},
+        renderer::{RenderContext, RenderDevice, RenderQueue, ViewQuery},
         sync_world::{MainEntity, MainEntityHashMap, RenderEntity},
-        texture::FallbackImage,
+        texture::{ColorAttachment, FallbackImage, TextureCache},
         view::{
             ExtractedView, Msaa, RenderVisibilityRanges, RenderVisibleEntities, RetainedViewEntity,
+            ViewTarget, ViewUniformOffset,
         },
         Extract, GpuResourceAppExt, Render, RenderApp, RenderDebugFlags, RenderStartup,
         RenderSystems,
@@ -78,10 +84,13 @@ use core::{
     marker::PhantomData,
 };
 use smallvec::SmallVec;
-use std::{fmt::Debug, sync::Arc};
+use std::{borrow::Cow, fmt::Debug, sync::Arc};
 
 use crate::{
-    clear_dirty_specializations, expire_specializations_for_views, queue_shadows,
+    clear_dirty_specializations, expire_specializations_for_views,
+    multipass::{DrawMultipass, Opaque3dMultipass, ViewMultipassTextures},
+    queue_shadows,
+    render::multipass::{MultipassPipelinePlugin, MultipassPlugin},
     specialize_shadows, BinnedRenderPhaseExt, DrawDepthOnlyPrepass, DrawPointCloudInstanced,
     DrawPrepass, ErasedSplatPipelineKey, GlobalVisiblePointCloudChunks, MySetItemPipeline,
     PendingShadowQueues, PointCloud3d, PointCloudChunk3d, PointCloudDirtySpecializations,
@@ -91,6 +100,59 @@ use crate::{
     SimplePointCloudMaterial, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
     SpecializedShadowMaterialPipelineCache, SplatPipelineKey, SplatSettings,
 };
+
+pub enum PassType {
+    PointCloudGeometry,
+    FullscreenQuad,
+}
+
+pub enum PassOutput {
+    TransientTarget(TransientTarget),
+    MainWorldTarget,
+}
+
+#[derive(Clone, Debug)]
+pub struct TransientTarget {
+    pub format: TextureFormat,
+    pub scale_factor: f32,
+}
+
+/// Dynamic texture input dependency coming from a previous pass.
+pub struct PassInput {
+    pub source_pass: Cow<'static, str>,
+    pub binding_slot: u32,
+}
+
+pub struct PassShader {
+    /// Custom vertex shader handle. If None, uses the default pass vertex pipeline.
+    pub vertex: Option<Handle<Shader>>,
+    pub fragment: Handle<Shader>,
+}
+
+pub struct PassDescriptor {
+    pub name: Cow<'static, str>,
+    pub pass_type: PassType,
+    pub vertex_shader: ShaderRef,
+    pub fragment_shader: ShaderRef,
+    pub inputs: Vec<PassInput>,
+    pub output: PassOutput,
+    pub blend: Option<BlendState>,
+}
+
+#[derive(Resource)]
+pub struct PointCloudMaterialTargets<M: Material> {
+    pub required_textures: HashMap<Cow<'static, str>, TransientTarget>,
+    _phantom: PhantomData<M>,
+}
+
+impl<M: Material> Default for PointCloudMaterialTargets<M> {
+    fn default() -> Self {
+        Self {
+            required_textures: Default::default(),
+            _phantom: Default::default(),
+        }
+    }
+}
 
 /// Materials are used alongside [`MaterialPlugin`], [`PointCloud3d`], and [`PointCloudMaterial3d`]
 /// to spawn entities that are rendered with a specific [`Material`] type. They serve as an easy to
@@ -110,6 +172,23 @@ pub trait Material: Asset + AsBindGroup + Clone + Sized {
     /// mesh fragment shader will be used.
     fn fragment_shader() -> ShaderRef {
         ShaderRef::Default
+    }
+
+    /// The passes in case this is a multipass material
+    fn passes(&self) -> Vec<PassDescriptor> {
+        vec![PassDescriptor {
+            name: "default_opaque".into(),
+            pass_type: PassType::PointCloudGeometry,
+            vertex_shader: ShaderRef::Default,
+            fragment_shader: ShaderRef::Default,
+            inputs: vec![],
+            // output: PassOutput::MainWorldTarget,
+            output: PassOutput::TransientTarget(TransientTarget {
+                format: TextureFormat::Rgba32Float,
+                scale_factor: 1.0,
+            }),
+            blend: None,
+        }]
     }
 
     /// Returns this material's [`AlphaMode`]. Defaults to [`AlphaMode::Opaque`].
@@ -216,6 +295,10 @@ pub struct MaterialsPlugin {
 impl Plugin for MaterialsPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((PrepassPipelinePlugin, PrepassPlugin::new(self.debug_flags)));
+        app.add_plugins((
+            MultipassPipelinePlugin,
+            MultipassPlugin::new(self.debug_flags),
+        ));
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 // From camera
@@ -340,7 +423,12 @@ where
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
+                .init_resource::<PointCloudMaterialTargets<M>>()
                 .add_systems(RenderStartup, add_material_bind_group_allocator::<M>)
+                .add_systems(
+                    Render,
+                    prepare_multipass_textures::<M>.in_set(RenderSystems::PrepareResources),
+                )
                 .add_systems(
                     ExtractSchedule,
                     (
@@ -353,8 +441,64 @@ where
                         extract_entities_that_need_specializations_removed::<M>
                             .in_set(DirtySpecializationSystems::CheckForRemovals),
                     ),
+                )
+                .add_systems(
+                    Core3d,
+                    main_opaque_multipass_3d::<M>.in_set(Core3dSystems::MainPass),
                 );
         }
+    }
+}
+
+// Prepares the textures used by the prepass
+pub fn prepare_multipass_textures<M: Material>(
+    mut commands: Commands,
+    material_targets: Res<PointCloudMaterialTargets<M>>,
+    mut texture_cache: ResMut<TextureCache>,
+    render_device: Res<RenderDevice>,
+    opaque_3d_multipass_phases: Res<ViewBinnedRenderPhases<Opaque3dMultipass>>,
+    views_3d: Query<(Entity, &ExtractedCamera, &ExtractedView, &Msaa)>,
+) {
+    for (entity, camera, view, msaa) in &views_3d {
+        let mut textures = HashMap::new();
+
+        if !opaque_3d_multipass_phases.contains_key(&view.retained_view_entity) {
+            commands.entity(entity).remove::<ViewMultipassTextures<M>>();
+            continue;
+        };
+
+        let Some(physical_target_size) = camera.physical_target_size else {
+            continue;
+        };
+
+        let size = physical_target_size.to_extents();
+
+        for (name, target) in &material_targets.required_textures {
+            textures.entry(name.clone()).or_insert_with(|| {
+                // TODO: add the material name in the label
+                // let label = format!("multipass_texture_{}", name);
+                let descriptor = TextureDescriptor {
+                    label: Some("multipass_texture"),
+                    size,
+                    mip_level_count: 1,
+                    sample_count: msaa.samples(),
+                    dimension: TextureDimension::D2,
+                    format: target.format,
+                    usage: TextureUsages::COPY_DST
+                        | TextureUsages::RENDER_ATTACHMENT
+                        | TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                };
+                let texture = texture_cache.get(&render_device, descriptor);
+                ColorAttachment::new(texture, None, None, Some(LinearRgba::BLACK.into()))
+            });
+        }
+
+        commands.entity(entity).insert(ViewMultipassTextures::<M> {
+            textures,
+            size,
+            _phantom: PhantomData,
+        });
     }
 }
 
@@ -1202,7 +1346,6 @@ pub(crate) fn specialize_material_meshes(
                 }
 
                 work_items.push(SpecializationWorkItem {
-                    // this point to a PointCloud3d
                     render_entity: *render_entity,
                     visible_entity: *visible_entity,
                     retained_view_entity: view.retained_view_entity,
@@ -1645,6 +1788,9 @@ pub struct MainPassTransmissiveDrawFunction;
 pub struct MainPassTransparentDrawFunction;
 
 #[derive(DrawFunctionLabel, Debug, Hash, PartialEq, Eq, Clone, Default)]
+pub struct MultiPassOpaqueDrawFunction;
+
+#[derive(DrawFunctionLabel, Debug, Hash, PartialEq, Eq, Clone, Default)]
 pub struct PrepassOpaqueDrawFunction;
 #[derive(DrawFunctionLabel, Debug, Hash, PartialEq, Eq, Clone, Default)]
 pub struct PrepassAlphaMaskDrawFunction;
@@ -1771,18 +1917,22 @@ where
     type Param = (
         SRes<RenderDevice>,
         SRes<PipelineCache>,
+        SResMut<PointCloudMaterialTargets<M>>,
         // SRes<DefaultOpaqueRendererMethod>,
         SResMut<MaterialBindGroupAllocators>,
         SResMut<RenderMaterialBindings>,
-        SRes<DrawFunctions<Opaque3d>>,
-        SRes<DrawFunctions<AlphaMask3d>>,
-        SRes<DrawFunctions<Transmissive3d>>,
-        SRes<DrawFunctions<Transparent3d>>,
-        SRes<DrawFunctions<Opaque3dPrepass>>,
-        SRes<DrawFunctions<AlphaMask3dPrepass>>,
-        SRes<DrawFunctions<Opaque3dDeferred>>,
-        SRes<DrawFunctions<AlphaMask3dDeferred>>,
-        SRes<DrawFunctions<Shadow>>,
+        (
+            SRes<DrawFunctions<Opaque3d>>,
+            SRes<DrawFunctions<AlphaMask3d>>,
+            SRes<DrawFunctions<Transmissive3d>>,
+            SRes<DrawFunctions<Transparent3d>>,
+            SRes<DrawFunctions<Opaque3dMultipass>>,
+            SRes<DrawFunctions<Opaque3dPrepass>>,
+            SRes<DrawFunctions<AlphaMask3dPrepass>>,
+            SRes<DrawFunctions<Opaque3dDeferred>>,
+            SRes<DrawFunctions<AlphaMask3dDeferred>>,
+            SRes<DrawFunctions<Shadow>>,
+        ),
         SRes<AssetServer>,
         M::Param,
     );
@@ -1793,18 +1943,22 @@ where
         (
             render_device,
             pipeline_cache,
+            material_targets,
             // default_opaque_render_method,
             bind_group_allocators,
             render_material_bindings,
-            opaque_draw_functions,
-            alpha_mask_draw_functions,
-            transmissive_draw_functions,
-            transparent_draw_functions,
-            opaque_prepass_draw_functions,
-            alpha_mask_prepass_draw_functions,
-            opaque_deferred_draw_functions,
-            alpha_mask_deferred_draw_functions,
-            shadow_draw_functions,
+            (
+                opaque_draw_functions,
+                alpha_mask_draw_functions,
+                transmissive_draw_functions,
+                transparent_draw_functions,
+                multipass_draw_functions,
+                opaque_prepass_draw_functions,
+                alpha_mask_prepass_draw_functions,
+                opaque_deferred_draw_functions,
+                alpha_mask_deferred_draw_functions,
+                shadow_draw_functions,
+            ),
             asset_server,
             material_param,
         ): &mut SystemParamItem<Self::Param>,
@@ -1874,6 +2028,7 @@ where
         let draw_alpha_mask_pbr = alpha_mask_draw_functions.read().id::<DrawMaterial>();
         let draw_transmissive_pbr = transmissive_draw_functions.read().id::<DrawMaterial>();
         let draw_transparent_pbr = transparent_draw_functions.read().id::<DrawMaterial>();
+        let draw_opaque_multipass = multipass_draw_functions.read().id::<DrawMultipass>();
         let draw_opaque_prepass = opaque_prepass_draw_functions.read().id::<DrawPrepass>();
         let draw_alpha_mask_prepass = alpha_mask_prepass_draw_functions.read().id::<DrawPrepass>();
         let draw_opaque_prepass_depth_only = opaque_prepass_draw_functions
@@ -1897,6 +2052,7 @@ where
                 MainPassTransparentDrawFunction.intern(),
                 draw_transparent_pbr,
             ),
+            (MultiPassOpaqueDrawFunction.intern(), draw_opaque_multipass),
             (PrepassOpaqueDrawFunction.intern(), draw_opaque_prepass),
             (
                 PrepassAlphaMaskDrawFunction.intern(),
@@ -1971,6 +2127,17 @@ where
         let bind_group_data = material.bind_group_data();
         let material_key = ErasedMaterialKey::new(bind_group_data);
 
+        let passes = material.passes();
+        let multipass_enabled = !passes.is_empty();
+
+        for pass in &passes {
+            if let PassOutput::TransientTarget(transient_target) = &pass.output {
+                material_targets
+                    .required_textures
+                    .insert(pass.name.clone(), transient_target.clone());
+            }
+        }
+
         Ok(PreparedMaterial {
             binding,
             properties: Arc::new(MaterialProperties {
@@ -1990,13 +2157,15 @@ where
                 material_key,
                 shadows_enabled,
                 prepass_enabled,
+                multipass_enabled,
+                passes,
             }),
         })
     }
 
     fn unload_asset(
         source_asset: AssetId<Self::SourceAsset>,
-        (_, _, /* _, */ bind_group_allocators, render_material_bindings, ..): &mut SystemParamItem<
+        (_, _, _, bind_group_allocators, render_material_bindings, ..): &mut SystemParamItem<
             Self::Param,
         >,
     ) {
@@ -2125,6 +2294,9 @@ pub struct MaterialProperties {
     pub shadows_enabled: bool,
     /// Whether prepass is enabled for this material
     pub prepass_enabled: bool,
+    /// Whether multipass is enabled for this material
+    pub multipass_enabled: bool,
+    pub passes: Vec<PassDescriptor>,
 }
 
 impl MaterialProperties {
@@ -2198,3 +2370,62 @@ pub type UserSpecializeFn = fn(
     &MeshVertexBufferLayoutRef,
     ErasedMaterialPipelineKey,
 ) -> Result<(), SpecializedMeshPipelineError>;
+
+pub fn main_opaque_multipass_3d<M: Material>(
+    world: &World,
+    view: ViewQuery<(
+        &ExtractedCamera,
+        &ExtractedView,
+        &ViewTarget,
+        &ViewMultipassTextures<M>,
+        &ViewUniformOffset,
+        Option<&MainPassResolutionOverride>,
+    )>,
+    opaque_phases: Res<ViewBinnedRenderPhases<Opaque3dMultipass>>,
+    pipeline_cache: Res<PipelineCache>,
+    mut ctx: RenderContext,
+) {
+    let view_entity = view.entity();
+
+    let (camera, extracted_view, target, depth, view_uniform_offset, resolution_override) =
+        view.into_inner();
+
+    let Some(opaque_phase) = opaque_phases.get(&extracted_view.retained_view_entity) else {
+        return;
+    };
+
+    #[cfg(feature = "trace")]
+    let _main_opaque_pass_3d_span = info_span!("main_opaque_3d_multipass").entered();
+
+    let diagnostics = ctx.diagnostic_recorder();
+    let diagnostics = diagnostics.as_deref();
+
+    let color_attachments = [Some(target.get_color_attachment())];
+    // let depth_stencil_attachment = Some(depth.get_attachment(StoreOp::Store));
+
+    let mut render_pass = ctx.begin_tracked_render_pass(RenderPassDescriptor {
+        label: Some("main_opaque_pass_3d_multipass"),
+        color_attachments: &color_attachments,
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    });
+    let pass_span = diagnostics.pass_span(&mut render_pass, "main_opaque_pass_3d_multipass");
+
+    if let Some(viewport) =
+        Viewport::from_viewport_and_override(camera.viewport.as_ref(), resolution_override)
+    {
+        render_pass.set_camera_viewport(&viewport);
+    }
+
+    if !opaque_phase.is_empty() {
+        #[cfg(feature = "trace")]
+        let _opaque_main_pass_3d_span = info_span!("opaque_main_pass_3d").entered();
+        if let Err(err) = opaque_phase.render(&mut render_pass, world, view_entity) {
+            error!("Error encountered while rendering the opaque phase {err:?}");
+        }
+    }
+
+    pass_span.end(&mut render_pass);
+}
