@@ -70,11 +70,11 @@ pub fn init_point_cloud_pipeline(
 }
 
 impl SpecializedPointCloudPipeline for PointCloudPipeline {
-    type Key = (MeshPipelineKey, SplatPipelineKey);
+    type Key = (MeshPipelineKey, SplatPipelineKey, Option<usize>);
 
     fn specialize(
         &self,
-        (key, splat_key): Self::Key,
+        (key, splat_key, pass): Self::Key,
         splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {

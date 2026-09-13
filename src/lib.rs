@@ -1,4 +1,5 @@
 #![expect(missing_docs, reason = "Not all docs are written yet.")]
+#![recursion_limit = "256"]
 
 use std::path::PathBuf;
 

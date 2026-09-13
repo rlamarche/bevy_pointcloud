@@ -4,8 +4,7 @@ use bevy::{
         prelude::AssetChanged, Asset, AssetApp, AssetEventSystems, AssetId, AssetServer, Handle,
         UntypedAssetId,
     },
-    camera::{visibility::ViewVisibility, MainPassResolutionOverride, Viewport},
-    color::LinearRgba,
+    camera::visibility::ViewVisibility,
     core_pipeline::{
         core_3d::{
             AlphaMask3d, Opaque3d, Opaque3dBatchSetKey, Opaque3dBinKey, Transparent3d,
@@ -16,9 +15,7 @@ use bevy::{
             AlphaMask3dPrepass, Opaque3dPrepass, OpaqueNoLightmap3dBatchSetKey,
             OpaqueNoLightmap3dBinKey,
         },
-        Core3d, Core3dSystems,
     },
-    diagnostic::FrameCount,
     ecs::{
         change_detection::Tick,
         entity::{EntityHashMap, EntityHashSet},
@@ -28,7 +25,6 @@ use bevy::{
             SystemParam, SystemParamItem, SystemState,
         },
     },
-    image::ToExtents,
     log::prelude::*,
     material::{
         key::{ErasedMaterialKey, ErasedMeshPipelineKey},
@@ -56,7 +52,6 @@ use bevy::{
             clear_dirty_wireframe_specializations, expire_wireframe_specializations_for_views,
             DirtySpecializationSystems, ExtractedCamera, PendingQueues,
         },
-        diagnostic::RecordDiagnostics,
         erased_render_asset::{
             ErasedRenderAsset, ErasedRenderAssetPlugin, ErasedRenderAssets, PrepareAssetError,
         },
@@ -64,13 +59,15 @@ use bevy::{
         prelude::*,
         render_asset::{prepare_assets, RenderAssets},
         render_phase::*,
-        render_resource::{TextureFormat::Rgba16Float, *},
-        renderer::{RenderContext, RenderDevice, RenderQueue, ViewQuery},
+        render_resource::{
+            binding_types::{texture_2d, texture_2d_multisampled},
+            *,
+        },
+        renderer::{RenderDevice, RenderQueue},
         sync_world::{MainEntity, MainEntityHashMap, RenderEntity},
-        texture::{ColorAttachment, FallbackImage, TextureCache},
+        texture::FallbackImage,
         view::{
             ExtractedView, Msaa, RenderVisibilityRanges, RenderVisibleEntities, RetainedViewEntity,
-            ViewTarget, ViewUniformOffset,
         },
         Extract, GpuResourceAppExt, Render, RenderApp, RenderDebugFlags, RenderStartup,
         RenderSystems,
@@ -84,13 +81,17 @@ use core::{
     marker::PhantomData,
 };
 use smallvec::SmallVec;
-use std::{borrow::Cow, fmt::Debug, sync::Arc};
+use std::{
+    borrow::Cow,
+    fmt::Debug,
+    sync::{Arc, OnceLock},
+};
 
 use crate::{
     clear_dirty_specializations, expire_specializations_for_views,
-    multipass::{DrawMultipass, Opaque3dMultipass, ViewMultipassTextures},
+    multipass::{MultipassMaterialPlugin, MultipassMaterialsPlugin, ViewMultipassTextures},
     queue_shadows,
-    render::multipass::{MultipassPipelinePlugin, MultipassPlugin},
+    render::multipass::MultipassPipelinePlugin,
     specialize_shadows, BinnedRenderPhaseExt, DrawDepthOnlyPrepass, DrawPointCloudInstanced,
     DrawPrepass, ErasedSplatPipelineKey, GlobalVisiblePointCloudChunks, MySetItemPipeline,
     PendingShadowQueues, PointCloud3d, PointCloudChunk3d, PointCloudDirtySpecializations,
@@ -101,14 +102,16 @@ use crate::{
     SpecializedShadowMaterialPipelineCache, SplatPipelineKey, SplatSettings,
 };
 
+#[derive(Clone, Debug, Copy)]
 pub enum PassType {
     PointCloudGeometry,
     FullscreenQuad,
 }
 
+#[derive(Clone, Debug)]
 pub enum PassOutput {
     TransientTarget(TransientTarget),
-    MainWorldTarget,
+    MainColorTarget,
 }
 
 #[derive(Clone, Debug)]
@@ -118,9 +121,12 @@ pub struct TransientTarget {
 }
 
 /// Dynamic texture input dependency coming from a previous pass.
+#[derive(Clone, Debug)]
 pub struct PassInput {
     pub source_pass: Cow<'static, str>,
     pub binding_slot: u32,
+    pub texture_sample_type: TextureSampleType,
+    pub visibility: ShaderStages,
 }
 
 pub struct PassShader {
@@ -137,6 +143,33 @@ pub struct PassDescriptor {
     pub inputs: Vec<PassInput>,
     pub output: PassOutput,
     pub blend: Option<BlendState>,
+}
+
+pub struct PassProperties {
+    pub name: Cow<'static, str>,
+    pub pass_type: PassType,
+    /// Backing array is a size of 3 because the [`StandardMaterial`](https://docs.rs/bevy/latest/bevy/pbr/struct.StandardMaterial.html)
+    /// has 3 custom shaders (`frag`, `prepass_frag`, `deferred_frag`) which is the
+    /// most common use case
+    pub shaders: SmallVec<[(InternedShaderLabel, Handle<Shader>); 3]>,
+
+    pub inputs: Vec<PassInput>,
+    pub output: PassOutput,
+    pub blend: Option<BlendState>,
+}
+
+impl PassProperties {
+    pub fn get_shader(&self, label: impl ShaderLabel) -> Option<Handle<Shader>> {
+        self.shaders
+            .iter()
+            .find(|(inner_label, _)| inner_label == &label.intern())
+            .map(|(_, shader)| shader)
+            .cloned()
+    }
+
+    pub fn add_shader(&mut self, label: impl ShaderLabel, shader: Handle<Shader>) {
+        self.shaders.push((label.intern(), shader));
+    }
 }
 
 #[derive(Resource)]
@@ -162,6 +195,10 @@ impl<M: Material> Default for PointCloudMaterialTargets<M> {
 /// bound in shaders. [`AsBindGroup`] can be derived, which makes generating bindings
 /// straightforward. See the [`AsBindGroup`] docs for details.
 pub trait Material: Asset + AsBindGroup + Clone + Sized {
+    /// Number of passes for multipass materials.
+    /// If equal to 0, means that this is not a multipass material.
+    const PASS_COUNT: usize = 0;
+
     /// Returns this material's vertex shader. If [`ShaderRef::Default`] is returned, the default
     /// mesh vertex shader will be used.
     fn vertex_shader() -> ShaderRef {
@@ -175,20 +212,10 @@ pub trait Material: Asset + AsBindGroup + Clone + Sized {
     }
 
     /// The passes in case this is a multipass material
-    fn passes(&self) -> Vec<PassDescriptor> {
-        vec![PassDescriptor {
-            name: "default_opaque".into(),
-            pass_type: PassType::PointCloudGeometry,
-            vertex_shader: ShaderRef::Default,
-            fragment_shader: ShaderRef::Default,
-            inputs: vec![],
-            // output: PassOutput::MainWorldTarget,
-            output: PassOutput::TransientTarget(TransientTarget {
-                format: TextureFormat::Rgba32Float,
-                scale_factor: 1.0,
-            }),
-            blend: None,
-        }]
+    fn passes() -> &'static [PassDescriptor] {
+        static PASSES: OnceLock<Vec<PassDescriptor>> = OnceLock::new();
+
+        PASSES.get_or_init(Vec::new)
     }
 
     /// Returns this material's [`AlphaMode`]. Defaults to [`AlphaMode::Opaque`].
@@ -294,11 +321,13 @@ pub struct MaterialsPlugin {
 
 impl Plugin for MaterialsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((PrepassPipelinePlugin, PrepassPlugin::new(self.debug_flags)));
         app.add_plugins((
+            PrepassPipelinePlugin,
+            PrepassPlugin::new(self.debug_flags),
             MultipassPipelinePlugin,
-            MultipassPlugin::new(self.debug_flags),
+            MultipassMaterialsPlugin::new(self.debug_flags),
         ));
+
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 // From camera
@@ -357,15 +386,15 @@ impl Plugin for MaterialsPlugin {
                         queue_material_meshes.in_set(RenderSystems::QueueMeshes),
                     ),
                 )
-                .add_systems(
-                    Render,
-                    (
-                        prepare_material_bind_groups,
-                        write_material_bind_group_buffers,
-                    )
-                        .chain()
-                        .in_set(RenderSystems::PrepareBindGroups),
-                )
+                // .add_systems(
+                //     Render,
+                //     (
+                //         prepare_material_bind_groups,
+                //         write_material_bind_group_buffers,
+                //     )
+                //         .chain()
+                //         .in_set(RenderSystems::PrepareBindGroups),
+                // )
                 .add_systems(
                     Render,
                     (
@@ -426,10 +455,6 @@ where
                 .init_resource::<PointCloudMaterialTargets<M>>()
                 .add_systems(RenderStartup, add_material_bind_group_allocator::<M>)
                 .add_systems(
-                    Render,
-                    prepare_multipass_textures::<M>.in_set(RenderSystems::PrepareResources),
-                )
-                .add_systems(
                     ExtractSchedule,
                     (
                         extract_mesh_materials::<M>.in_set(MaterialExtractionSystems),
@@ -441,64 +466,17 @@ where
                         extract_entities_that_need_specializations_removed::<M>
                             .in_set(DirtySpecializationSystems::CheckForRemovals),
                     ),
-                )
-                .add_systems(
-                    Core3d,
-                    main_opaque_multipass_3d::<M>.in_set(Core3dSystems::MainPass),
                 );
+
+            render_app
+                .world_mut()
+                .register_required_components::<ExtractedCamera, ViewMultipassTextures<M>>();
+
+            // TODO: conditionnaly add if the material is multipass
+            if M::PASS_COUNT > 0 {
+                app.add_plugins(MultipassMaterialPlugin::<M>::new(self.debug_flags));
+            }
         }
-    }
-}
-
-// Prepares the textures used by the prepass
-pub fn prepare_multipass_textures<M: Material>(
-    mut commands: Commands,
-    material_targets: Res<PointCloudMaterialTargets<M>>,
-    mut texture_cache: ResMut<TextureCache>,
-    render_device: Res<RenderDevice>,
-    opaque_3d_multipass_phases: Res<ViewBinnedRenderPhases<Opaque3dMultipass>>,
-    views_3d: Query<(Entity, &ExtractedCamera, &ExtractedView, &Msaa)>,
-) {
-    for (entity, camera, view, msaa) in &views_3d {
-        let mut textures = HashMap::new();
-
-        if !opaque_3d_multipass_phases.contains_key(&view.retained_view_entity) {
-            commands.entity(entity).remove::<ViewMultipassTextures<M>>();
-            continue;
-        };
-
-        let Some(physical_target_size) = camera.physical_target_size else {
-            continue;
-        };
-
-        let size = physical_target_size.to_extents();
-
-        for (name, target) in &material_targets.required_textures {
-            textures.entry(name.clone()).or_insert_with(|| {
-                // TODO: add the material name in the label
-                // let label = format!("multipass_texture_{}", name);
-                let descriptor = TextureDescriptor {
-                    label: Some("multipass_texture"),
-                    size,
-                    mip_level_count: 1,
-                    sample_count: msaa.samples(),
-                    dimension: TextureDimension::D2,
-                    format: target.format,
-                    usage: TextureUsages::COPY_DST
-                        | TextureUsages::RENDER_ATTACHMENT
-                        | TextureUsages::TEXTURE_BINDING,
-                    view_formats: &[],
-                };
-                let texture = texture_cache.get(&render_device, descriptor);
-                ColorAttachment::new(texture, None, None, Some(LinearRgba::BLACK.into()))
-            });
-        }
-
-        commands.entity(entity).insert(ViewMultipassTextures::<M> {
-            textures,
-            size,
-            _phantom: PhantomData,
-        });
     }
 }
 
@@ -550,6 +528,7 @@ pub struct MaterialPipelineKey<M: Material> {
     pub mesh_key: MeshPipelineKey,
     pub splat_key: SplatPipelineKey,
     pub bind_group_data: M::Data,
+    pub pass: Option<usize>,
 }
 
 /// Render pipeline data for a given [`Material`].
@@ -568,6 +547,7 @@ pub struct ErasedMaterialPipelineKey {
     pub mesh_key: ErasedMeshPipelineKey,
     pub splat_key: ErasedSplatPipelineKey,
     pub material_key: ErasedMaterialKey,
+    pub pass: Option<usize>,
     pub type_id: TypeId,
 }
 
@@ -580,32 +560,64 @@ impl SpecializedPointCloudPipeline for MaterialPipelineSpecializer {
         splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
+        info!("Specialize pointcloud pipeline for pass {:?}", key.pass);
+
         let concrete_mesh_key: MeshPipelineKey = key.mesh_key.downcast();
         let concrete_splat_key: SplatPipelineKey = key.splat_key.downcast();
         let mut descriptor = self.pipeline.pointcloud_pipeline.specialize(
-            (concrete_mesh_key, concrete_splat_key),
+            (concrete_mesh_key, concrete_splat_key, key.pass),
             splat_layout,
             instance_layout,
         )?;
 
+        let mut shader_defs: Vec<ShaderDefVal> = Vec::new();
+
         let material_bind_group_index = descriptor.layout.len();
 
-        descriptor.vertex.shader_defs.push(ShaderDefVal::UInt(
+        shader_defs.push(ShaderDefVal::UInt(
             "MATERIAL_BIND_GROUP".into(),
             material_bind_group_index as u32,
         ));
-        if let Some(ref mut fragment) = descriptor.fragment {
-            fragment.shader_defs.push(ShaderDefVal::UInt(
-                "MATERIAL_BIND_GROUP".into(),
-                material_bind_group_index as u32,
-            ));
-        };
-        if let Some(vertex_shader) = self.properties.get_shader(MaterialVertexShader) {
-            descriptor.vertex.shader = vertex_shader.clone();
-        }
 
-        if let Some(fragment_shader) = self.properties.get_shader(MaterialFragmentShader) {
-            descriptor.fragment.as_mut().unwrap().shader = fragment_shader.clone();
+        // specialize the pass
+        if let Some(pass) = key.pass {
+            let pass_properties = &self.properties.passes[pass];
+
+            // add useful shaderdefs (eg: `POINTCLOUD_PASS_DEPTH` and `POINTCLOUD_PASS_0`)
+            shader_defs.push(ShaderDefVal::UInt("POINTCLOUD_PASS".into(), pass as u32));
+            shader_defs.push(format!("POINTCLOUD_PASS_{}", pass).into());
+            shader_defs
+                .push(format!("POINTCLOUD_PASS_{}", pass_properties.name.to_uppercase()).into());
+
+            if let Some(vertex_shader) = pass_properties.get_shader(MaterialVertexShader) {
+                descriptor.vertex.shader = vertex_shader.clone();
+            }
+
+            if let Some(fragment_shader) = pass_properties.get_shader(MaterialFragmentShader) {
+                descriptor.fragment.as_mut().unwrap().shader = fragment_shader.clone();
+            }
+
+            info!("Specialize pointcloud layout for pass {}", pass);
+            if let Some(pointcloud_layout) = descriptor.layout.last_mut() {
+                for input in &pass_properties.inputs {
+                    let entry = if concrete_mesh_key.msaa_samples() > 1 {
+                        texture_2d_multisampled(input.texture_sample_type)
+                            .build(input.binding_slot, input.visibility)
+                    } else {
+                        texture_2d(input.texture_sample_type)
+                            .build(input.binding_slot, input.visibility)
+                    };
+                    pointcloud_layout.entries.push(entry);
+                }
+            }
+        } else {
+            if let Some(vertex_shader) = self.properties.get_shader(MaterialVertexShader) {
+                descriptor.vertex.shader = vertex_shader.clone();
+            }
+
+            if let Some(fragment_shader) = self.properties.get_shader(MaterialFragmentShader) {
+                descriptor.fragment.as_mut().unwrap().shader = fragment_shader.clone();
+            }
         }
 
         descriptor
@@ -630,6 +642,11 @@ impl SpecializedPointCloudPipeline for MaterialPipelineSpecializer {
         //     }
         // }
 
+        descriptor.vertex.shader_defs.extend(shader_defs.clone());
+        if let Some(ref mut fragment) = descriptor.fragment {
+            fragment.shader_defs.extend(shader_defs);
+        }
+
         Ok(descriptor)
     }
 }
@@ -642,6 +659,7 @@ pub fn init_material_pipeline(mut commands: Commands, mesh_pipeline: Res<PointCl
 
 pub type DrawMaterial = (
     MySetItemPipeline,
+    // SetItemPipeline,
     SetMeshViewBindGroup<0>,
     SetMeshViewBindingArrayBindGroup<1>,
     SetPointCloudBindGroup<2>,
@@ -1368,6 +1386,7 @@ pub(crate) fn specialize_material_meshes(
             mesh_key: ErasedMeshPipelineKey::new(item.mesh_key),
             splat_key: ErasedSplatPipelineKey::new(item.splat_key),
             material_key: item.properties.material_key.clone(),
+            pass: None,
         };
 
         let Some(base_specialize) = item.properties.base_specialize else {
@@ -1636,19 +1655,21 @@ pub fn queue_material_meshes(
                         asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
                     };
 
-                    opaque_phase.add(
-                        batch_set_key,
-                        bin_key,
-                        (
-                            *render_entity,
-                            // use the root entity here to correctly handle
-                            // [`GetFullBatchData::get_binned_index`]
-                            // in binned render phases
-                            render_point_cloud_chunk_instance.root_entity,
-                        ),
-                        mesh_instance.current_uniform_index,
-                        BinnedRenderPhaseType::UnbatchableMesh,
-                    );
+                    if !material.properties.multipass_enabled {
+                        opaque_phase.add(
+                            batch_set_key,
+                            bin_key,
+                            (
+                                *render_entity,
+                                // use the root entity here to correctly handle
+                                // [`GetFullBatchData::get_binned_index`]
+                                // in binned render phases
+                                render_point_cloud_chunk_instance.root_entity,
+                            ),
+                            mesh_instance.current_uniform_index,
+                            BinnedRenderPhaseType::UnbatchableMesh,
+                        );
+                    }
                 }
                 // Alpha mask
                 RenderPhaseType::AlphaMask => {
@@ -1902,6 +1923,7 @@ where
             mesh_key,
             splat_key,
             bind_group_data: material_key,
+            pass: erased_key.pass,
         },
     )
 }
@@ -1926,7 +1948,7 @@ where
             SRes<DrawFunctions<AlphaMask3d>>,
             SRes<DrawFunctions<Transmissive3d>>,
             SRes<DrawFunctions<Transparent3d>>,
-            SRes<DrawFunctions<Opaque3dMultipass>>,
+            // SRes<DrawFunctions<Opaque3dMultipass<M>>>,
             SRes<DrawFunctions<Opaque3dPrepass>>,
             SRes<DrawFunctions<AlphaMask3dPrepass>>,
             SRes<DrawFunctions<Opaque3dDeferred>>,
@@ -1952,7 +1974,7 @@ where
                 alpha_mask_draw_functions,
                 transmissive_draw_functions,
                 transparent_draw_functions,
-                multipass_draw_functions,
+                // multipass_draw_functions,
                 opaque_prepass_draw_functions,
                 alpha_mask_prepass_draw_functions,
                 opaque_deferred_draw_functions,
@@ -2028,7 +2050,7 @@ where
         let draw_alpha_mask_pbr = alpha_mask_draw_functions.read().id::<DrawMaterial>();
         let draw_transmissive_pbr = transmissive_draw_functions.read().id::<DrawMaterial>();
         let draw_transparent_pbr = transparent_draw_functions.read().id::<DrawMaterial>();
-        let draw_opaque_multipass = multipass_draw_functions.read().id::<DrawMultipass>();
+        // let draw_opaque_multipass = multipass_draw_functions.read().id::<DrawMultipass>();
         let draw_opaque_prepass = opaque_prepass_draw_functions.read().id::<DrawPrepass>();
         let draw_alpha_mask_prepass = alpha_mask_prepass_draw_functions.read().id::<DrawPrepass>();
         let draw_opaque_prepass_depth_only = opaque_prepass_draw_functions
@@ -2052,7 +2074,7 @@ where
                 MainPassTransparentDrawFunction.intern(),
                 draw_transparent_pbr,
             ),
-            (MultiPassOpaqueDrawFunction.intern(), draw_opaque_multipass),
+            // (MultiPassOpaqueDrawFunction.intern(), draw_opaque_multipass),
             (PrepassOpaqueDrawFunction.intern(), draw_opaque_prepass),
             (
                 PrepassAlphaMaskDrawFunction.intern(),
@@ -2127,15 +2149,47 @@ where
         let bind_group_data = material.bind_group_data();
         let material_key = ErasedMaterialKey::new(bind_group_data);
 
-        let passes = material.passes();
+        let passes = M::passes();
         let multipass_enabled = !passes.is_empty();
 
-        for pass in &passes {
+        let mut prepared_passes = Vec::with_capacity(passes.len());
+        for pass in passes {
             if let PassOutput::TransientTarget(transient_target) = &pass.output {
                 material_targets
                     .required_textures
                     .insert(pass.name.clone(), transient_target.clone());
             }
+
+            let mut shaders = SmallVec::new();
+            let mut add_shader = |label: InternedShaderLabel, shader_ref: ShaderRef| {
+                let mayber_shader = match shader_ref {
+                    ShaderRef::Default => None,
+                    ShaderRef::Handle(handle) => Some(handle),
+                    ShaderRef::Path(path) => Some(asset_server.load(path)),
+                };
+                if let Some(shader) = mayber_shader {
+                    shaders.push((label, shader));
+                }
+            };
+
+            // TODO change shaders based on `phase_type`
+            add_shader(
+                MaterialVertexShader.intern(),
+                clone_shader_ref(&pass.vertex_shader),
+            );
+            add_shader(
+                MaterialFragmentShader.intern(),
+                clone_shader_ref(&pass.fragment_shader),
+            );
+
+            prepared_passes.push(PassProperties {
+                name: pass.name.clone(),
+                pass_type: pass.pass_type,
+                shaders,
+                inputs: pass.inputs.clone(),
+                output: pass.output.clone(),
+                blend: pass.blend.clone(),
+            });
         }
 
         Ok(PreparedMaterial {
@@ -2158,7 +2212,7 @@ where
                 shadows_enabled,
                 prepass_enabled,
                 multipass_enabled,
-                passes,
+                passes: prepared_passes,
             }),
         })
     }
@@ -2175,6 +2229,14 @@ where
         };
         let bind_group_allactor = bind_group_allocators.get_mut(&TypeId::of::<M>()).unwrap();
         bind_group_allactor.free(material_binding_id);
+    }
+}
+
+fn clone_shader_ref(vertex_shader: &ShaderRef) -> ShaderRef {
+    match vertex_shader {
+        ShaderRef::Default => ShaderRef::Default,
+        ShaderRef::Handle(handle) => ShaderRef::Handle(handle.clone()),
+        ShaderRef::Path(asset_path) => ShaderRef::Path(asset_path.clone()),
     }
 }
 
@@ -2296,7 +2358,7 @@ pub struct MaterialProperties {
     pub prepass_enabled: bool,
     /// Whether multipass is enabled for this material
     pub multipass_enabled: bool,
-    pub passes: Vec<PassDescriptor>,
+    pub passes: Vec<PassProperties>,
 }
 
 impl MaterialProperties {
@@ -2370,62 +2432,3 @@ pub type UserSpecializeFn = fn(
     &MeshVertexBufferLayoutRef,
     ErasedMaterialPipelineKey,
 ) -> Result<(), SpecializedMeshPipelineError>;
-
-pub fn main_opaque_multipass_3d<M: Material>(
-    world: &World,
-    view: ViewQuery<(
-        &ExtractedCamera,
-        &ExtractedView,
-        &ViewTarget,
-        &ViewMultipassTextures<M>,
-        &ViewUniformOffset,
-        Option<&MainPassResolutionOverride>,
-    )>,
-    opaque_phases: Res<ViewBinnedRenderPhases<Opaque3dMultipass>>,
-    pipeline_cache: Res<PipelineCache>,
-    mut ctx: RenderContext,
-) {
-    let view_entity = view.entity();
-
-    let (camera, extracted_view, target, depth, view_uniform_offset, resolution_override) =
-        view.into_inner();
-
-    let Some(opaque_phase) = opaque_phases.get(&extracted_view.retained_view_entity) else {
-        return;
-    };
-
-    #[cfg(feature = "trace")]
-    let _main_opaque_pass_3d_span = info_span!("main_opaque_3d_multipass").entered();
-
-    let diagnostics = ctx.diagnostic_recorder();
-    let diagnostics = diagnostics.as_deref();
-
-    let color_attachments = [Some(target.get_color_attachment())];
-    // let depth_stencil_attachment = Some(depth.get_attachment(StoreOp::Store));
-
-    let mut render_pass = ctx.begin_tracked_render_pass(RenderPassDescriptor {
-        label: Some("main_opaque_pass_3d_multipass"),
-        color_attachments: &color_attachments,
-        depth_stencil_attachment: None,
-        timestamp_writes: None,
-        occlusion_query_set: None,
-        multiview_mask: None,
-    });
-    let pass_span = diagnostics.pass_span(&mut render_pass, "main_opaque_pass_3d_multipass");
-
-    if let Some(viewport) =
-        Viewport::from_viewport_and_override(camera.viewport.as_ref(), resolution_override)
-    {
-        render_pass.set_camera_viewport(&viewport);
-    }
-
-    if !opaque_phase.is_empty() {
-        #[cfg(feature = "trace")]
-        let _opaque_main_pass_3d_span = info_span!("opaque_main_pass_3d").entered();
-        if let Err(err) = opaque_phase.render(&mut render_pass, world, view_entity) {
-            error!("Error encountered while rendering the opaque phase {err:?}");
-        }
-    }
-
-    pass_span.end(&mut render_pass);
-}

@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::{marker::PhantomData, ops::Range};
 
 use bevy::{
     camera::{Camera, Camera3d},
@@ -6,7 +6,7 @@ use bevy::{
     ecs::{
         entity::Entity,
         query::{Has, With},
-        system::{Commands, Local, Query, Res, ResMut},
+        system::{Local, Query, Res, ResMut},
     },
     material::{descriptor::CachedRenderPipelineId, labels::DrawFunctionId},
     platform::collections::HashSet,
@@ -16,18 +16,20 @@ use bevy::{
             BinnedPhaseItem, CachedRenderPipelinePhaseItem, PhaseItem, PhaseItemExtraIndex,
             ViewBinnedRenderPhases,
         },
-        sync_world::{MainEntity, RenderEntity},
+        sync_world::MainEntity,
         view::{NoIndirectDrawing, RetainedViewEntity},
         Extract,
     },
 };
+
+use crate::Material;
 
 /// Opaque phase of the 3D multipass.
 ///
 /// Sorted by pipeline, then by mesh to improve batching.
 ///
 /// Used to render all 3D meshes with materials that have no transparency.
-pub struct Opaque3dMultipass {
+pub struct Opaque3dMultipass<M: Material, const PASS: usize> {
     /// Determines which objects can be placed into a *batch set*.
     ///
     /// Objects in a single batch set can potentially be multi-drawn together,
@@ -41,16 +43,17 @@ pub struct Opaque3dMultipass {
     pub representative_entity: (Entity, MainEntity),
     pub batch_range: Range<u32>,
     pub extra_index: PhaseItemExtraIndex,
+    pub _phantom: PhantomData<M>,
 }
 
-impl CachedRenderPipelinePhaseItem for Opaque3dMultipass {
+impl<M: Material, const PASS: usize> CachedRenderPipelinePhaseItem for Opaque3dMultipass<M, PASS> {
     #[inline]
     fn cached_pipeline(&self) -> CachedRenderPipelineId {
         self.batch_set_key.pipeline
     }
 }
 
-impl PhaseItem for Opaque3dMultipass {
+impl<M: Material, const PASS: usize> PhaseItem for Opaque3dMultipass<M, PASS> {
     #[inline]
     fn entity(&self) -> Entity {
         self.representative_entity.0
@@ -86,7 +89,7 @@ impl PhaseItem for Opaque3dMultipass {
     }
 }
 
-impl BinnedPhaseItem for Opaque3dMultipass {
+impl<M: Material, const PASS: usize> BinnedPhaseItem for Opaque3dMultipass<M, PASS> {
     type BatchSetKey = Opaque3dBatchSetKey;
     type BinKey = Opaque3dBinKey;
 
@@ -98,28 +101,26 @@ impl BinnedPhaseItem for Opaque3dMultipass {
         batch_range: Range<u32>,
         extra_index: PhaseItemExtraIndex,
     ) -> Self {
-        Opaque3dMultipass {
+        Opaque3dMultipass::<M, PASS> {
             batch_set_key,
             bin_key,
             representative_entity,
             batch_range,
             extra_index,
+            _phantom: PhantomData,
         }
     }
 }
 
-pub fn extract_camera_multipass_phase(
-    mut commands: Commands,
-    mut opaque_3d_multipass_phases: ResMut<ViewBinnedRenderPhases<Opaque3dMultipass>>,
-    cameras_3d: Extract<
-        Query<(Entity, RenderEntity, &Camera, Has<NoIndirectDrawing>), With<Camera3d>>,
-    >,
+pub fn extract_camera_multipass_phase<M: Material, const PASS: usize>(
+    mut opaque_3d_multipass_phases: ResMut<ViewBinnedRenderPhases<Opaque3dMultipass<M, PASS>>>,
+    cameras_3d: Extract<Query<(Entity, &Camera, Has<NoIndirectDrawing>), With<Camera3d>>>,
     mut live_entities: Local<HashSet<RetainedViewEntity>>,
     gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
 ) {
     live_entities.clear();
 
-    for (main_entity, entity, camera, no_indirect_drawing) in cameras_3d.iter() {
+    for (main_entity, camera, no_indirect_drawing) in cameras_3d.iter() {
         if !camera.is_active {
             continue;
         }

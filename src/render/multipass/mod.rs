@@ -1,35 +1,45 @@
 mod components;
 mod phase;
+mod prepare;
 
 use bevy::{
     app::{App, Plugin},
     asset::{embedded_asset, load_embedded_asset, AssetServer, Handle},
-    camera::{Camera, Camera3d},
+    camera::{Camera, Camera3d, MainPassResolutionOverride, Projection, Viewport},
     core_pipeline::{
-        core_3d::{Opaque3dBatchSetKey, Opaque3dBinKey},
+        core_3d::{main_opaque_pass_3d, AlphaMask3d, Opaque3dBatchSetKey, Opaque3dBinKey},
+        oit::OrderIndependentTransparencySettings,
         prepass::*,
+        skybox::{SkyboxBindGroup, SkyboxPipelineId},
+        tonemapping::{DebandDither, Tonemapping},
         Core3d, Core3dSystems,
     },
     ecs::{
         entity::EntityHashMap,
         prelude::*,
+        query::ROQueryItem,
         system::{
             lifetimeless::{Read, SRes},
             SystemParam, SystemParamItem, SystemState,
         },
     },
+    light::{EnvironmentMapLight, IrradianceVolume, ShadowFilteringMethod},
     log::{debug, error, info, warn},
     material::{key::ErasedMeshPipelineKey, OpaqueRendererMethod},
     math::{Mat4, Vec4},
     mesh::MeshVertexBufferLayoutRef,
     pbr::{
         alpha_mode_pipeline_key, collect_meshes_for_gpu_building, set_mesh_motion_vector_flags,
-        skins_use_uniform_buffers, MeshLayouts, MeshPipeline, MeshPipelineKey,
-        RenderMeshInstanceFlags, RenderMeshInstances, SetMeshViewBindingArrayBindGroup, ShadowView,
+        skins_use_uniform_buffers, tonemapping_pipeline_key, ContactShadows, DistanceFog,
+        ExtractedAtmosphere, MeshLayouts, MeshPipeline, MeshPipelineKey, RenderMeshInstanceFlags,
+        RenderMeshInstances, RenderViewLightProbes, ScreenSpaceAmbientOcclusion,
+        ScreenSpaceReflectionsUniform, ScreenSpaceTransmission, SetMeshViewBindGroup,
+        SetMeshViewBindingArrayBindGroup, ShadowView,
     },
     prelude::{Deref, DerefMut},
     render::{
-        camera::PendingQueues,
+        camera::{ExtractedCamera, PendingQueues, TemporalJitter},
+        diagnostic::RecordDiagnostics,
         globals::{GlobalsBuffer, GlobalsUniform},
         mesh::{allocator::MeshAllocator, RenderMesh},
         render_asset::{prepare_assets, RenderAssets},
@@ -41,41 +51,45 @@ use bevy::{
             },
             *,
         },
-        renderer::{RenderAdapter, RenderDevice, RenderQueue},
+        renderer::{RenderAdapter, RenderContext, RenderDevice, RenderQueue, ViewQuery},
         sync_world::RenderEntity,
         view::{
             ExtractedView, Msaa, RenderVisibilityRanges, RenderVisibleEntities, RetainedViewEntity,
-            ViewUniform, ViewUniformOffset, ViewUniforms, VISIBILITY_RANGES_STORAGE_BUFFER_COUNT,
+            ViewDepthTexture, ViewTarget, ViewUniform, ViewUniformOffset, ViewUniforms,
+            VISIBILITY_RANGES_STORAGE_BUFFER_COUNT,
         },
         Extract, ExtractSchedule, GpuResourceAppExt, Render, RenderApp, RenderDebugFlags,
-        RenderStartup, RenderSystems,
+        RenderStartup,
+        RenderSystems::{self, PrepareAssets},
     },
-    shader::{load_shader_library, Shader, ShaderDefVal},
+    shader::{load_shader_library, Shader},
 };
 use core::any::TypeId;
 
 use bevy::{
-    ecs::{change_detection::Tick, system::SystemChangeTick},
+    ecs::system::SystemChangeTick,
     platform::{
         collections::{HashMap, HashSet},
         hash::FixedHasher,
     },
     render::{erased_render_asset::ErasedRenderAssets, sync_world::MainEntity},
 };
-use std::{num::NonZero, sync::Arc};
+use std::{marker::PhantomData, num::NonZero, sync::Arc};
 
 use crate::{
-    init_material_pipeline, init_point_cloud_pipeline, BinnedRenderPhaseExt,
-    DrawPointCloudInstanced, ErasedMaterialPipelineKey, ErasedSplatPipelineKey, MaterialPipeline,
-    MaterialProperties, MultiPassOpaqueDrawFunction, PointCloudChunk3d,
+    init_material_pipeline, init_point_cloud_pipeline, BinnedRenderPhaseExt, DrawMaterial,
+    DrawPointCloudInstanced, ErasedMaterialPipelineKey, ErasedSplatPipelineKey,
+    MainPassOpaqueDrawFunction, Material, MaterialPipeline, MaterialProperties,
+    MultiPassOpaqueDrawFunction, MySetItemPipeline, PointCloudChunk3d,
     PointCloudDirtySpecializations, PointCloudPipeline, PointCloudTopologyKind, PreparedMaterial,
-    PrepassOpaqueDepthOnlyDrawFunction, RenderPointCloudChunkInstances, RenderPointCloudInstances,
-    RenderPointCloudMaterialInstances, SetMaterialBindGroup, SetPointCloudBindGroup,
-    SpecializedPointCloudPipeline, SpecializedPointCloudPipelines, SplatPipelineKey,
+    RenderPointCloudChunkInstances, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
+    SetMaterialBindGroup, SetPointCloudBindGroup, SpecializedPointCloudPipeline,
+    SpecializedPointCloudPipelines, SplatPipelineKey,
 };
 
 pub use components::*;
 pub use phase::*;
+pub use prepare::*;
 
 /// Sets up everything required to use the prepass pipeline.
 ///
@@ -109,26 +123,139 @@ impl Plugin for MultipassPipelinePlugin {
                 Render,
                 prepare_multipass_view_bind_group.in_set(RenderSystems::PrepareBindGroups),
             )
-            .init_gpu_resource::<SpecializedPointCloudPipelines<MultipassPipelineSpecializer>>();
+            // .init_gpu_resource::<SpecializedPointCloudPipelines<MultipassPipelineSpecializer>>()
+        ;
     }
 }
 
-/// Sets up the prepasses for a material.
-///
-/// This depends on the [`PrepassPipelinePlugin`].
-pub struct MultipassPlugin {
+#[derive(Default)]
+pub struct MultipassMaterialsPlugin {
     /// Debugging flags that can optionally be set when constructing the renderer.
     pub debug_flags: RenderDebugFlags,
 }
 
-impl MultipassPlugin {
+impl MultipassMaterialsPlugin {
     /// Creates a new [`PrepassPlugin`] with the given debug flags.
     pub fn new(debug_flags: RenderDebugFlags) -> Self {
-        MultipassPlugin { debug_flags }
+        MultipassMaterialsPlugin { debug_flags }
     }
 }
 
-impl Plugin for MultipassPlugin {
+impl Plugin for MultipassMaterialsPlugin {
+    fn build(&self, app: &mut App) {
+        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
+            return;
+        };
+
+        render_app
+            .init_gpu_resource::<ViewKeyMultipassCache>()
+            .init_gpu_resource::<SpecializedMultipassMaterialPipelineCache>()
+            .init_gpu_resource::<PendingMultipassMeshMaterialQueues>()
+            .add_systems(
+                Render,
+                check_multipass_views_need_specialization.in_set(PrepareAssets),
+            );
+    }
+}
+
+pub struct MultipassMaterialPlugin<M: Material> {
+    pub debug_flags: RenderDebugFlags,
+    _phantom: PhantomData<M>,
+}
+
+macro_rules! register_passes {
+    ($app:expr, $M:ty, $debug_flags:expr, $($I:expr),*) => {
+        $(
+            $app.add_plugins(MaterialPassPlugin::<$M, $I>::new($debug_flags));
+        )*
+    };
+}
+
+impl<M: Material> Plugin for MultipassMaterialPlugin<M> {
+    fn build(&self, app: &mut App) {
+        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
+            return;
+        };
+
+        render_app.add_systems(
+            Render,
+            prepare_multipass_textures::<M>.in_set(RenderSystems::PrepareResources),
+        );
+
+        match M::PASS_COUNT {
+            1 => {
+                register_passes!(app, M, self.debug_flags, 0);
+            }
+            2 => {
+                register_passes!(app, M, self.debug_flags, 0, 1);
+            }
+            3 => {
+                register_passes!(app, M, self.debug_flags, 0, 1, 2);
+            }
+            4 => {
+                register_passes!(app, M, self.debug_flags, 0, 1, 2, 3);
+            }
+            _ => panic!("Unsupported number of passes."),
+        }
+
+        // // Pass 0 (e.g. Depth pass)
+        // app.add_plugins(MaterialPassPlugin::<M, 0>::new(self.debug_flags));
+
+        // // Pass 1 (e.g. Attribute accumulation pass)
+        // app.add_plugins(MaterialPassPlugin::<M, 1>::new(self.debug_flags));
+
+        // Post-processing / Fullscreen pass does not need a RenderPhasePlugin
+        // It gets registered as a ViewNode in the RenderGraph instead
+        // register_fullscreen_pass_node::<M>(app);
+    }
+}
+
+impl<M: Material> MultipassMaterialPlugin<M> {
+    /// Creates a new [`PrepassPlugin`] with the given debug flags.
+    pub fn new(debug_flags: RenderDebugFlags) -> Self {
+        MultipassMaterialPlugin {
+            debug_flags,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+pub struct MaterialPassPlugin<M: Material, const PASS: usize> {
+    /// Debugging flags that can optionally be set when constructing the renderer.
+    pub debug_flags: RenderDebugFlags,
+    pub _phantom: PhantomData<fn() -> M>,
+}
+
+impl<M: Material, const PASS: usize> MaterialPassPlugin<M, PASS> {
+    /// Creates a new [`PrepassPlugin`] with the given debug flags.
+    pub fn new(debug_flags: RenderDebugFlags) -> Self {
+        MaterialPassPlugin {
+            debug_flags,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+macro_rules! add_pass_system {
+    ($app:expr, $M:ty, 0) => {
+        $app.add_systems(
+            Core3d,
+            main_opaque_multipass_3d::<$M, 0>
+                .in_set(Core3dSystems::MainPass)
+                .after(main_opaque_pass_3d),
+        );
+    };
+    ($app:expr, $M:ty, $curr:expr, $prev:expr) => {
+        $app.add_systems(
+            Core3d,
+            main_opaque_multipass_3d::<$M, $curr>
+                .in_set(Core3dSystems::MainPass)
+                .after(main_opaque_multipass_3d::<$M, $prev>),
+        );
+    };
+}
+
+impl<M: Material, const PASS: usize> Plugin for MaterialPassPlugin<M, PASS> {
     fn build(&self, app: &mut App) {
         let no_prepass_plugin_loaded = app
             .world()
@@ -139,40 +266,59 @@ impl Plugin for MultipassPlugin {
             app.insert_resource(AnyMultipassPluginLoaded);
         }
 
+        app.add_plugins(BinnedRenderPhasePlugin::<
+            Opaque3dMultipass<M, PASS>,
+            MeshPipeline,
+        >::new(self.debug_flags));
+
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
 
         render_app
-            .init_resource::<DrawFunctions<Opaque3dMultipass>>()
-            .init_resource::<ViewBinnedRenderPhases<Opaque3dMultipass>>();
+            .init_resource::<DrawFunctions<Opaque3dMultipass<M, PASS>>>()
+            // TODO: is this needed given we load `BinnedRenderPhasePlugin` above ?
+            .init_resource::<ViewBinnedRenderPhases<Opaque3dMultipass<M, PASS>>>();
 
         render_app
-            .init_gpu_resource::<ViewKeyMultipassCache>()
-            .init_gpu_resource::<SpecializedMultipassMaterialPipelineCache>()
-            .init_gpu_resource::<PendingMultipassMeshMaterialQueues>()
-            .add_render_command::<Opaque3dMultipass, DrawMultipass>()
-            .add_systems(ExtractSchedule, extract_camera_multipass_phase)
+            // .init_gpu_resource::<ViewKeyMultipassCache>()
+            // .init_gpu_resource::<SpecializedMultipassMaterialPipelineCache>()
+            // .init_gpu_resource::<PendingMultipassMeshMaterialQueues>()
+            .add_render_command::<Opaque3dMultipass<M, PASS>, DrawMultipass<M, PASS>>()
+            .add_systems(ExtractSchedule, extract_camera_multipass_phase::<M, PASS>)
             .add_systems(
                 Render,
                 (
-                    specialize_multipass_material_meshes
+                    // check_multipass_views_need_specialization.in_set(PrepareAssets),
+                    specialize_multipass_material_meshes::<M, PASS>
                         .in_set(RenderSystems::PrepareMeshes)
                         .after(prepare_assets::<RenderMesh>)
                         .after(collect_meshes_for_gpu_building)
                         .after(set_mesh_motion_vector_flags),
-                    queue_multipass_material_meshes.in_set(RenderSystems::QueueMeshes),
+                    prepare_pointcloud_bind_groups::<M, PASS>
+                        .in_set(RenderSystems::PrepareBindGroups),
+                    queue_multipass_material_meshes::<M, PASS>.in_set(RenderSystems::QueueMeshes),
                 ),
             );
 
-        // #[cfg(feature = "meshlet")]
-        // render_app.add_systems(
-        //     Render,
-        //     prepare_material_meshlet_meshes_prepass
-        //         .in_set(RenderSystems::QueueMeshes)
-        //         .before(queue_material_meshlet_meshes)
-        //         .run_if(resource_exists::<InstanceManager>),
-        // );
+        match PASS {
+            0 => {
+                add_pass_system!(render_app, M, 0);
+            }
+            1 => {
+                add_pass_system!(render_app, M, 1, 0);
+            }
+            2 => {
+                add_pass_system!(render_app, M, 2, 1);
+            }
+            3 => {
+                add_pass_system!(render_app, M, 3, 2);
+            }
+            4 => {
+                add_pass_system!(render_app, M, 4, 3);
+            }
+            _ => panic!("Unsupported number of passes."),
+        }
     }
 }
 
@@ -192,7 +338,7 @@ pub struct MultipassPipeline {
     pub depth_clip_control_supported: bool,
 
     pub material_pipeline: MaterialPipeline,
-    pub point_cloud_pipeline: PointCloudPipeline,
+    pub pointcloud_pipeline: PointCloudPipeline,
 }
 
 pub(crate) fn buffer_layout(
@@ -289,76 +435,105 @@ pub fn init_multipass_pipeline(
         skins_use_uniform_buffers: skins_use_uniform_buffers(&render_device.limits()),
         depth_clip_control_supported,
         material_pipeline: material_pipeline.clone(),
-        point_cloud_pipeline: point_cloud_pipeline.clone(),
+        pointcloud_pipeline: point_cloud_pipeline.clone(),
     });
 }
 
-pub struct MultipassPipelineSpecializer {
-    pub pipeline: MultipassPipeline,
-    pub properties: Arc<MaterialProperties>,
-}
+// pub struct MultipassPipelineSpecializer {
+//     pub pipeline: MultipassPipeline,
+//     pub properties: Arc<MaterialProperties>,
+// }
 
-impl SpecializedPointCloudPipeline for MultipassPipelineSpecializer {
-    type Key = ErasedMaterialPipelineKey;
+// impl SpecializedPointCloudPipeline for MultipassPipelineSpecializer {
+//     type Key = (MeshPipelineKey, SplatPipelineKey);
 
-    fn specialize(
-        &self,
-        key: Self::Key,
-        splat_layout: &MeshVertexBufferLayoutRef,
-        instance_layout: &MeshVertexBufferLayoutRef,
-    ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
-        let mut shader_defs = Vec::new();
+//     fn specialize(
+//         &self,
+//         key: Self::Key,
+//         splat_layout: &MeshVertexBufferLayoutRef,
+//         instance_layout: &MeshVertexBufferLayoutRef,
+//         pass: Option<usize>,
+//     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
+//         self.pipeline
+//             .pointcloud_pipeline
+//             .specialize(key, splat_layout, instance_layout, pass)
 
-        if self.properties.bindless {
-            shader_defs.push("BINDLESS".into());
-        }
+//         // let concrete_mesh_key: MeshPipelineKey = key.mesh_key.downcast();
+//         // let concrete_splat_key: SplatPipelineKey = key.splat_key.downcast();
+//         // let mut descriptor = self.pipeline.pointcloud_pipeline.specialize(
+//         //     (concrete_mesh_key, concrete_splat_key),
+//         //     splat_layout,
+//         //     instance_layout,
+//         //     pass,
+//         // )?;
 
-        let concrete_mesh_key: MeshPipelineKey = key.mesh_key.downcast();
-        let concrete_splat_key: SplatPipelineKey = key.splat_key.downcast();
-        let mut descriptor = self.pipeline.specialize(
-            (concrete_mesh_key, concrete_splat_key),
-            shader_defs,
-            splat_layout,
-            instance_layout,
-            &self.properties,
-        )?;
+//         // let material_bind_group_index = descriptor.layout.len();
 
-        // This is a bit risky because it's possible to change something that would
-        // break the prepass but be fine in the main pass.
-        // Since this api is pretty low-level it doesn't matter that much, but it is a potential
-        // issue.
-        if let Some(specialize) = self.properties.user_specialize {
-            specialize(
-                &self.pipeline.material_pipeline,
-                &mut descriptor,
-                splat_layout,
-                instance_layout,
-                key,
-            )?;
-        }
+//         // descriptor.vertex.shader_defs.push(ShaderDefVal::UInt(
+//         //     "MATERIAL_BIND_GROUP".into(),
+//         //     material_bind_group_index as u32,
+//         // ));
+//         // if let Some(ref mut fragment) = descriptor.fragment {
+//         //     fragment.shader_defs.push(ShaderDefVal::UInt(
+//         //         "MATERIAL_BIND_GROUP".into(),
+//         //         material_bind_group_index as u32,
+//         //     ));
+//         // };
+//         // if let Some(vertex_shader) = self.properties.get_shader(MaterialVertexShader) {
+//         //     descriptor.vertex.shader = vertex_shader.clone();
+//         // }
 
-        Ok(descriptor)
-    }
-}
+//         // if let Some(fragment_shader) = self.properties.get_shader(MaterialFragmentShader) {
+//         //     descriptor.fragment.as_mut().unwrap().shader = fragment_shader.clone();
+//         // }
 
-impl MultipassPipeline {
-    fn specialize(
-        &self,
-        (mesh_key, splat_key): (MeshPipelineKey, SplatPipelineKey),
-        shader_defs: Vec<ShaderDefVal>,
-        splat_layout: &MeshVertexBufferLayoutRef,
-        instance_layout: &MeshVertexBufferLayoutRef,
-        material_properties: &MaterialProperties,
-    ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
-        let descriptor = self.point_cloud_pipeline.specialize(
-            (mesh_key, splat_key),
-            splat_layout,
-            instance_layout,
-        )?;
+//         // descriptor
+//         //     .layout
+//         //     .push(self.properties.material_layout.as_ref().unwrap().clone());
 
-        Ok(descriptor)
-    }
-}
+//         // if let Some(specialize) = self.properties.user_specialize {
+//         //     specialize(
+//         //         &self.pipeline as &dyn Any,
+//         //         &mut descriptor,
+//         //         splat_layout,
+//         //         instance_layout,
+//         //         pass,
+//         //         key,
+//         //     )?;
+//         // }
+
+//         // // If bindless mode is on, add a `BINDLESS` define.
+//         // // if self.properties.bindless {
+//         // //     descriptor.vertex.shader_defs.push("BINDLESS".into());
+//         // //     if let Some(ref mut fragment) = descriptor.fragment {
+//         // //         fragment.shader_defs.push("BINDLESS".into());
+//         // //     }
+//         // // }
+
+//         // Ok(descriptor)
+//     }
+// }
+
+// impl MultipassPipeline {
+//     fn specialize(
+//         &self,
+//         (mesh_key, splat_key): (MeshPipelineKey, SplatPipelineKey),
+//         shader_defs: Vec<ShaderDefVal>,
+//         splat_layout: &MeshVertexBufferLayoutRef,
+//         instance_layout: &MeshVertexBufferLayoutRef,
+//         pass: Option<usize>,
+//         material_properties: &MaterialProperties,
+//     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
+//         let descriptor = self.pointcloud_pipeline.specialize(
+//             (mesh_key, splat_key),
+//             splat_layout,
+//             instance_layout,
+//             pass,
+//         )?;
+
+//         Ok(descriptor)
+//     }
+// }
 
 // Extract the render phases for the prepass
 pub fn extract_camera_previous_view_data(
@@ -481,25 +656,174 @@ pub fn prepare_multipass_view_bind_group(
     }
 }
 
-/// Stores the [`SpecializedPrepassMaterialViewPipelineCache`] for each view.
+/// Stores the [`SpecializedPrepassMaterialViewPipelineCache`] for each view and pass.
 #[derive(Resource, Deref, DerefMut, Default)]
 pub struct SpecializedMultipassMaterialPipelineCache {
     // view_entity -> view pipeline cache
     #[deref]
-    map: HashMap<RetainedViewEntity, SpecializedMultipassMaterialViewPipelineCache>,
+    map: HashMap<(RetainedViewEntity, usize), SpecializedMultipassMaterialViewPipelineCache>,
 }
 
 /// Stores the cached render pipeline ID for each entity in a single view, as
 /// well as the last time it was changed.
 #[derive(Deref, DerefMut, Default)]
 pub struct SpecializedMultipassMaterialViewPipelineCache {
-    // material entity -> (tick, pipeline_id, draw_function)
+    // material entity -> (tick, pipeline_id)
     #[deref]
-    map: EntityHashMap<(Tick, CachedRenderPipelineId, DrawFunctionId)>,
+    map: EntityHashMap<CachedRenderPipelineId>,
 }
 
 #[derive(Resource, Deref, DerefMut, Default, Clone)]
 pub struct ViewKeyMultipassCache(HashMap<RetainedViewEntity, MeshPipelineKey>);
+
+pub fn check_multipass_views_need_specialization(
+    mut view_key_cache: ResMut<ViewKeyMultipassCache>,
+    mut dirty_specializations: ResMut<PointCloudDirtySpecializations>,
+    mut views: Query<(
+        &ExtractedView,
+        Option<&ExtractedCamera>,
+        &Msaa,
+        (Option<&Tonemapping>, Option<&DebandDither>),
+        Option<&ShadowFilteringMethod>,
+        Has<ScreenSpaceAmbientOcclusion>,
+        (
+            Has<NormalPrepass>,
+            Has<DepthPrepass>,
+            Has<MotionVectorPrepass>,
+            Has<DeferredPrepass>,
+        ),
+        Option<&ScreenSpaceTransmission>,
+        Has<TemporalJitter>,
+        Option<&Projection>,
+        Has<DistanceFog>,
+        (
+            Has<RenderViewLightProbes<EnvironmentMapLight>>,
+            Has<RenderViewLightProbes<IrradianceVolume>>,
+        ),
+        (
+            Has<OrderIndependentTransparencySettings>,
+            Has<ExtractedAtmosphere>,
+            Has<ScreenSpaceReflectionsUniform>,
+            Has<ContactShadows>,
+        ),
+    )>,
+) {
+    for (
+        view,
+        camera,
+        msaa,
+        (tonemapping, dither),
+        shadow_filter_method,
+        ssao,
+        (normal_prepass, depth_prepass, motion_vector_prepass, deferred_prepass),
+        transmission,
+        temporal_jitter,
+        projection,
+        distance_fog,
+        (has_environment_maps, has_irradiance_volumes),
+        (has_oit, has_atmosphere, has_ssr, has_contact_shadows),
+    ) in views.iter_mut()
+    {
+        let mut view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
+            | MeshPipelineKey::from_target_format(view.target_format);
+
+        if normal_prepass {
+            view_key |= MeshPipelineKey::NORMAL_PREPASS;
+        }
+
+        if depth_prepass {
+            view_key |= MeshPipelineKey::DEPTH_PREPASS;
+        }
+
+        if motion_vector_prepass {
+            view_key |= MeshPipelineKey::MOTION_VECTOR_PREPASS;
+        }
+
+        if deferred_prepass {
+            view_key |= MeshPipelineKey::DEFERRED_PREPASS;
+        }
+
+        if temporal_jitter {
+            view_key |= MeshPipelineKey::TEMPORAL_JITTER;
+        }
+
+        if has_environment_maps {
+            view_key |= MeshPipelineKey::ENVIRONMENT_MAP;
+        }
+
+        if has_irradiance_volumes {
+            view_key |= MeshPipelineKey::IRRADIANCE_VOLUME;
+        }
+
+        if has_ssr {
+            view_key |= MeshPipelineKey::SCREEN_SPACE_REFLECTIONS;
+        }
+
+        if has_oit {
+            view_key |= MeshPipelineKey::OIT_ENABLED;
+        }
+
+        if has_atmosphere {
+            view_key |= MeshPipelineKey::ATMOSPHERE;
+        }
+
+        if has_contact_shadows {
+            view_key |= MeshPipelineKey::CONTACT_SHADOWS;
+        }
+
+        if view.invert_culling {
+            view_key |= MeshPipelineKey::INVERT_CULLING;
+        }
+
+        if let Some(projection) = projection {
+            view_key |= match projection {
+                Projection::Perspective(_) => MeshPipelineKey::VIEW_PROJECTION_PERSPECTIVE,
+                Projection::Orthographic(_) => MeshPipelineKey::VIEW_PROJECTION_ORTHOGRAPHIC,
+                Projection::Custom(_) => MeshPipelineKey::VIEW_PROJECTION_NONSTANDARD,
+            };
+        }
+
+        match shadow_filter_method.unwrap_or(&ShadowFilteringMethod::default()) {
+            ShadowFilteringMethod::Hardware2x2 => {
+                view_key |= MeshPipelineKey::SHADOW_FILTER_METHOD_HARDWARE_2X2;
+            }
+            ShadowFilteringMethod::Gaussian => {
+                view_key |= MeshPipelineKey::SHADOW_FILTER_METHOD_GAUSSIAN;
+            }
+            ShadowFilteringMethod::Temporal => {
+                view_key |= MeshPipelineKey::SHADOW_FILTER_METHOD_TEMPORAL;
+            }
+        }
+
+        if !camera.is_some_and(|camera| camera.hdr) {
+            if let Some(tonemapping) = tonemapping {
+                view_key |= MeshPipelineKey::TONEMAP_IN_SHADER;
+                view_key |= tonemapping_pipeline_key(*tonemapping);
+            }
+            if let Some(DebandDither::Enabled) = dither {
+                view_key |= MeshPipelineKey::DEBAND_DITHER;
+            }
+        }
+        if ssao {
+            view_key |= MeshPipelineKey::SCREEN_SPACE_AMBIENT_OCCLUSION;
+        }
+        if distance_fog {
+            view_key |= MeshPipelineKey::DISTANCE_FOG;
+        }
+        if let Some(transmission) = transmission {
+            view_key |= transmission.quality.pipeline_key();
+        }
+        if !view_key_cache
+            .get_mut(&view.retained_view_entity)
+            .is_some_and(|current_key| *current_key == view_key)
+        {
+            view_key_cache.insert(view.retained_view_entity, view_key);
+            dirty_specializations
+                .views
+                .insert(view.retained_view_entity);
+        }
+    }
+}
 
 pub(crate) struct MultipassSpecializationWorkItem {
     render_entity: Entity,
@@ -538,7 +862,7 @@ impl core::fmt::Debug for MultipassSpecializationWorkItem {
 pub struct PendingMultipassMeshMaterialQueues(pub PendingQueues);
 
 #[derive(SystemParam)]
-pub(crate) struct SpecializeMultipassSystemParam<'w, 's> {
+pub(crate) struct SpecializeMultipassSystemParam<'w, 's, M: Material, const PASS: usize> {
     render_meshes: Res<'w, RenderAssets<RenderMesh>>,
     render_materials: Res<'w, ErasedRenderAssets<PreparedMaterial>>,
     render_mesh_instances: Res<'w, RenderMeshInstances>,
@@ -548,7 +872,7 @@ pub(crate) struct SpecializeMultipassSystemParam<'w, 's> {
     render_visibility_ranges: Res<'w, RenderVisibilityRanges>,
     view_key_cache: Res<'w, ViewKeyMultipassCache>,
     views: Query<'w, 's, (&'static ExtractedView, &'static RenderVisibleEntities)>,
-    opaque_multipass_render_phases: Res<'w, ViewBinnedRenderPhases<Opaque3dMultipass>>,
+    opaque_multipass_render_phases: Res<'w, ViewBinnedRenderPhases<Opaque3dMultipass<M, PASS>>>,
     specialized_multipass_material_pipeline_cache:
         ResMut<'w, SpecializedMultipassMaterialPipelineCache>,
     pending_multipass_mesh_material_queues: ResMut<'w, PendingMultipassMeshMaterialQueues>,
@@ -556,9 +880,9 @@ pub(crate) struct SpecializeMultipassSystemParam<'w, 's> {
     this_run: SystemChangeTick,
 }
 
-pub(crate) fn specialize_multipass_material_meshes(
+pub(crate) fn specialize_multipass_material_meshes<M: Material, const PASS: usize>(
     world: &mut World,
-    state: &mut SystemState<SpecializeMultipassSystemParam>,
+    state: &mut SystemState<SpecializeMultipassSystemParam<M, PASS>>,
     mut work_items: Local<Vec<MultipassSpecializationWorkItem>>,
     mut removals: Local<Vec<(RetainedViewEntity, Entity)>>,
     mut all_views: Local<HashSet<RetainedViewEntity, FixedHasher>>,
@@ -566,8 +890,6 @@ pub(crate) fn specialize_multipass_material_meshes(
     work_items.clear();
     removals.clear();
     all_views.clear();
-
-    let this_run;
 
     {
         let SpecializeMultipassSystemParam {
@@ -587,14 +909,14 @@ pub(crate) fn specialize_multipass_material_meshes(
             this_run: system_change_tick,
         } = state.get_mut(world).unwrap();
 
-        this_run = system_change_tick.this_run();
-
         for (view, visible_entities) in &views {
             if !opaque_multipass_render_phases.contains_key(&view.retained_view_entity) {
+                warn!("no opaque multipass phase");
                 continue;
             }
 
             let Some(view_key) = view_key_cache.get(&view.retained_view_entity) else {
+                warn!("missing view in view key cache for pass {}", PASS);
                 continue;
             };
 
@@ -611,7 +933,8 @@ pub(crate) fn specialize_multipass_material_meshes(
 
             // Initialize the pending queues.
             let mut maybe_specialized_multipass_material_pipeline_cache =
-                specialized_multipass_material_pipeline_cache.get_mut(&view.retained_view_entity);
+                specialized_multipass_material_pipeline_cache
+                    .get_mut(&(view.retained_view_entity, PASS));
 
             // Remove cached pipeline IDs corresponding to entities that
             // either have been removed or need to be respecialized.
@@ -637,6 +960,10 @@ pub(crate) fn specialize_multipass_material_meshes(
                 visible_entities_class,
                 &view_pending_multipass_mesh_material_queues.prev_frame,
             ) {
+                info!(
+                    "Specializing entity {:?}/{:?} for pass {}",
+                    render_entity, visible_entity, PASS
+                );
                 if maybe_specialized_multipass_material_pipeline_cache
                     .as_ref()
                     .is_some_and(|specialized_multipass_material_pipeline_cache| {
@@ -794,6 +1121,7 @@ pub(crate) fn specialize_multipass_material_meshes(
                     splat_key |= SplatPipelineKey::IS_OCTREE;
                 }
 
+                info!("Push workitem for pass {}", PASS);
                 work_items.push(MultipassSpecializationWorkItem {
                     render_entity: *render_entity,
                     visible_entity: *visible_entity,
@@ -812,25 +1140,17 @@ pub(crate) fn specialize_multipass_material_meshes(
     }
 
     for item in work_items.drain(..) {
-        info!("Processing work item {:?} for multipass", item);
+        info!("Processing work item {:?} for pass {}", item, PASS);
         let key = ErasedMaterialPipelineKey {
             type_id: item.material_type_id,
             mesh_key: ErasedMeshPipelineKey::new(item.mesh_key),
             splat_key: ErasedSplatPipelineKey::new(item.splat_key),
             material_key: item.properties.material_key.clone(),
+            pass: Some(PASS),
         };
 
         let Some(base_specialize) = item.properties.base_specialize else {
             warn!("no base specialize");
-            continue;
-        };
-
-        let draw_function = item
-            .properties
-            .get_draw_function(MultiPassOpaqueDrawFunction);
-
-        let Some(draw_function) = draw_function else {
-            warn!("no draw function");
             continue;
         };
 
@@ -844,9 +1164,9 @@ pub(crate) fn specialize_multipass_material_meshes(
             Ok(pipeline_id) => {
                 world
                     .resource_mut::<SpecializedMultipassMaterialPipelineCache>()
-                    .entry(item.retained_view_entity)
+                    .entry((item.retained_view_entity, PASS))
                     .or_default()
-                    .insert(item.render_entity, (this_run, pipeline_id, draw_function));
+                    .insert(item.render_entity, pipeline_id);
             }
             Err(err) => error!("{}", err),
         }
@@ -855,7 +1175,7 @@ pub(crate) fn specialize_multipass_material_meshes(
     if !removals.is_empty() {
         let mut cache = world.resource_mut::<SpecializedMultipassMaterialPipelineCache>();
         for (view, entity) in removals.drain(..) {
-            if let Some(view_cache) = cache.get_mut(&view) {
+            if let Some(view_cache) = cache.get_mut(&(view, PASS)) {
                 view_cache.remove(&entity);
             }
         }
@@ -863,39 +1183,40 @@ pub(crate) fn specialize_multipass_material_meshes(
 
     world
         .resource_mut::<SpecializedMultipassMaterialPipelineCache>()
-        .retain(|view, _| all_views.contains(view));
+        .retain(|(view, _), _| all_views.contains(view));
 }
 
-pub fn queue_multipass_material_meshes(
+pub fn queue_multipass_material_meshes<M: Material, const PASS: usize>(
     render_materials: Res<ErasedRenderAssets<PreparedMaterial>>,
     render_mesh_instances: Res<RenderMeshInstances>,
     render_material_instances: Res<RenderPointCloudMaterialInstances>,
     render_point_cloud_chunk_instances: Res<RenderPointCloudChunkInstances>,
     mesh_allocator: Res<MeshAllocator>,
-    mut opaque_multipass_render_phases: ResMut<ViewBinnedRenderPhases<Opaque3dMultipass>>,
+    mut opaque_multipass_render_phases: ResMut<ViewBinnedRenderPhases<Opaque3dMultipass<M, PASS>>>,
     views: Query<(&ExtractedView, &RenderVisibleEntities)>,
     specialized_material_pipeline_cache: Res<SpecializedMultipassMaterialPipelineCache>,
     mut pending_multipass_mesh_material_queues: ResMut<PendingMultipassMeshMaterialQueues>,
     dirty_specializations: Res<PointCloudDirtySpecializations>,
+    draw_functions: Res<DrawFunctions<Opaque3dMultipass<M, PASS>>>,
 ) {
     for (view, visible_entities) in &views {
         let mut opaque_phase = opaque_multipass_render_phases.get_mut(&view.retained_view_entity);
 
         let Some(view_specialized_material_pipeline_cache) =
-            specialized_material_pipeline_cache.get(&view.retained_view_entity)
+            specialized_material_pipeline_cache.get(&(view.retained_view_entity, PASS))
         else {
-            warn!("no specialized_material_pipeline_cache for multipass");
+            warn!("no specialized_material_pipeline_cache for pass {}", PASS);
             continue;
         };
 
         // Skip if there's no place to put the mesh.
         if opaque_phase.is_none() {
-            warn!("no phase for multipass");
+            warn!("no phase for pass {}", PASS);
             continue;
         }
 
         let Some(visible_entities_class) = visible_entities.get::<PointCloudChunk3d>() else {
-            warn!("no visible entities for multipass");
+            warn!("no visible entities for pass {}", PASS);
             continue;
         };
 
@@ -940,8 +1261,7 @@ pub fn queue_multipass_material_meshes(
             visible_entities_class,
             &view_pending_prepass_mesh_material_queues.prev_frame,
         ) {
-            let Some(&(_, pipeline_id, draw_function)) =
-                view_specialized_material_pipeline_cache.get(render_entity)
+            let Some(&pipeline_id) = view_specialized_material_pipeline_cache.get(render_entity)
             else {
                 continue;
             };
@@ -952,8 +1272,8 @@ pub fn queue_multipass_material_meshes(
                 render_point_cloud_chunk_instances.get(render_entity)
             else {
                 warn!(
-                    "RenderPointCloudChunkInstance not found for entity {:?} for multipass",
-                    visible_entity
+                    "RenderPointCloudChunkInstance not found for entity {:?} for pass {}",
+                    visible_entity, PASS
                 );
                 continue;
             };
@@ -966,7 +1286,7 @@ pub fn queue_multipass_material_meshes(
                 .instances
                 .get(&render_point_cloud_chunk_instance.root_entity)
             else {
-                warn!("material instance not ready, queue for multipass");
+                warn!("material instance not ready, queue for pass {}", PASS);
                 view_pending_prepass_mesh_material_queues
                     .current_frame
                     .insert((*render_entity, *visible_entity));
@@ -976,14 +1296,14 @@ pub fn queue_multipass_material_meshes(
             let Some(mesh_instance) = render_mesh_instances
                 .render_mesh_queue_data(render_point_cloud_chunk_instance.root_entity)
             else {
-                warn!("mesh instance not ready, queue for multipass");
+                warn!("mesh instance not ready, queue for pass {}", PASS);
                 view_pending_prepass_mesh_material_queues
                     .current_frame
                     .insert((*render_entity, *visible_entity));
                 continue;
             };
             let Some(material) = render_materials.get(material_instance.asset_id) else {
-                warn!("material not ready, queue for prepass");
+                warn!("material not ready, queue for pass {}", PASS);
                 view_pending_prepass_mesh_material_queues
                     .current_frame
                     .insert((*render_entity, *visible_entity));
@@ -995,8 +1315,8 @@ pub fn queue_multipass_material_meshes(
                 mesh_allocator.mesh_slabs(&render_point_cloud_chunk_instance.mesh_asset_id)
             else {
                 warn!(
-                    "mesh slab not found for visible entity {:?} for prepass",
-                    visible_entity
+                    "mesh slab not found for visible entity {:?} for pass {}",
+                    visible_entity, PASS
                 );
                 view_pending_prepass_mesh_material_queues
                     .current_frame
@@ -1013,13 +1333,20 @@ pub fn queue_multipass_material_meshes(
                     opaque_phase.update_cache(*visible_entity, None);
                     continue;
                 }
-                let Some(draw_function) = material
-                    .properties
-                    .get_draw_function(MultiPassOpaqueDrawFunction)
-                else {
-                    warn!("draw function not found for multipass");
-                    continue;
-                };
+
+                let draw_function = draw_functions.read().id::<DrawMultipass<M, PASS>>();
+
+                // let Some(draw_function) = material
+                //     .properties
+                //     .get_draw_function(MultiPassOpaqueDrawFunction)
+                // let Some(draw_function) = material
+                //     .properties
+                //     .get_draw_function(MainPassOpaqueDrawFunction)
+                // else {
+                //     warn!("draw function not found for multipass");
+                //     continue;
+                // };
+
                 let batch_set_key = Opaque3dBatchSetKey {
                     pipeline: pipeline_id,
                     draw_function,
@@ -1035,8 +1362,11 @@ pub fn queue_multipass_material_meshes(
                 };
 
                 info!(
-                    "Add phase for entity {:?}/{:?} ({:?})",
-                    render_point_cloud_chunk_instance.root_entity, render_entity, visible_entity
+                    "Add phase for entity {:?}/{:?} ({:?}) for pass {}",
+                    render_point_cloud_chunk_instance.root_entity,
+                    render_entity,
+                    visible_entity,
+                    PASS,
                 );
                 opaque_phase.add(
                     batch_set_key,
@@ -1056,58 +1386,149 @@ pub fn queue_multipass_material_meshes(
     }
 }
 
-pub struct SetMultipassViewBindGroup<const I: usize>;
-impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetMultipassViewBindGroup<I> {
-    type Param = SRes<MultipassViewBindGroup>;
-    type ViewQuery = (
-        Read<ViewUniformOffset>,
-        Has<MotionVectorPrepass>,
-        Option<Read<PreviousViewUniformOffset>>,
-    );
+pub type DrawMultipass<M, const PASS: usize> = (
+    MySetItemPipeline,
+    // SetItemPipeline,
+    SetMeshViewBindGroup<0>,
+    SetMeshViewBindingArrayBindGroup<1>,
+    SetMultipassPointCloudBindGroup<2, M, PASS>,
+    SetMaterialBindGroup<3>,
+    DrawPointCloudInstanced,
+);
+
+pub struct SetMultipassPointCloudBindGroup<const I: usize, M: Material, const PASS: usize>(
+    PhantomData<M>,
+);
+impl<P: PhaseItem, const I: usize, M: Material, const PASS: usize> RenderCommand<P>
+    for SetMultipassPointCloudBindGroup<I, M, PASS>
+{
+    type Param = SRes<RenderPointCloudChunkInstances>;
+    type ViewQuery = Read<ViewPointCloudPassBindGroup<M, PASS>>;
     type ItemQuery = ();
 
-    #[inline]
     fn render<'w>(
-        _item: &P,
-        (view_uniform_offset, has_motion_vector_prepass, previous_view_uniform_offset): (
-            &'_ ViewUniformOffset,
-            bool,
-            Option<&'_ PreviousViewUniformOffset>,
-        ),
-        _entity: Option<()>,
-        prepass_view_bind_group: SystemParamItem<'w, '_, Self::Param>,
+        item: &P,
+        view_point_cloud_bind_groups: ROQueryItem<'w, '_, Self::ViewQuery>,
+        _: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
+        render_point_cloud_chunk_instances: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
-        let prepass_view_bind_group = prepass_view_bind_group.into_inner();
+        let Some(chunk_instance) = render_point_cloud_chunk_instances.get(&item.entity()) else {
+            warn!("render_point_cloud_chunk_instance missing 2");
+            return RenderCommandResult::Skip;
+        };
 
-        match previous_view_uniform_offset {
-            Some(previous_view_uniform_offset) if has_motion_vector_prepass => {
-                pass.set_bind_group(
-                    I,
-                    prepass_view_bind_group.motion_vectors.as_ref().unwrap(),
-                    &[
-                        view_uniform_offset.offset,
-                        previous_view_uniform_offset.offset,
-                    ],
-                );
-            }
-            _ => {
-                pass.set_bind_group(
-                    I,
-                    prepass_view_bind_group.no_motion_vectors.as_ref().unwrap(),
-                    &[view_uniform_offset.offset],
-                );
-            }
-        }
+        let Some(bind_group) = view_point_cloud_bind_groups
+            .bind_groups
+            .get(&chunk_instance.root_entity)
+        else {
+            warn!(
+                "view point cloud bind group missing for point cloud {:?}",
+                chunk_instance.root_entity
+            );
+            return RenderCommandResult::Skip;
+        };
+
+        pass.set_bind_group(I, bind_group, &[]);
         RenderCommandResult::Success
     }
 }
 
-pub type DrawMultipass = (
-    SetItemPipeline,
-    SetMultipassViewBindGroup<0>,
-    SetMeshViewBindingArrayBindGroup<1>,
-    SetPointCloudBindGroup<2>,
-    SetMaterialBindGroup<3>,
-    DrawPointCloudInstanced,
-);
+pub fn main_opaque_multipass_3d<M: Material, const PASS: usize>(
+    world: &World,
+    view: ViewQuery<(
+        &ExtractedCamera,
+        &ExtractedView,
+        &ViewTarget,
+        &ViewDepthTexture,
+        &ViewMultipassTextures<M>,
+        Option<&SkyboxPipelineId>,
+        Option<&SkyboxBindGroup>,
+        &ViewUniformOffset,
+        Option<&MainPassResolutionOverride>,
+    )>,
+    opaque_phases: Res<ViewBinnedRenderPhases<Opaque3dMultipass<M, PASS>>>,
+    // TODO remove this
+    alpha_mask_phases: Res<ViewBinnedRenderPhases<AlphaMask3d>>,
+    pipeline_cache: Res<PipelineCache>,
+    mut ctx: RenderContext,
+) {
+    let view_entity = view.entity();
+
+    let (
+        camera,
+        extracted_view,
+        target,
+        depth,
+        multipass_textures,
+        skybox_pipeline,
+        skybox_bind_group,
+        view_uniform_offset,
+        resolution_override,
+    ) = view.into_inner();
+
+    let (Some(opaque_phase), Some(alpha_mask_phase)) = (
+        opaque_phases.get(&extracted_view.retained_view_entity),
+        alpha_mask_phases.get(&extracted_view.retained_view_entity),
+    ) else {
+        warn!("no opaque_multipass_phase");
+        return;
+    };
+
+    #[cfg(feature = "trace")]
+    let _main_opaque_pass_3d_span = info_span!("main_opaque_pass_3d_multipass").entered();
+
+    let diagnostics = ctx.diagnostic_recorder();
+    let diagnostics = diagnostics.as_deref();
+
+    let color_attachments = [Some(target.get_color_attachment())];
+    let depth_stencil_attachment = Some(depth.get_attachment(StoreOp::Store));
+
+    let mut render_pass = ctx.begin_tracked_render_pass(RenderPassDescriptor {
+        label: Some("main_opaque_pass_3d_multipass"),
+        color_attachments: &color_attachments,
+        depth_stencil_attachment,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    });
+    let pass_span = diagnostics.pass_span(&mut render_pass, "main_opaque_pass_3d_multipass");
+
+    if let Some(viewport) =
+        Viewport::from_viewport_and_override(camera.viewport.as_ref(), resolution_override)
+    {
+        render_pass.set_camera_viewport(&viewport);
+    }
+
+    if !opaque_phase.is_empty() {
+        #[cfg(feature = "trace")]
+        let _opaque_main_pass_3d_span = info_span!("opaque_main_pass_3d_multipass").entered();
+        if let Err(err) = opaque_phase.render(&mut render_pass, world, view_entity) {
+            error!("Error encountered while rendering the opaque multipass phase {err:?}");
+        }
+    }
+
+    // if !alpha_mask_phase.is_empty() {
+    //     #[cfg(feature = "trace")]
+    //     let _alpha_mask_main_pass_3d_span =
+    //         info_span!("alpha_mask_main_pass_3d_multipass").entered();
+    //     if let Err(err) = alpha_mask_phase.render(&mut render_pass, world, view_entity) {
+    //         error!("Error encountered while rendering the alpha mask multipass phase {err:?}");
+    //     }
+    // }
+
+    // if let (Some(skybox_pipeline), Some(SkyboxBindGroup(skybox_bind_group))) =
+    //     (skybox_pipeline, skybox_bind_group)
+    //     && let Some(pipeline) = pipeline_cache.get_render_pipeline(skybox_pipeline.0)
+    // {
+    //     render_pass.set_render_pipeline(pipeline);
+    //     render_pass.set_bind_group(
+    //         0,
+    //         &skybox_bind_group.0,
+    //         &[view_uniform_offset.offset, skybox_bind_group.1],
+    //     );
+    //     render_pass.draw(0..3, 0..1);
+    // }
+
+    pass_span.end(&mut render_pass);
+}
