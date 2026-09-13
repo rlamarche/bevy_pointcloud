@@ -1382,6 +1382,8 @@ pub(crate) fn specialize_prepass_material_meshes(
             mesh_key: ErasedMeshPipelineKey::new(item.mesh_key),
             splat_key: ErasedSplatPipelineKey::new(item.splat_key),
             material_key: item.properties.material_key.clone(),
+            // there is no multipass for prepass
+            pass: None,
         };
 
         let emulate_unclipped_depth = item
