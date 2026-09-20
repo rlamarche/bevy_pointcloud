@@ -68,7 +68,7 @@ pub fn prepare_multipass_textures<M: Material>(
         }
 
         for (name, target) in &material_targets.required_textures {
-            view_multipass_textures
+            let texture = view_multipass_textures
                 .entry(name.clone())
                 .or_insert_with(|| {
                     let descriptor = TextureDescriptor {
@@ -86,15 +86,18 @@ pub fn prepare_multipass_textures<M: Material>(
                     let texture = texture_cache.get(&render_device, descriptor);
 
                     MultipassTexture {
-                        color_attachment: ColorAttachment::new(
-                            texture.clone(),
-                            None,
-                            None,
-                            Some(LinearRgba::BLACK.into()),
-                        ),
+                        color_attachment: None,
                         texture,
                     }
                 });
+
+            // recreate the attachment to make sure it's cleared every frame
+            texture.color_attachment = Some(ColorAttachment::new(
+                texture.texture.clone(),
+                None,
+                None,
+                Some(LinearRgba::BLACK.into()),
+            ));
         }
     }
 }

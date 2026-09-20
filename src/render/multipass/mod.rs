@@ -1453,6 +1453,9 @@ pub fn main_opaque_multipass_3d<M: Material, const PASS: usize>(
     _pipeline_cache: Res<PipelineCache>,
     mut ctx: RenderContext,
 ) {
+    let passes = M::passes();
+    let pass = &passes[PASS];
+
     let view_entity = view.entity();
 
     let (
@@ -1460,7 +1463,7 @@ pub fn main_opaque_multipass_3d<M: Material, const PASS: usize>(
         extracted_view,
         target,
         depth,
-        _multipass_textures,
+        multipass_textures,
         _skybox_pipeline,
         _skybox_bind_group,
         _view_uniform_offset,
@@ -1481,7 +1484,14 @@ pub fn main_opaque_multipass_3d<M: Material, const PASS: usize>(
     let diagnostics = ctx.diagnostic_recorder();
     let diagnostics = diagnostics.as_deref();
 
-    let color_attachments = [Some(target.get_color_attachment())];
+    let color_attachment = match pass.output {
+        super::PassOutput::TransientTarget(_) => multipass_textures
+            .get(&pass.name)
+            .and_then(|v| v.color_attachment.as_ref().map(|v| v.get_attachment())),
+        super::PassOutput::MainColorTarget => Some(target.get_color_attachment()),
+    };
+
+    let color_attachments = [color_attachment];
     let depth_stencil_attachment = Some(depth.get_attachment(StoreOp::Store));
 
     let mut render_pass = ctx.begin_tracked_render_pass(RenderPassDescriptor {

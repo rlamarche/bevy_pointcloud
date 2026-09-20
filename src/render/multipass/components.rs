@@ -25,7 +25,7 @@ pub struct ViewMultipassTextures<M: Material> {
 
 #[derive(Clone)]
 pub struct MultipassTexture {
-    pub color_attachment: ColorAttachment,
+    pub color_attachment: Option<ColorAttachment>,
     pub texture: CachedTexture,
 }
 
