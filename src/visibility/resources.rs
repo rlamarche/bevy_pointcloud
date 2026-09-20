@@ -40,7 +40,7 @@ impl GlobalVisiblePointCloudNodes {
 
 /// This resource contains all visible point cloud chunk instances (entities) visible in the current
 /// iteration, per point cloud instances. It is used to determine quickly which needs
-/// sepecialization. They are sorted by priority (not sure to keep this unneeded yet order).
+/// repecialization. They are sorted by priority (not sure to keep this unneeded yet order).
 /// Note that because we keep allocations, if a key exists for a given point cloud instance, it does
 /// not necessarly means it is visible. Must check for chunks.
 #[derive(Resource, Default)]

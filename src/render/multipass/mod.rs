@@ -2,6 +2,8 @@ mod components;
 mod phase;
 mod prepare;
 
+#[cfg(feature = "trace")]
+use bevy::log::info_span;
 use bevy::{
     app::{App, Plugin},
     asset::{embedded_asset, load_embedded_asset, AssetServer, Handle},
@@ -77,14 +79,12 @@ use bevy::{
 use std::{marker::PhantomData, num::NonZero, sync::Arc};
 
 use crate::{
-    init_material_pipeline, init_point_cloud_pipeline, BinnedRenderPhaseExt, DrawMaterial,
-    DrawPointCloudInstanced, ErasedMaterialPipelineKey, ErasedSplatPipelineKey,
-    MainPassOpaqueDrawFunction, Material, MaterialPipeline, MaterialProperties,
-    MultiPassOpaqueDrawFunction, MySetItemPipeline, PointCloudChunk3d,
+    init_material_pipeline, init_point_cloud_pipeline, BinnedRenderPhaseExt,
+    DrawPointCloudInstanced, ErasedMaterialPipelineKey, ErasedSplatPipelineKey, Material,
+    MaterialPipeline, MaterialProperties, MySetItemPipeline, PointCloudChunk3d,
     PointCloudDirtySpecializations, PointCloudPipeline, PointCloudTopologyKind, PreparedMaterial,
     RenderPointCloudChunkInstances, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
-    SetMaterialBindGroup, SetPointCloudBindGroup, SpecializedPointCloudPipeline,
-    SpecializedPointCloudPipelines, SplatPipelineKey,
+    SetMaterialBindGroup, SplatPipelineKey,
 };
 
 pub use components::*;
@@ -366,7 +366,7 @@ const STANDARD_MATERIAL_FRAGMENT_SHADER_MIN_TEXTURE_BINDINGS: usize = 16;
 pub fn init_multipass_pipeline(
     mut commands: Commands,
     render_device: Res<RenderDevice>,
-    render_adapter: Res<RenderAdapter>,
+    _render_adapter: Res<RenderAdapter>,
     mesh_pipeline: Res<MeshPipeline>,
     material_pipeline: Res<MaterialPipeline>,
     point_cloud_pipeline: Res<PointCloudPipeline>,
@@ -606,9 +606,9 @@ pub struct MultipassViewBindGroup {
 
 pub fn init_multipass_view_bind_group(
     mut commands: Commands,
-    render_device: Res<RenderDevice>,
-    pipeline_cache: Res<PipelineCache>,
-    pipeline: Res<MultipassPipeline>,
+    _render_device: Res<RenderDevice>,
+    _pipeline_cache: Res<PipelineCache>,
+    _pipeline: Res<MultipassPipeline>,
 ) {
     commands.insert_resource(MultipassViewBindGroup {
         motion_vectors: None,
@@ -906,7 +906,7 @@ pub(crate) fn specialize_multipass_material_meshes<M: Material, const PASS: usiz
             mut specialized_multipass_material_pipeline_cache,
             mut pending_multipass_mesh_material_queues,
             dirty_specializations,
-            this_run: system_change_tick,
+            this_run: _system_change_tick,
         } = state.get_mut(world).unwrap();
 
         for (view, visible_entities) in &views {
@@ -1450,7 +1450,7 @@ pub fn main_opaque_multipass_3d<M: Material, const PASS: usize>(
     opaque_phases: Res<ViewBinnedRenderPhases<Opaque3dMultipass<M, PASS>>>,
     // TODO remove this
     alpha_mask_phases: Res<ViewBinnedRenderPhases<AlphaMask3d>>,
-    pipeline_cache: Res<PipelineCache>,
+    _pipeline_cache: Res<PipelineCache>,
     mut ctx: RenderContext,
 ) {
     let view_entity = view.entity();
@@ -1460,14 +1460,14 @@ pub fn main_opaque_multipass_3d<M: Material, const PASS: usize>(
         extracted_view,
         target,
         depth,
-        multipass_textures,
-        skybox_pipeline,
-        skybox_bind_group,
-        view_uniform_offset,
+        _multipass_textures,
+        _skybox_pipeline,
+        _skybox_bind_group,
+        _view_uniform_offset,
         resolution_override,
     ) = view.into_inner();
 
-    let (Some(opaque_phase), Some(alpha_mask_phase)) = (
+    let (Some(opaque_phase), Some(_alpha_mask_phase)) = (
         opaque_phases.get(&extracted_view.retained_view_entity),
         alpha_mask_phases.get(&extracted_view.retained_view_entity),
     ) else {

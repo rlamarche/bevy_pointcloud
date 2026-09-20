@@ -5,7 +5,7 @@ use bevy::{
     platform::collections::HashMap,
     prelude::{Deref, DerefMut},
     render::{
-        render_resource::{BindGroup, Extent3d, TextureView},
+        render_resource::{BindGroup, Extent3d},
         sync_world::MainEntityHashMap,
         texture::{CachedTexture, ColorAttachment},
     },

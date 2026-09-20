@@ -74,7 +74,7 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
 
     fn specialize(
         &self,
-        (key, splat_key, pass): Self::Key,
+        (key, splat_key, _pass): Self::Key,
         splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {

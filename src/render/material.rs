@@ -2188,7 +2188,7 @@ where
                 shaders,
                 inputs: pass.inputs.clone(),
                 output: pass.output.clone(),
-                blend: pass.blend.clone(),
+                blend: pass.blend,
             });
         }
 
