@@ -11,6 +11,8 @@ use crate::{
     SkipPointCloudVisibility, VisiblePointCloudFlatEntities, VisiblePointCloudNodeEntity,
     VisiblePointCloudOctreeEntities,
 };
+#[cfg(feature = "trace")]
+use bevy::log::info_span;
 use bevy::{
     asset::Assets,
     camera::{
@@ -519,7 +521,7 @@ pub fn compute_visible_nodes_stack(
                         parent_index: Some(current_index),
                     });
                     #[cfg(feature = "trace")]
-                    drop(span_append_stack)
+                    drop(span_append_stack);
                 }
                 #[cfg(feature = "trace")]
                 drop(span_iter_children);
