@@ -279,10 +279,11 @@ impl Material for SimplePointCloudMaterial {
                             },
                         visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
                     }],
-                    output: PassOutput::TransientTarget(TransientTarget {
-                        format: TextureFormat::Rgba32Float,
-                        scale_factor: 1.0,
-                    }),
+                    // output: PassOutput::TransientTarget(TransientTarget {
+                    //     format: TextureFormat::Rgba32Float,
+                    //     scale_factor: 1.0,
+                    // }),
+                    output: PassOutput::MainColorTarget,
                     blend: None,
                 },
                 PassDescriptor {

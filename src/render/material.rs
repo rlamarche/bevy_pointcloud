@@ -585,6 +585,7 @@ impl SpecializedPointCloudPipeline for MaterialPipelineSpecializer {
 
             // add useful shaderdefs (eg: `POINTCLOUD_PASS_DEPTH` and `POINTCLOUD_PASS_0`)
             shader_defs.push(ShaderDefVal::UInt("POINTCLOUD_PASS".into(), pass as u32));
+
             shader_defs.push(format!("POINTCLOUD_PASS_{}", pass).into());
             shader_defs
                 .push(format!("POINTCLOUD_PASS_{}", pass_properties.name.to_uppercase()).into());
@@ -609,6 +610,13 @@ impl SpecializedPointCloudPipeline for MaterialPipelineSpecializer {
                     };
                     pointcloud_layout.entries.push(entry);
                 }
+            }
+
+            if let PassOutput::TransientTarget(transient_target) = &pass_properties.output {
+                let color_target_state = descriptor.fragment.as_mut().unwrap().targets[0]
+                    .as_mut()
+                    .unwrap();
+                color_target_state.format = transient_target.format;
             }
         } else {
             if let Some(vertex_shader) = self.properties.get_shader(MaterialVertexShader) {
