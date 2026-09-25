@@ -65,16 +65,20 @@ use bevy::{
 use std::{num::NonZero, sync::Arc};
 
 use crate::{
-    init_material_pipeline, init_point_cloud_pipeline, BinnedRenderPhaseExt,
-    DeferredAlphaMaskDrawFunction, DeferredFragmentShader, DeferredOpaqueDrawFunction,
-    DeferredVertexShader, DrawPointCloudInstanced, ErasedMaterialPipelineKey,
-    ErasedSplatPipelineKey, MaterialPipeline, MaterialProperties, PointCloudChunk3d,
-    PointCloudDirtySpecializations, PointCloudPipeline, PointCloudTopologyKind, PreparedMaterial,
-    PrepassAlphaMaskDrawFunction, PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction,
-    PrepassOpaqueDrawFunction, PrepassVertexShader, RenderPointCloudChunkInstances,
-    RenderPointCloudInstances, RenderPointCloudMaterialInstances, SetMaterialBindGroup,
-    SetPointCloudBindGroup, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
-    SplatPipelineKey,
+    render::{
+        init_point_cloud_material_pipeline, init_point_cloud_pipeline, BinnedRenderPhaseExt,
+        DeferredAlphaMaskDrawFunction, DeferredFragmentShader, DeferredOpaqueDrawFunction,
+        DeferredVertexShader, DrawPointCloudInstanced, ErasedMaterialViewSettingsKeys,
+        ErasedPointCloudMaterialPipelineKey, ErasedSplatPipelineKey, ErasedViewSettingsKey,
+        PointCloudChunk3d, PointCloudDirtySpecializations, PointCloudMaterialPipeline,
+        PointCloudMaterialProperties, PointCloudPipeline, PreparedPointCloudMaterial,
+        PrepassAlphaMaskDrawFunction, PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction,
+        PrepassOpaqueDrawFunction, PrepassVertexShader, RenderPointCloudChunkInstances,
+        RenderPointCloudInstances, RenderPointCloudMaterialInstances, SetMaterialBindGroup,
+        SetPointCloudBindGroup, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
+        SplatPipelineKey,
+    },
+    PointCloudTopologyKind,
 };
 
 /// Sets up everything required to use the prepass pipeline.
@@ -99,7 +103,7 @@ impl Plugin for PrepassPipelinePlugin {
                 RenderStartup,
                 (
                     init_prepass_pipeline
-                        .after(init_material_pipeline)
+                        .after(init_point_cloud_material_pipeline)
                         .after(init_point_cloud_pipeline),
                     init_prepass_view_bind_group,
                 )
@@ -272,7 +276,7 @@ pub struct PrepassPipeline {
     /// Whether binding arrays (a.k.a. bindless textures) are usable on the
     /// current render device.
     pub binding_arrays_are_usable: bool,
-    pub material_pipeline: MaterialPipeline,
+    pub material_pipeline: PointCloudMaterialPipeline,
     pub point_cloud_pipeline: PointCloudPipeline,
 }
 
@@ -341,7 +345,7 @@ pub fn init_prepass_pipeline(
     render_device: Res<RenderDevice>,
     render_adapter: Res<RenderAdapter>,
     mesh_pipeline: Res<MeshPipeline>,
-    material_pipeline: Res<MaterialPipeline>,
+    material_pipeline: Res<PointCloudMaterialPipeline>,
     point_cloud_pipeline: Res<PointCloudPipeline>,
     asset_server: Res<AssetServer>,
 ) {
@@ -422,11 +426,11 @@ pub fn skins_use_uniform_buffers(limits: &WgpuLimits) -> bool {
 
 pub struct PrepassPipelineSpecializer {
     pub pipeline: PrepassPipeline,
-    pub properties: Arc<MaterialProperties>,
+    pub properties: Arc<PointCloudMaterialProperties>,
 }
 
 impl SpecializedPointCloudPipeline for PrepassPipelineSpecializer {
-    type Key = ErasedMaterialPipelineKey;
+    type Key = ErasedPointCloudMaterialPipelineKey;
 
     fn specialize(
         &self,
@@ -479,7 +483,7 @@ impl PrepassPipeline {
         shader_defs: Vec<ShaderDefVal>,
         splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
-        material_properties: &MaterialProperties,
+        material_properties: &PointCloudMaterialProperties,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
         let mut shader_defs = shader_defs;
         let mut bind_group_layouts = vec![
@@ -700,6 +704,7 @@ impl PrepassPipeline {
             self.skins_use_uniform_buffers,
         );
 
+        shader_defs.push(ShaderDefVal::UInt("POINTCLOUD_BIND_GROUP".into(), 2));
         bind_group_layouts.insert(2, self.point_cloud_pipeline.point_cloud_layout.clone());
 
         // if splat_key.contains(SplatPipelineKey::IS_OCTREE) {
@@ -1024,7 +1029,8 @@ pub(crate) struct PrepassSpecializationWorkItem {
     splat_key: SplatPipelineKey,
     splat_layout: MeshVertexBufferLayoutRef,
     instance_layout: MeshVertexBufferLayoutRef,
-    properties: Arc<MaterialProperties>,
+    properties: Arc<PointCloudMaterialProperties>,
+    view_settings_key: Option<ErasedViewSettingsKey>,
     material_type_id: TypeId,
 }
 
@@ -1038,7 +1044,7 @@ pub struct PendingPrepassMeshMaterialQueues(pub PendingQueues);
 #[derive(SystemParam)]
 pub(crate) struct SpecializePrepassSystemParam<'w, 's> {
     render_meshes: Res<'w, RenderAssets<RenderMesh>>,
-    render_materials: Res<'w, ErasedRenderAssets<PreparedMaterial>>,
+    render_materials: Res<'w, ErasedRenderAssets<PreparedPointCloudMaterial>>,
     render_mesh_instances: Res<'w, RenderMeshInstances>,
     render_material_instances: Res<'w, RenderPointCloudMaterialInstances>,
     render_point_cloud_instances: Res<'w, RenderPointCloudInstances>,
@@ -1052,6 +1058,7 @@ pub(crate) struct SpecializePrepassSystemParam<'w, 's> {
         (
             &'static ExtractedView,
             &'static RenderVisibleEntities,
+            &'static ErasedMaterialViewSettingsKeys,
             &'static Msaa,
             Option<&'static MotionVectorPrepass>,
             Option<&'static DeferredPrepass>,
@@ -1105,8 +1112,14 @@ pub(crate) fn specialize_prepass_material_meshes(
 
         this_run = system_change_tick.this_run();
 
-        for (extracted_view, visible_entities, msaa, motion_vector_prepass, deferred_prepass) in
-            &views
+        for (
+            extracted_view,
+            visible_entities,
+            view_settings_keys,
+            msaa,
+            motion_vector_prepass,
+            deferred_prepass,
+        ) in &views
         {
             if !opaque_deferred_render_phases.contains_key(&extracted_view.retained_view_entity)
                 && !alpha_mask_deferred_render_phases
@@ -1359,6 +1372,10 @@ pub(crate) fn specialize_prepass_material_meshes(
                     splat_layout: shape_mesh.layout.clone(),
                     instance_layout: mesh.layout.clone(),
                     properties: material.properties.clone(),
+                    view_settings_key: view_settings_keys
+                        .view_settings_keys
+                        .get(&material_instance.asset_id.type_id())
+                        .cloned(),
                     material_type_id: material_instance.asset_id.type_id(),
                 });
             }
@@ -1377,11 +1394,12 @@ pub(crate) fn specialize_prepass_material_meshes(
             continue;
         };
 
-        let key = ErasedMaterialPipelineKey {
+        let key = ErasedPointCloudMaterialPipelineKey {
             type_id: item.material_type_id,
             mesh_key: ErasedMeshPipelineKey::new(item.mesh_key),
             splat_key: ErasedSplatPipelineKey::new(item.splat_key),
             material_key: item.properties.material_key.clone(),
+            view_settings_key: item.view_settings_key,
             // there is no multipass for prepass
             pass: None,
         };
@@ -1455,7 +1473,7 @@ pub(crate) fn specialize_prepass_material_meshes(
 
 pub fn queue_prepass_material_meshes(
     render_mesh_instances: Res<RenderMeshInstances>,
-    render_materials: Res<ErasedRenderAssets<PreparedMaterial>>,
+    render_materials: Res<ErasedRenderAssets<PreparedPointCloudMaterial>>,
     render_material_instances: Res<RenderPointCloudMaterialInstances>,
     render_point_cloud_chunk_instances: Res<RenderPointCloudChunkInstances>,
     mesh_allocator: Res<MeshAllocator>,

@@ -28,7 +28,7 @@ mod loader;
 mod materials;
 mod point_cloud;
 pub mod prelude;
-mod render;
+pub mod render;
 mod resources;
 #[cfg(feature = "server")]
 mod server;
@@ -39,7 +39,6 @@ pub use components::*;
 pub use loader::*;
 pub use materials::*;
 pub use point_cloud::*;
-pub use render::*;
 pub use resources::*;
 #[cfg(feature = "server")]
 pub use server::*;
@@ -47,6 +46,7 @@ pub use visibility::*;
 
 #[cfg(feature = "las")]
 use crate::las::LasLoaderPlugin;
+use crate::render::RenderPointCloudPlugin;
 
 #[derive(Default)]
 pub struct PointCloudPlugin {
@@ -372,8 +372,4 @@ fn spawn_splat_point_cloud_chunks_from_asset_loader(
             }
         }
     }
-}
-
-fn shader_ref(path: PathBuf) -> ShaderRef {
-    ShaderRef::Path(AssetPath::from_path_buf(path).with_source("embedded"))
 }

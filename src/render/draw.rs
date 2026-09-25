@@ -3,6 +3,7 @@ use std::any::TypeId;
 use bevy::{
     core_pipeline::prepass::MotionVectorPrepass,
     ecs::{
+        entity::Entity,
         query::{Has, ROQueryItem},
         system::{
             lifetimeless::{Read, SRes},
@@ -23,9 +24,9 @@ use bevy::{
     },
 };
 
-use crate::{
-    skins_use_uniform_buffers, RenderPointCloudChunkInstances, RenderPointCloudInstances,
-    ViewPointCloudBindGroups,
+use crate::render::{
+    prepass::skins_use_uniform_buffers, RenderPointCloudChunkInstances, RenderPointCloudInstances,
+    RenderPointCloudMaterialInstances, ViewPointCloudBindGroups,
 };
 
 /// A [`RenderCommand`] that sets the pipeline for the [`CachedRenderPipelinePhaseItem`].
@@ -231,15 +232,22 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetMeshBindGroup<I> {
 
 pub struct SetPointCloudBindGroup<const I: usize>;
 impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudBindGroup<I> {
-    type Param = SRes<RenderPointCloudChunkInstances>;
-    type ViewQuery = Read<ViewPointCloudBindGroups>;
+    type Param = (
+        SRes<RenderPointCloudChunkInstances>,
+        SRes<RenderPointCloudMaterialInstances>,
+    );
+    type ViewQuery = (Entity, Read<ViewPointCloudBindGroups>);
     type ItemQuery = ();
 
     fn render<'w>(
         item: &P,
-        view_point_cloud_bind_groups: ROQueryItem<'w, '_, Self::ViewQuery>,
+        (view_entity, view_point_cloud_bind_groups): ROQueryItem<'w, '_, Self::ViewQuery>,
         _: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
-        render_point_cloud_chunk_instances: SystemParamItem<'w, '_, Self::Param>,
+        (render_point_cloud_chunk_instances, material_instances): SystemParamItem<
+            'w,
+            '_,
+            Self::Param,
+        >,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
         let Some(chunk_instance) = render_point_cloud_chunk_instances.get(&item.entity()) else {
@@ -247,13 +255,22 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudBindGroup<I
             return RenderCommandResult::Skip;
         };
 
-        let Some(bind_group) = view_point_cloud_bind_groups
-            .bind_groups
+        let Some(material_instance) = material_instances
+            .instances
             .get(&chunk_instance.root_entity)
         else {
+            warn!("missing material instance 1");
+            return RenderCommandResult::Skip;
+        };
+
+        let Some(bind_group) = view_point_cloud_bind_groups
+            .bind_groups
+            .get(&material_instance.asset_id.type_id())
+            .and_then(|map| map.get(&chunk_instance.root_entity))
+        else {
             warn!(
-                "view point cloud bind group missing for point cloud {:?}",
-                chunk_instance.root_entity
+                "view point cloud bind group missing for point cloud {:?} and view {:?} and material type id {:?}",
+                chunk_instance.root_entity, view_entity, material_instance.asset_id.type_id()
             );
             return RenderCommandResult::Skip;
         };

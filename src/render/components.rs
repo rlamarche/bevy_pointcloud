@@ -1,18 +1,18 @@
-use std::sync::Arc;
+use std::{any::TypeId, sync::Arc};
 
 use bevy::{
     asset::AssetId,
     ecs::{component::Component, entity::Entity},
-    platform::collections::HashMap,
+    platform::{collections::HashMap, hash::NoOpHash},
     render::{
-        render_resource::BindGroup,
+        render_resource::{BindGroup, UniformBuffer},
         sync_world::{MainEntity, MainEntityHashMap, RenderEntity},
         texture::CachedTexture,
         view::RetainedViewEntity,
     },
 };
 
-use crate::{ChildIndex, NodeId, PointCloud, PointCloudChunk};
+use crate::{render::PointCloudMaterial, ChildIndex, NodeId, PointCloud, PointCloudChunk};
 
 /// This component stores the visible nodes for each point cloud at view level (camera) in "render
 /// world".
@@ -98,8 +98,8 @@ pub struct VisibleNodesTexture {
 
 #[derive(Component, Clone, Default)]
 pub struct ViewPointCloudBindGroups {
-    // contains one bind group per point cloud
-    pub bind_groups: MainEntityHashMap<BindGroup>,
+    // contains one bind group per material (TypeId) and per point cloud entity
+    pub bind_groups: HashMap<TypeId, MainEntityHashMap<BindGroup>>,
 }
 
 // impl From<&VisiblePointCloudNodeEntity> for RenderVisiblePointCloudNodeEntity {

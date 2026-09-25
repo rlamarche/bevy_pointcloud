@@ -11,11 +11,11 @@ use bevy::{
     },
 };
 
-use crate::Material;
+use crate::render::PointCloudMaterial;
 
 /// Stores the required textures for each pass, then the textures themselves
 #[derive(Component, Deref, DerefMut)]
-pub struct ViewMultipassTextures<M: Material> {
+pub struct ViewMultipassTextures<M: PointCloudMaterial> {
     #[deref]
     pub textures: HashMap<Cow<'static, str>, MultipassTexture>,
     pub size: Extent3d,
@@ -29,7 +29,7 @@ pub struct MultipassTexture {
     pub texture: CachedTexture,
 }
 
-impl<M: Material> Default for ViewMultipassTextures<M> {
+impl<M: PointCloudMaterial> Default for ViewMultipassTextures<M> {
     fn default() -> Self {
         Self {
             textures: Default::default(),
@@ -43,13 +43,13 @@ impl<M: Material> Default for ViewMultipassTextures<M> {
 /// Stores bind groups like [`crate::ViewPointCloudBindGroups`] but for each material/pass so
 /// specific pass groups can be provided.
 #[derive(Component, Clone)]
-pub struct ViewPointCloudPassBindGroup<M: Material, const PASS: usize> {
+pub struct ViewPointCloudPassBindGroup<M: PointCloudMaterial, const PASS: usize> {
     // contains one bind group per point cloud
     pub bind_groups: MainEntityHashMap<BindGroup>,
     _phantom: PhantomData<M>,
 }
 
-impl<M: Material, const PASS: usize> Default for ViewPointCloudPassBindGroup<M, PASS> {
+impl<M: PointCloudMaterial, const PASS: usize> Default for ViewPointCloudPassBindGroup<M, PASS> {
     fn default() -> Self {
         Self {
             bind_groups: Default::default(),

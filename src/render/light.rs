@@ -39,10 +39,15 @@ use bevy::{
 };
 
 use crate::{
-    BinnedRenderPhaseExt, ErasedMaterialPipelineKey, ErasedSplatPipelineKey, MaterialProperties,
-    PointCloudChunk3d, PointCloudDirtySpecializations, PointCloudTopologyKind, PreparedMaterial,
-    RenderPointCloudChunkInstances, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
-    ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction, SplatPipelineKey,
+    render::{
+        BinnedRenderPhaseExt, ErasedMaterialViewSettingsKeys, ErasedPointCloudMaterialPipelineKey,
+        ErasedSplatPipelineKey, ErasedViewSettingsKey, PointCloudChunk3d,
+        PointCloudDirtySpecializations, PointCloudMaterialProperties, PreparedPointCloudMaterial,
+        RenderPointCloudChunkInstances, RenderPointCloudInstances,
+        RenderPointCloudMaterialInstances, ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction,
+        SplatPipelineKey,
+    },
+    PointCloudTopologyKind,
 };
 
 pub(crate) struct ShadowSpecializationWorkItem {
@@ -53,7 +58,8 @@ pub(crate) struct ShadowSpecializationWorkItem {
     splat_key: SplatPipelineKey,
     splat_layout: MeshVertexBufferLayoutRef,
     instance_layout: MeshVertexBufferLayoutRef,
-    properties: Arc<MaterialProperties>,
+    properties: Arc<PointCloudMaterialProperties>,
+    view_settings_key: Option<ErasedViewSettingsKey>,
     material_type_id: TypeId,
 }
 
@@ -81,13 +87,21 @@ pub struct PendingShadowQueues(pub PendingQueues);
 pub(crate) struct SpecializeShadowsSystemParam<'w, 's> {
     render_meshes: Res<'w, RenderAssets<RenderMesh>>,
     render_mesh_instances: Res<'w, RenderMeshInstances>,
-    render_materials: Res<'w, ErasedRenderAssets<PreparedMaterial>>,
+    render_materials: Res<'w, ErasedRenderAssets<PreparedPointCloudMaterial>>,
     render_material_instances: Res<'w, RenderPointCloudMaterialInstances>,
     render_point_cloud_instances: Res<'w, RenderPointCloudInstances>,
     render_point_cloud_chunk_instances: Res<'w, RenderPointCloudChunkInstances>,
     shadow_render_phases: Res<'w, ViewBinnedRenderPhases<Shadow>>,
     render_lightmaps: Res<'w, RenderLightmaps>,
-    view_light_entities: Query<'w, 's, (&'static LightEntity, &'static ExtractedView)>,
+    view_light_entities: Query<
+        'w,
+        's,
+        (
+            &'static LightEntity,
+            &'static ExtractedView,
+            &'static ErasedMaterialViewSettingsKeys,
+        ),
+    >,
     shadow_map_visible_entities_query: Query<'w, 's, &'static RenderShadowMapVisibleEntities>,
     light_key_cache: Res<'w, LightKeyCache>,
     specialized_shadow_material_pipeline_cache: ResMut<'w, SpecializedShadowMaterialPipelineCache>,
@@ -122,7 +136,7 @@ pub(crate) fn specialize_shadows(
             dirty_specializations,
         } = state.get_mut(world).unwrap();
 
-        for (light_entity, extracted_view_light) in &view_light_entities {
+        for (light_entity, extracted_view_light, view_settings_keys) in &view_light_entities {
             all_shadow_views.insert(extracted_view_light.retained_view_entity);
 
             if !shadow_render_phases.contains_key(&extracted_view_light.retained_view_entity) {
@@ -324,6 +338,10 @@ pub(crate) fn specialize_shadows(
                     splat_layout: splat_mesh.layout.clone(),
                     instance_layout: mesh.layout.clone(),
                     properties: material.properties.clone(),
+                    view_settings_key: view_settings_keys
+                        .view_settings_keys
+                        .get(&material_instance.asset_id.type_id())
+                        .cloned(),
                     material_type_id: material_instance.asset_id.type_id(),
                 });
             }
@@ -341,11 +359,12 @@ pub(crate) fn specialize_shadows(
             continue;
         };
 
-        let key = ErasedMaterialPipelineKey {
+        let key = ErasedPointCloudMaterialPipelineKey {
             type_id: item.material_type_id,
             mesh_key: ErasedMeshPipelineKey::new(item.mesh_key),
             splat_key: ErasedSplatPipelineKey::new(item.splat_key),
             material_key: item.properties.material_key.clone(),
+            view_settings_key: item.view_settings_key,
             pass: None,
         };
 
@@ -397,7 +416,7 @@ pub(crate) fn specialize_shadows(
 /// appropriate.
 pub fn queue_shadows(
     render_mesh_instances: Res<RenderMeshInstances>,
-    render_materials: Res<ErasedRenderAssets<PreparedMaterial>>,
+    render_materials: Res<ErasedRenderAssets<PreparedPointCloudMaterial>>,
     render_material_instances: Res<RenderPointCloudMaterialInstances>,
     render_point_cloud_chunk_instances: Res<RenderPointCloudChunkInstances>,
     mut shadow_render_phases: ResMut<ViewBinnedRenderPhases<Shadow>>,

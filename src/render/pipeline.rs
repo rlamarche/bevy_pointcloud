@@ -30,8 +30,8 @@ use bevy::{
     utils::default,
 };
 
-use crate::{
-    render::pipeline_specializer::SpecializedPointCloudPipeline, PointCloudUniform,
+use crate::render::{
+    pipeline_specializer::SpecializedPointCloudPipeline, ErasedViewSettingsKey, PointCloudUniform,
     SplatPipelineKey,
 };
 
@@ -62,6 +62,7 @@ pub fn init_point_cloud_pipeline(
                 (
                     GpuArrayBuffer::<MeshUniform>::binding_layout(&render_device.limits()),
                     uniform_buffer::<PointCloudUniform>(false),
+                    // visible nodes texture
                     texture_2d(TextureSampleType::Uint).visibility(ShaderStages::VERTEX),
                 ),
             ),
@@ -70,11 +71,16 @@ pub fn init_point_cloud_pipeline(
 }
 
 impl SpecializedPointCloudPipeline for PointCloudPipeline {
-    type Key = (MeshPipelineKey, SplatPipelineKey, Option<usize>);
+    type Key = (
+        MeshPipelineKey,
+        SplatPipelineKey,
+        Option<ErasedViewSettingsKey>,
+        Option<usize>,
+    );
 
     fn specialize(
         &self,
-        (key, splat_key, _pass): Self::Key,
+        (key, splat_key, _view_settings_key, _pass): Self::Key,
         splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
@@ -242,6 +248,12 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             self.mesh_pipeline.skins_use_uniform_buffers,
         );
 
+        let pointcloud_bind_group_index = bind_group_layout.len();
+
+        shader_defs.push(ShaderDefVal::UInt(
+            "POINTCLOUD_BIND_GROUP".into(),
+            pointcloud_bind_group_index as u32,
+        ));
         bind_group_layout.push(self.point_cloud_layout.clone());
 
         // if splat_key.contains(SplatPipelineKey::IS_OCTREE) {

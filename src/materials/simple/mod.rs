@@ -11,7 +11,8 @@ use bevy::{
     render::{
         render_asset::RenderAssets,
         render_resource::{
-            AsBindGroup, AsBindGroupShaderType, Face, ShaderStages, ShaderType, TextureFormat,
+            AsBindGroup, AsBindGroupShaderType, BlendComponent, BlendFactor, BlendOperation,
+            BlendState, Face, ShaderStages, ShaderType, TextureFormat,
         },
         texture::GpuImage,
     },
@@ -20,8 +21,12 @@ use bevy::{
 use bitflags::bitflags;
 
 use crate::{
-    shader_ref, ColorStop, ColorStopUniform, Material, MaterialPlugin, PassDescriptor, PassInput,
-    PassOutput, PassType, TransientTarget,
+    render::{
+        shader_ref, PassDescriptor, PassInput, PassOutput, PassType, PointCloudEmptyViewSettings,
+        PointCloudMaterial, PointCloudMaterialPipeline, PointCloudMaterialPipelineKey,
+        PointCloudMaterialPlugin, TransientTarget,
+    },
+    ColorStop, ColorStopUniform, PointCloudViewSettingsUniform,
 };
 
 pub struct SimplePointCloudMaterialPlugin;
@@ -33,7 +38,7 @@ impl Plugin for SimplePointCloudMaterialPlugin {
         load_shader_library!(app, "simple_types.wgsl");
         embedded_asset!(app, "simple.wgsl");
 
-        app.add_plugins(MaterialPlugin::<SimplePointCloudMaterial>::default());
+        app.add_plugins(PointCloudMaterialPlugin::<SimplePointCloudMaterial>::default());
     }
 }
 
@@ -140,8 +145,10 @@ impl From<Color> for SimplePointCloudMaterial {
     }
 }
 
-impl Material for SimplePointCloudMaterial {
-    const PASS_COUNT: usize = 2;
+impl PointCloudMaterial for SimplePointCloudMaterial {
+    type ViewSettings = PointCloudViewSettingsUniform;
+
+    const PASS_COUNT: usize = 3;
 
     fn fragment_shader() -> ShaderRef {
         shader_ref(bevy::asset::embedded_path!("simple.wgsl"))
@@ -162,15 +169,18 @@ impl Material for SimplePointCloudMaterial {
     }
 
     fn specialize(
-        _pipeline: &crate::MaterialPipeline,
+        _pipeline: &PointCloudMaterialPipeline,
         descriptor: &mut bevy::material::descriptor::RenderPipelineDescriptor,
         _splat_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         _instance_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
-        key: crate::MaterialPipelineKey<Self>,
+        key: PointCloudMaterialPipelineKey<Self>,
     ) -> bevy::ecs::error::Result<(), bevy::material::specialize::SpecializedMeshPipelineError>
     {
         // Extract the custom material key from the bind group data
         let material_key = key.bind_group_data;
+
+        // TODO: use this key to define a shaderdef with number of clipping planes
+        let settings_key = key.view_settings_key;
 
         // Collect all shader defs for both vertex and fragment stages
         let mut shader_defs = Vec::new();
@@ -260,10 +270,10 @@ impl Material for SimplePointCloudMaterial {
                     fragment_shader: "shaders/simple_dev.wgsl".into(),
                     inputs: vec![],
                     output: PassOutput::TransientTarget(TransientTarget {
-                        format: TextureFormat::Rgba32Float,
-                        scale_factor: 1.0,
+                        format: TextureFormat::R16Float,
                     }),
                     blend: None,
+                    depth_write_enabled: Some(true),
                 },
                 PassDescriptor {
                     name: "attribute".into(),
@@ -283,12 +293,28 @@ impl Material for SimplePointCloudMaterial {
                     //     format: TextureFormat::Rgba32Float,
                     //     scale_factor: 1.0,
                     // }),
-                    output: PassOutput::MainColorTarget,
-                    blend: None,
+                    output: PassOutput::TransientTarget(TransientTarget {
+                        format: TextureFormat::Rgba32Float,
+                    }),
+                    blend: Some(BlendState {
+                        color: BlendComponent {
+                            // To match Potree blending
+                            src_factor: BlendFactor::SrcAlpha,
+                            dst_factor: BlendFactor::One,
+                            operation: BlendOperation::Add,
+                        },
+                        alpha: BlendComponent {
+                            // To match Potree blending
+                            src_factor: BlendFactor::One,
+                            dst_factor: BlendFactor::One,
+                            operation: BlendOperation::Add,
+                        },
+                    }),
+                    depth_write_enabled: Some(false),
                 },
                 PassDescriptor {
                     name: "normalize".into(),
-                    pass_type: PassType::FullscreenQuad,
+                    pass_type: PassType::Fullscreen,
                     vertex_shader: ShaderRef::Default,
                     fragment_shader: "shaders/normalize_dev.wgsl".into(),
                     inputs: vec![
@@ -313,6 +339,7 @@ impl Material for SimplePointCloudMaterial {
                     ],
                     output: PassOutput::MainColorTarget,
                     blend: None,
+                    depth_write_enabled: Some(true),
                 },
             ]
         })

@@ -1,4 +1,7 @@
+use std::{any::type_name, marker::PhantomData};
+
 use bevy::{
+    asset::{AssetServer, Handle},
     color::LinearRgba,
     ecs::{
         entity::Entity,
@@ -7,31 +10,38 @@ use bevy::{
         system::{Commands, Query, Res, ResMut},
     },
     image::ToExtents,
+    log::error,
+    pbr::ViewKeyCache,
     render::{
         camera::ExtractedCamera,
         render_phase::ViewBinnedRenderPhases,
         render_resource::{
-            binding_types::{texture_2d, texture_2d_multisampled},
-            BindGroupEntry, IntoBinding, PipelineCache, TextureDescriptor, TextureDimension,
-            TextureUsages,
+            binding_types::{texture_2d, texture_2d_multisampled, uniform_buffer},
+            BindGroupEntry, IntoBinding, PipelineCache, ShaderStages, TextureDescriptor,
+            TextureDimension, TextureUsages,
         },
         renderer::RenderDevice,
         sync_world::MainEntity,
         texture::{ColorAttachment, TextureCache},
         view::{ExtractedView, Msaa},
     },
+    shader::{Shader, ShaderRef},
 };
 
-use crate::{
+use crate::render::{
     multipass::{
-        MultipassTexture, Opaque3dMultipass, ViewMultipassTextures, ViewPointCloudPassBindGroup,
+        FullscreenMaterialPassPipeline, FullscreenMaterialPipelineId,
+        FullscreenMaterialPipelineSpecializer, FullscreenPassMaterialPipelineKey, MultipassTexture,
+        Opaque3dMultipass, PreparedPointCloudFullscreenPass,
+        SpecializedFullscreenPointCloudPipelines, ViewMultipassTextures,
+        ViewPointCloudPassBindGroup,
     },
-    Material, PointCloud3d, PointCloudMaterialTargets, PointCloudPipeline,
-    PreparedPointCloudUniforms, VisibleNodesTexture,
+    PointCloud3d, PointCloudMaterial, PointCloudMaterialTargets, PointCloudPipeline,
+    PreparedPointCloudUniforms, PreparedViewSettingsUniform, VisibleNodesTexture,
 };
 
 // Prepares the textures used by the prepass
-pub fn prepare_multipass_textures<M: Material>(
+pub fn prepare_multipass_textures<M: PointCloudMaterial>(
     material_targets: Res<PointCloudMaterialTargets<M>>,
     mut texture_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
@@ -96,34 +106,47 @@ pub fn prepare_multipass_textures<M: Material>(
                 texture.texture.clone(),
                 None,
                 None,
-                Some(LinearRgba::BLACK.into()),
+                Some(LinearRgba::NONE.into()),
             ));
         }
     }
 }
 
 /// Same as [`crate::prepare_visible_nodes_texture_bind_groups`] but at material/pass level.
-pub fn prepare_pointcloud_bind_groups<M: Material, const PASS: usize>(
+pub fn prepare_pointcloud_bind_groups<M: PointCloudMaterial, const PASS: usize>(
     mut commands: Commands,
     pipeline_cache: Res<PipelineCache>,
     point_cloud_pipeline: Res<PointCloudPipeline>,
     render_device: Res<RenderDevice>,
-    views: Query<(
+    mut views: Query<(
         Entity,
         &VisibleNodesTexture,
+        &PreparedViewSettingsUniform<M>,
         &ViewMultipassTextures<M>,
         &Msaa,
+        Option<&mut ViewPointCloudPassBindGroup<M, PASS>>,
     )>,
-    mut existing_view_point_cloud_bind_groups: Query<&mut ViewPointCloudPassBindGroup<M, PASS>>,
     prepared_point_cloud_uniforms: Res<PreparedPointCloudUniforms>,
     items: Query<&MainEntity, With<PointCloud3d>>,
 ) {
     let passes = M::passes();
     let pass = &passes[PASS];
 
-    for (entity, visible_nodes_texture, view_multipass_textures, msaa) in &views {
-        // TODO: cache this layout somewhere ? (eg in a resource)
+    for (
+        entity,
+        visible_nodes_texture,
+        prepared_view_settings_uniform,
+        view_multipass_textures,
+        msaa,
+        mut existing_view_point_cloud_bind_group,
+    ) in &mut views
+    {
+        // TODO: cache this layout somewhere ? (eg in a resource or component)
         let mut pointcloud_layout = point_cloud_pipeline.point_cloud_layout.clone();
+        pointcloud_layout
+            .entries
+            .push(uniform_buffer::<M::ViewSettings>(false).build(3, ShaderStages::VERTEX_FRAGMENT));
+
         for input in &pass.inputs {
             let entry = match msaa {
                 Msaa::Off => texture_2d(input.texture_sample_type)
@@ -137,13 +160,12 @@ pub fn prepare_pointcloud_bind_groups<M: Material, const PASS: usize>(
         let layout = &pipeline_cache.get_bind_group_layout(&pointcloud_layout);
 
         // Fetch or create the `ViewPointCloudPassBindGroup` component
-        let mut view_point_cloud_bind_groups =
-            match existing_view_point_cloud_bind_groups.get_mut(entity) {
-                Ok(ref mut view_point_cloud_bind_groups) => {
-                    std::mem::take(&mut **view_point_cloud_bind_groups)
-                }
-                Err(_) => ViewPointCloudPassBindGroup::default(),
-            };
+        let mut view_point_cloud_bind_groups = match existing_view_point_cloud_bind_group {
+            Some(ref mut view_point_cloud_bind_groups) => {
+                std::mem::take(&mut **view_point_cloud_bind_groups)
+            }
+            None => ViewPointCloudPassBindGroup::default(),
+        };
 
         for main_entity in items {
             let Some(prepared_uniform) = prepared_point_cloud_uniforms.get(main_entity) else {
@@ -172,6 +194,12 @@ pub fn prepare_pointcloud_bind_groups<M: Material, const PASS: usize>(
                     bind_group_entries.push(BindGroupEntry {
                         binding: 2,
                         resource: texture.default_view.into_binding(),
+                    });
+                    bind_group_entries.push(BindGroupEntry {
+                        binding: 3,
+                        resource: prepared_view_settings_uniform
+                            .view_settings_uniform_buffer
+                            .into_binding(),
                     });
 
                     for input in &pass.inputs {
@@ -205,5 +233,81 @@ pub fn prepare_pointcloud_bind_groups<M: Material, const PASS: usize>(
 
         let mut entity_commands = commands.entity(entity);
         entity_commands.insert(view_point_cloud_bind_groups);
+    }
+}
+
+pub fn get_shader(asset_server: &AssetServer, shader_ref: &ShaderRef) -> Option<Handle<Shader>> {
+    match shader_ref {
+        ShaderRef::Default => None,
+        ShaderRef::Handle(handle) => Some(handle.clone()),
+        ShaderRef::Path(path) => Some(asset_server.load(path)),
+    }
+}
+
+pub fn init_fullscreen_material<M: PointCloudMaterial, const PASS: usize>(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+) {
+    let pass = &M::passes()[PASS];
+
+    let Some(fragment_shader) = get_shader(&asset_server, &pass.fragment_shader) else {
+        panic!(
+            "No fragment shader defined for point cloud material {} pass {}",
+            type_name::<M>(),
+            PASS,
+        );
+    };
+
+    commands.insert_resource(PreparedPointCloudFullscreenPass::<M, PASS> {
+        fragment_shader,
+        vertex_shader: get_shader(&asset_server, &pass.vertex_shader),
+        _phantom: PhantomData,
+    });
+}
+
+pub fn prepare_fullscreen_material_pipelines<M: PointCloudMaterial, const PASS: usize>(
+    mut commands: Commands,
+    pipeline_cache: Res<PipelineCache>,
+    views: Query<(Entity, &ExtractedView), With<ExtractedCamera>>,
+    view_key_cache: Res<ViewKeyCache>,
+    fullscreen_pipeline: Res<FullscreenMaterialPassPipeline>,
+    mut specialized_fullscreen_point_cloud_pipelines: ResMut<
+        SpecializedFullscreenPointCloudPipelines<FullscreenMaterialPipelineSpecializer>,
+    >,
+    prepared_point_cloud_fullscreen_pass: Res<PreparedPointCloudFullscreenPass<M, PASS>>,
+) {
+    let pass = &M::passes()[PASS];
+    for (entity, view) in &views {
+        let Some(&view_key) = view_key_cache.get(&view.retained_view_entity) else {
+            continue;
+        };
+
+        let pipeline_key = FullscreenPassMaterialPipelineKey {
+            view_key,
+            pass: PASS,
+        };
+
+        let pipeline_specializer = FullscreenMaterialPipelineSpecializer {
+            vertex_shader: prepared_point_cloud_fullscreen_pass.vertex_shader.clone(),
+            fragment_shader: prepared_point_cloud_fullscreen_pass.fragment_shader.clone(),
+            fullscreen_pipeline: fullscreen_pipeline.clone(),
+            pass,
+        };
+
+        match specialized_fullscreen_point_cloud_pipelines.specialize(
+            &pipeline_cache,
+            &pipeline_specializer,
+            pipeline_key,
+        ) {
+            Ok(pipeline_id) => {
+                commands
+                    .entity(entity)
+                    .insert(FullscreenMaterialPipelineId::<M, PASS> {
+                        pipeline_id,
+                        _phantom: PhantomData,
+                    });
+            }
+            Err(err) => error!("{}", err),
+        }
     }
 }

@@ -17,9 +17,8 @@ use bevy::{
         render_asset::RenderAssets,
         render_phase::{ViewBinnedRenderPhases, ViewSortedRenderPhases},
         render_resource::{
-            BindGroupEntries, Extent3d, GpuArrayBuffer, PipelineCache, TexelCopyBufferLayout,
-            TextureDescriptor, TextureDimension, TextureFormat::Rgba8Uint, TextureUsages,
-            UniformBuffer,
+            Extent3d, GpuArrayBuffer, TexelCopyBufferLayout, TextureDescriptor, TextureDimension,
+            TextureFormat::Rgba8Uint, TextureUsages, UniformBuffer,
         },
         renderer::{RenderDevice, RenderQueue},
         sync_world::MainEntity,
@@ -30,11 +29,14 @@ use bevy::{
 use bytemuck::{Pod, Zeroable};
 
 use crate::{
-    FallbackVisibleNodesTexture, NodeId, PointCloud3d, PointCloudPipeline, PointCloudUniform,
-    PreparedPointCloudUniform, PreparedPointCloudUniforms, RenderMaterialBindings,
-    RenderOctreeInstancesIndex, RenderPointCloudChunk, RenderPointCloudInstances,
-    RenderPointCloudMaterialInstances, RenderShadowMapVisiblePointCloudEntities,
-    RenderVisiblePointCloudEntities, ViewPointCloudBindGroups, VisibleNodesTexture,
+    render::{
+        FallbackVisibleNodesTexture, PointCloudUniform, PreparedPointCloudUniform,
+        PreparedPointCloudUniforms, RenderMaterialBindings, RenderOctreeInstancesIndex,
+        RenderPointCloudChunk, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
+        RenderShadowMapVisiblePointCloudEntities, RenderVisiblePointCloudEntities,
+        VisibleNodesTexture,
+    },
+    NodeId, PointCloud3d,
 };
 
 pub const MAX_NODES: usize = 2048;
@@ -467,61 +469,4 @@ fn prepare_visible_nodes_texture(
         },
     );
     commands.entity(entity).insert(visible_nodes_texture);
-}
-
-pub fn prepare_visible_nodes_texture_bind_groups(
-    mut commands: Commands,
-    pipeline_cache: Res<PipelineCache>,
-    point_cloud_pipeline: Res<PointCloudPipeline>,
-    render_device: Res<RenderDevice>,
-    views: Query<(Entity, &VisibleNodesTexture)>,
-    mut existing_view_point_cloud_bind_groups: Query<&mut ViewPointCloudBindGroups>,
-    prepared_point_cloud_uniforms: Res<PreparedPointCloudUniforms>,
-    items: Query<&MainEntity, With<PointCloud3d>>,
-) {
-    let layout = &pipeline_cache.get_bind_group_layout(&point_cloud_pipeline.point_cloud_layout);
-    for (entity, visible_nodes_texture) in &views {
-        // Fetch or create the `ViewPointCloudBindGroups` component
-        let mut view_point_cloud_bind_groups =
-            match existing_view_point_cloud_bind_groups.get_mut(entity) {
-                Ok(ref mut view_point_cloud_bind_groups) => {
-                    std::mem::take(&mut **view_point_cloud_bind_groups)
-                }
-                Err(_) => ViewPointCloudBindGroups::default(),
-            };
-
-        for main_entity in items {
-            let Some(prepared_uniform) = prepared_point_cloud_uniforms.get(main_entity) else {
-                // free unused bind groups
-                view_point_cloud_bind_groups.bind_groups.remove(main_entity);
-
-                continue;
-            };
-
-            if visible_nodes_texture.has_changed {
-                // first remove the previous bind group
-                view_point_cloud_bind_groups.bind_groups.remove(main_entity);
-
-                // then create a new if a texture is available
-                if let Some(ref texture) = visible_nodes_texture.texture {
-                    let bind_group = render_device.create_bind_group(
-                        "view_point_cloud",
-                        layout,
-                        &BindGroupEntries::sequential((
-                            prepared_uniform.mesh_uniform_buffer.binding().unwrap(),
-                            &prepared_uniform.point_cloud_uniform_buffer,
-                            &texture.default_view,
-                        )),
-                    );
-
-                    view_point_cloud_bind_groups
-                        .bind_groups
-                        .insert(*main_entity, bind_group);
-                }
-            }
-        }
-
-        let mut entity_commands = commands.entity(entity);
-        entity_commands.insert(view_point_cloud_bind_groups);
-    }
 }

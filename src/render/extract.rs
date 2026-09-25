@@ -40,13 +40,15 @@ use bevy::{
 use nonmax::NonMaxU16;
 
 use crate::{
+    render::{
+        PreparedPointCloudUniforms, RenderOctreeInstancesIndex, RenderPointCloudChunk,
+        RenderPointCloudChunkInstance, RenderPointCloudChunkInstances, RenderPointCloudInstance,
+        RenderPointCloudInstances, RenderShadowMapVisiblePointCloudEntities,
+        RenderVisiblePointCloudChunkEntity, RenderVisiblePointCloudEntities, SplatMeshes,
+        ViewPointCloudBindGroups,
+    },
     CascadesVisiblePointCloudEntities, PointCloud, PointCloud3d, PointCloudChunk,
-    PointCloudChunk3d, PointCloudTopologyKind, PreparedPointCloudUniforms,
-    RenderOctreeInstancesIndex, RenderPointCloudChunk, RenderPointCloudChunkInstance,
-    RenderPointCloudChunkInstances, RenderPointCloudInstance, RenderPointCloudInstances,
-    RenderShadowMapVisiblePointCloudEntities, RenderVisiblePointCloudChunkEntity,
-    RenderVisiblePointCloudEntities, SplatMeshes, SplatSettings, ViewPointCloudBindGroups,
-    VisiblePointCloudOctreeEntities,
+    PointCloudChunk3d, PointCloudTopologyKind, SplatSettings, VisiblePointCloudOctreeEntities,
 };
 
 /// This system extracts the visible point cloud chunk entities into the render world while
@@ -589,19 +591,19 @@ fn mesh_flags_from_components(
     mesh_flags
 }
 
-/// Free allocated buffers & bindgroups for removed point clouds
-pub fn free_removed_point_cloud_uniforms(
-    mut removed_items: Extract<RemovedComponents<PointCloud3d>>,
-    mut prepared_point_cloud_uniforms: ResMut<PreparedPointCloudUniforms>,
-    mut view_point_clouds_bind_groups: Query<&mut ViewPointCloudBindGroups>,
-) {
-    for entity in removed_items.read() {
-        let main_entity = MainEntity::from(entity);
-        for mut view_point_cloud_bind_groups in &mut view_point_clouds_bind_groups {
-            view_point_cloud_bind_groups
-                .bind_groups
-                .remove(&main_entity);
-        }
-        prepared_point_cloud_uniforms.remove(&main_entity);
-    }
-}
+// /// Free allocated buffers & bindgroups for removed point clouds
+// pub fn free_removed_point_cloud_uniforms(
+//     mut removed_items: Extract<RemovedComponents<PointCloud3d>>,
+//     mut prepared_point_cloud_uniforms: ResMut<PreparedPointCloudUniforms>,
+//     mut view_point_clouds_bind_groups: Query<&mut ViewPointCloudBindGroups>,
+// ) {
+//     for entity in removed_items.read() {
+//         let main_entity = MainEntity::from(entity);
+//         for mut view_point_cloud_bind_groups in &mut view_point_clouds_bind_groups {
+//             for (_, bind_groups) in view_point_cloud_bind_groups.bind_groups.iter_mut() {
+//                 bind_groups.remove(&main_entity);
+//             }
+//         }
+//         prepared_point_cloud_uniforms.remove(&main_entity);
+//     }
+// }

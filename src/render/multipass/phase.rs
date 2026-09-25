@@ -22,14 +22,14 @@ use bevy::{
     },
 };
 
-use crate::Material;
+use crate::render::PointCloudMaterial;
 
 /// Opaque phase of the 3D multipass.
 ///
 /// Sorted by pipeline, then by mesh to improve batching.
 ///
 /// Used to render all 3D meshes with materials that have no transparency.
-pub struct Opaque3dMultipass<M: Material, const PASS: usize> {
+pub struct Opaque3dMultipass<M: PointCloudMaterial, const PASS: usize> {
     /// Determines which objects can be placed into a *batch set*.
     ///
     /// Objects in a single batch set can potentially be multi-drawn together,
@@ -46,14 +46,14 @@ pub struct Opaque3dMultipass<M: Material, const PASS: usize> {
     pub _phantom: PhantomData<M>,
 }
 
-impl<M: Material, const PASS: usize> CachedRenderPipelinePhaseItem for Opaque3dMultipass<M, PASS> {
+impl<M: PointCloudMaterial, const PASS: usize> CachedRenderPipelinePhaseItem for Opaque3dMultipass<M, PASS> {
     #[inline]
     fn cached_pipeline(&self) -> CachedRenderPipelineId {
         self.batch_set_key.pipeline
     }
 }
 
-impl<M: Material, const PASS: usize> PhaseItem for Opaque3dMultipass<M, PASS> {
+impl<M: PointCloudMaterial, const PASS: usize> PhaseItem for Opaque3dMultipass<M, PASS> {
     #[inline]
     fn entity(&self) -> Entity {
         self.representative_entity.0
@@ -89,7 +89,7 @@ impl<M: Material, const PASS: usize> PhaseItem for Opaque3dMultipass<M, PASS> {
     }
 }
 
-impl<M: Material, const PASS: usize> BinnedPhaseItem for Opaque3dMultipass<M, PASS> {
+impl<M: PointCloudMaterial, const PASS: usize> BinnedPhaseItem for Opaque3dMultipass<M, PASS> {
     type BatchSetKey = Opaque3dBatchSetKey;
     type BinKey = Opaque3dBinKey;
 
@@ -112,7 +112,7 @@ impl<M: Material, const PASS: usize> BinnedPhaseItem for Opaque3dMultipass<M, PA
     }
 }
 
-pub fn extract_camera_multipass_phase<M: Material, const PASS: usize>(
+pub fn extract_camera_multipass_phase<M: PointCloudMaterial, const PASS: usize>(
     mut opaque_3d_multipass_phases: ResMut<ViewBinnedRenderPhases<Opaque3dMultipass<M, PASS>>>,
     cameras_3d: Extract<Query<(Entity, &Camera, Has<NoIndirectDrawing>), With<Camera3d>>>,
     mut live_entities: Local<HashSet<RetainedViewEntity>>,
