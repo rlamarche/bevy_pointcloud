@@ -18,7 +18,7 @@ use bevy::{
 };
 use slotmap::{new_key_type, Key, SlotMap};
 
-use crate::PreparedPointCloudUniform;
+use crate::render::PreparedPointCloudUniform;
 
 /// A resource that holds entities that couldn't be specialized and/or queued
 ///

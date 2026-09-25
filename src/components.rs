@@ -18,7 +18,7 @@ use bevy::{
 use derive_more::derive::From;
 use serde::{Deserialize, Serialize};
 
-use crate::{Material, PointCloud, PointCloudChunk};
+use crate::{render::PointCloudMaterial, PointCloud, PointCloudChunk};
 
 #[derive(
     Component, FromTemplate, Clone, Debug, Default, Deref, DerefMut, PartialEq, Eq, From, Reflect,
@@ -280,35 +280,49 @@ pub struct ChildrenChunks(Vec<Entity>);
 /// ```
 #[derive(Component, FromTemplate, Clone, Debug, Deref, DerefMut, Reflect, From)]
 #[reflect(Component, Default, Clone, PartialEq)]
-pub struct PointCloudMaterial3d<M: Material>(pub Handle<M>);
+pub struct PointCloudMaterial3d<M: PointCloudMaterial>(pub Handle<M>);
 
-impl<M: Material> Default for PointCloudMaterial3d<M> {
+impl<M: PointCloudMaterial> SyncComponent for PointCloudMaterial3d<M> {
+    type Target = Self;
+}
+
+impl<M: PointCloudMaterial> Default for PointCloudMaterial3d<M> {
     fn default() -> Self {
         Self(Handle::default())
     }
 }
 
-impl<M: Material> PartialEq for PointCloudMaterial3d<M> {
+impl<M: PointCloudMaterial> ExtractComponent for PointCloudMaterial3d<M> {
+    type QueryData = &'static PointCloudMaterial3d<M>;
+    type QueryFilter = ();
+    type Out = Self;
+
+    fn extract_component(item: QueryItem<'_, '_, Self::QueryData>) -> Option<Self::Out> {
+        Some(item.clone())
+    }
+}
+
+impl<M: PointCloudMaterial> PartialEq for PointCloudMaterial3d<M> {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
 
-impl<M: Material> Eq for PointCloudMaterial3d<M> {}
+impl<M: PointCloudMaterial> Eq for PointCloudMaterial3d<M> {}
 
-impl<M: Material> From<PointCloudMaterial3d<M>> for AssetId<M> {
+impl<M: PointCloudMaterial> From<PointCloudMaterial3d<M>> for AssetId<M> {
     fn from(material: PointCloudMaterial3d<M>) -> Self {
         material.id()
     }
 }
 
-impl<M: Material> From<&PointCloudMaterial3d<M>> for AssetId<M> {
+impl<M: PointCloudMaterial> From<&PointCloudMaterial3d<M>> for AssetId<M> {
     fn from(material: &PointCloudMaterial3d<M>) -> Self {
         material.id()
     }
 }
 
-impl<M: Material> AsAssetId for PointCloudMaterial3d<M> {
+impl<M: PointCloudMaterial> AsAssetId for PointCloudMaterial3d<M> {
     type Asset = M;
 
     fn as_asset_id(&self) -> AssetId<Self::Asset> {

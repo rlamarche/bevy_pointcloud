@@ -12,12 +12,14 @@ mod pipeline;
 mod pipeline_specializer;
 mod point_cloud;
 mod prepare;
-mod prepass;
+pub mod prepass;
 mod resources;
+
+use std::path::PathBuf;
 
 use bevy::{
     app::Plugin,
-    asset::{embedded_asset, Assets, Handle},
+    asset::{embedded_asset, AssetPath, Assets, Handle},
     ecs::{
         resource::Resource,
         schedule::{IntoScheduleConfigs, SystemSet},
@@ -38,6 +40,7 @@ use bevy::{
         view::ExtractedView,
         ExtractSchedule, GpuResourceAppExt, Render, RenderApp, RenderStartup, RenderSystems,
     },
+    shader::ShaderRef,
 };
 pub use camera::*;
 pub use components::*;
@@ -51,7 +54,6 @@ pub use pipeline::*;
 pub use pipeline_specializer::*;
 pub use point_cloud::*;
 pub use prepare::*;
-pub use prepass::*;
 pub use resources::*;
 
 use crate::{PointCloud3d, PointCloudChunk3d, SplatSettings};
@@ -99,7 +101,8 @@ impl Plugin for RenderPointCloudPlugin {
             .init_resource::<RenderPointCloudChunkInstances>()
             .init_resource::<RenderOctreeInstancesIndex>()
             .init_resource::<PreparedPointCloudUniforms>()
-            .init_resource::<SpecializedPointCloudPipelines<PointCloudPipeline>>()
+            // unused ?
+            // .init_resource::<SpecializedPointCloudPipelines<PointCloudPipeline>>()
             .init_resource::<PendingPointCloudPhaseItemQueues>()
             .add_systems(
                 RenderStartup,
@@ -122,7 +125,8 @@ impl Plugin for RenderPointCloudPlugin {
                         .after(extract_cameras),
                     extract_cascade_visible_point_cloud_chunks.in_set(PointCloudExtractionSystems::ExtractVisiblePointCloudChunks)
                         .after(extract_lights),
-                    free_removed_point_cloud_uniforms,
+                    // TODO: remove if effectively done in free_removed_point_cloud_materials
+                    // free_removed_point_cloud_uniforms,
                 ),
             )
             .add_systems(
@@ -131,8 +135,6 @@ impl Plugin for RenderPointCloudPlugin {
                     prepare_camera_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
                     prepare_cascades_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
                     prepare_point_cloud_uniforms.in_set(RenderSystems::PrepareResources),
-                    prepare_visible_nodes_texture_bind_groups
-                        .in_set(RenderSystems::PrepareBindGroups),
                     check_views_need_specialization
                         .after(RenderSystems::PrepareAssets)
                         .before(RenderSystems::Specialize),
@@ -144,7 +146,9 @@ impl Plugin for RenderPointCloudPlugin {
         render_app
             .world_mut()
             .register_required_components::<ExtractedView, RenderVisiblePointCloudEntities>();
-
+        render_app
+            .world_mut()
+            .register_required_components::<ExtractedView, ViewPointCloudBindGroups>();
         render_app
             .world_mut()
             .register_required_components::<ExtractedDirectionalLight, RenderShadowMapVisiblePointCloudEntities>();
@@ -192,4 +196,8 @@ impl ExtractResource for SplatMeshes {
     fn extract_resource(source: &Self::Source) -> Self {
         source.clone()
     }
+}
+
+pub fn shader_ref(path: PathBuf) -> ShaderRef {
+    ShaderRef::Path(AssetPath::from_path_buf(path).with_source("embedded"))
 }

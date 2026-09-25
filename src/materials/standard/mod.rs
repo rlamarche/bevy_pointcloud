@@ -14,7 +14,10 @@ use bevy::{
 
 use bevy::pbr::{Material as SourceMaterial, MeshPipelineKey, StandardMaterialKey};
 
-use crate::{shader_ref, Material, MaterialPlugin};
+use crate::render::{
+    shader_ref, PointCloudEmptyViewSettings, PointCloudMaterial, PointCloudMaterialPipeline,
+    PointCloudMaterialPipelineKey, PointCloudMaterialPlugin,
+};
 
 pub struct StandardPointCloudMaterialPlugin;
 
@@ -23,7 +26,7 @@ impl Plugin for StandardPointCloudMaterialPlugin {
         embedded_asset!(app, "pbr.wgsl");
         embedded_asset!(app, "pbr_prepass.wgsl");
 
-        app.add_plugins(MaterialPlugin::<StandardPointCloudMaterial>::default());
+        app.add_plugins(PointCloudMaterialPlugin::<StandardPointCloudMaterial>::default());
     }
 }
 
@@ -153,7 +156,9 @@ impl AsBindGroupShaderType<StandardMaterialUniform> for StandardPointCloudMateri
     }
 }
 
-impl Material for StandardPointCloudMaterial {
+impl PointCloudMaterial for StandardPointCloudMaterial {
+    type ViewSettings = PointCloudEmptyViewSettings;
+
     fn vertex_shader() -> ShaderRef {
         ShaderRef::Default
     }
@@ -197,11 +202,11 @@ impl Material for StandardPointCloudMaterial {
     }
 
     fn specialize(
-        _pipeline: &crate::MaterialPipeline,
+        _pipeline: &PointCloudMaterialPipeline,
         descriptor: &mut bevy::material::descriptor::RenderPipelineDescriptor,
         _splat_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         _instance_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
-        key: crate::MaterialPipelineKey<Self>,
+        key: PointCloudMaterialPipelineKey<Self>,
     ) -> bevy::ecs::error::Result<(), bevy::material::specialize::SpecializedMeshPipelineError>
     {
         if let Some(fragment) = descriptor.fragment.as_mut() {
