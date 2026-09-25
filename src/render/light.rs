@@ -99,7 +99,7 @@ pub(crate) struct SpecializeShadowsSystemParam<'w, 's> {
         (
             &'static LightEntity,
             &'static ExtractedView,
-            &'static ErasedMaterialViewSettingsKeys,
+            // &'static ErasedMaterialViewSettingsKeys,
         ),
     >,
     shadow_map_visible_entities_query: Query<'w, 's, &'static RenderShadowMapVisibleEntities>,
@@ -136,7 +136,8 @@ pub(crate) fn specialize_shadows(
             dirty_specializations,
         } = state.get_mut(world).unwrap();
 
-        for (light_entity, extracted_view_light, view_settings_keys) in &view_light_entities {
+        for (light_entity, extracted_view_light /* , view_settings_keys */) in &view_light_entities
+        {
             all_shadow_views.insert(extracted_view_light.retained_view_entity);
 
             if !shadow_render_phases.contains_key(&extracted_view_light.retained_view_entity) {
@@ -338,10 +339,11 @@ pub(crate) fn specialize_shadows(
                     splat_layout: splat_mesh.layout.clone(),
                     instance_layout: mesh.layout.clone(),
                     properties: material.properties.clone(),
-                    view_settings_key: view_settings_keys
-                        .view_settings_keys
-                        .get(&material_instance.asset_id.type_id())
-                        .cloned(),
+                    view_settings_key: None,
+                    // view_settings_key: view_settings_keys
+                    //     .view_settings_keys
+                    //     .get(&material_instance.asset_id.type_id())
+                    //     .cloned(),
                     material_type_id: material_instance.asset_id.type_id(),
                 });
             }

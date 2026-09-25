@@ -705,7 +705,15 @@ impl PrepassPipeline {
         );
 
         shader_defs.push(ShaderDefVal::UInt("POINTCLOUD_BIND_GROUP".into(), 2));
-        bind_group_layouts.insert(2, self.point_cloud_pipeline.point_cloud_layout.clone());
+        let mut point_cloud_layout = self.point_cloud_pipeline.point_cloud_layout.clone();
+        // set the view settings uniform layout
+        if let Some(view_settings_layout_entry) =
+            material_properties.view_settings_layout_entry.as_ref()
+        {
+            point_cloud_layout.entries.push(*view_settings_layout_entry);
+        }
+
+        bind_group_layouts.insert(2, point_cloud_layout);
 
         // if splat_key.contains(SplatPipelineKey::IS_OCTREE) {
         //     bind_group_layouts.insert(
