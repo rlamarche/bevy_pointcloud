@@ -23,6 +23,7 @@ use crate::{
     SimplePointCloudMaterial,
 };
 
+// TODO: is this resource still needed ?
 #[derive(Resource)]
 pub struct PointCloudMaterialTargets<M: PointCloudMaterial> {
     pub required_textures: HashMap<Cow<'static, str>, TransientTarget>,
