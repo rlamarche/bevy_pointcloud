@@ -26,11 +26,14 @@ use bevy::{
 
 use std::hash::Hash;
 
-use crate::render::{multipass::FullscreenMaterialPassPipeline, PassDescriptor};
+use crate::render::{
+    multipass::FullscreenMaterialPassPipeline, ErasedViewSettingsKey, PassDescriptor,
+};
 
-#[derive(PartialEq, Eq, Hash, Clone, Copy, SpecializerKey)]
+#[derive(PartialEq, Eq, Hash, Clone, SpecializerKey)]
 pub struct FullscreenPassMaterialPipelineKey {
     pub view_key: MeshPipelineKey,
+    pub settings_key: ErasedViewSettingsKey,
     pub pass: usize,
 }
 
@@ -198,7 +201,7 @@ impl SpecializedFullscreenPointCloudPipeline for FullscreenMaterialPipelineSpeci
         &self,
         key: Self::Key,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
-        let mut descriptor = self.fullscreen_pipeline.specialize(key)?;
+        let mut descriptor = self.fullscreen_pipeline.specialize(key.clone())?;
 
         if let Some(pointcloud_layout) = descriptor.layout.last_mut() {
             for input in &self.pass.inputs {

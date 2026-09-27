@@ -17,7 +17,7 @@ use bevy::{
             Commands, Query, Res, SystemParamItem,
         },
     },
-    log::warn,
+    log::{info, warn},
     material::{
         descriptor::BindGroupLayoutDescriptor,
         key::{ErasedMaterialKey, ErasedMeshPipelineKey},
@@ -27,7 +27,10 @@ use bevy::{
         },
         AlphaMode, OpaqueRendererMethod, RenderPhaseType,
     },
-    pbr::{MaterialBindGroupAllocators, MeshPipelineKey, Shadow, Transmissive3d},
+    pbr::{
+        DirectionalLightViewEntities, LightEntity, MaterialBindGroupAllocators, MeshPipelineKey,
+        Shadow, Transmissive3d, ViewLightEntities,
+    },
     platform::{
         collections::{hash_map::Entry, HashMap},
         hash::NoOpHash,
@@ -40,7 +43,7 @@ use bevy::{
             BindGroupLayoutEntry, PipelineCache, ShaderStages,
         },
         renderer::{RenderDevice, RenderQueue},
-        sync_world::MainEntity,
+        sync_world::{MainEntity, MainEntityHashMap},
         view::ExtractedView,
     },
     shader::{Shader, ShaderRef},
@@ -529,6 +532,7 @@ pub fn prepare_material_view_settings_key<M: PointCloudMaterial>(
     }
 }
 
+/// Prepare view settings uniform of each cameras having a view settings.
 pub fn prepare_view_settings_uniforms<M: PointCloudMaterial>(
     mut commands: Commands,
     views: Query<
@@ -561,6 +565,54 @@ pub fn prepare_view_settings_uniforms<M: PointCloudMaterial>(
 
         let mut entity_commands = commands.entity(entity);
         entity_commands.insert(prepared_view_settings_uniform);
+    }
+}
+
+/// For each lights, add [`PreparedViewSettingsUniform`] for each of its cascade.
+/// This is needed because the extracted [`M::ViewSettings`] is on the extracted light, and not on
+/// its cascades.
+pub fn prepare_cascade_view_settings_uniforms<M: PointCloudMaterial>(
+    mut commands: Commands,
+    lights: Query<(
+        Entity,
+        Option<&M::ViewSettings>,
+        &DirectionalLightViewEntities,
+    )>,
+    mut views: Query<Option<&mut PreparedViewSettingsUniform<M>>, With<ExtractedView>>,
+    render_device: Res<RenderDevice>,
+    render_queue: Res<RenderQueue>,
+) {
+    for (_light_entity, maybe_view_settings, directional_light_view_entities) in lights {
+        for (_view_entity, cascades) in directional_light_view_entities.iter() {
+            for &cascade_entity in cascades {
+                let Ok(mut maybe_prepared_view_settings_uniform) = views.get_mut(cascade_entity)
+                else {
+                    // this should never happen except if a cascade does'nt have the `ExtractedView`
+                    // component... which should'nt happen.
+                    continue;
+                };
+
+                // Fetch or create the `PreparedViewSettingsUniform` component
+                let mut prepared_view_settings_uniform = match maybe_prepared_view_settings_uniform
+                {
+                    Some(ref mut prepared_view_settings_uniform) => {
+                        std::mem::take(&mut **prepared_view_settings_uniform)
+                    }
+                    None => PreparedViewSettingsUniform::default(),
+                };
+
+                prepared_view_settings_uniform
+                    .view_settings_uniform_buffer
+                    .set(maybe_view_settings.copied().unwrap_or_default());
+
+                prepared_view_settings_uniform
+                    .view_settings_uniform_buffer
+                    .write_buffer(&render_device, &render_queue);
+
+                let mut entity_commands = commands.entity(cascade_entity);
+                entity_commands.insert(prepared_view_settings_uniform);
+            }
+        }
     }
 }
 
@@ -630,3 +682,23 @@ pub fn prepare_view_point_cloud_bind_groups<M: PointCloudMaterial>(
         }
     }
 }
+
+// pub fn prepare_shadow_map_point_cloud_bind_groups<M: PointCloudMaterial>(
+//     shadow_maps: Query<&ExtractedView, With<LightEntity>>,
+//     views: Query<
+//         (
+//             &ExtractedView,
+//             &VisibleNodesTexture,
+//             &ViewPointCloudBindGroups,
+//         ),
+//         Without<LightEntity>,
+//     >,
+//     items: Query<&MainEntity, (With<PointCloud3d>, With<PointCloudMaterial3d<M>>)>,
+//     // main_entity_map: Res<RenderEntityMapper>,
+// ) {
+//     let material_type_id = TypeId::of::<M>();
+//
+//     for extracted_view in shadow_maps {
+//         let view_entity = extracted_view.retained_view_entity.auxiliary_entity;
+//     }
+// }

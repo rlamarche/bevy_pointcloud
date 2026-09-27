@@ -1,11 +1,9 @@
 #![expect(missing_docs, reason = "Not all docs are written yet.")]
 #![recursion_limit = "256"]
 
-use std::path::PathBuf;
-
 use bevy::{
     app::{App, Last, Plugin},
-    asset::{AssetApp, AssetEvent, AssetPath, Assets},
+    asset::{AssetApp, AssetEvent, Assets},
     ecs::{
         entity::Entity,
         hierarchy::ChildOf,
@@ -19,7 +17,7 @@ use bevy::{
     mesh::Mesh3d,
     platform::collections::HashMap,
     render::batching::NoAutomaticBatching,
-    shader::{load_shader_library, ShaderRef},
+    shader::load_shader_library,
 };
 
 mod components;

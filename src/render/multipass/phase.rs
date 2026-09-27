@@ -46,7 +46,9 @@ pub struct Opaque3dMultipass<M: PointCloudMaterial, const PASS: usize> {
     pub _phantom: PhantomData<M>,
 }
 
-impl<M: PointCloudMaterial, const PASS: usize> CachedRenderPipelinePhaseItem for Opaque3dMultipass<M, PASS> {
+impl<M: PointCloudMaterial, const PASS: usize> CachedRenderPipelinePhaseItem
+    for Opaque3dMultipass<M, PASS>
+{
     #[inline]
     fn cached_pipeline(&self) -> CachedRenderPipelineId {
         self.batch_set_key.pipeline

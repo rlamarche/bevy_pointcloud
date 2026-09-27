@@ -30,6 +30,7 @@
 #endif // POINTCLOUD_PASS_ATTRIBUTE
 
 
+#ifdef POINTCLOUD_VIEW_SETTINGS
 struct PointCloudViewSettings {
     nb_clipping_planes: u32,
     _padding: vec3<f32>,
@@ -37,6 +38,7 @@ struct PointCloudViewSettings {
 }
 
 @group(#{POINTCLOUD_BIND_GROUP}) @binding(3) var<uniform> view_settings: PointCloudViewSettings;
+#endif // POINTCLOUD_VIEW_SETTINGS
 
 
 struct FragmentOutput {
@@ -71,13 +73,14 @@ fn fragment(
         #endif // SPLAT_RADIUS
     #endif // SHAPE_UVS_A
 
-
-    for (var i: u32 = 0u; i < view_settings.nb_clipping_planes; i ++) {
-        let clip_dist = dot(in.world_position.xyz, view_settings.clipping_planes[i].xyz) + view_settings.clipping_planes[i].w;
-        if (clip_dist < 0.0) {
-            discard;
+    #ifdef POINTCLOUD_VIEW_SETTINGS
+        for (var i: u32 = 0u; i < view_settings.nb_clipping_planes; i ++) {
+            let clip_dist = dot(in.world_position.xyz, view_settings.clipping_planes[i].xyz) + view_settings.clipping_planes[i].w;
+            if (clip_dist < 0.0) {
+                discard;
+            }
         }
-    }
+    #endif // POINTCLOUD_VIEW_SETTINGS
 
     #ifdef POINTCLOUD_PASS_DEPTH
         #ifdef USE_EDL

@@ -396,7 +396,11 @@ where
                         // must be run before specialize
                         prepare_material_view_settings_key::<M>
                             .in_set(RenderSystems::PrepareAssets),
-                        prepare_view_settings_uniforms::<M>.in_set(RenderSystems::PrepareResources),
+                        (
+                            prepare_view_settings_uniforms::<M>,
+                            prepare_cascade_view_settings_uniforms::<M>,
+                        )
+                            .in_set(RenderSystems::PrepareResources),
                         prepare_view_point_cloud_bind_groups::<M>
                             .in_set(RenderSystems::PrepareBindGroups),
                     ),
