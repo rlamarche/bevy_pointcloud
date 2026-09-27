@@ -22,7 +22,7 @@ use bevy::{
         },
         renderer::RenderDevice,
         sync_world::MainEntity,
-        texture::{CachedTexture, ColorAttachment, TextureCache},
+        texture::{CachedTexture, ColorAttachment},
         view::{ExtractedView, Msaa},
     },
     shader::{Shader, ShaderRef},
@@ -36,14 +36,13 @@ use crate::render::{
         SpecializedFullscreenPointCloudPipelines, ViewMultipassTextures,
         ViewPointCloudPassBindGroup,
     },
-    ErasedViewSettingsKey, PointCloud3d, PointCloudMaterial, PointCloudMaterialTargets,
+    ErasedViewSettingsKey, PassOutput, PointCloud3d, PointCloudMaterial, PointCloudMaterialTargets,
     PointCloudPipeline, PreparedPointCloudUniforms, PreparedViewSettingsUniform,
     ViewSettingsPipelineKey, VisibleNodesTexture,
 };
 
 // Prepares the textures used by the prepass
 pub fn prepare_multipass_textures<M: PointCloudMaterial>(
-    material_targets: Res<PointCloudMaterialTargets<M>>,
     render_device: Res<RenderDevice>,
     // check only against first pass for simplification
     opaque_3d_multipass_phases: Res<ViewBinnedRenderPhases<Opaque3dMultipass<M, 0>>>,
@@ -77,9 +76,13 @@ pub fn prepare_multipass_textures<M: PointCloudMaterial>(
             view_multipass_textures.has_changed = false;
         }
 
-        for (name, target) in &material_targets.required_textures {
+        for pass in M::passes() {
+            let PassOutput::TransientTarget(target) = &pass.output else {
+                continue;
+            };
+
             let texture = view_multipass_textures
-                .entry(name.clone())
+                .entry(pass.name.clone())
                 .or_insert_with(|| {
                     let descriptor = TextureDescriptor {
                         label: Some("multipass_texture"),

@@ -306,7 +306,6 @@ pub struct MultipassPipeline {
     pub view_layout_motion_vectors: BindGroupLayoutDescriptor,
     pub view_layout_no_motion_vectors: BindGroupLayoutDescriptor,
     pub mesh_layouts: MeshLayouts,
-    pub default_prepass_shader: Handle<Shader>,
 
     /// Whether skins will use uniform buffers on account of storage buffers
     /// being unavailable on this platform.
@@ -401,8 +400,6 @@ pub fn init_multipass_pipeline(
         view_layout_motion_vectors,
         view_layout_no_motion_vectors,
         mesh_layouts: mesh_pipeline.mesh_layouts.clone(),
-        // default_prepass_shader: asset_server.load("shaders/prepass_dev.wgsl"),
-        default_prepass_shader: load_embedded_asset!(asset_server.as_ref(), "multipass.wgsl"),
         skins_use_uniform_buffers: skins_use_uniform_buffers(&render_device.limits()),
         depth_clip_control_supported,
         material_pipeline: material_pipeline.clone(),
@@ -1492,7 +1489,11 @@ pub fn main_opaque_multipass_3d<M: PointCloudMaterial, const PASS: usize>(
                 Some(fullscreen_bind_group),
             ) = (fullscreen_pipeline_id, fullscreen_bind_group)
             else {
-                warn!("Missing data for fullscreen pass");
+                warn!(
+                    "Missing data for fullscreen pass: fullscreen_pipeline_id: {} fullscreen_bind_group: {}",
+                    fullscreen_pipeline_id.is_some(),
+                    fullscreen_bind_group.is_some()
+                );
                 return;
             };
             let Some(bind_group) = fullscreen_bind_group.bind_group.as_ref() else {

@@ -389,6 +389,7 @@ where
         let mut prepared_passes = Vec::with_capacity(passes.len());
         for pass in passes {
             if let PassOutput::TransientTarget(transient_target) = &pass.output {
+                // TODO: is this resource (mateiral_targets) still needed ?
                 material_targets
                     .required_textures
                     .insert(pass.name.clone(), transient_target.clone());
