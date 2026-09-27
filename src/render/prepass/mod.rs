@@ -407,8 +407,8 @@ pub fn init_prepass_pipeline(
         view_layout_motion_vectors,
         view_layout_no_motion_vectors,
         mesh_layouts: mesh_pipeline.mesh_layouts.clone(),
-        // default_prepass_shader: asset_server.load("shaders/prepass_dev.wgsl"),
-        default_prepass_shader: load_embedded_asset!(asset_server.as_ref(), "prepass.wgsl"),
+        default_prepass_shader: asset_server.load("shaders/prepass_dev.wgsl"),
+        // default_prepass_shader: load_embedded_asset!(asset_server.as_ref(), "prepass.wgsl"),
         skins_use_uniform_buffers: skins_use_uniform_buffers(&render_device.limits()),
         depth_clip_control_supported,
         binding_arrays_are_usable: binding_arrays_are_usable(&render_device, &render_adapter),
@@ -711,6 +711,7 @@ impl PrepassPipeline {
             material_properties.view_settings_layout_entry.as_ref()
         {
             point_cloud_layout.entries.push(*view_settings_layout_entry);
+            shader_defs.push("POINTCLOUD_VIEW_SETTINGS".into());
         }
 
         bind_group_layouts.insert(2, point_cloud_layout);

@@ -187,7 +187,6 @@ pub fn extract_entities_that_need_specializations_removed<M>(
 /// Free allocated buffers & bindgroups for removed point cloud's materials
 pub fn free_removed_point_cloud_materials<M: PointCloudMaterial>(
     mut removed_items: Extract<RemovedComponents<PointCloudMaterial3d<M>>>,
-    mut prepared_point_cloud_uniforms: ResMut<PreparedPointCloudUniforms>,
     mut view_point_clouds_bind_groups: Query<&mut ViewPointCloudBindGroups>,
 ) {
     let material_type_id = TypeId::of::<M>();
@@ -201,6 +200,5 @@ pub fn free_removed_point_cloud_materials<M: PointCloudMaterial>(
                 bind_groups.remove(&main_entity);
             }
         }
-        prepared_point_cloud_uniforms.remove(&main_entity);
     }
 }

@@ -1,6 +1,7 @@
 use std::any::TypeId;
 
 use bevy::{
+    app::Main,
     asset::Assets,
     camera::{
         primitives::{Aabb, CascadesFrusta},
@@ -21,7 +22,7 @@ use bevy::{
         CascadeShadowConfig, Cascades, DirectionalLight, NotShadowReceiver, SpotLight, SunDisk,
         TransmittedShadowReceiver, VolumetricLight,
     },
-    log::{debug, warn},
+    log::{debug, info, warn},
     pbr::{ExtractedDirectionalLight, MeshFlags, MeshTransforms, PreviousGlobalTransform},
     render::{
         mesh::{allocator::MeshAllocator, RenderMesh},
@@ -45,7 +46,6 @@ use crate::{
         RenderPointCloudChunkInstance, RenderPointCloudChunkInstances, RenderPointCloudInstance,
         RenderPointCloudInstances, RenderShadowMapVisiblePointCloudEntities,
         RenderVisiblePointCloudChunkEntity, RenderVisiblePointCloudEntities, SplatMeshes,
-        ViewPointCloudBindGroups,
     },
     CascadesVisiblePointCloudEntities, PointCloud, PointCloud3d, PointCloudChunk,
     PointCloudChunk3d, PointCloudTopologyKind, SplatSettings, VisiblePointCloudOctreeEntities,
@@ -56,17 +56,38 @@ use crate::{
 /// each views, for later visible nodes texture generation.
 pub fn extract_visible_point_cloud_chunks(
     views: Extract<Query<(RenderEntity, &VisiblePointCloudOctreeEntities), With<Camera>>>,
+    mut removed_main_entities: Extract<RemovedComponents<PointCloud3d>>,
+    mut removed_render_entities: RemovedComponents<PointCloud3d>,
     mut extracted_views: Query<&mut RenderVisiblePointCloudEntities, With<ExtractedView>>,
     mapper: Extract<Query<&RenderEntity>>,
     render_point_cloud_instances: Res<RenderPointCloudInstances>,
     mut render_octree_index: ResMut<RenderOctreeInstancesIndex>,
+    mut prepared_point_cloud_uniforms: ResMut<PreparedPointCloudUniforms>,
 ) {
+    let removed_main_entities = removed_main_entities
+        .read()
+        .map(MainEntity::from)
+        .collect::<Vec<_>>();
+    for removed_main_entity in &removed_main_entities {
+        prepared_point_cloud_uniforms.remove(removed_main_entity);
+    }
+    for removed_render_entity in removed_render_entities.read() {
+        render_octree_index.remove(&removed_render_entity);
+    }
+
     for (render_entity, visible_point_cloud_octree_entities) in views.iter() {
         let Ok(mut render_visible_point_cloud_entities) = extracted_views.get_mut(render_entity)
         else {
             warn!("Missing RenderVisiblePointCloudEntities for extracted view");
             continue;
         };
+
+        // clear removed entities from `VisiblePointCloudOctreeEntities` component
+        for removed_main_entity in &removed_main_entities {
+            render_visible_point_cloud_entities
+                .entities
+                .remove(removed_main_entity);
+        }
 
         compute_visible_entities(
             &mapper,
@@ -85,6 +106,7 @@ pub fn extract_cascade_visible_point_cloud_chunks(
     views: Extract<
         Query<(Entity, RenderEntity, &CascadesVisiblePointCloudEntities), With<DirectionalLight>>,
     >,
+    mut removed_entities: Extract<RemovedComponents<PointCloud3d>>,
     // mut extracted_views: Query<&mut RenderShadowMapVisiblePointCloudEntities,
     // With<ExtractedView>>,
     mut extracted_directional_lights: Query<(
@@ -101,6 +123,8 @@ pub fn extract_cascade_visible_point_cloud_chunks(
     _mesh_allocator: Res<MeshAllocator>,
     mut render_octree_index: ResMut<RenderOctreeInstancesIndex>,
 ) {
+    let removed_entities = removed_entities.read().collect::<Vec<_>>();
+
     for (main_entity, render_entity, cascade_visible_point_cloud_entities) in views.iter() {
         let Ok((_, _, _, _, mut render_shadow_map_visible_point_cloud_entities)) =
             extracted_directional_lights.get_mut(render_entity)
@@ -126,6 +150,13 @@ pub fn extract_cascade_visible_point_cloud_chunks(
                         .subviews
                         .entry(retained_view_entity)
                         .or_default();
+
+                // clear removed entities from `VisiblePointCloudOctreeEntities` component
+                for &removed_entity in &removed_entities {
+                    render_visible_point_cloud_entities
+                        .entities
+                        .remove(&MainEntity::from(removed_entity));
+                }
 
                 compute_visible_entities(
                     &mapper,

@@ -18,11 +18,11 @@ use bevy::{
         render_resource::{
             binding_types::{texture_2d, texture_2d_multisampled, uniform_buffer},
             BindGroupEntry, IntoBinding, PipelineCache, ShaderStages, TextureDescriptor,
-            TextureDimension, TextureUsages,
+            TextureDimension, TextureUsages, TextureViewDescriptor,
         },
         renderer::RenderDevice,
         sync_world::MainEntity,
-        texture::{ColorAttachment, TextureCache},
+        texture::{CachedTexture, ColorAttachment, TextureCache},
         view::{ExtractedView, Msaa},
     },
     shader::{Shader, ShaderRef},
@@ -44,7 +44,6 @@ use crate::render::{
 // Prepares the textures used by the prepass
 pub fn prepare_multipass_textures<M: PointCloudMaterial>(
     material_targets: Res<PointCloudMaterialTargets<M>>,
-    mut texture_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
     // check only against first pass for simplification
     opaque_3d_multipass_phases: Res<ViewBinnedRenderPhases<Opaque3dMultipass<M, 0>>>,
@@ -94,11 +93,15 @@ pub fn prepare_multipass_textures<M: PointCloudMaterial>(
                             | TextureUsages::TEXTURE_BINDING,
                         view_formats: &[],
                     };
-                    let texture = texture_cache.get(&render_device, descriptor);
+                    let texture = render_device.create_texture(&descriptor);
+                    let default_view = texture.create_view(&TextureViewDescriptor::default());
 
                     MultipassTexture {
                         color_attachment: None,
-                        texture,
+                        texture: CachedTexture {
+                            texture,
+                            default_view,
+                        },
                     }
                 });
 
