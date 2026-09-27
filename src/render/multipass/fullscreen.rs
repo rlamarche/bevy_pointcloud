@@ -66,10 +66,6 @@ pub struct FullscreenMaterialPipelineId<M: PointCloudMaterial, const PASS: usize
     pub _phantom: PhantomData<M>,
 }
 
-/// Holds the bind groups for both main textures
-///
-/// We can't know ahead of time which one is the source or destination so we create a bind group
-/// for both
 #[derive(Component)]
 pub struct FullscreenMaterialBindGroup<M: PointCloudMaterial, const PASS: usize> {
     pub bind_group: Option<BindGroup>,

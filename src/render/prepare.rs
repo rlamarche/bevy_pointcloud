@@ -18,7 +18,7 @@ use bevy::{
         render_phase::{ViewBinnedRenderPhases, ViewSortedRenderPhases},
         render_resource::{
             Extent3d, GpuArrayBuffer, TexelCopyBufferLayout, TextureDescriptor, TextureDimension,
-            TextureFormat::Rgba8Uint, TextureUsages, UniformBuffer,
+            TextureFormat::Rgba8Uint, TextureUsages, TextureViewDescriptor, UniformBuffer,
         },
         renderer::{RenderDevice, RenderQueue},
         sync_world::MainEntity,
@@ -30,11 +30,11 @@ use bytemuck::{Pod, Zeroable};
 
 use crate::{
     render::{
-        FallbackVisibleNodesTexture, PointCloudUniform, PreparedPointCloudUniform,
-        PreparedPointCloudUniforms, RenderMaterialBindings, RenderOctreeInstancesIndex,
-        RenderPointCloudChunk, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
-        RenderShadowMapVisiblePointCloudEntities, RenderVisiblePointCloudEntities,
-        VisibleNodesTexture,
+        FallbackVisibleNodesTexture, OctreeInstanceIndex, PointCloudUniform,
+        PreparedPointCloudUniform, PreparedPointCloudUniforms, RenderMaterialBindings,
+        RenderOctreeInstancesIndex, RenderPointCloudChunk, RenderPointCloudInstances,
+        RenderPointCloudMaterialInstances, RenderShadowMapVisiblePointCloudEntities,
+        RenderVisiblePointCloudEntities, VisibleNodesTexture,
     },
     NodeId, PointCloud3d,
 };
@@ -89,14 +89,17 @@ pub fn prepare_point_cloud_uniforms(
             None,
         );
 
+        let Some(octree_index) = render_octree_instances_index
+            .get(&point_cloud_instance.render_entity)
+            .map(|octree_index| octree_index.index())
+        else {
+            continue;
+        };
+
         let point_cloud_uniform = PointCloudUniform::new(
             &point_cloud_instance.aabb,
             &point_cloud_instance.model_aabb,
-            render_octree_instances_index
-                .index
-                .get(&point_cloud_instance.render_entity)
-                .map(super::resources::OctreeInstanceIndex::index)
-                .unwrap_or(u32::MAX),
+            octree_index,
             point_cloud_instance.spacing.unwrap_or_default(),
             &point_cloud_instance.transforms,
             material_bindings_index.slot,
@@ -163,7 +166,6 @@ pub fn prepare_camera_visible_nodes_texture(
     render_point_cloud_chunks: Res<RenderAssets<RenderPointCloudChunk>>,
     render_meshes: Res<RenderAssets<RenderMesh>>,
     mesh_allocator: Res<MeshAllocator>,
-    mut texture_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
     render_octree_index: Res<RenderOctreeInstancesIndex>,
@@ -205,7 +207,6 @@ pub fn prepare_camera_visible_nodes_texture(
             &render_point_cloud_chunks,
             &render_meshes,
             &mesh_allocator,
-            &mut texture_cache,
             &render_device,
             &render_queue,
             &render_octree_index,
@@ -222,7 +223,6 @@ pub fn prepare_cascades_visible_nodes_texture(
     render_point_cloud_chunks: Res<RenderAssets<RenderPointCloudChunk>>,
     render_meshes: Res<RenderAssets<RenderMesh>>,
     mesh_allocator: Res<MeshAllocator>,
-    mut texture_cache: ResMut<TextureCache>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
     render_octree_index: Res<RenderOctreeInstancesIndex>,
@@ -274,7 +274,6 @@ pub fn prepare_cascades_visible_nodes_texture(
             &render_point_cloud_chunks,
             &render_meshes,
             &mesh_allocator,
-            &mut texture_cache,
             &render_device,
             &render_queue,
             &render_octree_index,
@@ -293,7 +292,6 @@ fn prepare_visible_nodes_texture(
     render_point_cloud_chunks: &RenderAssets<RenderPointCloudChunk>,
     render_meshes: &RenderAssets<RenderMesh>,
     mesh_allocator: &MeshAllocator,
-    texture_cache: &mut TextureCache,
     render_device: &RenderDevice,
     render_queue: &RenderQueue,
     render_octree_index: &RenderOctreeInstancesIndex,
@@ -302,25 +300,18 @@ fn prepare_visible_nodes_texture(
     visible_nodes: &RenderVisiblePointCloudEntities,
     fallback_visible_nodes_texture: &FallbackVisibleNodesTexture,
 ) {
-    let octrees_count = visible_nodes
-        .entities
-        .values()
-        .filter(|visible_entity| {
-            render_octree_index
-                .index
-                .contains_key(&visible_entity.entity)
-        })
-        .count();
+    let octrees_count = visible_nodes.entities.len();
 
     // if the visible nodes texture is not yet allocated or needs to be resized
-    if visible_nodes_texture
+    if !visible_nodes_texture
         .texture
         .as_ref()
         .map(|cached_texture| {
-            cached_texture.texture.width() != MAX_NODES as u32
-                || cached_texture.texture.height() != octrees_count as u32
+            octrees_count == 0 && cached_texture.texture.width() == 1
+                || cached_texture.texture.width() == MAX_NODES as u32
+                    && cached_texture.texture.height() == render_octree_index.max_index() + 1
         })
-        .unwrap_or(true)
+        .unwrap_or(false)
     {
         let texture = if octrees_count == 0 {
             CachedTexture {
@@ -333,7 +324,7 @@ fn prepare_visible_nodes_texture(
             // The size of the depth texture
             let size = Extent3d {
                 width: MAX_NODES as u32,
-                height: octrees_count as u32,
+                height: render_octree_index.max_index() + 1,
                 depth_or_array_layers: 1,
             };
 
@@ -348,7 +339,13 @@ fn prepare_visible_nodes_texture(
                 view_formats: &[],
             };
 
-            texture_cache.get(render_device, descriptor)
+            let texture = render_device.create_texture(&descriptor);
+            let default_view = texture.create_view(&TextureViewDescriptor::default());
+
+            CachedTexture {
+                texture,
+                default_view,
+            }
         };
 
         visible_nodes_texture.texture = Some(texture);
@@ -356,20 +353,22 @@ fn prepare_visible_nodes_texture(
     }
 
     if octrees_count == 0 {
+        commands.entity(entity).insert(visible_nodes_texture);
         return;
     }
 
     // at this point, the texture is allocated
     let texture = visible_nodes_texture.texture.as_ref().unwrap();
 
-    let required_buffer_size = octrees_count * MAX_NODES;
+    let required_buffer_size = (render_octree_index.max_index() as usize + 1) * MAX_NODES;
 
     // reuse allocations
     if visible_nodes_buffer.len() < required_buffer_size {
         visible_nodes_buffer.resize(required_buffer_size, VisibleOctreeNodeUniform::default());
     }
 
-    let mut node_index = vec![HashMap::<NodeId, u32>::default(); render_octree_index.slab.len()];
+    let mut node_index =
+        vec![HashMap::<NodeId, u32>::default(); render_octree_index.max_index() as usize + 1];
     for (_main_entity, visible_point_cloud) in &visible_nodes.entities {
         let mut sorted_octree_nodes = visible_point_cloud.chunk_entities.clone();
 
@@ -410,7 +409,7 @@ fn prepare_visible_nodes_texture(
         let mut render_node_index = HashMap::<NodeId, usize>::new();
 
         let octree_index = render_octree_index
-            .get(visible_point_cloud.entity)
+            .get(&visible_point_cloud.entity)
             .expect("octree index out of bounds")
             .index() as usize;
 
@@ -460,11 +459,11 @@ fn prepare_visible_nodes_texture(
         TexelCopyBufferLayout {
             offset: 0,
             bytes_per_row: Some((MAX_NODES * 4) as u32), // 4 bytes par texel RGBA8Uint
-            rows_per_image: Some(octrees_count as u32),
+            rows_per_image: Some(render_octree_index.max_index() + 1),
         },
         Extent3d {
             width: MAX_NODES as u32,
-            height: octrees_count as u32,
+            height: render_octree_index.max_index() + 1,
             depth_or_array_layers: 1,
         },
     );

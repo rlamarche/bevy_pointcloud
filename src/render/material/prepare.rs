@@ -648,10 +648,6 @@ pub fn prepare_view_point_cloud_bind_groups<M: PointCloudMaterial>(
 
         for main_entity in items {
             let Some(prepared_uniform) = prepared_point_cloud_uniforms.get(main_entity) else {
-                // free unused bind groups
-                // TODO: clean empty bind groups from parent ?
-                bind_groups.remove(main_entity);
-
                 warn!(
                     "Missing prepared prepared_point_cloud_uniforms for entity {:?}",
                     main_entity

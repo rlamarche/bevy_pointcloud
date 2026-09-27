@@ -5,20 +5,20 @@ use bevy::{
     ecs::{component::Component, entity::Entity},
     platform::{collections::HashMap, hash::NoOpHash},
     render::{
-        render_resource::{BindGroup, UniformBuffer},
+        render_resource::BindGroup,
         sync_world::{MainEntity, MainEntityHashMap, RenderEntity},
         texture::CachedTexture,
         view::RetainedViewEntity,
     },
 };
 
-use crate::{render::PointCloudMaterial, ChildIndex, NodeId, PointCloud, PointCloudChunk};
+use crate::{ChildIndex, NodeId, PointCloud, PointCloudChunk};
 
 /// This component stores the visible nodes for each point cloud at view level (camera) in "render
 /// world".
 #[derive(Debug, Component, Default, Clone)]
 pub struct RenderVisiblePointCloudEntities {
-    pub entities: HashMap<MainEntity, RenderVisiblePointCloudEntity>,
+    pub entities: MainEntityHashMap<RenderVisiblePointCloudEntity>,
     pub changed_this_frame: bool,
 }
 
@@ -99,7 +99,7 @@ pub struct VisibleNodesTexture {
 #[derive(Component, Clone, Default)]
 pub struct ViewPointCloudBindGroups {
     // contains one bind group per material (TypeId) and per point cloud entity
-    pub bind_groups: HashMap<TypeId, MainEntityHashMap<BindGroup>>,
+    pub bind_groups: HashMap<TypeId, MainEntityHashMap<BindGroup>, NoOpHash>,
 }
 
 // impl From<&VisiblePointCloudNodeEntity> for RenderVisiblePointCloudNodeEntity {

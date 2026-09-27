@@ -4,6 +4,7 @@ use bevy::{
         resource::Resource,
         world::{FromWorld, World},
     },
+    log::info,
     platform::collections::HashMap,
     prelude::{Deref, DerefMut},
     render::{
@@ -13,7 +14,7 @@ use bevy::{
             TextureUsages, TextureView, TextureViewDescriptor, TextureViewDimension,
         },
         renderer::RenderDevice,
-        sync_world::MainEntity,
+        sync_world::{MainEntity, MainEntityHashMap},
     },
 };
 use slotmap::{new_key_type, Key, SlotMap};
@@ -43,43 +44,56 @@ impl OctreeInstanceIndex {
 #[derive(Clone, Debug, Default, Resource)]
 pub struct RenderOctreeInstancesIndex {
     /// TODO: use something else (not a slotmap)
-    pub(crate) slab: SlotMap<OctreeInstanceIndex, Entity>,
-    pub(crate) index: HashMap<Entity, OctreeInstanceIndex>,
+    slab: SlotMap<OctreeInstanceIndex, Entity>,
+    index: HashMap<Entity, OctreeInstanceIndex>,
+
+    max_index: u32,
     // pub(crate) added: Vec<Entity>,
 }
 
 impl RenderOctreeInstancesIndex {
     /// Add point cloud instance to index, if it already exists, does nothing.
     pub fn add(&mut self, entity: Entity) -> OctreeInstanceIndex {
-        let index = *self
+        let instance_index = self
             .index
             .entry(entity)
-            // as_ffi returns the generation << 32 + index, casting to u32 truncates the generation
             .or_insert_with(|| self.slab.insert(entity));
 
-        // self.added.push(entity);
+        let index = instance_index.index();
+        if index > self.max_index {
+            self.max_index = index;
+        }
 
-        index
+        *instance_index
     }
 
     /// Removes an entity from the index.
-    /// TODO: call it on octree removal
-    pub fn remove(&mut self, entity: Entity) -> Option<OctreeInstanceIndex> {
-        if let Some(index) = self.index.remove(&entity) {
-            self.slab.remove(index);
-            Some(index)
+    pub fn remove(&mut self, entity: &Entity) -> Option<OctreeInstanceIndex> {
+        if let Some(instance_index) = self.index.remove(entity) {
+            self.slab.remove(instance_index);
+
+            let index = instance_index.index();
+            if self.max_index == index && self.max_index > 0 {
+                self.max_index -= 1;
+            }
+
+            Some(instance_index)
         } else {
             None
         }
     }
 
-    pub fn get(&self, entity: Entity) -> Option<OctreeInstanceIndex> {
-        self.index.get(&entity).copied()
+    pub fn get(&self, entity: &Entity) -> Option<OctreeInstanceIndex> {
+        self.index.get(entity).copied()
+    }
+
+    pub fn max_index(&self) -> u32 {
+        self.max_index
     }
 }
 
 #[derive(Resource, Default, Deref, DerefMut)]
-pub struct PreparedPointCloudUniforms(HashMap<MainEntity, PreparedPointCloudUniform>);
+pub struct PreparedPointCloudUniforms(MainEntityHashMap<PreparedPointCloudUniform>);
 
 #[derive(Resource)]
 pub struct FallbackVisibleNodesTexture {
