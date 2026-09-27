@@ -132,8 +132,11 @@ impl Plugin for RenderPointCloudPlugin {
             .add_systems(
                 Render,
                 (
-                    prepare_camera_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
-                    prepare_cascades_visible_nodes_texture.in_set(RenderSystems::PrepareResources),
+                    // [`prepare_cascades_visible_nodes_texture`] after [`prepare_camera_visible_nodes_texture`] because it can use the same visible nodes texture
+                    // TODO: do it
+                    (prepare_camera_visible_nodes_texture, prepare_cascades_visible_nodes_texture)
+                        .in_set(RenderSystems::PrepareResources)
+                        .chain(),
                     prepare_point_cloud_uniforms.in_set(RenderSystems::PrepareResources),
                     check_views_need_specialization
                         .after(RenderSystems::PrepareAssets)

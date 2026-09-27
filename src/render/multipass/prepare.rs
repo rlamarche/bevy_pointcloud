@@ -36,8 +36,9 @@ use crate::render::{
         SpecializedFullscreenPointCloudPipelines, ViewMultipassTextures,
         ViewPointCloudPassBindGroup,
     },
-    PointCloud3d, PointCloudMaterial, PointCloudMaterialTargets, PointCloudPipeline,
-    PreparedPointCloudUniforms, PreparedViewSettingsUniform, VisibleNodesTexture,
+    ErasedViewSettingsKey, PointCloud3d, PointCloudMaterial, PointCloudMaterialTargets,
+    PointCloudPipeline, PreparedPointCloudUniforms, PreparedViewSettingsUniform,
+    ViewSettingsPipelineKey, VisibleNodesTexture,
 };
 
 // Prepares the textures used by the prepass
@@ -268,7 +269,7 @@ pub fn init_fullscreen_material<M: PointCloudMaterial, const PASS: usize>(
 pub fn prepare_fullscreen_material_pipelines<M: PointCloudMaterial, const PASS: usize>(
     mut commands: Commands,
     pipeline_cache: Res<PipelineCache>,
-    views: Query<(Entity, &ExtractedView), With<ExtractedCamera>>,
+    views: Query<(Entity, &ExtractedView, &M::ViewSettings), With<ExtractedCamera>>,
     view_key_cache: Res<ViewKeyCache>,
     fullscreen_pipeline: Res<FullscreenMaterialPassPipeline>,
     mut specialized_fullscreen_point_cloud_pipelines: ResMut<
@@ -277,7 +278,7 @@ pub fn prepare_fullscreen_material_pipelines<M: PointCloudMaterial, const PASS: 
     prepared_point_cloud_fullscreen_pass: Res<PreparedPointCloudFullscreenPass<M, PASS>>,
 ) {
     let pass = &M::passes()[PASS];
-    for (entity, view) in &views {
+    for (entity, view, settings) in &views {
         let Some(&view_key) = view_key_cache.get(&view.retained_view_entity) else {
             continue;
         };
@@ -285,6 +286,7 @@ pub fn prepare_fullscreen_material_pipelines<M: PointCloudMaterial, const PASS: 
         let pipeline_key = FullscreenPassMaterialPipelineKey {
             view_key,
             pass: PASS,
+            settings_key: ErasedViewSettingsKey::new(settings.pipeline_key()),
         };
 
         let pipeline_specializer = FullscreenMaterialPipelineSpecializer {

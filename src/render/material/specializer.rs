@@ -60,6 +60,7 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
                 .unwrap()
                 .entries
                 .push(*view_settings_layout_entry);
+            shader_defs.push("POINTCLOUD_VIEW_SETTINGS".into());
         }
 
         let material_bind_group_index = descriptor.layout.len();

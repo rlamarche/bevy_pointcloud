@@ -11,7 +11,7 @@ mod specializer;
 use bevy::log::info_span;
 use bevy::{
     app::{App, Plugin},
-    asset::{embedded_asset, load_embedded_asset, AssetServer, Handle},
+    asset::{load_embedded_asset, AssetServer, Handle},
     camera::{Camera, Camera3d, MainPassResolutionOverride, Projection, Viewport},
     core_pipeline::{
         core_3d::{main_opaque_pass_3d, Opaque3dBatchSetKey, Opaque3dBinKey},
@@ -30,7 +30,7 @@ use bevy::{
         },
     },
     light::{EnvironmentMapLight, IrradianceVolume, ShadowFilteringMethod},
-    log::{debug, error, info, warn},
+    log::{debug, error, warn},
     material::{key::ErasedMeshPipelineKey, OpaqueRendererMethod},
     math::{Mat4, Vec4},
     mesh::MeshVertexBufferLayoutRef,
@@ -66,7 +66,7 @@ use bevy::{
         Extract, GpuResourceAppExt, Render, RenderApp, RenderDebugFlags, RenderStartup,
         RenderSystems::{self, PrepareAssets},
     },
-    shader::{load_shader_library, Shader},
+    shader::Shader,
 };
 use core::any::TypeId;
 
@@ -109,12 +109,6 @@ pub struct MultipassPipelinePlugin;
 
 impl Plugin for MultipassPipelinePlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "multipass.wgsl");
-
-        load_shader_library!(app, "multipass_bindings.wgsl");
-        load_shader_library!(app, "multipass_utils.wgsl");
-        load_shader_library!(app, "multipass_io.wgsl");
-
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
@@ -945,10 +939,6 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
                 visible_entities_class,
                 &view_pending_multipass_mesh_material_queues.prev_frame,
             ) {
-                info!(
-                    "Specializing entity {:?}/{:?} for pass {}",
-                    render_entity, visible_entity, PASS
-                );
                 if maybe_specialized_multipass_material_pipeline_cache
                     .as_ref()
                     .is_some_and(|specialized_multipass_material_pipeline_cache| {
@@ -1047,12 +1037,6 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
                 };
 
                 if !material.properties.multipass_enabled {
-                    // TODO: remove this warn
-                    warn!(
-                        "multipass not enabled for entity {:?} in multipass",
-                        visible_entity
-                    );
-
                     // If the material was previously specialized for multipass, remove it
                     removals.push((view.retained_view_entity, *render_entity));
                     continue;
@@ -1106,7 +1090,6 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
                     splat_key |= SplatPipelineKey::IS_OCTREE;
                 }
 
-                info!("Push workitem for pass {}", PASS);
                 work_items.push(MultipassSpecializationWorkItem {
                     render_entity: *render_entity,
                     visible_entity: *visible_entity,
@@ -1129,7 +1112,6 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
     }
 
     for item in work_items.drain(..) {
-        info!("Processing work item {:?} for pass {}", item, PASS);
         let key = ErasedPointCloudMaterialPipelineKey {
             type_id: item.material_type_id,
             mesh_key: ErasedMeshPipelineKey::new(item.mesh_key),
@@ -1351,13 +1333,6 @@ pub fn queue_multipass_material_meshes<M: PointCloudMaterial, const PASS: usize>
                     asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
                 };
 
-                info!(
-                    "Add phase for entity {:?}/{:?} ({:?}) for pass {}",
-                    render_point_cloud_chunk_instance.root_entity,
-                    render_entity,
-                    visible_entity,
-                    PASS,
-                );
                 opaque_phase.add(
                     batch_set_key,
                     bin_key,
