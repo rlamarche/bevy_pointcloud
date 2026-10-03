@@ -392,7 +392,8 @@ where
                             .before(RenderSystems::Specialize),
                         // must be run before specialize
                         prepare_material_view_settings_key::<M>
-                            .in_set(RenderSystems::PrepareAssets),
+                            .in_set(RenderSystems::PrepareAssets)
+                            .before(RenderSystems::Specialize),
                         (
                             prepare_view_settings_uniforms::<M>,
                             prepare_cascade_view_settings_uniforms::<M>,
