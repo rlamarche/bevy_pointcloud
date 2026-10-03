@@ -74,12 +74,14 @@ fn fragment(
     #endif // SHAPE_UVS_A
 
     #ifdef POINTCLOUD_VIEW_SETTINGS
-        for (var i: u32 = 0u; i < view_settings.nb_clipping_planes; i ++) {
-            let clip_dist = dot(in.world_position.xyz, view_settings.clipping_planes[i].xyz) + view_settings.clipping_planes[i].w;
-            if (clip_dist < 0.0) {
-                discard;
+        #ifdef CLIPPING_PLANES
+            for (var i: u32 = 0u; i < view_settings.nb_clipping_planes; i ++) {
+                let clip_dist = dot(in.world_position.xyz, view_settings.clipping_planes[i].xyz) + view_settings.clipping_planes[i].w;
+                if (clip_dist < 0.0) {
+                    discard;
+                }
             }
-        }
+        #endif // CLIPPING_PLANES
     #endif // POINTCLOUD_VIEW_SETTINGS
 
     #ifdef POINTCLOUD_PASS_DEPTH
