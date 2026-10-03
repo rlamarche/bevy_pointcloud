@@ -13,13 +13,14 @@ mod specializer;
 use bevy::{
     app::{App, First, Plugin, PostUpdate},
     asset::{Asset, AssetApp, AssetEventSystems},
+    camera::Camera,
     core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d},
     ecs::prelude::*,
+    light::DirectionalLight,
     material::{
         labels::{DrawFunctionLabel, ShaderLabel},
         AlphaMode, OpaqueRendererMethod,
     },
-    math::Vec4,
     mesh::{mark_3d_meshes_as_changed_if_their_assets_changed, MeshVertexBufferLayoutRef},
     pbr::{
         check_views_lights_need_specialization, collect_meshes_for_gpu_building, prepare_lights,
@@ -32,12 +33,12 @@ use bevy::{
             DirtySpecializationSystems, ExtractedCamera,
         },
         erased_render_asset::ErasedRenderAssetPlugin,
-        extract_component::{ExtractComponent, ExtractComponentPlugin},
+        extract_component::ExtractComponentPlugin,
         mesh::RenderMesh,
         prelude::*,
         render_asset::prepare_assets,
         render_phase::*,
-        render_resource::{encase::private::WriteInto, *},
+        render_resource::*,
         renderer::RenderDevice,
         sync_world::RenderEntity,
         view::ExtractedView,
@@ -63,7 +64,7 @@ use crate::{
         PointCloudPipelineSystems, SpecializedPointCloudPipelines,
         SpecializedShadowMaterialPipelineCache,
     },
-    PointCloudChunk3d, PointCloudMaterial3d,
+    PointCloudChunk3d, PointCloudMaterial3d, ViewSettings,
 };
 
 pub use components::*;
@@ -78,23 +79,6 @@ pub use resources::*;
 pub use specialization::*;
 pub use specializer::*;
 
-pub trait ViewSettingsPipelineKey: Send + Sync + 'static {
-    type Key: Hash + Eq + PartialEq + Clone + Send + Sync + 'static;
-
-    fn pipeline_key(&self) -> Self::Key;
-}
-
-#[derive(Component, ExtractComponent, Clone, Copy, ShaderType, Default)]
-pub struct PointCloudEmptyViewSettings {
-    pub _padding: Vec4,
-}
-
-impl ViewSettingsPipelineKey for PointCloudEmptyViewSettings {
-    type Key = ();
-
-    fn pipeline_key(&self) -> Self::Key {}
-}
-
 /// Materials are used alongside [`PointCloudMaterialPlugin`], [`PointCloud3d`], and
 /// [`PointCloudMaterial3d`] to spawn entities that are rendered with a specific [`Material`] type.
 /// They serve as an easy to use high level way to render [`PointCloud3d`] entities with custom
@@ -107,14 +91,15 @@ impl ViewSettingsPipelineKey for PointCloudEmptyViewSettings {
 /// Materials must also define a [`PointCloudMaterial::ViewSettings`] type for view based settings
 /// (eg: clipping planes, multipass materials, ...).
 pub trait PointCloudMaterial: Asset + AsBindGroup + Clone + Sized {
-    type ViewSettings: Component
-        + ExtractComponent
-        + Clone
-        + Copy
-        + ShaderType
-        + WriteInto
-        + Default
-        + ViewSettingsPipelineKey;
+    type ViewSettings: ViewSettings;
+    // type ViewSettings: Component
+    //     + ExtractComponent
+    //     + Clone
+    //     + Copy
+    //     + ShaderType
+    //     + WriteInto
+    //     + Default
+    //     + ViewSettingsPipelineKey;
 
     /// Number of passes for multipass materials.
     /// If equal to 0, means that this is not a multipass material.
@@ -371,6 +356,12 @@ where
             )
             .add_observer(on_remove_point_cloud_chunk_3d::<M>)
             .add_observer(on_remove_point_cloud_material_3d::<M>);
+
+        app.world_mut()
+            .register_required_components::<Camera, M::ViewSettings>();
+
+        app.world_mut()
+            .register_required_components::<DirectionalLight, M::ViewSettings>();
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app

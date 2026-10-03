@@ -28,17 +28,19 @@ use bevy::{
     shader::{Shader, ShaderRef},
 };
 
-use crate::render::{
-    multipass::{
-        FullscreenMaterialPassPipeline, FullscreenMaterialPipelineId,
-        FullscreenMaterialPipelineSpecializer, FullscreenPassMaterialPipelineKey, MultipassTexture,
-        Opaque3dMultipass, PreparedPointCloudFullscreenPass,
-        SpecializedFullscreenPointCloudPipelines, ViewMultipassTextures,
-        ViewPointCloudPassBindGroup,
+use crate::{
+    render::{
+        multipass::{
+            FullscreenMaterialPassPipeline, FullscreenMaterialPipelineId,
+            FullscreenMaterialPipelineSpecializer, FullscreenPassMaterialPipelineKey,
+            MultipassTexture, Opaque3dMultipass, PreparedPointCloudFullscreenPass,
+            SpecializedFullscreenPointCloudPipelines, ViewMultipassTextures,
+            ViewPointCloudPassBindGroup,
+        },
+        ErasedViewSettingsKey, PassOutput, PointCloud3d, PointCloudMaterial, PointCloudPipeline,
+        PreparedPointCloudUniforms, PreparedViewSettingsUniform, VisibleNodesTexture,
     },
-    ErasedViewSettingsKey, PassOutput, PointCloud3d, PointCloudMaterial, PointCloudMaterialTargets,
-    PointCloudPipeline, PreparedPointCloudUniforms, PreparedViewSettingsUniform,
-    ViewSettingsPipelineKey, VisibleNodesTexture,
+    ViewSettings,
 };
 
 // Prepares the textures used by the prepass
@@ -150,9 +152,10 @@ pub fn prepare_pointcloud_bind_groups<M: PointCloudMaterial, const PASS: usize>(
     {
         // TODO: cache this layout somewhere ? (eg in a resource or component)
         let mut pointcloud_layout = point_cloud_pipeline.point_cloud_layout.clone();
-        pointcloud_layout
-            .entries
-            .push(uniform_buffer::<M::ViewSettings>(false).build(3, ShaderStages::VERTEX_FRAGMENT));
+        pointcloud_layout.entries.push(
+            uniform_buffer::<<M::ViewSettings as ViewSettings>::Data>(false)
+                .build(3, ShaderStages::VERTEX_FRAGMENT),
+        );
 
         for input in &pass.inputs {
             let entry = match msaa {
@@ -284,15 +287,14 @@ pub fn prepare_fullscreen_material_pipelines<M: PointCloudMaterial, const PASS: 
     prepared_point_cloud_fullscreen_pass: Res<PreparedPointCloudFullscreenPass<M, PASS>>,
 ) {
     let pass = &M::passes()[PASS];
-    for (entity, view, settings) in &views {
+    for (entity, view, view_settings) in &views {
         let Some(&view_key) = view_key_cache.get(&view.retained_view_entity) else {
             continue;
         };
-
         let pipeline_key = FullscreenPassMaterialPipelineKey {
             view_key,
             pass: PASS,
-            settings_key: ErasedViewSettingsKey::new(settings.pipeline_key()),
+            settings_key: ErasedViewSettingsKey::new(view_settings.pipeline_key()),
         };
 
         let pipeline_specializer = FullscreenMaterialPipelineSpecializer {

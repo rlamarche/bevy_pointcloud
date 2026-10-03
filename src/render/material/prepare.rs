@@ -17,7 +17,7 @@ use bevy::{
             Commands, Query, Res, SystemParamItem,
         },
     },
-    log::{info, warn},
+    log::warn,
     material::{
         descriptor::BindGroupLayoutDescriptor,
         key::{ErasedMaterialKey, ErasedMeshPipelineKey},
@@ -28,8 +28,8 @@ use bevy::{
         AlphaMode, OpaqueRendererMethod, RenderPhaseType,
     },
     pbr::{
-        DirectionalLightViewEntities, LightEntity, MaterialBindGroupAllocators, MeshPipelineKey,
-        Shadow, Transmissive3d, ViewLightEntities,
+        DirectionalLightViewEntities, MaterialBindGroupAllocators, MeshPipelineKey, Shadow,
+        Transmissive3d,
     },
     platform::{
         collections::{hash_map::Entry, HashMap},
@@ -43,7 +43,7 @@ use bevy::{
             BindGroupLayoutEntry, PipelineCache, ShaderStages,
         },
         renderer::{RenderDevice, RenderQueue},
-        sync_world::{MainEntity, MainEntityHashMap},
+        sync_world::MainEntity,
         view::ExtractedView,
     },
     shader::{Shader, ShaderRef},
@@ -66,9 +66,9 @@ use crate::{
         PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction, PrepassOpaqueDrawFunction,
         PrepassSpecializeFn, PrepassVertexShader, RenderMaterialBindings,
         ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction, UserSpecializeFn,
-        ViewPointCloudBindGroups, ViewSettingsPipelineKey, VisibleNodesTexture,
+        ViewPointCloudBindGroups, VisibleNodesTexture,
     },
-    PointCloud3d, PointCloudMaterial3d,
+    PointCloud3d, PointCloudMaterial3d, ViewSettings,
 };
 
 /// Common material properties, calculated for a specific material instance.
@@ -429,7 +429,8 @@ where
         }
 
         let view_settings_layout_entry =
-            uniform_buffer::<M::ViewSettings>(false).build(3, ShaderStages::VERTEX_FRAGMENT);
+            uniform_buffer::<<M::ViewSettings as ViewSettings>::Data>(false)
+                .build(3, ShaderStages::VERTEX_FRAGMENT);
 
         Ok(PreparedPointCloudMaterial {
             binding,
@@ -539,15 +540,16 @@ pub fn prepare_view_settings_uniforms<M: PointCloudMaterial>(
     views: Query<
         (
             Entity,
-            Option<&M::ViewSettings>,
+            &M::ViewSettings,
             Option<&mut PreparedViewSettingsUniform<M>>,
         ),
-        With<ExtractedView>,
+        // TODO: keep this "Changed" filter ? Handle RemovedComponents ?
+        (With<ExtractedView>, Changed<M::ViewSettings>),
     >,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
 ) {
-    for (entity, maybe_view_settings, mut maybe_prepared_view_settings_uniform) in views {
+    for (entity, view_settings, mut maybe_prepared_view_settings_uniform) in views {
         // Fetch or create the `PreparedViewSettingsUniform` component
         let mut prepared_view_settings_uniform = match maybe_prepared_view_settings_uniform {
             Some(ref mut prepared_view_settings_uniform) => {
@@ -558,7 +560,7 @@ pub fn prepare_view_settings_uniforms<M: PointCloudMaterial>(
 
         prepared_view_settings_uniform
             .view_settings_uniform_buffer
-            .set(maybe_view_settings.copied().unwrap_or_default());
+            .set(view_settings.to_data());
 
         prepared_view_settings_uniform
             .view_settings_uniform_buffer
@@ -574,16 +576,12 @@ pub fn prepare_view_settings_uniforms<M: PointCloudMaterial>(
 /// its cascades.
 pub fn prepare_cascade_view_settings_uniforms<M: PointCloudMaterial>(
     mut commands: Commands,
-    lights: Query<(
-        Entity,
-        Option<&M::ViewSettings>,
-        &DirectionalLightViewEntities,
-    )>,
+    lights: Query<(Entity, &M::ViewSettings, &DirectionalLightViewEntities)>,
     mut views: Query<Option<&mut PreparedViewSettingsUniform<M>>, With<ExtractedView>>,
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
 ) {
-    for (_light_entity, maybe_view_settings, directional_light_view_entities) in lights {
+    for (_light_entity, view_settings, directional_light_view_entities) in lights {
         for (_view_entity, cascades) in directional_light_view_entities.iter() {
             for &cascade_entity in cascades {
                 let Ok(mut maybe_prepared_view_settings_uniform) = views.get_mut(cascade_entity)
@@ -604,7 +602,7 @@ pub fn prepare_cascade_view_settings_uniforms<M: PointCloudMaterial>(
 
                 prepared_view_settings_uniform
                     .view_settings_uniform_buffer
-                    .set(maybe_view_settings.copied().unwrap_or_default());
+                    .set(view_settings.to_data());
 
                 prepared_view_settings_uniform
                     .view_settings_uniform_buffer
@@ -633,9 +631,10 @@ pub fn prepare_view_point_cloud_bind_groups<M: PointCloudMaterial>(
 
     // TODO: compute it once and store in a resource
     let mut layout = point_cloud_pipeline.point_cloud_layout.clone();
-    layout
-        .entries
-        .push(uniform_buffer::<M::ViewSettings>(false).build(3, ShaderStages::VERTEX_FRAGMENT));
+    layout.entries.push(
+        uniform_buffer::<<M::ViewSettings as ViewSettings>::Data>(false)
+            .build(3, ShaderStages::VERTEX_FRAGMENT),
+    );
 
     let layout = &pipeline_cache.get_bind_group_layout(&layout);
 

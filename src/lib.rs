@@ -30,6 +30,7 @@ pub mod render;
 mod resources;
 #[cfg(feature = "server")]
 mod server;
+mod view_settings;
 mod visibility;
 
 pub use components::*;
@@ -40,6 +41,7 @@ pub use point_cloud::*;
 pub use resources::*;
 #[cfg(feature = "server")]
 pub use server::*;
+pub use view_settings::*;
 pub use visibility::*;
 
 #[cfg(feature = "las")]
