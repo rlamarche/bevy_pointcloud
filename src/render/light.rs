@@ -59,7 +59,7 @@ pub(crate) struct ShadowSpecializationWorkItem {
     splat_layout: MeshVertexBufferLayoutRef,
     instance_layout: MeshVertexBufferLayoutRef,
     properties: Arc<PointCloudMaterialProperties>,
-    view_settings_key: Option<ErasedViewSettingsKey>,
+    view_settings_key: ErasedViewSettingsKey,
     material_type_id: TypeId,
 }
 
@@ -329,6 +329,16 @@ pub(crate) fn specialize_shadows(
                     splat_key |= SplatPipelineKey::IS_OCTREE;
                 }
 
+                let Some(view_settings_key) = view_settings_keys
+                    .view_settings_keys
+                    .get(&material_instance.asset_id.type_id())
+                else {
+                    view_pending_shadow_queues
+                        .current_frame
+                        .insert((*render_entity, *visible_entity));
+                    continue;
+                };
+
                 work_items.push(ShadowSpecializationWorkItem {
                     render_entity: *render_entity,
                     // visible_entity: *visible_entity,
@@ -338,10 +348,7 @@ pub(crate) fn specialize_shadows(
                     splat_layout: splat_mesh.layout.clone(),
                     instance_layout: mesh.layout.clone(),
                     properties: material.properties.clone(),
-                    view_settings_key: view_settings_keys
-                        .view_settings_keys
-                        .get(&material_instance.asset_id.type_id())
-                        .cloned(),
+                    view_settings_key: view_settings_key.clone(),
                     material_type_id: material_instance.asset_id.type_id(),
                 });
             }

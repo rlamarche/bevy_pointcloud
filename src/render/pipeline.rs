@@ -74,7 +74,7 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
     type Key = (
         MeshPipelineKey,
         SplatPipelineKey,
-        Option<ErasedViewSettingsKey>,
+        ErasedViewSettingsKey,
         Option<usize>,
     );
 

@@ -1,3 +1,4 @@
+mod camera;
 mod components;
 mod draw;
 mod extract;
@@ -54,7 +55,8 @@ use std::{
 
 use crate::{
     render::{
-        clear_dirty_specializations, expire_specializations_for_views,
+        check_views_need_specialization, clear_dirty_specializations,
+        expire_specializations_for_views,
         multipass::{
             MultipassMaterialPlugin, MultipassMaterialsPlugin, MultipassPipelinePlugin,
             ViewMultipassTextures,
@@ -67,6 +69,7 @@ use crate::{
     PointCloudChunk3d, PointCloudMaterial3d, ViewSettings,
 };
 
+pub use camera::*;
 pub use components::*;
 pub use draw::*;
 pub use extract::*;
@@ -384,6 +387,9 @@ where
                 .add_systems(
                     Render,
                     (
+                        check_view_settings_need_specialization::<M>
+                            .after(check_views_need_specialization)
+                            .before(RenderSystems::Specialize),
                         // must be run before specialize
                         prepare_material_view_settings_key::<M>
                             .in_set(RenderSystems::PrepareAssets),

@@ -10,8 +10,7 @@ use bevy::{
     ecs::{
         component::Component,
         entity::Entity,
-        lifecycle::RemovedComponents,
-        query::{Added, Changed, With, Without},
+        query::{Changed, With},
         system::{
             lifetimeless::{SRes, SResMut},
             Commands, Query, Res, SystemParamItem,
@@ -502,17 +501,8 @@ pub struct ErasedMaterialViewSettingsKeys {
 pub fn prepare_material_view_settings_key<M: PointCloudMaterial>(
     mut views: Query<
         (&M::ViewSettings, &mut ErasedMaterialViewSettingsKeys),
-        (
-            With<M::ViewSettings>,
-            Added<M::ViewSettings>,
-            Changed<M::ViewSettings>,
-        ),
+        Changed<M::ViewSettings>,
     >,
-    mut views_without_settings: Query<
-        &mut ErasedMaterialViewSettingsKeys,
-        Without<M::ViewSettings>,
-    >,
-    mut removed_settings: RemovedComponents<M::ViewSettings>,
 ) {
     let type_id = TypeId::of::<M>();
 
@@ -523,14 +513,6 @@ pub fn prepare_material_view_settings_key<M: PointCloudMaterial>(
         erased_material_view_settings_keys
             .view_settings_keys
             .insert(type_id, erased_view_settings_key);
-    }
-
-    for entity in removed_settings.read() {
-        if let Ok(mut erased_material_view_settings_keys) = views_without_settings.get_mut(entity) {
-            erased_material_view_settings_keys
-                .view_settings_keys
-                .remove(&type_id);
-        }
     }
 }
 

@@ -2,7 +2,7 @@ mod prepass_bindings;
 
 use bevy::{
     app::{App, Plugin},
-    asset::{embedded_asset, load_embedded_asset, AssetServer, Handle},
+    asset::{embedded_asset, AssetServer, Handle},
     camera::{Camera, Camera3d},
     core_pipeline::{core_3d::CORE_3D_DEPTH_FORMAT, deferred::*, prepass::*},
     ecs::{
@@ -1039,7 +1039,7 @@ pub(crate) struct PrepassSpecializationWorkItem {
     splat_layout: MeshVertexBufferLayoutRef,
     instance_layout: MeshVertexBufferLayoutRef,
     properties: Arc<PointCloudMaterialProperties>,
-    view_settings_key: Option<ErasedViewSettingsKey>,
+    view_settings_key: ErasedViewSettingsKey,
     material_type_id: TypeId,
 }
 
@@ -1372,6 +1372,16 @@ pub(crate) fn specialize_prepass_material_meshes(
                     splat_key |= SplatPipelineKey::IS_OCTREE;
                 }
 
+                let Some(view_settings_key) = view_settings_keys
+                    .view_settings_keys
+                    .get(&material_instance.asset_id.type_id())
+                else {
+                    view_pending_prepass_mesh_material_queues
+                        .current_frame
+                        .insert((*render_entity, *visible_entity));
+                    continue;
+                };
+
                 work_items.push(PrepassSpecializationWorkItem {
                     render_entity: *render_entity,
                     visible_entity: *visible_entity,
@@ -1381,10 +1391,7 @@ pub(crate) fn specialize_prepass_material_meshes(
                     splat_layout: shape_mesh.layout.clone(),
                     instance_layout: mesh.layout.clone(),
                     properties: material.properties.clone(),
-                    view_settings_key: view_settings_keys
-                        .view_settings_keys
-                        .get(&material_instance.asset_id.type_id())
-                        .cloned(),
+                    view_settings_key: view_settings_key.clone(),
                     material_type_id: material_instance.asset_id.type_id(),
                 });
             }
