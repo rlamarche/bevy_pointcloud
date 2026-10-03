@@ -4,6 +4,7 @@ use bevy::{
         resource::Resource,
         system::{Query, Res, ResMut},
     },
+    log::info,
     platform::collections::HashSet,
     render::{
         camera::DirtySpecializations,
@@ -238,7 +239,6 @@ impl PointCloudDirtySpecializations {
 }
 
 /// This system copies views needing specialisations in our own [`PointCloudDirtySpecializations`].
-/// TODO: check for changed material view settings
 pub fn check_views_need_specialization(
     dirty_specializations: Res<DirtySpecializations>,
     mut point_cloud_dirty_specializations: ResMut<PointCloudDirtySpecializations>,

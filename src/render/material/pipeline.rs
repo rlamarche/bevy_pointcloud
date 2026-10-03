@@ -23,7 +23,7 @@ pub struct PointCloudMaterialPipelineKey<M: PointCloudMaterial> {
     pub splat_key: SplatPipelineKey,
     pub bind_group_data: M::Data,
     pub pass: Option<usize>,
-    pub view_settings_key: Option<<M::ViewSettings as ViewSettings>::Key>,
+    pub view_settings_key: <M::ViewSettings as ViewSettings>::Key,
 }
 
 /// Render pipeline data for a given [`Material`].
@@ -37,7 +37,7 @@ pub struct ErasedPointCloudMaterialPipelineKey {
     pub mesh_key: ErasedMeshPipelineKey,
     pub splat_key: ErasedSplatPipelineKey,
     pub material_key: ErasedMaterialKey,
-    pub view_settings_key: Option<ErasedViewSettingsKey>,
+    pub view_settings_key: ErasedViewSettingsKey,
     pub pass: Option<usize>,
     pub type_id: TypeId,
 }

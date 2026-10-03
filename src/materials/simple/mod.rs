@@ -151,8 +151,8 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
     const PASS_COUNT: usize = 3;
 
     fn fragment_shader() -> ShaderRef {
-        shader_ref(bevy::asset::embedded_path!("simple.wgsl"))
-        // "shaders/simple_dev.wgsl".into()
+        // shader_ref(bevy::asset::embedded_path!("simple.wgsl"))
+        "shaders/simple_dev.wgsl".into()
     }
 
     // fn prepass_fragment_shader() -> bevy::shader::ShaderRef {
@@ -184,6 +184,10 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
 
         // Collect all shader defs for both vertex and fragment stages
         let mut shader_defs = Vec::new();
+
+        if settings_key > 0 {
+            shader_defs.push("CLIPPING_PLANES".into());
+        }
 
         // Evaluate single boolean flags
         for (flags, shader_def) in [

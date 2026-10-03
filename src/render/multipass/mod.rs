@@ -11,7 +11,6 @@ mod specializer;
 use bevy::log::info_span;
 use bevy::{
     app::{App, Plugin},
-    asset::{load_embedded_asset, AssetServer, Handle},
     camera::{Camera, Camera3d, MainPassResolutionOverride, Projection, Viewport},
     core_pipeline::{
         core_3d::{main_opaque_pass_3d, Opaque3dBatchSetKey, Opaque3dBinKey},
@@ -66,7 +65,6 @@ use bevy::{
         Extract, GpuResourceAppExt, Render, RenderApp, RenderDebugFlags, RenderStartup,
         RenderSystems::{self, PrepareAssets},
     },
-    shader::Shader,
 };
 use core::any::TypeId;
 
@@ -340,7 +338,6 @@ pub fn init_multipass_pipeline(
     mesh_pipeline: Res<MeshPipeline>,
     material_pipeline: Res<PointCloudMaterialPipeline>,
     point_cloud_pipeline: Res<PointCloudPipeline>,
-    asset_server: Res<AssetServer>,
 ) {
     let visibility_ranges_buffer_binding_type =
         render_device.get_supported_read_only_binding_type(VISIBILITY_RANGES_STORAGE_BUFFER_COUNT);
@@ -406,102 +403,6 @@ pub fn init_multipass_pipeline(
         pointcloud_pipeline: point_cloud_pipeline.clone(),
     });
 }
-
-// pub struct MultipassPipelineSpecializer {
-//     pub pipeline: MultipassPipeline,
-//     pub properties: Arc<MaterialProperties>,
-// }
-
-// impl SpecializedPointCloudPipeline for MultipassPipelineSpecializer {
-//     type Key = (MeshPipelineKey, SplatPipelineKey);
-
-//     fn specialize(
-//         &self,
-//         key: Self::Key,
-//         splat_layout: &MeshVertexBufferLayoutRef,
-//         instance_layout: &MeshVertexBufferLayoutRef,
-//         pass: Option<usize>,
-//     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
-//         self.pipeline
-//             .pointcloud_pipeline
-//             .specialize(key, splat_layout, instance_layout, pass)
-
-//         // let concrete_mesh_key: MeshPipelineKey = key.mesh_key.downcast();
-//         // let concrete_splat_key: SplatPipelineKey = key.splat_key.downcast();
-//         // let mut descriptor = self.pipeline.pointcloud_pipeline.specialize(
-//         //     (concrete_mesh_key, concrete_splat_key),
-//         //     splat_layout,
-//         //     instance_layout,
-//         //     pass,
-//         // )?;
-
-//         // let material_bind_group_index = descriptor.layout.len();
-
-//         // descriptor.vertex.shader_defs.push(ShaderDefVal::UInt(
-//         //     "MATERIAL_BIND_GROUP".into(),
-//         //     material_bind_group_index as u32,
-//         // ));
-//         // if let Some(ref mut fragment) = descriptor.fragment {
-//         //     fragment.shader_defs.push(ShaderDefVal::UInt(
-//         //         "MATERIAL_BIND_GROUP".into(),
-//         //         material_bind_group_index as u32,
-//         //     ));
-//         // };
-//         // if let Some(vertex_shader) = self.properties.get_shader(MaterialVertexShader) {
-//         //     descriptor.vertex.shader = vertex_shader.clone();
-//         // }
-
-//         // if let Some(fragment_shader) = self.properties.get_shader(MaterialFragmentShader) {
-//         //     descriptor.fragment.as_mut().unwrap().shader = fragment_shader.clone();
-//         // }
-
-//         // descriptor
-//         //     .layout
-//         //     .push(self.properties.material_layout.as_ref().unwrap().clone());
-
-//         // if let Some(specialize) = self.properties.user_specialize {
-//         //     specialize(
-//         //         &self.pipeline as &dyn Any,
-//         //         &mut descriptor,
-//         //         splat_layout,
-//         //         instance_layout,
-//         //         pass,
-//         //         key,
-//         //     )?;
-//         // }
-
-//         // // If bindless mode is on, add a `BINDLESS` define.
-//         // // if self.properties.bindless {
-//         // //     descriptor.vertex.shader_defs.push("BINDLESS".into());
-//         // //     if let Some(ref mut fragment) = descriptor.fragment {
-//         // //         fragment.shader_defs.push("BINDLESS".into());
-//         // //     }
-//         // // }
-
-//         // Ok(descriptor)
-//     }
-// }
-
-// impl MultipassPipeline {
-//     fn specialize(
-//         &self,
-//         (mesh_key, splat_key): (MeshPipelineKey, SplatPipelineKey),
-//         shader_defs: Vec<ShaderDefVal>,
-//         splat_layout: &MeshVertexBufferLayoutRef,
-//         instance_layout: &MeshVertexBufferLayoutRef,
-//         pass: Option<usize>,
-//         material_properties: &MaterialProperties,
-//     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
-//         let descriptor = self.pointcloud_pipeline.specialize(
-//             (mesh_key, splat_key),
-//             splat_layout,
-//             instance_layout,
-//             pass,
-//         )?;
-
-//         Ok(descriptor)
-//     }
-// }
 
 // Extract the render phases for the prepass
 pub fn extract_camera_previous_view_data(
@@ -802,7 +703,7 @@ pub(crate) struct MultipassSpecializationWorkItem {
     splat_layout: MeshVertexBufferLayoutRef,
     instance_layout: MeshVertexBufferLayoutRef,
     properties: Arc<PointCloudMaterialProperties>,
-    view_settings_key: Option<ErasedViewSettingsKey>,
+    view_settings_key: ErasedViewSettingsKey,
     material_type_id: TypeId,
 }
 
@@ -1087,6 +988,16 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
                     splat_key |= SplatPipelineKey::IS_OCTREE;
                 }
 
+                let Some(view_settings_key) = view_settings_keys
+                    .view_settings_keys
+                    .get(&material_instance.asset_id.type_id())
+                else {
+                    view_pending_multipass_mesh_material_queues
+                        .current_frame
+                        .insert((*render_entity, *visible_entity));
+                    continue;
+                };
+
                 work_items.push(MultipassSpecializationWorkItem {
                     render_entity: *render_entity,
                     visible_entity: *visible_entity,
@@ -1096,10 +1007,7 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
                     splat_layout: splat_mesh.layout.clone(),
                     instance_layout: mesh.layout.clone(),
                     properties: material.properties.clone(),
-                    view_settings_key: view_settings_keys
-                        .view_settings_keys
-                        .get(&material_instance.asset_id.type_id())
-                        .cloned(),
+                    view_settings_key: view_settings_key.clone(),
                     material_type_id: material_instance.asset_id.type_id(),
                 });
             }
