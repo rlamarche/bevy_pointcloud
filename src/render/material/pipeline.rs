@@ -9,9 +9,12 @@ use bevy::{
     pbr::MeshPipelineKey,
 };
 
-use crate::render::{
-    ErasedSplatPipelineKey, ErasedViewSettingsKey, PointCloudMaterial, PointCloudPipeline,
-    SplatPipelineKey, ViewSettingsPipelineKey,
+use crate::{
+    render::{
+        ErasedSplatPipelineKey, ErasedViewSettingsKey, PointCloudMaterial, PointCloudPipeline,
+        SplatPipelineKey,
+    },
+    ViewSettings,
 };
 
 /// A key uniquely identifying a specialized [`MaterialPipeline`].
@@ -20,7 +23,7 @@ pub struct PointCloudMaterialPipelineKey<M: PointCloudMaterial> {
     pub splat_key: SplatPipelineKey,
     pub bind_group_data: M::Data,
     pub pass: Option<usize>,
-    pub view_settings_key: Option<<M::ViewSettings as ViewSettingsPipelineKey>::Key>,
+    pub view_settings_key: Option<<M::ViewSettings as ViewSettings>::Key>,
 }
 
 /// Render pipeline data for a given [`Material`].

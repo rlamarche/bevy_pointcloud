@@ -22,11 +22,11 @@ use bitflags::bitflags;
 
 use crate::{
     render::{
-        shader_ref, PassDescriptor, PassInput, PassOutput, PassType, PointCloudEmptyViewSettings,
-        PointCloudMaterial, PointCloudMaterialPipeline, PointCloudMaterialPipelineKey,
-        PointCloudMaterialPlugin, TransientTarget,
+        shader_ref, PassDescriptor, PassInput, PassOutput, PassType, PointCloudMaterial,
+        PointCloudMaterialPipeline, PointCloudMaterialPipelineKey, PointCloudMaterialPlugin,
+        TransientTarget,
     },
-    ColorStop, ColorStopUniform, PointCloudViewSettingsUniform,
+    ColorStop, ColorStopUniform, PointCloudViewSettings,
 };
 
 pub struct SimplePointCloudMaterialPlugin;
@@ -146,7 +146,7 @@ impl From<Color> for SimplePointCloudMaterial {
 }
 
 impl PointCloudMaterial for SimplePointCloudMaterial {
-    type ViewSettings = PointCloudViewSettingsUniform;
+    type ViewSettings = PointCloudViewSettings;
 
     const PASS_COUNT: usize = 3;
 

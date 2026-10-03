@@ -3,59 +3,48 @@ mod standard;
 
 use bevy::{
     color::{Color, ColorToComponents, LinearRgba},
-    ecs::{component::Component, system::lifetimeless::Read},
+    ecs::{component::Component, query::Changed},
     math::{Vec3, Vec4},
     reflect::{prelude::ReflectDefault, Reflect, ReflectDeserialize, ReflectSerialize},
-    render::{
-        extract_component::ExtractComponent, render_resource::*, sync_component::SyncComponent,
-    },
+    render::{extract_component::ExtractComponent, render_resource::*},
 };
 use serde::{Deserialize, Serialize};
 pub use simple::*;
 pub use standard::*;
 
-use crate::render::ViewSettingsPipelineKey;
+use crate::ViewSettings;
 
-#[derive(Component, Clone, Default)]
+#[derive(Component, Clone, Default, ExtractComponent)]
+#[extract_component_filter(Changed<PointCloudViewSettings>)]
 pub struct PointCloudViewSettings {
     pub clipping_planes: Vec<Vec4>,
 }
 
-#[derive(Component, Clone, Copy, ShaderType, Default)]
+#[derive(Clone, Copy, ShaderType, Default)]
 pub struct PointCloudViewSettingsUniform {
     pub nb_clipping_planes: u32,
     pub _padding: Vec3,
     pub clipping_planes: [Vec4; 8],
 }
 
-impl SyncComponent for PointCloudViewSettingsUniform {
-    type Target = Self;
-}
+impl ViewSettings for PointCloudViewSettings {
+    type Key = u8;
 
-impl ExtractComponent for PointCloudViewSettingsUniform {
-    type QueryData = Read<PointCloudViewSettings>;
+    type Data = PointCloudViewSettingsUniform;
 
-    type QueryFilter = ();
+    fn pipeline_key(&self) -> Self::Key {
+        self.clipping_planes.len() as u8
+    }
 
-    type Out = Self;
-
-    fn extract_component(
-        item: bevy::ecs::query::QueryItem<'_, '_, Self::QueryData>,
-    ) -> Option<Self::Out> {
-        Some(Self {
-            nb_clipping_planes: item.clipping_planes.len() as u32,
+    fn to_data(&self) -> Self::Data {
+        PointCloudViewSettingsUniform {
+            nb_clipping_planes: self.clipping_planes.len() as u32,
             _padding: Default::default(),
             clipping_planes: std::array::from_fn(|i| {
-                item.clipping_planes.get(i).copied().unwrap_or_default()
+                self.clipping_planes.get(i).copied().unwrap_or_default()
             }),
-        })
+        }
     }
-}
-
-impl ViewSettingsPipelineKey for PointCloudViewSettingsUniform {
-    type Key = ();
-
-    fn pipeline_key(&self) -> Self::Key {}
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Reflect, Serialize, Deserialize)]

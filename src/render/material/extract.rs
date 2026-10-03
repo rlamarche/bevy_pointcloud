@@ -5,18 +5,13 @@ use bevy::{
     ecs::{
         entity::{ContainsEntity, Entity},
         lifecycle::RemovedComponents,
-        query::{Changed, Or, Without},
-        system::{Commands, Query, Res, ResMut},
+        query::{Changed, Or},
+        system::{Query, Res, ResMut},
     },
-    light::{CascadeShadowConfig, DirectionalLight, SpotLight},
     log::warn,
     platform::collections::hash_map::Entry,
     render::{
         sync_world::{MainEntity, RenderEntity},
-        view::{
-            RenderExtractedShadowMapVisibleEntities, RenderShadowMapVisibleEntities,
-            RetainedViewEntity, VisibilityExtractionSystemParam,
-        },
         Extract,
     },
 };
@@ -24,10 +19,9 @@ use bevy::{
 use crate::{
     render::{
         EntitiesNeedingSpecialization, PointCloudDirtySpecializations, PointCloudMaterial,
-        PreparedPointCloudUniforms, RenderMaterialInstance, RenderPointCloudMaterialInstances,
-        ViewPointCloudBindGroups,
+        RenderMaterialInstance, RenderPointCloudMaterialInstances, ViewPointCloudBindGroups,
     },
-    CascadesVisiblePointCloudEntities, PointCloud3d, PointCloudChunk3d, PointCloudMaterial3d,
+    PointCloud3d, PointCloudMaterial3d,
 };
 
 /// Fills the [`RenderPointCloudMaterialInstances`] resources from the point clouds in the

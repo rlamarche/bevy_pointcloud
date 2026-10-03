@@ -9,7 +9,7 @@ use bevy::{
     },
     mesh::MeshVertexBufferLayoutRef,
     pbr::MeshPipelineKey,
-    render::render_resource::binding_types::{texture_2d, texture_2d_multisampled, uniform_buffer},
+    render::render_resource::binding_types::{texture_2d, texture_2d_multisampled},
     shader::ShaderDefVal,
 };
 
