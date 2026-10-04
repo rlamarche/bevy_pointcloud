@@ -93,15 +93,8 @@ pub(crate) struct SpecializeShadowsSystemParam<'w, 's> {
     render_point_cloud_chunk_instances: Res<'w, RenderPointCloudChunkInstances>,
     shadow_render_phases: Res<'w, ViewBinnedRenderPhases<Shadow>>,
     render_lightmaps: Res<'w, RenderLightmaps>,
-    view_light_entities: Query<
-        'w,
-        's,
-        (
-            &'static LightEntity,
-            &'static ExtractedView,
-            &'static ErasedMaterialViewSettingsKeys,
-        ),
-    >,
+    view_light_entities: Query<'w, 's, (&'static LightEntity, &'static ExtractedView)>,
+    view_settings_keys: Query<'w, 's, &'static ErasedMaterialViewSettingsKeys>,
     shadow_map_visible_entities_query: Query<'w, 's, &'static RenderShadowMapVisibleEntities>,
     light_key_cache: Res<'w, LightKeyCache>,
     specialized_shadow_material_pipeline_cache: ResMut<'w, SpecializedShadowMaterialPipelineCache>,
@@ -129,6 +122,7 @@ pub(crate) fn specialize_shadows(
             shadow_render_phases,
             render_lightmaps: _render_lightmaps,
             view_light_entities,
+            view_settings_keys,
             shadow_map_visible_entities_query,
             light_key_cache,
             mut specialized_shadow_material_pipeline_cache,
@@ -136,7 +130,17 @@ pub(crate) fn specialize_shadows(
             dirty_specializations,
         } = state.get_mut(world).unwrap();
 
-        for (light_entity, extracted_view_light, view_settings_keys) in &view_light_entities {
+        for (light_entity, extracted_view_light) in &view_light_entities {
+            // get view settings keys from the extacted light where the view settings keys are
+            let Ok(view_settings_keys) = view_settings_keys.get(match light_entity {
+                LightEntity::Directional { light_entity, .. }
+                | LightEntity::Point { light_entity, .. }
+                | LightEntity::Spot { light_entity } => *light_entity,
+            }) else {
+                warn!("Missing erased settings keys on render light entity");
+                continue;
+            };
+
             all_shadow_views.insert(extracted_view_light.retained_view_entity);
 
             if !shadow_render_phases.contains_key(&extracted_view_light.retained_view_entity) {

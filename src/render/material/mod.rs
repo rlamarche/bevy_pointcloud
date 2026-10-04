@@ -1,4 +1,3 @@
-mod camera;
 mod components;
 mod draw;
 mod extract;
@@ -24,8 +23,8 @@ use bevy::{
     },
     mesh::{mark_3d_meshes_as_changed_if_their_assets_changed, MeshVertexBufferLayoutRef},
     pbr::{
-        check_views_lights_need_specialization, collect_meshes_for_gpu_building, prepare_lights,
-        set_mesh_motion_vector_flags, MaterialBindGroupAllocator, MaterialBindGroupAllocators,
+        collect_meshes_for_gpu_building, prepare_lights, set_mesh_motion_vector_flags,
+        ExtractedDirectionalLight, MaterialBindGroupAllocator, MaterialBindGroupAllocators,
         MaterialBindingId, Shadow, Transmissive3d,
     },
     render::{
@@ -69,7 +68,6 @@ use crate::{
     PointCloudChunk3d, PointCloudMaterial3d, ViewSettings,
 };
 
-pub use camera::*;
 pub use components::*;
 pub use draw::*;
 pub use extract::*;
@@ -298,9 +296,6 @@ impl Plugin for MaterialsPlugin {
                 .add_systems(
                     Render,
                     (
-                        check_views_lights_need_specialization
-                            .in_set(RenderSystems::Specialize)
-                            .before(specialize_shadows),
                         // specialize_shadows also needs to run after
                         // prepare_assets::<PreparedMaterial>,
                         // which is fine since Specialize is after PrepareAssets
@@ -314,6 +309,10 @@ impl Plugin for MaterialsPlugin {
             render_app
                 .world_mut()
                 .register_required_components::<ExtractedView, ErasedMaterialViewSettingsKeys>();
+
+            render_app
+                .world_mut()
+                .register_required_components::<ExtractedDirectionalLight, ErasedMaterialViewSettingsKeys>();
         }
     }
 }
@@ -387,12 +386,10 @@ where
                 .add_systems(
                     Render,
                     (
-                        check_view_settings_need_specialization::<M>
-                            .after(check_views_need_specialization)
-                            .before(RenderSystems::Specialize),
                         // must be run before specialize
                         prepare_material_view_settings_key::<M>
                             .in_set(RenderSystems::PrepareAssets)
+                            .after(check_views_need_specialization)
                             .before(RenderSystems::Specialize),
                         (
                             prepare_view_settings_uniforms::<M>,

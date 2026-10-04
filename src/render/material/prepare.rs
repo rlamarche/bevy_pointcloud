@@ -13,10 +13,9 @@ use bevy::{
         query::{Changed, With},
         system::{
             lifetimeless::{SRes, SResMut},
-            Commands, Query, Res, SystemParamItem,
+            Commands, Query, Res, ResMut, SystemParamItem,
         },
     },
-    log::warn,
     material::{
         descriptor::BindGroupLayoutDescriptor,
         key::{ErasedMaterialKey, ErasedMeshPipelineKey},
@@ -59,13 +58,13 @@ use crate::{
         DeferredOpaqueDrawFunction, DeferredVertexShader, DrawPointCloudMaterial,
         ErasedViewSettingsKey, MainPassAlphaMaskDrawFunction, MainPassOpaqueDrawFunction,
         MainPassTransmissiveDrawFunction, MainPassTransparentDrawFunction, MaterialFragmentShader,
-        MaterialVertexShader, PassOutput, PassProperties, PointCloudMaterial,
-        PointCloudMaterialTargets, PointCloudPipeline, PreparedPointCloudMaterial,
-        PreparedPointCloudUniforms, PreparedViewSettingsUniform, PrepassAlphaMaskDrawFunction,
-        PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction, PrepassOpaqueDrawFunction,
-        PrepassSpecializeFn, PrepassVertexShader, RenderMaterialBindings,
-        ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction, UserSpecializeFn,
-        ViewPointCloudBindGroups, VisibleNodesTexture,
+        MaterialVertexShader, PassOutput, PassProperties, PointCloudDirtySpecializations,
+        PointCloudMaterial, PointCloudMaterialTargets, PointCloudPipeline,
+        PreparedPointCloudMaterial, PreparedPointCloudUniforms, PreparedViewSettingsUniform,
+        PrepassAlphaMaskDrawFunction, PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction,
+        PrepassOpaqueDrawFunction, PrepassSpecializeFn, PrepassVertexShader,
+        RenderMaterialBindings, ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction,
+        UserSpecializeFn, ViewPointCloudBindGroups, VisibleNodesTexture,
     },
     PointCloud3d, PointCloudMaterial3d, ViewSettings,
 };
@@ -472,47 +471,47 @@ where
     }
 }
 
-// /// Creates and/or recreates any bind groups that contain materials that were
-// /// modified this frame.
-// pub fn prepare_material_bind_groups(
-//     mut allocators: ResMut<MaterialBindGroupAllocators>,
-//     render_device: Res<RenderDevice>,
-//     pipeline_cache: Res<PipelineCache>,
-//     fallback_image: Res<FallbackImage>,
-//     fallback_resources: Res<FallbackBindlessResources>,
-// ) {
-//     for (_, allocator) in allocators.iter_mut() {
-//         allocator.prepare_bind_groups(
-//             &render_device,
-//             &pipeline_cache,
-//             &fallback_resources,
-//             &fallback_image,
-//         );
-//     }
-// }
-
 /// Stores the settings key computed for each material, used for specialization.
 #[derive(Component, Default)]
 pub struct ErasedMaterialViewSettingsKeys {
     pub view_settings_keys: HashMap<TypeId, ErasedViewSettingsKey, NoOpHash>,
 }
 
-// TODO: forward those to extracted views of lights
+/// Prepare erased view settings key and mark view as dirty if it changed.
+/// TODO: do something for key changes on lights ?
 pub fn prepare_material_view_settings_key<M: PointCloudMaterial>(
+    mut point_cloud_dirty_specializations: ResMut<PointCloudDirtySpecializations>,
     mut views: Query<
-        (&M::ViewSettings, &mut ErasedMaterialViewSettingsKeys),
+        (
+            &M::ViewSettings,
+            &mut ErasedMaterialViewSettingsKeys,
+            Option<&ExtractedView>,
+        ),
         Changed<M::ViewSettings>,
     >,
 ) {
     let type_id = TypeId::of::<M>();
 
-    for (view_settings, mut erased_material_view_settings_keys) in &mut views {
+    for (view_settings, mut erased_material_view_settings_keys, maybe_extracted_view) in &mut views
+    {
         let view_settings_key = view_settings.pipeline_key();
         let erased_view_settings_key = ErasedViewSettingsKey::new(view_settings_key);
 
-        erased_material_view_settings_keys
+        if let Some(previous_key) = erased_material_view_settings_keys
             .view_settings_keys
-            .insert(type_id, erased_view_settings_key);
+            .insert(type_id, erased_view_settings_key.clone())
+        {
+            // if the key is on a view (camera)
+            // TODO: do something for key changes on lights ?
+            if let Some(extracted_view) = maybe_extracted_view {
+                // if the key has changed, mark the view as dirty
+                if !previous_key.eq(&erased_view_settings_key) {
+                    point_cloud_dirty_specializations
+                        .views
+                        .insert(extracted_view.retained_view_entity);
+                }
+            }
+        }
     }
 }
 
@@ -630,10 +629,10 @@ pub fn prepare_view_point_cloud_bind_groups<M: PointCloudMaterial>(
 
         for main_entity in items {
             let Some(prepared_uniform) = prepared_point_cloud_uniforms.get(main_entity) else {
-                warn!(
-                    "Missing prepared prepared_point_cloud_uniforms for entity {:?}",
-                    main_entity
-                );
+                // warn!(
+                //     "Missing prepared prepared_point_cloud_uniforms for entity {:?}",
+                //     main_entity
+                // );
                 continue;
             };
 
@@ -660,23 +659,3 @@ pub fn prepare_view_point_cloud_bind_groups<M: PointCloudMaterial>(
         }
     }
 }
-
-// pub fn prepare_shadow_map_point_cloud_bind_groups<M: PointCloudMaterial>(
-//     shadow_maps: Query<&ExtractedView, With<LightEntity>>,
-//     views: Query<
-//         (
-//             &ExtractedView,
-//             &VisibleNodesTexture,
-//             &ViewPointCloudBindGroups,
-//         ),
-//         Without<LightEntity>,
-//     >,
-//     items: Query<&MainEntity, (With<PointCloud3d>, With<PointCloudMaterial3d<M>>)>,
-//     // main_entity_map: Res<RenderEntityMapper>,
-// ) {
-//     let material_type_id = TypeId::of::<M>();
-//
-//     for extracted_view in shadow_maps {
-//         let view_entity = extracted_view.retained_view_entity.auxiliary_entity;
-//     }
-// }

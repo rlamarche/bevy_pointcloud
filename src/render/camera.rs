@@ -4,7 +4,6 @@ use bevy::{
         resource::Resource,
         system::{Query, Res, ResMut},
     },
-    log::info,
     platform::collections::HashSet,
     render::{
         camera::DirtySpecializations,
