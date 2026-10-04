@@ -444,7 +444,7 @@ pub fn prepare_material_view_settings_key_and_passes<M: PointCloudMaterial>(
             Option<&mut ErasedMaterialPreparedPasses>,
             Option<&ExtractedView>,
             Option<&mut ViewMultipassTextures<M>>,
-            &mut ViewPointCloudBindGroups,
+            Option<&mut ViewPointCloudBindGroups>,
         ),
         Changed<M::ViewSettings>,
     >,
@@ -458,7 +458,7 @@ pub fn prepare_material_view_settings_key_and_passes<M: PointCloudMaterial>(
         maybe_erased_material_prepared_passes,
         maybe_extracted_view,
         maybe_multipass_textures,
-        mut view_point_cloud_bind_groups,
+        maybe_view_point_cloud_bind_groups,
     ) in &mut views
     {
         let view_settings_key = view_settings.pipeline_key();
@@ -470,9 +470,15 @@ pub fn prepare_material_view_settings_key_and_passes<M: PointCloudMaterial>(
 
         if maybe_previous_key.is_none() || !maybe_previous_key.eq(&Some(erased_view_settings_key)) {
             // if the key is on a view (camera), we have to (re-)prepare passes
-            if let (Some(extracted_view), Some(mut material_prepared_passes)) =
-                (maybe_extracted_view, maybe_erased_material_prepared_passes)
-            {
+            if let (
+                Some(extracted_view),
+                Some(mut material_prepared_passes),
+                Some(mut view_point_cloud_bind_groups),
+            ) = (
+                maybe_extracted_view,
+                maybe_erased_material_prepared_passes,
+                maybe_view_point_cloud_bind_groups,
+            ) {
                 // clear all previous passes
                 let mut prepared_passes =
                     HashMap::<usize, Arc<PassProperties>, NoOpHash>::default();
