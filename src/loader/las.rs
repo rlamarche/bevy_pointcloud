@@ -3,7 +3,7 @@ use std::io::Cursor;
 use bevy::{
     app::{App, Plugin},
     asset::{AssetApp, AssetLoader, RenderAssetUsages},
-    camera::primitives::{Aabb, MeshAabb},
+    camera::primitives::Aabb,
     log::warn,
     math::Vec3,
     mesh::{Mesh, VertexAttributeValues},
@@ -44,7 +44,9 @@ pub enum LasLoaderError {
 }
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
-pub struct LasLoaderSettings {}
+pub struct LasLoaderSettings {
+    pub load_normals: bool,
+}
 
 #[derive(TypePath)]
 pub struct LasLoader<S> {
@@ -173,7 +175,7 @@ impl AssetLoader for LasAssetLoader {
     async fn load(
         &self,
         reader: &mut dyn bevy::asset::io::Reader,
-        _settings: &Self::Settings,
+        settings: &Self::Settings,
         load_context: &mut bevy::asset::LoadContext<'_>,
     ) -> Result<Self::Asset, Self::Error> {
         let mut bytes = Vec::new();
@@ -181,17 +183,26 @@ impl AssetLoader for LasAssetLoader {
         let reader = Cursor::new(bytes);
 
         let mut las_reader = las::Reader::new(reader)?;
-        let point_count = las_reader.read_all()?.points().count();
+        let header = las_reader.header();
+        let point_count = header.number_of_points() as usize;
+        let bounds = header.bounds();
+        let aabb = Aabb::from_min_max(
+            Vec3::new(
+                bounds.min.x as f32,
+                bounds.min.y as f32,
+                bounds.min.z as f32,
+            ),
+            Vec3::new(
+                bounds.max.x as f32,
+                bounds.max.y as f32,
+                bounds.max.z as f32,
+            ),
+        );
 
-        las_reader.seek(0).unwrap();
-
-        let mesh = load_points_as_mesh(point_count, &mut las_reader)?;
+        let mesh = load_points_as_mesh(point_count, &mut las_reader, settings)?;
         let vertex_buffer_size = mesh.get_vertex_buffer_size();
 
-        let aabb = mesh.compute_aabb();
-
         let mesh_handle = load_context.add_labeled_asset("mesh", mesh);
-
         let chunk_handle = load_context.add_labeled_asset(
             "chunk",
             PointCloudChunk {
@@ -199,13 +210,13 @@ impl AssetLoader for LasAssetLoader {
                 depth: 0,
                 offset: None,
                 mesh_handle: Some(mesh_handle),
-                aabb,
+                aabb: Some(aabb),
                 vertex_buffer_size,
             },
         );
 
         Ok(PointCloud {
-            aabb,
+            aabb: Some(aabb),
             spacing: None,
             topology: PointCloudTopology::Flat(chunk_handle),
         })
@@ -219,9 +230,19 @@ impl AssetLoader for LasAssetLoader {
 fn load_points_as_mesh(
     point_count: usize,
     las_reader: &mut las::Reader,
+    settings: &LasLoaderSettings,
 ) -> Result<Mesh, las::Error> {
     let mut positions = Vec::with_capacity(point_count);
     let mut colors = Vec::with_capacity(point_count);
+    let header = las_reader.header();
+    let mut maybe_normals: Option<Vec<[f32; 3]>> =
+        // assume normals are stored in extra bytes in f32 format
+        // TODO: add an option to load normals from double ?
+        if settings.load_normals && header.point_format().extra_bytes > 3 * size_of::<f32>() as u16 {
+            Some(Vec::with_capacity(point_count))
+        } else {
+            None
+        };
 
     for point in las_reader.read_all()?.points() {
         let point = match point {
@@ -243,9 +264,18 @@ fn load_points_as_mesh(
         } else {
             colors.push([0.0, 0.0, 0.0, 0.0]);
         }
+        if let Some(normals) = &mut maybe_normals {
+            if point.extra_bytes.len() > size_of::<f32>() * 3 {
+                normals.push(*bytemuck::from_bytes(
+                    &point.extra_bytes[0..size_of::<f32>() * 3],
+                ));
+            } else {
+                normals.push([0.0, 0.0, 0.0]);
+            }
+        }
     }
 
-    Ok(Mesh::new(
+    let mut mesh = Mesh::new(
         bevy::mesh::PrimitiveTopology::PointList,
         RenderAssetUsages::RENDER_WORLD,
     )
@@ -256,5 +286,14 @@ fn load_points_as_mesh(
     .with_inserted_attribute(
         Mesh::ATTRIBUTE_COLOR,
         VertexAttributeValues::Float32x4(colors),
-    ))
+    );
+
+    if let Some(normals) = maybe_normals {
+        mesh.insert_attribute(
+            Mesh::ATTRIBUTE_NORMAL,
+            VertexAttributeValues::Float32x3(normals),
+        );
+    }
+
+    Ok(mesh)
 }
