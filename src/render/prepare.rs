@@ -36,7 +36,7 @@ use crate::{
         RenderPointCloudMaterialInstances, RenderShadowMapVisiblePointCloudEntities,
         RenderVisiblePointCloudEntities, VisibleNodesTexture,
     },
-    NodeId, PointCloud3d,
+    NodeId, PointCloud3d, PointCloudTopologyKind,
 };
 
 pub const MAX_NODES: usize = 2048;
@@ -89,11 +89,19 @@ pub fn prepare_point_cloud_uniforms(
             None,
         );
 
-        let Some(octree_index) = render_octree_instances_index
-            .get(&point_cloud_instance.render_entity)
-            .map(|octree_index| octree_index.index())
-        else {
-            continue;
+        let octree_index = if matches!(
+            point_cloud_instance.topology,
+            PointCloudTopologyKind::Octree
+        ) {
+            let Some(octree_index) = render_octree_instances_index
+                .get(&point_cloud_instance.render_entity)
+                .map(|octree_index| octree_index.index())
+            else {
+                continue;
+            };
+            octree_index
+        } else {
+            u32::MAX
         };
 
         let point_cloud_uniform = PointCloudUniform::new(

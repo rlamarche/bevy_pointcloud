@@ -139,7 +139,8 @@ impl Plugin for RenderPointCloudPlugin {
                         .chain(),
                     prepare_point_cloud_uniforms.in_set(RenderSystems::PrepareResources),
                     check_views_need_specialization
-                        .after(RenderSystems::PrepareAssets)
+                        .in_set(RenderSystems::PrepareAssets)
+                        .after(bevy::pbr::check_views_need_specialization)
                         .before(RenderSystems::Specialize),
                 ),
             )

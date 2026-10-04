@@ -1,7 +1,6 @@
 use std::any::TypeId;
 
 use bevy::{
-    app::Main,
     asset::Assets,
     camera::{
         primitives::{Aabb, CascadesFrusta},
