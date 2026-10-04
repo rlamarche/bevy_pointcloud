@@ -4,7 +4,6 @@ use bevy::{
         resource::Resource,
         world::{FromWorld, World},
     },
-    log::info,
     platform::collections::HashMap,
     prelude::{Deref, DerefMut},
     render::{
@@ -14,7 +13,7 @@ use bevy::{
             TextureUsages, TextureView, TextureViewDescriptor, TextureViewDimension,
         },
         renderer::RenderDevice,
-        sync_world::{MainEntity, MainEntityHashMap},
+        sync_world::MainEntityHashMap,
     },
 };
 use slotmap::{new_key_type, Key, SlotMap};

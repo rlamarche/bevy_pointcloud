@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use bevy::{
     asset::Handle,
     material::labels::{InternedShaderLabel, ShaderLabel},
@@ -9,8 +7,8 @@ use bevy::{
 use smallvec::SmallVec;
 
 #[derive(Clone, Debug, Copy)]
-pub enum PassType {
-    PointCloudGeometry,
+pub enum PassKind {
+    Geometry,
     Fullscreen,
 }
 
@@ -28,7 +26,7 @@ pub struct TransientTarget {
 /// Dynamic texture input dependency coming from a previous pass.
 #[derive(Clone, Debug)]
 pub struct PassInput {
-    pub source_pass: Cow<'static, str>,
+    pub source_pass: usize,
     pub binding_slot: u32,
     pub texture_sample_type: TextureSampleType,
     pub visibility: ShaderStages,
@@ -46,9 +44,23 @@ pub enum PassDepth {
     ViewDepth,
 }
 
-pub struct PassDescriptor {
-    pub name: Cow<'static, str>,
-    pub pass_type: PassType,
+pub struct PassDescriptor<PassId> {
+    pub id: PassId,
+    pub kind: PassKind,
+    pub label: &'static str,
+}
+
+pub struct GeometryPassParams {
+    pub vertex_shader: ShaderRef,
+    pub fragment_shader: ShaderRef,
+    pub inputs: Vec<PassInput>,
+    pub output: PassOutput,
+    // pub depth: PassDepth,
+    pub blend: Option<BlendState>,
+    pub depth_write_enabled: Option<bool>,
+}
+
+pub struct FullscreenPassParams {
     pub vertex_shader: ShaderRef,
     pub fragment_shader: ShaderRef,
     pub inputs: Vec<PassInput>,
@@ -59,8 +71,8 @@ pub struct PassDescriptor {
 }
 
 pub struct PassProperties {
-    pub name: Cow<'static, str>,
-    pub pass_type: PassType,
+    pub label: &'static str,
+    pub kind: PassKind,
     /// Backing array is a size of 3 because the [`StandardMaterial`](https://docs.rs/bevy/latest/bevy/pbr/struct.StandardMaterial.html)
     /// has 3 custom shaders (`frag`, `prepass_frag`, `deferred_frag`) which is the
     /// most common use case

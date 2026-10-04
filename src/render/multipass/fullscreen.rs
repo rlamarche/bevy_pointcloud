@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use std::any::TypeId;
 
 use bevy::{
     app::{App, Plugin},
@@ -16,16 +17,16 @@ use bevy::{
         },
         renderer::RenderDevice,
         view::Msaa,
-        Render, RenderApp, RenderStartup, RenderSystems,
+        Render, RenderApp, RenderSystems,
     },
 };
 
 use crate::render::{
     multipass::{
-        init_fullscreen_material, prepare_fullscreen_material_pipelines,
-        prepare_multipass_textures, FullscreenMaterialPassPipeline, ViewMultipassTextures,
+        prepare_fullscreen_material_pipelines, prepare_multipass_textures,
+        FullscreenMaterialPassPipeline, ViewMultipassTextures,
     },
-    PointCloudMaterial, VisibleNodesTexture,
+    ErasedMaterialPreparedPasses, PointCloudMaterial, VisibleNodesTexture,
 };
 
 pub struct FullscreenPassPlugin<M, const PASS: usize> {
@@ -47,17 +48,15 @@ impl<M: PointCloudMaterial, const PASS: usize> Plugin for FullscreenPassPlugin<M
             return;
         };
 
-        render_app
-            .add_systems(RenderStartup, init_fullscreen_material::<M, PASS>)
-            .add_systems(
-                Render,
-                (
-                    prepare_fullscreen_material_pipelines::<M, PASS>.in_set(RenderSystems::Prepare),
-                    prepare_fullscreen_bind_groups::<M, PASS>
-                        .in_set(RenderSystems::PrepareBindGroups)
-                        .after(prepare_multipass_textures::<M>),
-                ),
-            );
+        render_app.add_systems(
+            Render,
+            (
+                prepare_fullscreen_material_pipelines::<M, PASS>.in_set(RenderSystems::Prepare),
+                prepare_fullscreen_bind_groups::<M, PASS>
+                    .in_set(RenderSystems::PrepareBindGroups)
+                    .after(prepare_multipass_textures::<M>),
+            ),
+        );
     }
 }
 
@@ -87,6 +86,7 @@ pub fn prepare_fullscreen_bind_groups<M: PointCloudMaterial, const PASS: usize>(
     mut commands: Commands,
     mut view: Query<(
         Entity,
+        &ErasedMaterialPreparedPasses,
         &VisibleNodesTexture,
         &ViewMultipassTextures<M>,
         &Msaa,
@@ -96,16 +96,36 @@ pub fn prepare_fullscreen_bind_groups<M: PointCloudMaterial, const PASS: usize>(
     pipeline_cache: Res<PipelineCache>,
     render_device: Res<RenderDevice>,
 ) {
-    let passes = M::passes();
-    let pass = &passes[PASS];
+    let type_id = TypeId::of::<M>();
 
-    for (entity, visible_nodes_texture, view_multipass_textures, msaa, mut existing_bind_group) in
-        &mut view
+    for (
+        entity,
+        erased_material_prepared_passes,
+        visible_nodes_texture,
+        view_multipass_textures,
+        msaa,
+        mut existing_bind_group,
+    ) in &mut view
     {
+        let Some(prepared_passes) = erased_material_prepared_passes.get(&type_id) else {
+            // if there is no prepared pass, it means that it is not used
+            continue;
+        };
+        let Some(pass_properties) = prepared_passes.get(&PASS) else {
+            // the pass is not needed anymode, remove the cached if some bind group and skip
+            if existing_bind_group.is_some() {
+                commands
+                    .entity(entity)
+                    .remove::<FullscreenMaterialBindGroup<M, PASS>>();
+            }
+
+            continue;
+        };
+
         // TODO: cache this layout somewhere ? (eg in a resource or component)
         let mut pointcloud_layout = point_cloud_pipeline.point_cloud_layout.clone();
 
-        for input in &pass.inputs {
+        for input in &pass_properties.inputs {
             let entry = match msaa {
                 Msaa::Off => texture_2d(input.texture_sample_type)
                     .build(input.binding_slot, input.visibility),
@@ -129,7 +149,7 @@ pub fn prepare_fullscreen_bind_groups<M: PointCloudMaterial, const PASS: usize>(
 
             // then create a new if a texture is available
             if let Some(ref texture) = visible_nodes_texture.texture {
-                let mut bind_group_entries = Vec::with_capacity(1 + pass.inputs.len());
+                let mut bind_group_entries = Vec::with_capacity(1 + pass_properties.inputs.len());
 
                 bind_group_entries.push(BindGroupEntry {
                     // keep the same binding index as in geometry passes
@@ -137,13 +157,14 @@ pub fn prepare_fullscreen_bind_groups<M: PointCloudMaterial, const PASS: usize>(
                     resource: texture.default_view.into_binding(),
                 });
 
-                for input in &pass.inputs {
+                for input in &pass_properties.inputs {
                     let pass_texture = view_multipass_textures
                         .get(&input.source_pass)
                         .ok_or_else(|| {
                             BevyError::from(format!(
                                 "Pass {} references unexisting pass with name {}",
-                                pass.name, input.source_pass
+                                M::passes()[PASS].label,
+                                input.source_pass
                             ))
                         })
                         .unwrap();

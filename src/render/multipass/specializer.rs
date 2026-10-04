@@ -24,10 +24,10 @@ use bevy::{
     utils::default,
 };
 
-use std::hash::Hash;
+use std::{hash::Hash, sync::Arc};
 
 use crate::render::{
-    multipass::FullscreenMaterialPassPipeline, ErasedViewSettingsKey, PassDescriptor,
+    multipass::FullscreenMaterialPassPipeline, ErasedViewSettingsKey, PassProperties,
 };
 
 #[derive(PartialEq, Eq, Hash, Clone, SpecializerKey)]
@@ -114,9 +114,9 @@ impl<S: SpecializedFullscreenPointCloudPipeline> SpecializedFullscreenPointCloud
 
 pub struct FullscreenMaterialPipelineSpecializer {
     pub vertex_shader: Option<Handle<Shader>>,
-    pub fragment_shader: Handle<Shader>,
+    pub fragment_shader: Option<Handle<Shader>>,
     pub fullscreen_pipeline: FullscreenMaterialPassPipeline,
-    pub pass: &'static PassDescriptor,
+    pub pass: Arc<PassProperties>,
 }
 
 impl Specializer<RenderPipeline> for FullscreenMaterialPipelineSpecializer {
@@ -231,14 +231,17 @@ impl SpecializedFullscreenPointCloudPipeline for FullscreenMaterialPipelineSpeci
             write_mask: ColorWrites::ALL,
         };
 
-        let fragment = FragmentState {
-            shader: self.fragment_shader.clone(),
-            shader_defs: descriptor.vertex.shader_defs.clone(),
-            targets: vec![Some(color_target_state)],
-            ..default()
-        };
+        if let Some(fragment_shader) = &self.fragment_shader {
+            let fragment = FragmentState {
+                shader: fragment_shader.clone(),
+                shader_defs: descriptor.vertex.shader_defs.clone(),
+                targets: vec![Some(color_target_state)],
+                ..default()
+            };
 
-        descriptor.fragment = Some(fragment);
+            descriptor.fragment = Some(fragment);
+        }
+
         if let Some(depth_stencil) = descriptor.depth_stencil.as_mut() {
             depth_stencil.depth_write_enabled = self.pass.depth_write_enabled;
         }

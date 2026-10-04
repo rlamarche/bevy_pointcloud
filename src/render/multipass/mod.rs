@@ -4,7 +4,6 @@ mod geometry;
 mod phase;
 mod pipeline;
 mod prepare;
-mod resources;
 mod specializer;
 
 #[cfg(feature = "trace")]
@@ -82,8 +81,9 @@ use crate::{
     render::{
         init_point_cloud_material_pipeline, init_point_cloud_pipeline,
         multipass::geometry::GeometryPassPlugin, BinnedRenderPhaseExt, DrawPointCloudInstanced,
-        ErasedMaterialViewSettingsKeys, ErasedPointCloudMaterialPipelineKey,
-        ErasedSplatPipelineKey, ErasedViewSettingsKey, MySetItemPipeline, PointCloudChunk3d,
+        ErasedMaterialPreparedPasses, ErasedMaterialViewSettingsKeys,
+        ErasedPointCloudMaterialPipelineKey, ErasedSplatPipelineKey, ErasedViewSettingsKey,
+        MySetItemPipeline, PassKind, PassProperties, PointCloudChunk3d,
         PointCloudDirtySpecializations, PointCloudMaterial, PointCloudMaterialPipeline,
         PointCloudMaterialProperties, PointCloudPipeline, PreparedPointCloudMaterial,
         RenderPointCloudChunkInstances, RenderPointCloudInstances,
@@ -97,7 +97,6 @@ pub use fullscreen::*;
 pub use phase::*;
 pub use pipeline::*;
 pub use prepare::*;
-pub use resources::*;
 pub use specializer::*;
 
 /// Sets up everything required to use the prepass pipeline.
@@ -188,7 +187,7 @@ impl<M: PointCloudMaterial> Plugin for MultipassMaterialPlugin<M> {
             prepare_multipass_textures::<M>.in_set(RenderSystems::PrepareResources),
         );
 
-        match M::PASS_COUNT {
+        match M::passes().len() {
             1 => {
                 register_passes!(app, M, self.debug_flags, 0);
             }
@@ -265,11 +264,11 @@ impl<M: PointCloudMaterial, const PASS: usize> Plugin for MaterialPassPlugin<M, 
     fn build(&self, app: &mut App) {
         let pass = &M::passes()[PASS];
 
-        match pass.pass_type {
-            super::PassType::PointCloudGeometry => {
+        match pass.kind {
+            PassKind::Geometry => {
                 app.add_plugins(GeometryPassPlugin::<M, PASS>::new(self.debug_flags));
             }
-            super::PassType::Fullscreen => {
+            PassKind::Fullscreen => {
                 app.add_plugins(FullscreenPassPlugin::<M, PASS>::default());
             }
         }
@@ -705,6 +704,7 @@ pub(crate) struct MultipassSpecializationWorkItem {
     properties: Arc<PointCloudMaterialProperties>,
     view_settings_key: ErasedViewSettingsKey,
     material_type_id: TypeId,
+    pass_properties: Arc<PassProperties>,
 }
 
 impl core::fmt::Debug for MultipassSpecializationWorkItem {
@@ -747,6 +747,7 @@ pub(crate) struct SpecializeMultipassSystemParam<'w, 's, M: PointCloudMaterial, 
             &'static ExtractedView,
             &'static RenderVisibleEntities,
             &'static ErasedMaterialViewSettingsKeys,
+            &'static ErasedMaterialPreparedPasses,
         ),
     >,
     opaque_multipass_render_phases: Res<'w, ViewBinnedRenderPhases<Opaque3dMultipass<M, PASS>>>,
@@ -786,7 +787,11 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
             this_run: _system_change_tick,
         } = state.get_mut(world).unwrap();
 
-        for (view, visible_entities, view_settings_keys) in &views {
+        for (view, visible_entities, view_settings_keys, material_prepared_passes) in &views {
+            let maybe_prepared_passes = material_prepared_passes.get(&TypeId::of::<M>());
+            let maybe_prepared_pass =
+                maybe_prepared_passes.and_then(|prepared_passes| prepared_passes.get(&PASS));
+
             if !opaque_multipass_render_phases.contains_key(&view.retained_view_entity) {
                 warn!("no opaque multipass phase");
                 continue;
@@ -837,6 +842,12 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
                 visible_entities_class,
                 &view_pending_multipass_mesh_material_queues.prev_frame,
             ) {
+                let Some(pass_properties) = maybe_prepared_pass else {
+                    // If the material was previously specialized for this pass, remove it
+                    removals.push((view.retained_view_entity, *render_entity));
+                    continue;
+                };
+
                 if maybe_specialized_multipass_material_pipeline_cache
                     .as_ref()
                     .is_some_and(|specialized_multipass_material_pipeline_cache| {
@@ -934,12 +945,6 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
                     continue;
                 };
 
-                if !material.properties.multipass_enabled {
-                    // If the material was previously specialized for multipass, remove it
-                    removals.push((view.retained_view_entity, *render_entity));
-                    continue;
-                }
-
                 let mut mesh_pipeline_key_bits: MeshPipelineKey =
                     material.properties.mesh_pipeline_key_bits.downcast();
                 mesh_pipeline_key_bits.insert(alpha_mode_pipeline_key(
@@ -1009,6 +1014,7 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
                     properties: material.properties.clone(),
                     view_settings_key: view_settings_key.clone(),
                     material_type_id: material_instance.asset_id.type_id(),
+                    pass_properties: pass_properties.clone(),
                 });
             }
         }
@@ -1023,7 +1029,7 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
             splat_key: ErasedSplatPipelineKey::new(item.splat_key),
             material_key: item.properties.material_key.clone(),
             view_settings_key: item.view_settings_key,
-            pass: Some(PASS),
+            maybe_pass: Some(PASS),
         };
 
         let Some(base_specialize) = item.properties.base_specialize else {
@@ -1037,6 +1043,7 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
             &item.splat_layout,
             &item.instance_layout,
             &item.properties,
+            Some(&item.pass_properties),
         ) {
             Ok(pipeline_id) => {
                 world
@@ -1082,7 +1089,6 @@ pub fn queue_multipass_material_meshes<M: PointCloudMaterial, const PASS: usize>
         let Some(view_specialized_material_pipeline_cache) =
             specialized_material_pipeline_cache.get(&(view.retained_view_entity, PASS))
         else {
-            // warn!("no specialized_material_pipeline_cache for pass {}", PASS);
             continue;
         };
 
@@ -1273,7 +1279,7 @@ impl<P: PhaseItem, const I: usize, M: PointCloudMaterial, const PASS: usize> Ren
     for SetMultipassPointCloudBindGroup<I, M, PASS>
 {
     type Param = SRes<RenderPointCloudChunkInstances>;
-    type ViewQuery = Read<ViewPointCloudPassBindGroup<M, PASS>>;
+    type ViewQuery = Read<ViewPointCloudPassBindGroups<M, PASS>>;
     type ItemQuery = ();
 
     fn render<'w>(
@@ -1311,6 +1317,7 @@ pub fn main_opaque_multipass_3d<M: PointCloudMaterial, const PASS: usize>(
         &ExtractedView,
         &ViewTarget,
         &ViewDepthTexture,
+        &ErasedMaterialPreparedPasses,
         &ViewMultipassTextures<M>,
         Option<&FullscreenMaterialBindGroup<M, PASS>>,
         Option<&FullscreenMaterialPipelineId<M, PASS>>,
@@ -1320,9 +1327,6 @@ pub fn main_opaque_multipass_3d<M: PointCloudMaterial, const PASS: usize>(
     pipeline_cache: Res<PipelineCache>,
     mut ctx: RenderContext,
 ) {
-    let passes = M::passes();
-    let pass = &passes[PASS];
-
     let view_entity = view.entity();
 
     let (
@@ -1330,11 +1334,19 @@ pub fn main_opaque_multipass_3d<M: PointCloudMaterial, const PASS: usize>(
         extracted_view,
         target,
         depth,
+        material_prepared_passes,
         multipass_textures,
         fullscreen_bind_group,
         fullscreen_pipeline_id,
         resolution_override,
     ) = view.into_inner();
+
+    let Some(prepared_passes) = material_prepared_passes.get(&TypeId::of::<M>()) else {
+        return;
+    };
+    let Some(pass_properties) = prepared_passes.get(&PASS) else {
+        return;
+    };
 
     #[cfg(feature = "trace")]
     let _main_opaque_pass_3d_span = info_span!("main_opaque_pass_3d_multipass").entered();
@@ -1342,9 +1354,9 @@ pub fn main_opaque_multipass_3d<M: PointCloudMaterial, const PASS: usize>(
     let diagnostics = ctx.diagnostic_recorder();
     let diagnostics = diagnostics.as_deref();
 
-    let color_attachment = match pass.output {
+    let color_attachment = match pass_properties.output {
         super::PassOutput::TransientTarget(_) => multipass_textures
-            .get(&pass.name)
+            .get(&PASS)
             .and_then(|v| v.color_attachment.as_ref().map(|v| v.get_attachment())),
         super::PassOutput::MainColorTarget => Some(target.get_color_attachment()),
     };
@@ -1352,8 +1364,8 @@ pub fn main_opaque_multipass_3d<M: PointCloudMaterial, const PASS: usize>(
     let color_attachments = [color_attachment];
     let depth_stencil_attachment = Some(depth.get_attachment(StoreOp::Store));
 
-    match pass.pass_type {
-        super::PassType::PointCloudGeometry => {
+    match pass_properties.kind {
+        PassKind::Geometry => {
             let Some(opaque_phases) = maybe_opaque_phases else {
                 warn!("missing opaque_multipass_phase resource");
                 return;
@@ -1391,7 +1403,7 @@ pub fn main_opaque_multipass_3d<M: PointCloudMaterial, const PASS: usize>(
 
             pass_span.end(&mut render_pass);
         }
-        super::PassType::Fullscreen => {
+        PassKind::Fullscreen => {
             let (
                 Some(FullscreenMaterialPipelineId { pipeline_id, .. }),
                 Some(fullscreen_bind_group),

@@ -33,6 +33,7 @@ use bevy::{
         collections::{hash_map::Entry, HashMap},
         hash::NoOpHash,
     },
+    prelude::Deref,
     render::{
         erased_render_asset::{ErasedRenderAsset, PrepareAssetError},
         render_phase::DrawFunctions,
@@ -46,6 +47,7 @@ use bevy::{
     },
     shader::{Shader, ShaderRef},
 };
+use derive_more::DerefMut;
 use smallvec::SmallVec;
 
 use crate::{
@@ -53,18 +55,19 @@ use crate::{
         base_specialize,
         material::{clone_shader_ref, prepass_specialize, user_specialize},
         material_uses_bindless_resources,
+        multipass::ViewMultipassTextures,
         prepass::{DrawDepthOnlyPrepass, DrawPrepass},
         BaseSpecializeFn, DeferredAlphaMaskDrawFunction, DeferredFragmentShader,
         DeferredOpaqueDrawFunction, DeferredVertexShader, DrawPointCloudMaterial,
         ErasedViewSettingsKey, MainPassAlphaMaskDrawFunction, MainPassOpaqueDrawFunction,
         MainPassTransmissiveDrawFunction, MainPassTransparentDrawFunction, MaterialFragmentShader,
-        MaterialVertexShader, PassOutput, PassProperties, PointCloudDirtySpecializations,
-        PointCloudMaterial, PointCloudMaterialTargets, PointCloudPipeline,
-        PreparedPointCloudMaterial, PreparedPointCloudUniforms, PreparedViewSettingsUniform,
-        PrepassAlphaMaskDrawFunction, PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction,
-        PrepassOpaqueDrawFunction, PrepassSpecializeFn, PrepassVertexShader,
-        RenderMaterialBindings, ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction,
-        UserSpecializeFn, ViewPointCloudBindGroups, VisibleNodesTexture,
+        MaterialVertexShader, PassKind, PassProperties, PointCloudDirtySpecializations,
+        PointCloudMaterial, PointCloudPipeline, PreparedPointCloudMaterial,
+        PreparedPointCloudUniforms, PreparedViewSettingsUniform, PrepassAlphaMaskDrawFunction,
+        PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction, PrepassOpaqueDrawFunction,
+        PrepassSpecializeFn, PrepassVertexShader, RenderMaterialBindings,
+        ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction, UserSpecializeFn,
+        ViewPointCloudBindGroups, VisibleNodesTexture,
     },
     PointCloud3d, PointCloudMaterial3d, ViewSettings,
 };
@@ -119,10 +122,6 @@ pub struct PointCloudMaterialProperties {
     pub prepass_enabled: bool,
 
     pub view_settings_layout_entry: Option<BindGroupLayoutEntry>,
-
-    /// Whether multipass is enabled for this material
-    pub multipass_enabled: bool,
-    pub passes: Vec<PassProperties>,
 }
 
 impl PointCloudMaterialProperties {
@@ -165,7 +164,6 @@ where
     type Param = (
         SRes<RenderDevice>,
         SRes<PipelineCache>,
-        SResMut<PointCloudMaterialTargets<M>>,
         // SRes<DefaultOpaqueRendererMethod>,
         SResMut<MaterialBindGroupAllocators>,
         SResMut<RenderMaterialBindings>,
@@ -191,7 +189,6 @@ where
         (
             render_device,
             pipeline_cache,
-            material_targets,
             // default_opaque_render_method,
             bind_group_allocators,
             render_material_bindings,
@@ -381,51 +378,6 @@ where
         let bind_group_data = material.bind_group_data();
         let material_key = ErasedMaterialKey::new(bind_group_data);
 
-        let passes = M::passes();
-        let multipass_enabled = !passes.is_empty();
-
-        let mut prepared_passes = Vec::with_capacity(passes.len());
-        for pass in passes {
-            if let PassOutput::TransientTarget(transient_target) = &pass.output {
-                // TODO: is this resource (mateiral_targets) still needed ?
-                material_targets
-                    .required_textures
-                    .insert(pass.name.clone(), transient_target.clone());
-            }
-
-            let mut shaders = SmallVec::new();
-            let mut add_shader = |label: InternedShaderLabel, shader_ref: ShaderRef| {
-                let mayber_shader = match shader_ref {
-                    ShaderRef::Default => None,
-                    ShaderRef::Handle(handle) => Some(handle),
-                    ShaderRef::Path(path) => Some(asset_server.load(path)),
-                };
-                if let Some(shader) = mayber_shader {
-                    shaders.push((label, shader));
-                }
-            };
-
-            // TODO change shaders based on `phase_type`
-            add_shader(
-                MaterialVertexShader.intern(),
-                clone_shader_ref(&pass.vertex_shader),
-            );
-            add_shader(
-                MaterialFragmentShader.intern(),
-                clone_shader_ref(&pass.fragment_shader),
-            );
-
-            prepared_passes.push(PassProperties {
-                name: pass.name.clone(),
-                pass_type: pass.pass_type,
-                shaders,
-                inputs: pass.inputs.clone(),
-                output: pass.output.clone(),
-                blend: pass.blend,
-                depth_write_enabled: pass.depth_write_enabled,
-            });
-        }
-
         let view_settings_layout_entry =
             uniform_buffer::<<M::ViewSettings as ViewSettings>::Data>(false)
                 .build(3, ShaderStages::VERTEX_FRAGMENT);
@@ -450,15 +402,13 @@ where
                 shadows_enabled,
                 prepass_enabled,
                 view_settings_layout_entry: Some(view_settings_layout_entry),
-                multipass_enabled,
-                passes: prepared_passes,
             }),
         })
     }
 
     fn unload_asset(
         source_asset: AssetId<Self::SourceAsset>,
-        (_, _, _, bind_group_allocators, render_material_bindings, ..): &mut SystemParamItem<
+        (_, _, bind_group_allocators, render_material_bindings, ..): &mut SystemParamItem<
             Self::Param,
         >,
     ) {
@@ -477,39 +427,161 @@ pub struct ErasedMaterialViewSettingsKeys {
     pub view_settings_keys: HashMap<TypeId, ErasedViewSettingsKey, NoOpHash>,
 }
 
+#[derive(Component, Default, Deref, DerefMut)]
+pub struct ErasedMaterialPreparedPasses(HashMap<TypeId, PreparedPasses, NoOpHash>);
+
+#[derive(Default, Deref, DerefMut)]
+pub struct PreparedPasses(HashMap<usize, Arc<PassProperties>, NoOpHash>);
+
 /// Prepare erased view settings key and mark view as dirty if it changed.
 /// TODO: do something for key changes on lights ?
-pub fn prepare_material_view_settings_key<M: PointCloudMaterial>(
+pub fn prepare_material_view_settings_key_and_passes<M: PointCloudMaterial>(
     mut point_cloud_dirty_specializations: ResMut<PointCloudDirtySpecializations>,
     mut views: Query<
         (
             &M::ViewSettings,
             &mut ErasedMaterialViewSettingsKeys,
+            Option<&mut ErasedMaterialPreparedPasses>,
             Option<&ExtractedView>,
+            Option<&mut ViewMultipassTextures<M>>,
+            &mut ViewPointCloudBindGroups,
         ),
         Changed<M::ViewSettings>,
     >,
+    asset_server: Res<AssetServer>,
 ) {
     let type_id = TypeId::of::<M>();
 
-    for (view_settings, mut erased_material_view_settings_keys, maybe_extracted_view) in &mut views
+    for (
+        view_settings,
+        mut erased_material_view_settings_keys,
+        maybe_erased_material_prepared_passes,
+        maybe_extracted_view,
+        maybe_multipass_textures,
+        mut view_point_cloud_bind_groups,
+    ) in &mut views
     {
         let view_settings_key = view_settings.pipeline_key();
-        let erased_view_settings_key = ErasedViewSettingsKey::new(view_settings_key);
+        let erased_view_settings_key = ErasedViewSettingsKey::new(view_settings_key.clone());
 
-        if let Some(previous_key) = erased_material_view_settings_keys
+        let maybe_previous_key = erased_material_view_settings_keys
             .view_settings_keys
-            .insert(type_id, erased_view_settings_key.clone())
-        {
-            // if the key is on a view (camera)
-            // TODO: do something for key changes on lights ?
-            if let Some(extracted_view) = maybe_extracted_view {
-                // if the key has changed, mark the view as dirty
-                if !previous_key.eq(&erased_view_settings_key) {
-                    point_cloud_dirty_specializations
-                        .views
-                        .insert(extracted_view.retained_view_entity);
+            .insert(type_id, erased_view_settings_key.clone());
+
+        if maybe_previous_key.is_none() || !maybe_previous_key.eq(&Some(erased_view_settings_key)) {
+            // if the key is on a view (camera), we have to (re-)prepare passes
+            if let (Some(extracted_view), Some(mut material_prepared_passes)) =
+                (maybe_extracted_view, maybe_erased_material_prepared_passes)
+            {
+                // clear all previous passes
+                let mut prepared_passes =
+                    HashMap::<usize, Arc<PassProperties>, NoOpHash>::default();
+
+                // prepare the passes
+                for pass in M::passes() {
+                    match pass.kind {
+                        PassKind::Geometry => {
+                            if let Some(prepared_pass) =
+                                M::prepare_geometry_pass(&pass.id, &view_settings_key)
+                            {
+                                let mut shaders = SmallVec::new();
+                                let mut add_shader =
+                                    |label: InternedShaderLabel, shader_ref: ShaderRef| {
+                                        let mayber_shader = match shader_ref {
+                                            ShaderRef::Default => None,
+                                            ShaderRef::Handle(handle) => Some(handle),
+                                            ShaderRef::Path(path) => Some(asset_server.load(path)),
+                                        };
+                                        if let Some(shader) = mayber_shader {
+                                            shaders.push((label, shader));
+                                        }
+                                    };
+
+                                add_shader(
+                                    MaterialVertexShader.intern(),
+                                    clone_shader_ref(&prepared_pass.vertex_shader),
+                                );
+                                add_shader(
+                                    MaterialFragmentShader.intern(),
+                                    clone_shader_ref(&prepared_pass.fragment_shader),
+                                );
+
+                                prepared_passes.insert(
+                                    pass.id.into(),
+                                    Arc::new(PassProperties {
+                                        label: pass.label,
+                                        kind: pass.kind,
+                                        shaders,
+                                        inputs: prepared_pass.inputs.clone(),
+                                        output: prepared_pass.output.clone(),
+                                        blend: prepared_pass.blend,
+                                        depth_write_enabled: prepared_pass.depth_write_enabled,
+                                    }),
+                                );
+                            };
+                        }
+                        PassKind::Fullscreen => {
+                            if let Some(prepared_pass) =
+                                M::prepare_fullscreen_pass(&pass.id, &view_settings_key)
+                            {
+                                let mut shaders = SmallVec::new();
+                                let mut add_shader =
+                                    |label: InternedShaderLabel, shader_ref: ShaderRef| {
+                                        let mayber_shader = match shader_ref {
+                                            ShaderRef::Default => None,
+                                            ShaderRef::Handle(handle) => Some(handle),
+                                            ShaderRef::Path(path) => Some(asset_server.load(path)),
+                                        };
+                                        if let Some(shader) = mayber_shader {
+                                            shaders.push((label, shader));
+                                        }
+                                    };
+
+                                add_shader(
+                                    MaterialVertexShader.intern(),
+                                    clone_shader_ref(&prepared_pass.vertex_shader),
+                                );
+                                add_shader(
+                                    MaterialFragmentShader.intern(),
+                                    clone_shader_ref(&prepared_pass.fragment_shader),
+                                );
+
+                                prepared_passes.insert(
+                                    pass.id.into(),
+                                    Arc::new(PassProperties {
+                                        label: pass.label,
+                                        kind: pass.kind,
+                                        shaders,
+                                        inputs: prepared_pass.inputs.clone(),
+                                        output: prepared_pass.output.clone(),
+                                        blend: prepared_pass.blend,
+                                        depth_write_enabled: prepared_pass.depth_write_enabled,
+                                    }),
+                                );
+                            };
+                        }
+                    }
                 }
+
+                if !prepared_passes.is_empty() {
+                    material_prepared_passes.insert(type_id, PreparedPasses(prepared_passes));
+                    // cleanup bind groups of no multipass mode
+                    view_point_cloud_bind_groups.bind_groups.remove(&type_id);
+                } else {
+                    // cleanup passes
+                    material_prepared_passes.remove(&type_id);
+
+                    // clear not needed anymore multipass texture
+                    if let Some(mut multipass_textures) = maybe_multipass_textures {
+                        multipass_textures.textures.clear();
+                        multipass_textures.has_changed = true;
+                    }
+                }
+
+                // if the key has changed, mark the view as dirty to force respecialization
+                point_cloud_dirty_specializations
+                    .views
+                    .insert(extracted_view.retained_view_entity);
             }
         }
     }
@@ -601,6 +673,7 @@ pub fn prepare_view_point_cloud_bind_groups<M: PointCloudMaterial>(
     point_cloud_pipeline: Res<PointCloudPipeline>,
     render_device: Res<RenderDevice>,
     views: Query<(
+        &ErasedMaterialPreparedPasses,
         &VisibleNodesTexture,
         &PreparedViewSettingsUniform<M>,
         &mut ViewPointCloudBindGroups,
@@ -619,9 +692,18 @@ pub fn prepare_view_point_cloud_bind_groups<M: PointCloudMaterial>(
 
     let layout = &pipeline_cache.get_bind_group_layout(&layout);
 
-    for (visible_nodes_texture, prepared_view_settings_uniform, mut view_point_cloud_bind_groups) in
-        views
+    for (
+        material_prepared_passes,
+        visible_nodes_texture,
+        prepared_view_settings_uniform,
+        mut view_point_cloud_bind_groups,
+    ) in views
     {
+        // if there is prepared passes, we do not have to create the bind groups
+        if material_prepared_passes.get(&material_type_id).is_some() {
+            continue;
+        };
+
         let bind_groups = view_point_cloud_bind_groups
             .bind_groups
             .entry(material_type_id)

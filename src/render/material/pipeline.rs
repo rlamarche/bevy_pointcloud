@@ -38,7 +38,7 @@ pub struct ErasedPointCloudMaterialPipelineKey {
     pub splat_key: ErasedSplatPipelineKey,
     pub material_key: ErasedMaterialKey,
     pub view_settings_key: ErasedViewSettingsKey,
-    pub pass: Option<usize>,
+    pub maybe_pass: Option<usize>,
     pub type_id: TypeId,
 }
 

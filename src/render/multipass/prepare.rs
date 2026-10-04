@@ -1,4 +1,7 @@
-use std::{any::type_name, marker::PhantomData};
+use std::{
+    any::{type_name, TypeId},
+    marker::PhantomData,
+};
 
 use bevy::{
     asset::{AssetServer, Handle},
@@ -33,11 +36,11 @@ use crate::{
         multipass::{
             FullscreenMaterialPassPipeline, FullscreenMaterialPipelineId,
             FullscreenMaterialPipelineSpecializer, FullscreenPassMaterialPipelineKey,
-            MultipassTexture, Opaque3dMultipass, PreparedPointCloudFullscreenPass,
-            SpecializedFullscreenPointCloudPipelines, ViewMultipassTextures,
-            ViewPointCloudPassBindGroup,
+            MultipassTexture, Opaque3dMultipass, SpecializedFullscreenPointCloudPipelines,
+            ViewMultipassTextures, ViewPointCloudPassBindGroups,
         },
-        ErasedViewSettingsKey, PassOutput, PointCloud3d, PointCloudMaterial, PointCloudPipeline,
+        ErasedMaterialPreparedPasses, ErasedViewSettingsKey, MaterialFragmentShader,
+        MaterialVertexShader, PassOutput, PointCloud3d, PointCloudMaterial, PointCloudPipeline,
         PreparedPointCloudUniforms, PreparedViewSettingsUniform, VisibleNodesTexture,
     },
     ViewSettings,
@@ -53,9 +56,17 @@ pub fn prepare_multipass_textures<M: PointCloudMaterial>(
         &ExtractedView,
         &Msaa,
         &mut ViewMultipassTextures<M>,
+        &ErasedMaterialPreparedPasses,
     )>,
 ) {
-    for (camera, view, msaa, mut view_multipass_textures) in &mut views_3d {
+    let type_id = TypeId::of::<M>();
+
+    for (camera, view, msaa, mut view_multipass_textures, material_prepared_passes) in &mut views_3d
+    {
+        let Some(prepared_passes) = material_prepared_passes.get(&type_id) else {
+            continue;
+        };
+
         if !opaque_3d_multipass_phases.contains_key(&view.retained_view_entity) {
             view_multipass_textures.textures.clear();
             view_multipass_textures.has_changed = true;
@@ -78,37 +89,37 @@ pub fn prepare_multipass_textures<M: PointCloudMaterial>(
             view_multipass_textures.has_changed = false;
         }
 
-        for pass in M::passes() {
+        for (&id, pass) in prepared_passes.iter() {
             let PassOutput::TransientTarget(target) = &pass.output else {
                 continue;
             };
 
-            let texture = view_multipass_textures
-                .entry(pass.name.clone())
-                .or_insert_with(|| {
-                    let descriptor = TextureDescriptor {
-                        label: Some("multipass_texture"),
-                        size,
-                        mip_level_count: 1,
-                        sample_count: msaa.samples(),
-                        dimension: TextureDimension::D2,
-                        format: target.format,
-                        usage: TextureUsages::COPY_DST
-                            | TextureUsages::RENDER_ATTACHMENT
-                            | TextureUsages::TEXTURE_BINDING,
-                        view_formats: &[],
-                    };
-                    let texture = render_device.create_texture(&descriptor);
-                    let default_view = texture.create_view(&TextureViewDescriptor::default());
+            let texture = view_multipass_textures.entry(id).or_insert_with(|| {
+                let texture_label =
+                    format!("multipass_texture_{}_{}", type_name::<M>(), pass.label);
+                let descriptor = TextureDescriptor {
+                    label: Some(&texture_label),
+                    size,
+                    mip_level_count: 1,
+                    sample_count: msaa.samples(),
+                    dimension: TextureDimension::D2,
+                    format: target.format,
+                    usage: TextureUsages::COPY_DST
+                        | TextureUsages::RENDER_ATTACHMENT
+                        | TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                };
+                let texture = render_device.create_texture(&descriptor);
+                let default_view = texture.create_view(&TextureViewDescriptor::default());
 
-                    MultipassTexture {
-                        color_attachment: None,
-                        texture: CachedTexture {
-                            texture,
-                            default_view,
-                        },
-                    }
-                });
+                MultipassTexture {
+                    color_attachment: None,
+                    texture: CachedTexture {
+                        texture,
+                        default_view,
+                    },
+                }
+            });
 
             // recreate the attachment to make sure it's cleared every frame
             texture.color_attachment = Some(ColorAttachment::new(
@@ -129,27 +140,49 @@ pub fn prepare_pointcloud_bind_groups<M: PointCloudMaterial, const PASS: usize>(
     render_device: Res<RenderDevice>,
     mut views: Query<(
         Entity,
+        &ErasedMaterialPreparedPasses,
         &VisibleNodesTexture,
         &PreparedViewSettingsUniform<M>,
         &ViewMultipassTextures<M>,
         &Msaa,
-        Option<&mut ViewPointCloudPassBindGroup<M, PASS>>,
+        Option<&mut ViewPointCloudPassBindGroups<M, PASS>>,
     )>,
     prepared_point_cloud_uniforms: Res<PreparedPointCloudUniforms>,
     items: Query<&MainEntity, With<PointCloud3d>>,
 ) {
-    let passes = M::passes();
-    let pass = &passes[PASS];
+    let type_id = TypeId::of::<M>();
 
     for (
         entity,
+        material_prepared_passes,
         visible_nodes_texture,
         prepared_view_settings_uniform,
         view_multipass_textures,
         msaa,
-        mut existing_view_point_cloud_bind_group,
+        mut existing_view_point_cloud_bind_groups,
     ) in &mut views
     {
+        let Some(prepared_passes) = material_prepared_passes.get(&type_id) else {
+            if existing_view_point_cloud_bind_groups.is_some() {
+                // cleanup bind group because this pass does not exists anymore
+                // TODO: do it in `prepare_material_view_settings_key_and_passes` by making it
+                // erased (like [`ViewPointCloudBindGroups`]).
+                commands
+                    .entity(entity)
+                    .remove::<ViewPointCloudPassBindGroups<M, PASS>>();
+            }
+            continue;
+        };
+        let Some(pass) = prepared_passes.get(&PASS) else {
+            if existing_view_point_cloud_bind_groups.is_some() {
+                // cleanup bind group because this pass does not exists anymore
+                commands
+                    .entity(entity)
+                    .remove::<ViewPointCloudPassBindGroups<M, PASS>>();
+            }
+            continue;
+        };
+
         // TODO: cache this layout somewhere ? (eg in a resource or component)
         let mut pointcloud_layout = point_cloud_pipeline.point_cloud_layout.clone();
         pointcloud_layout.entries.push(
@@ -170,11 +203,11 @@ pub fn prepare_pointcloud_bind_groups<M: PointCloudMaterial, const PASS: usize>(
         let layout = &pipeline_cache.get_bind_group_layout(&pointcloud_layout);
 
         // Fetch or create the `ViewPointCloudPassBindGroup` component
-        let mut view_point_cloud_bind_groups = match existing_view_point_cloud_bind_group {
+        let mut view_point_cloud_bind_groups = match existing_view_point_cloud_bind_groups {
             Some(ref mut view_point_cloud_bind_groups) => {
                 std::mem::take(&mut **view_point_cloud_bind_groups)
             }
-            None => ViewPointCloudPassBindGroup::default(),
+            None => ViewPointCloudPassBindGroups::default(),
         };
 
         for main_entity in items {
@@ -217,8 +250,8 @@ pub fn prepare_pointcloud_bind_groups<M: PointCloudMaterial, const PASS: usize>(
                             .get(&input.source_pass)
                             .ok_or_else(|| {
                                 BevyError::from(format!(
-                                    "Pass {} references unexisting pass with name {}",
-                                    pass.name, input.source_pass
+                                    "Pass {} references unexisting pass with index {}",
+                                    pass.label, input.source_pass
                                 ))
                             })
                             .unwrap();
@@ -254,40 +287,54 @@ pub fn get_shader(asset_server: &AssetServer, shader_ref: &ShaderRef) -> Option<
     }
 }
 
-pub fn init_fullscreen_material<M: PointCloudMaterial, const PASS: usize>(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-) {
-    let pass = &M::passes()[PASS];
-
-    let Some(fragment_shader) = get_shader(&asset_server, &pass.fragment_shader) else {
-        panic!(
-            "No fragment shader defined for point cloud material {} pass {}",
-            type_name::<M>(),
-            PASS,
-        );
-    };
-
-    commands.insert_resource(PreparedPointCloudFullscreenPass::<M, PASS> {
-        fragment_shader,
-        vertex_shader: get_shader(&asset_server, &pass.vertex_shader),
-        _phantom: PhantomData,
-    });
-}
-
 pub fn prepare_fullscreen_material_pipelines<M: PointCloudMaterial, const PASS: usize>(
     mut commands: Commands,
     pipeline_cache: Res<PipelineCache>,
-    views: Query<(Entity, &ExtractedView, &M::ViewSettings), With<ExtractedCamera>>,
+    views: Query<
+        (
+            Entity,
+            &ExtractedView,
+            &M::ViewSettings,
+            &ErasedMaterialPreparedPasses,
+            Option<&FullscreenMaterialPipelineId<M, PASS>>,
+        ),
+        With<ExtractedCamera>,
+    >,
     view_key_cache: Res<ViewKeyCache>,
     fullscreen_pipeline: Res<FullscreenMaterialPassPipeline>,
     mut specialized_fullscreen_point_cloud_pipelines: ResMut<
         SpecializedFullscreenPointCloudPipelines<FullscreenMaterialPipelineSpecializer>,
     >,
-    prepared_point_cloud_fullscreen_pass: Res<PreparedPointCloudFullscreenPass<M, PASS>>,
 ) {
-    let pass = &M::passes()[PASS];
-    for (entity, view, view_settings) in &views {
+    let type_id = TypeId::of::<M>();
+    for (
+        entity,
+        view,
+        view_settings,
+        material_prepared_passes,
+        maybe_fullscreen_material_pipeline_id,
+    ) in &views
+    {
+        let Some(prepared_passes) = material_prepared_passes.get(&type_id) else {
+            if maybe_fullscreen_material_pipeline_id.is_some() {
+                // remove previous pipeline id
+                commands
+                    .entity(entity)
+                    .remove::<FullscreenMaterialPipelineId<M, PASS>>();
+            }
+            continue;
+        };
+
+        let Some(pass) = prepared_passes.get(&PASS) else {
+            if maybe_fullscreen_material_pipeline_id.is_some() {
+                // remove previous pipeline id
+                commands
+                    .entity(entity)
+                    .remove::<FullscreenMaterialPipelineId<M, PASS>>();
+            }
+            continue;
+        };
+
         let Some(&view_key) = view_key_cache.get(&view.retained_view_entity) else {
             continue;
         };
@@ -298,10 +345,10 @@ pub fn prepare_fullscreen_material_pipelines<M: PointCloudMaterial, const PASS: 
         };
 
         let pipeline_specializer = FullscreenMaterialPipelineSpecializer {
-            vertex_shader: prepared_point_cloud_fullscreen_pass.vertex_shader.clone(),
-            fragment_shader: prepared_point_cloud_fullscreen_pass.fragment_shader.clone(),
+            vertex_shader: pass.get_shader(MaterialVertexShader),
+            fragment_shader: pass.get_shader(MaterialFragmentShader),
             fullscreen_pipeline: fullscreen_pipeline.clone(),
-            pass,
+            pass: pass.clone(),
         };
 
         match specialized_fullscreen_point_cloud_pipelines.specialize(

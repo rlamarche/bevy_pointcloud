@@ -376,7 +376,7 @@ pub(crate) fn specialize_shadows(
             splat_key: ErasedSplatPipelineKey::new(item.splat_key),
             material_key: item.properties.material_key.clone(),
             view_settings_key: item.view_settings_key,
-            pass: None,
+            maybe_pass: None,
         };
 
         let emulate_unclipped_depth = item
