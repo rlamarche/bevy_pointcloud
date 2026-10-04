@@ -47,10 +47,7 @@ use bevy::{
     shader::ShaderRef,
 };
 use core::{any::TypeId, hash::Hash, marker::PhantomData};
-use std::{
-    fmt::Debug,
-    sync::{Arc, OnceLock},
-};
+use std::{fmt::Debug, sync::Arc};
 
 use crate::{
     render::{
@@ -80,6 +77,15 @@ pub use resources::*;
 pub use specialization::*;
 pub use specializer::*;
 
+#[derive(Clone, Copy, Debug)]
+pub struct NoPassId;
+
+impl From<NoPassId> for usize {
+    fn from(_: NoPassId) -> Self {
+        usize::MAX
+    }
+}
+
 /// Materials are used alongside [`PointCloudMaterialPlugin`], [`PointCloud3d`], and
 /// [`PointCloudMaterial3d`] to spawn entities that are rendered with a specific [`Material`] type.
 /// They serve as an easy to use high level way to render [`PointCloud3d`] entities with custom
@@ -92,6 +98,8 @@ pub use specializer::*;
 /// Materials must also define a [`PointCloudMaterial::ViewSettings`] type for view based settings
 /// (eg: clipping planes, multipass materials, ...).
 pub trait PointCloudMaterial: Asset + AsBindGroup + Clone + Sized {
+    type PassId: Send + Sync + 'static + Clone + Copy + Into<usize>;
+
     type ViewSettings: ViewSettings;
     // type ViewSettings: Component
     //     + ExtractComponent
@@ -101,10 +109,6 @@ pub trait PointCloudMaterial: Asset + AsBindGroup + Clone + Sized {
     //     + WriteInto
     //     + Default
     //     + ViewSettingsPipelineKey;
-
-    /// Number of passes for multipass materials.
-    /// If equal to 0, means that this is not a multipass material.
-    const PASS_COUNT: usize = 0;
 
     /// Returns this material's vertex shader. If [`ShaderRef::Default`] is returned, the default
     /// mesh vertex shader will be used.
@@ -119,10 +123,30 @@ pub trait PointCloudMaterial: Asset + AsBindGroup + Clone + Sized {
     }
 
     /// The passes in case this is a multipass material
-    fn passes() -> &'static [PassDescriptor] {
-        static PASSES: OnceLock<Vec<PassDescriptor>> = OnceLock::new();
+    fn passes() -> &'static [PassDescriptor<Self::PassId>] {
+        &[]
+    }
 
-        PASSES.get_or_init(Vec::new)
+    #[expect(
+        unused_variables,
+        reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
+    )]
+    fn prepare_geometry_pass(
+        pass: &Self::PassId,
+        settings_key: &<Self::ViewSettings as ViewSettings>::Key,
+    ) -> Option<GeometryPassParams> {
+        None
+    }
+
+    #[expect(
+        unused_variables,
+        reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
+    )]
+    fn prepare_fullscreen_pass(
+        pass: &Self::PassId,
+        settings_key: &<Self::ViewSettings as ViewSettings>::Key,
+    ) -> Option<FullscreenPassParams> {
+        None
     }
 
     /// Returns this material's [`AlphaMode`]. Defaults to [`AlphaMode::Opaque`].
@@ -313,6 +337,16 @@ impl Plugin for MaterialsPlugin {
             render_app
                 .world_mut()
                 .register_required_components::<ExtractedDirectionalLight, ErasedMaterialViewSettingsKeys>();
+
+            render_app
+                .world_mut()
+                .register_required_components::<ExtractedView, ErasedMaterialPreparedPasses>();
+
+            // TODO: not sure needed for now
+            // render_app
+            //     .world_mut()
+            //     .register_required_components::<ExtractedDirectionalLight,
+            // ErasedViewPreparedPasses>();
         }
     }
 }
@@ -367,7 +401,6 @@ where
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
-                .init_resource::<PointCloudMaterialTargets<M>>()
                 .add_systems(RenderStartup, add_material_bind_group_allocator::<M>)
                 .add_systems(
                     ExtractSchedule,
@@ -387,7 +420,7 @@ where
                     Render,
                     (
                         // must be run before specialize
-                        prepare_material_view_settings_key::<M>
+                        prepare_material_view_settings_key_and_passes::<M>
                             .in_set(RenderSystems::PrepareAssets)
                             .after(check_views_need_specialization)
                             .before(RenderSystems::Specialize),
@@ -401,12 +434,11 @@ where
                     ),
                 );
 
-            render_app
-                .world_mut()
-                .register_required_components::<ExtractedCamera, ViewMultipassTextures<M>>();
+            if !M::passes().is_empty() {
+                render_app
+                    .world_mut()
+                    .register_required_components::<ExtractedCamera, ViewMultipassTextures<M>>();
 
-            // TODO: conditionnaly add if the material is multipass
-            if M::PASS_COUNT > 0 {
                 app.add_plugins(MultipassMaterialPlugin::<M>::new(self.debug_flags));
             }
         }

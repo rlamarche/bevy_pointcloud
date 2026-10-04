@@ -80,7 +80,6 @@ pub fn queue_material_meshes(
         let Some(view_specialized_material_pipeline_cache) =
             specialized_material_pipeline_cache.get(&view.retained_view_entity)
         else {
-            // warn!("no view_specialized_material_pipeline_cache for view");
             continue;
         };
 
@@ -144,7 +143,6 @@ pub fn queue_material_meshes(
                 .get(render_entity)
                 .copied()
             else {
-                warn!("view_specialized_material_pipeline_cache missing");
                 continue;
             };
 
@@ -276,21 +274,19 @@ pub fn queue_material_meshes(
                         asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
                     };
 
-                    if !material.properties.multipass_enabled {
-                        opaque_phase.add(
-                            batch_set_key,
-                            bin_key,
-                            (
-                                *render_entity,
-                                // use the root entity here to correctly handle
-                                // [`GetFullBatchData::get_binned_index`]
-                                // in binned render phases
-                                render_point_cloud_chunk_instance.root_entity,
-                            ),
-                            mesh_instance.current_uniform_index,
-                            BinnedRenderPhaseType::UnbatchableMesh,
-                        );
-                    }
+                    opaque_phase.add(
+                        batch_set_key,
+                        bin_key,
+                        (
+                            *render_entity,
+                            // use the root entity here to correctly handle
+                            // [`GetFullBatchData::get_binned_index`]
+                            // in binned render phases
+                            render_point_cloud_chunk_instance.root_entity,
+                        ),
+                        mesh_instance.current_uniform_index,
+                        BinnedRenderPhaseType::UnbatchableMesh,
+                    );
                 }
                 // Alpha mask
                 RenderPhaseType::AlphaMask => {

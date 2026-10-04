@@ -22,7 +22,7 @@ use bevy::{
         },
         renderer::{RenderDevice, RenderQueue},
         sync_world::MainEntity,
-        texture::{CachedTexture, TextureCache},
+        texture::CachedTexture,
         view::ExtractedView,
     },
 };
@@ -30,11 +30,11 @@ use bytemuck::{Pod, Zeroable};
 
 use crate::{
     render::{
-        FallbackVisibleNodesTexture, OctreeInstanceIndex, PointCloudUniform,
-        PreparedPointCloudUniform, PreparedPointCloudUniforms, RenderMaterialBindings,
-        RenderOctreeInstancesIndex, RenderPointCloudChunk, RenderPointCloudInstances,
-        RenderPointCloudMaterialInstances, RenderShadowMapVisiblePointCloudEntities,
-        RenderVisiblePointCloudEntities, VisibleNodesTexture,
+        FallbackVisibleNodesTexture, PointCloudUniform, PreparedPointCloudUniform,
+        PreparedPointCloudUniforms, RenderMaterialBindings, RenderOctreeInstancesIndex,
+        RenderPointCloudChunk, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
+        RenderShadowMapVisiblePointCloudEntities, RenderVisiblePointCloudEntities,
+        VisibleNodesTexture,
     },
     NodeId, PointCloud3d, PointCloudTopologyKind,
 };

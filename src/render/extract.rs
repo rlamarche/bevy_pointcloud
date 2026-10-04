@@ -21,7 +21,7 @@ use bevy::{
         CascadeShadowConfig, Cascades, DirectionalLight, NotShadowReceiver, SpotLight, SunDisk,
         TransmittedShadowReceiver, VolumetricLight,
     },
-    log::{debug, info, warn},
+    log::{debug, warn},
     pbr::{ExtractedDirectionalLight, MeshFlags, MeshTransforms, PreviousGlobalTransform},
     render::{
         mesh::{allocator::MeshAllocator, RenderMesh},

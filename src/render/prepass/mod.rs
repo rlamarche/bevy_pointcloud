@@ -1417,7 +1417,7 @@ pub(crate) fn specialize_prepass_material_meshes(
             material_key: item.properties.material_key.clone(),
             view_settings_key: item.view_settings_key,
             // there is no multipass for prepass
-            pass: None,
+            maybe_pass: None,
         };
 
         let emulate_unclipped_depth = item

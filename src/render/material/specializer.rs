@@ -15,13 +15,14 @@ use bevy::{
 
 use crate::render::{
     ErasedPointCloudMaterialPipelineKey, MaterialFragmentShader, MaterialVertexShader, PassOutput,
-    PointCloudMaterialPipeline, PointCloudMaterialProperties, SpecializedPointCloudPipeline,
-    SplatPipelineKey,
+    PassProperties, PointCloudMaterialPipeline, PointCloudMaterialProperties,
+    SpecializedPointCloudPipeline, SplatPipelineKey,
 };
 
 pub struct PointCloudMaterialPipelineSpecializer {
     pub(crate) pipeline: PointCloudMaterialPipeline,
     pub(crate) properties: Arc<PointCloudMaterialProperties>,
+    pub(crate) maybe_pass_properties: Option<Arc<PassProperties>>,
 }
 
 impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
@@ -33,7 +34,10 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
         splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
-        info!("Specialize pointcloud pipeline for pass {:?}", key.pass);
+        info!(
+            "Specialize pointcloud pipeline for pass {:?}",
+            key.maybe_pass
+        );
 
         let concrete_mesh_key: MeshPipelineKey = key.mesh_key.downcast();
         let concrete_splat_key: SplatPipelineKey = key.splat_key.downcast();
@@ -42,7 +46,7 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
                 concrete_mesh_key,
                 concrete_splat_key,
                 key.view_settings_key.clone(),
-                key.pass,
+                key.maybe_pass,
             ),
             splat_layout,
             instance_layout,
@@ -71,15 +75,15 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
         ));
 
         // specialize the pass
-        if let Some(pass) = key.pass {
-            let pass_properties = &self.properties.passes[pass];
-
+        if let (Some(pass), Some(pass_properties)) =
+            (key.maybe_pass, self.maybe_pass_properties.as_ref())
+        {
             // add useful shaderdefs (eg: `POINTCLOUD_PASS_DEPTH` and `POINTCLOUD_PASS_0`)
             shader_defs.push(ShaderDefVal::UInt("POINTCLOUD_PASS".into(), pass as u32));
 
             shader_defs.push(format!("POINTCLOUD_PASS_{}", pass).into());
             shader_defs
-                .push(format!("POINTCLOUD_PASS_{}", pass_properties.name.to_uppercase()).into());
+                .push(format!("POINTCLOUD_PASS_{}", pass_properties.label.to_uppercase()).into());
 
             if let Some(vertex_shader) = pass_properties.get_shader(MaterialVertexShader) {
                 descriptor.vertex.shader = vertex_shader.clone();
@@ -171,6 +175,7 @@ pub type BaseSpecializeFn = fn(
     &MeshVertexBufferLayoutRef,
     &MeshVertexBufferLayoutRef,
     &Arc<PointCloudMaterialProperties>,
+    Option<&Arc<PassProperties>>,
 ) -> Result<CachedRenderPipelineId, SpecializedMeshPipelineError>;
 
 /// A type erased function pointer for specializing a material prepass pipeline. The implementation

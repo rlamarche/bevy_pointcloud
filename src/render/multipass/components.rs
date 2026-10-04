@@ -1,4 +1,4 @@
-use std::{borrow::Cow, marker::PhantomData};
+use std::marker::PhantomData;
 
 use bevy::{
     ecs::component::Component,
@@ -17,7 +17,7 @@ use crate::render::PointCloudMaterial;
 #[derive(Component, Deref, DerefMut)]
 pub struct ViewMultipassTextures<M: PointCloudMaterial> {
     #[deref]
-    pub textures: HashMap<Cow<'static, str>, MultipassTexture>,
+    pub textures: HashMap<usize, MultipassTexture>,
     pub size: Extent3d,
     pub has_changed: bool,
     pub _phantom: PhantomData<fn() -> M>,
@@ -43,13 +43,13 @@ impl<M: PointCloudMaterial> Default for ViewMultipassTextures<M> {
 /// Stores bind groups like [`crate::ViewPointCloudBindGroups`] but for each material/pass so
 /// specific pass groups can be provided.
 #[derive(Component, Clone)]
-pub struct ViewPointCloudPassBindGroup<M: PointCloudMaterial, const PASS: usize> {
+pub struct ViewPointCloudPassBindGroups<M: PointCloudMaterial, const PASS: usize> {
     // contains one bind group per point cloud
     pub bind_groups: MainEntityHashMap<BindGroup>,
     _phantom: PhantomData<M>,
 }
 
-impl<M: PointCloudMaterial, const PASS: usize> Default for ViewPointCloudPassBindGroup<M, PASS> {
+impl<M: PointCloudMaterial, const PASS: usize> Default for ViewPointCloudPassBindGroups<M, PASS> {
     fn default() -> Self {
         Self {
             bind_groups: Default::default(),

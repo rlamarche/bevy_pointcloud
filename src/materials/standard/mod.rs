@@ -16,10 +16,10 @@ use bevy::pbr::{Material as SourceMaterial, MeshPipelineKey, StandardMaterialKey
 
 use crate::{
     render::{
-        shader_ref, PointCloudMaterial, PointCloudMaterialPipeline, PointCloudMaterialPipelineKey,
-        PointCloudMaterialPlugin,
+        shader_ref, NoPassId, PointCloudMaterial, PointCloudMaterialPipeline,
+        PointCloudMaterialPipelineKey, PointCloudMaterialPlugin,
     },
-    PointCloudEmptyViewSettings,
+    EmptyViewSettings,
 };
 
 pub struct StandardPointCloudMaterialPlugin;
@@ -160,8 +160,10 @@ impl AsBindGroupShaderType<StandardMaterialUniform> for StandardPointCloudMateri
 }
 
 impl PointCloudMaterial for StandardPointCloudMaterial {
+    type PassId = NoPassId;
+
     // TODO use PointCloudViewSettings and filter points in fragment shader
-    type ViewSettings = PointCloudEmptyViewSettings;
+    type ViewSettings = EmptyViewSettings;
 
     fn vertex_shader() -> ShaderRef {
         ShaderRef::Default

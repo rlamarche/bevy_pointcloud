@@ -18,17 +18,17 @@ pub trait ViewSettings: Clone + Component + ExtractComponent + Default {
 }
 
 #[derive(Component, ExtractComponent, Clone, Default)]
-#[extract_component_filter(Changed<PointCloudEmptyViewSettings>)]
-pub struct PointCloudEmptyViewSettings;
+#[extract_component_filter(Changed<EmptyViewSettings>)]
+pub struct EmptyViewSettings;
 
 #[derive(ShaderType, Default)]
-pub struct PointCloudEmptyViewSettingsUniform {
+pub struct EmptyViewSettingsUniform {
     pub _padding: Vec4,
 }
 
-impl ViewSettings for PointCloudEmptyViewSettings {
+impl ViewSettings for EmptyViewSettings {
     type Key = ();
-    type Data = PointCloudEmptyViewSettingsUniform;
+    type Data = EmptyViewSettingsUniform;
 
     fn pipeline_key(&self) -> Self::Key {}
     fn to_data(&self) -> Self::Data {

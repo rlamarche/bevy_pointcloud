@@ -1,5 +1,3 @@
-use std::sync::OnceLock;
-
 use bevy::{
     app::Plugin,
     asset::{embedded_asset, Asset, Handle},
@@ -22,11 +20,12 @@ use bitflags::bitflags;
 
 use crate::{
     render::{
-        shader_ref, PassDescriptor, PassInput, PassOutput, PassType, PointCloudMaterial,
-        PointCloudMaterialPipeline, PointCloudMaterialPipelineKey, PointCloudMaterialPlugin,
-        TransientTarget,
+        shader_ref, FullscreenPassParams, GeometryPassParams, PassDescriptor, PassInput, PassKind,
+        PassOutput, PointCloudMaterial, PointCloudMaterialPipeline, PointCloudMaterialPipelineKey,
+        PointCloudMaterialPlugin, TransientTarget,
     },
-    ColorStop, ColorStopUniform, PointCloudViewSettings,
+    ColorStop, ColorStopUniform, PointCloudViewSettings, PointCloudViewSettingsKey, RenderMode,
+    ViewSettings,
 };
 
 pub struct SimplePointCloudMaterialPlugin;
@@ -145,10 +144,26 @@ impl From<Color> for SimplePointCloudMaterial {
     }
 }
 
-impl PointCloudMaterial for SimplePointCloudMaterial {
-    type ViewSettings = PointCloudViewSettings;
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SimplePasses {
+    Depth = 0,
+    Attribute = 1,
+    Normalize = 2,
+}
 
-    const PASS_COUNT: usize = 3;
+impl From<SimplePasses> for usize {
+    fn from(val: SimplePasses) -> Self {
+        match val {
+            SimplePasses::Depth => 0,
+            SimplePasses::Attribute => 1,
+            SimplePasses::Normalize => 2,
+        }
+    }
+}
+
+impl PointCloudMaterial for SimplePointCloudMaterial {
+    type PassId = SimplePasses;
+    type ViewSettings = PointCloudViewSettings;
 
     fn fragment_shader() -> ShaderRef {
         // shader_ref(bevy::asset::embedded_path!("simple.wgsl"))
@@ -185,8 +200,36 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         // Collect all shader defs for both vertex and fragment stages
         let mut shader_defs = Vec::new();
 
-        if settings_key > 0 {
-            shader_defs.push("CLIPPING_PLANES".into());
+        // Evaluate single boolean flags
+        for (flags, shader_def) in [
+            (
+                PointCloudViewSettingsKey::CLIPPING_PLANES,
+                "CLIPPING_PLANES",
+            ),
+            (
+                PointCloudViewSettingsKey::CLIPPING_SPHERES,
+                "CLIPPING_SPHERES",
+            ),
+        ] {
+            if settings_key.intersects(flags) {
+                shader_defs.push(shader_def.into());
+            }
+        }
+
+        // Evaluate multi-bit point size mode using the mask
+        match settings_key.render_mode() {
+            RenderMode::Normal => {
+                shader_defs.push("RENDER_MODE_NORMAL".into());
+            }
+            RenderMode::HighQuality => {
+                shader_defs.push("RENDER_MODE_HQ".into());
+            }
+            RenderMode::XRay => {
+                shader_defs.push("RENDER_MODE_XRAY".into());
+            }
+            RenderMode::EyeDome => {
+                shader_defs.push("RENDER_MODE_EDL".into());
+            }
         }
 
         // Evaluate single boolean flags
@@ -262,91 +305,118 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         Ok(())
     }
 
-    fn passes() -> &'static [PassDescriptor] {
-        static PASSES: OnceLock<Vec<PassDescriptor>> = OnceLock::new();
+    fn passes() -> &'static [PassDescriptor<Self::PassId>] {
+        &[
+            PassDescriptor {
+                id: SimplePasses::Depth,
+                kind: PassKind::Geometry,
+                label: "depth",
+            },
+            PassDescriptor {
+                id: SimplePasses::Attribute,
+                kind: PassKind::Geometry,
+                label: "attribute",
+            },
+            PassDescriptor {
+                id: SimplePasses::Normalize,
+                kind: PassKind::Fullscreen,
+                label: "normalize",
+            },
+        ]
+    }
 
-        PASSES.get_or_init(|| {
-            vec![
-                PassDescriptor {
-                    name: "depth".into(),
-                    pass_type: PassType::PointCloudGeometry,
-                    vertex_shader: ShaderRef::Default,
-                    fragment_shader: "shaders/simple_dev.wgsl".into(),
-                    inputs: vec![],
-                    output: PassOutput::TransientTarget(TransientTarget {
-                        format: TextureFormat::R16Float,
-                    }),
-                    blend: None,
-                    depth_write_enabled: Some(true),
-                },
-                PassDescriptor {
-                    name: "attribute".into(),
-                    pass_type: PassType::PointCloudGeometry,
-                    vertex_shader: ShaderRef::Default,
-                    fragment_shader: "shaders/simple_dev.wgsl".into(),
-                    inputs: vec![PassInput {
-                        source_pass: "depth".into(),
+    fn prepare_geometry_pass(
+        pass: &Self::PassId,
+        settings_key: &<Self::ViewSettings as ViewSettings>::Key,
+    ) -> Option<GeometryPassParams> {
+        if matches!(settings_key.render_mode(), RenderMode::Normal) {
+            return None;
+        };
+        match pass {
+            SimplePasses::Depth => Some(GeometryPassParams {
+                vertex_shader: ShaderRef::Default,
+                fragment_shader: "shaders/simple_dev.wgsl".into(),
+                inputs: vec![],
+                output: PassOutput::TransientTarget(TransientTarget {
+                    format: TextureFormat::R16Float,
+                }),
+                blend: None,
+                depth_write_enabled: Some(true),
+            }),
+            SimplePasses::Attribute => Some(GeometryPassParams {
+                vertex_shader: ShaderRef::Default,
+                fragment_shader: "shaders/simple_dev.wgsl".into(),
+                inputs: vec![PassInput {
+                    source_pass: SimplePasses::Depth.into(),
+                    binding_slot: 10,
+                    texture_sample_type: bevy::render::render_resource::TextureSampleType::Float {
+                        filterable: false,
+                    },
+                    visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                }],
+                // output: PassOutput::TransientTarget(TransientTarget {
+                //     format: TextureFormat::Rgba32Float,
+                // }),
+                output: PassOutput::TransientTarget(TransientTarget {
+                    format: TextureFormat::Rgba32Float,
+                }),
+                blend: Some(BlendState {
+                    color: BlendComponent {
+                        // To match Potree blending
+                        src_factor: BlendFactor::SrcAlpha,
+                        dst_factor: BlendFactor::One,
+                        operation: BlendOperation::Add,
+                    },
+                    alpha: BlendComponent {
+                        // To match Potree blending
+                        src_factor: BlendFactor::One,
+                        dst_factor: BlendFactor::One,
+                        operation: BlendOperation::Add,
+                    },
+                }),
+                depth_write_enabled: Some(false),
+            }),
+            _ => None,
+        }
+    }
+
+    fn prepare_fullscreen_pass(
+        pass: &Self::PassId,
+        settings_key: &<Self::ViewSettings as ViewSettings>::Key,
+    ) -> Option<FullscreenPassParams> {
+        if matches!(settings_key.render_mode(), RenderMode::Normal) {
+            return None;
+        };
+        match pass {
+            SimplePasses::Normalize => Some(FullscreenPassParams {
+                vertex_shader: ShaderRef::Default,
+                fragment_shader: "shaders/normalize_dev.wgsl".into(),
+                inputs: vec![
+                    PassInput {
+                        source_pass: SimplePasses::Depth.into(),
                         binding_slot: 10,
                         texture_sample_type:
                             bevy::render::render_resource::TextureSampleType::Float {
                                 filterable: false,
                             },
                         visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
-                    }],
-                    // output: PassOutput::TransientTarget(TransientTarget {
-                    //     format: TextureFormat::Rgba32Float,
-                    //     scale_factor: 1.0,
-                    // }),
-                    output: PassOutput::TransientTarget(TransientTarget {
-                        format: TextureFormat::Rgba32Float,
-                    }),
-                    blend: Some(BlendState {
-                        color: BlendComponent {
-                            // To match Potree blending
-                            src_factor: BlendFactor::SrcAlpha,
-                            dst_factor: BlendFactor::One,
-                            operation: BlendOperation::Add,
-                        },
-                        alpha: BlendComponent {
-                            // To match Potree blending
-                            src_factor: BlendFactor::One,
-                            dst_factor: BlendFactor::One,
-                            operation: BlendOperation::Add,
-                        },
-                    }),
-                    depth_write_enabled: Some(false),
-                },
-                PassDescriptor {
-                    name: "normalize".into(),
-                    pass_type: PassType::Fullscreen,
-                    vertex_shader: ShaderRef::Default,
-                    fragment_shader: "shaders/normalize_dev.wgsl".into(),
-                    inputs: vec![
-                        PassInput {
-                            source_pass: "depth".into(),
-                            binding_slot: 10,
-                            texture_sample_type:
-                                bevy::render::render_resource::TextureSampleType::Float {
-                                    filterable: false,
-                                },
-                            visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
-                        },
-                        PassInput {
-                            source_pass: "attribute".into(),
-                            binding_slot: 11,
-                            texture_sample_type:
-                                bevy::render::render_resource::TextureSampleType::Float {
-                                    filterable: false,
-                                },
-                            visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
-                        },
-                    ],
-                    output: PassOutput::MainColorTarget,
-                    blend: None,
-                    depth_write_enabled: Some(true),
-                },
-            ]
-        })
+                    },
+                    PassInput {
+                        source_pass: SimplePasses::Attribute.into(),
+                        binding_slot: 11,
+                        texture_sample_type:
+                            bevy::render::render_resource::TextureSampleType::Float {
+                                filterable: false,
+                            },
+                        visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                    },
+                ],
+                output: PassOutput::MainColorTarget,
+                blend: None,
+                depth_write_enabled: Some(true),
+            }),
+            _ => None,
+        }
     }
 }
 

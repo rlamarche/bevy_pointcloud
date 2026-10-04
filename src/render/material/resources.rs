@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Debug, marker::PhantomData};
+use std::{fmt::Debug, marker::PhantomData};
 
 use bevy::{
     asset::{AssetId, UntypedAssetId},
@@ -18,26 +18,7 @@ use bevy::{
     },
 };
 
-use crate::{
-    render::{PointCloudMaterial, TransientTarget},
-    SimplePointCloudMaterial,
-};
-
-// TODO: is this resource still needed ?
-#[derive(Resource)]
-pub struct PointCloudMaterialTargets<M: PointCloudMaterial> {
-    pub required_textures: HashMap<Cow<'static, str>, TransientTarget>,
-    _phantom: PhantomData<M>,
-}
-
-impl<M: PointCloudMaterial> Default for PointCloudMaterialTargets<M> {
-    fn default() -> Self {
-        Self {
-            required_textures: Default::default(),
-            _phantom: Default::default(),
-        }
-    }
-}
+use crate::SimplePointCloudMaterial;
 
 /// Stores all extracted instances of all [`Material`]s in the render world.
 #[derive(Resource, Default)]
