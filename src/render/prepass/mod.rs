@@ -437,7 +437,7 @@ impl SpecializedPointCloudPipeline for PrepassPipelineSpecializer {
         key: Self::Key,
         splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
-    ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
+    ) -> Result<Option<RenderPipelineDescriptor>, SpecializedMeshPipelineError> {
         let mut shader_defs = Vec::new();
 
         if self.properties.bindless {
@@ -468,7 +468,7 @@ impl SpecializedPointCloudPipeline for PrepassPipelineSpecializer {
             )?;
         }
 
-        Ok(descriptor)
+        Ok(Some(descriptor))
     }
 }
 
@@ -1462,13 +1462,15 @@ pub(crate) fn specialize_prepass_material_meshes(
             &item.instance_layout,
             &item.properties,
         ) {
-            Ok(pipeline_id) => {
+            Ok(Some(pipeline_id)) => {
                 world
                     .resource_mut::<SpecializedPrepassMaterialPipelineCache>()
                     .entry(item.retained_view_entity)
                     .or_default()
                     .insert(item.render_entity, (this_run, pipeline_id, draw_function));
             }
+            // skip this pass
+            Ok(None) => {}
             Err(err) => error!("{}", err),
         }
     }

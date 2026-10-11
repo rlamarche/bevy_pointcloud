@@ -20,8 +20,8 @@ use bitflags::bitflags;
 
 use crate::{
     render::{
-        shader_ref, FullscreenPassParams, GeometryPassParams, PassDescriptor, PassInput, PassKind,
-        PassOutput, PointCloudMaterial, PointCloudMaterialPipeline, PointCloudMaterialPipelineKey,
+        FullscreenPassParams, GeometryPassParams, PassDescriptor, PassInput, PassKind, PassOutput,
+        PointCloudMaterial, PointCloudMaterialPipeline, PointCloudMaterialPipelineKey,
         PointCloudMaterialPlugin, TransientTarget,
     },
     ColorStop, ColorStopUniform, PointCloudViewSettings, PointCloudViewSettingsKey, RenderMode,
@@ -64,6 +64,8 @@ pub struct SimplePointCloudMaterial {
     ///
     /// Defaults to [`Color::WHITE`].
     pub base_color: Color,
+
+    pub render_mode: RenderMode,
 
     /// A vec of color stops. Up to 8 color stops are currently supported.
     /// Empty by default.
@@ -123,6 +125,7 @@ impl Default for SimplePointCloudMaterial {
             // White because it gets multiplied with texture values if someone uses
             // a texture.
             base_color: Color::WHITE,
+            render_mode: RenderMode::Normal,
             color_stops: Vec::new(),
             gradient_direction: None,
             gradient_start: None,
@@ -189,13 +192,29 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         _splat_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         _instance_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         key: PointCloudMaterialPipelineKey<Self>,
-    ) -> bevy::ecs::error::Result<(), bevy::material::specialize::SpecializedMeshPipelineError>
+    ) -> bevy::ecs::error::Result<bool, bevy::material::specialize::SpecializedMeshPipelineError>
     {
         // Extract the custom material key from the bind group data
         let material_key = key.bind_group_data;
 
         // TODO: use this key to define a shaderdef with number of clipping planes
         let settings_key = key.view_settings_key;
+
+        let render_mode = material_key.render_mode();
+
+        // no custom pass for normal render mode
+        if matches!(render_mode, RenderMode::Normal) && key.pass.is_some() {
+            return Ok(false);
+        }
+
+        // only custom pass when render mode is not [`RenderMode::Normal`]
+        if !matches!(render_mode, RenderMode::Normal) && key.pass.is_none() {
+            return Ok(false);
+        }
+
+        if !settings_key.render_modes().contains(render_mode.into()) {
+            return Ok(false);
+        }
 
         // Collect all shader defs for both vertex and fragment stages
         let mut shader_defs = Vec::new();
@@ -217,7 +236,7 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         }
 
         // Evaluate multi-bit point size mode using the mask
-        match settings_key.render_mode() {
+        match material_key.render_mode() {
             RenderMode::Normal => {
                 shader_defs.push("RENDER_MODE_NORMAL".into());
             }
@@ -302,7 +321,7 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
             _ => None,
         };
 
-        Ok(())
+        Ok(true)
     }
 
     fn passes() -> &'static [PassDescriptor<Self::PassId>] {
@@ -329,9 +348,13 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         pass: &Self::PassId,
         settings_key: &<Self::ViewSettings as ViewSettings>::Key,
     ) -> Option<GeometryPassParams> {
-        if matches!(settings_key.render_mode(), RenderMode::Normal) {
+        if !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_EDL)
+            && !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_HQ)
+            && !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_XRAY)
+        {
             return None;
         };
+
         match pass {
             SimplePasses::Depth => Some(GeometryPassParams {
                 vertex_shader: ShaderRef::Default,
@@ -384,9 +407,13 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         pass: &Self::PassId,
         settings_key: &<Self::ViewSettings as ViewSettings>::Key,
     ) -> Option<FullscreenPassParams> {
-        if matches!(settings_key.render_mode(), RenderMode::Normal) {
+        if !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_EDL)
+            && !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_HQ)
+            && !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_XRAY)
+        {
             return None;
         };
+
         match pass {
             SimplePasses::Normalize => Some(FullscreenPassParams {
                 vertex_shader: ShaderRef::Default,
@@ -523,15 +550,37 @@ bitflags! {
         const CULL_BACK                = 1_u64 <<  1;
         const GRADIENT                 = 1_u64 <<  2;
 
-        const COLOR_STOP_1             = 1_u64 <<  3;
-        const COLOR_STOP_2             = 1_u64 <<  4;
-        const COLOR_STOP_3             = 1_u64 <<  5;
-        const COLOR_STOP_4             = 1_u64 <<  6;
-        const COLOR_STOP_5             = 1_u64 <<  7;
-        const COLOR_STOP_6             = 1_u64 <<  8;
-        const COLOR_STOP_7             = 1_u64 <<  9;
-        const COLOR_STOP_8             = 1_u64 <<  10;
-        const UV_TRANSFORM             = 1_u64 <<  11;
+        const RENDER_MODE_0            = 1_u64 <<  3;
+        const RENDER_MODE_1            = 1_u64 <<  4;
+
+        const RENDER_MODE_MASK          = Self::RENDER_MODE_0.bits() | Self::RENDER_MODE_1.bits();
+
+        const RENDER_MODE_NORMAL       = 0;
+        const RENDER_MODE_HQ           = Self::RENDER_MODE_0.bits();
+        const RENDER_MODE_XRAY         = Self::RENDER_MODE_1.bits();
+        const RENDER_MODE_EDL          = Self::RENDER_MODE_0.bits() | Self::RENDER_MODE_1.bits();
+
+        const COLOR_STOP_1             = 1_u64 <<  5;
+        const COLOR_STOP_2             = 1_u64 <<  6;
+        const COLOR_STOP_3             = 1_u64 <<  7;
+        const COLOR_STOP_4             = 1_u64 <<  8;
+        const COLOR_STOP_5             = 1_u64 <<  9;
+        const COLOR_STOP_6             = 1_u64 <<  10;
+        const COLOR_STOP_7             = 1_u64 <<  11;
+        const COLOR_STOP_8             = 1_u64 <<  12;
+        const UV_TRANSFORM             = 1_u64 <<  13;
+    }
+}
+
+impl SimplePointCloudMaterialKey {
+    pub fn render_mode(&self) -> RenderMode {
+        match *self & SimplePointCloudMaterialKey::RENDER_MODE_MASK {
+            SimplePointCloudMaterialKey::RENDER_MODE_NORMAL => RenderMode::Normal,
+            SimplePointCloudMaterialKey::RENDER_MODE_HQ => RenderMode::HighQuality,
+            SimplePointCloudMaterialKey::RENDER_MODE_XRAY => RenderMode::XRay,
+            SimplePointCloudMaterialKey::RENDER_MODE_EDL => RenderMode::EyeDome,
+            _ => unreachable!("Invalid render mode bits state encountered in pipeline key."),
+        }
     }
 }
 
@@ -540,6 +589,23 @@ bitflags! {
 impl From<&SimplePointCloudMaterial> for SimplePointCloudMaterialKey {
     fn from(material: &SimplePointCloudMaterial) -> Self {
         let mut key = SimplePointCloudMaterialKey::empty();
+
+        key.set(
+            SimplePointCloudMaterialKey::RENDER_MODE_NORMAL,
+            material.render_mode == RenderMode::Normal,
+        );
+        key.set(
+            SimplePointCloudMaterialKey::RENDER_MODE_HQ,
+            material.render_mode == RenderMode::HighQuality,
+        );
+        key.set(
+            SimplePointCloudMaterialKey::RENDER_MODE_EDL,
+            material.render_mode == RenderMode::EyeDome,
+        );
+        key.set(
+            SimplePointCloudMaterialKey::RENDER_MODE_XRAY,
+            material.render_mode == RenderMode::XRay,
+        );
 
         key.set(
             SimplePointCloudMaterialKey::CULL_FRONT,

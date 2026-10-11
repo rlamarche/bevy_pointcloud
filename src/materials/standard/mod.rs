@@ -213,7 +213,7 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
         _splat_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         _instance_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
         key: PointCloudMaterialPipelineKey<Self>,
-    ) -> bevy::ecs::error::Result<(), bevy::material::specialize::SpecializedMeshPipelineError>
+    ) -> bevy::ecs::error::Result<bool, bevy::material::specialize::SpecializedMeshPipelineError>
     {
         if let Some(fragment) = descriptor.fragment.as_mut() {
             let shader_defs = &mut fragment.shader_defs;
@@ -334,7 +334,7 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
             depth_stencil.bias.constant =
                 (key.bind_group_data.bits() >> STANDARD_MATERIAL_KEY_DEPTH_BIAS_SHIFT) as i32;
         }
-        Ok(())
+        Ok(true)
     }
 }
 

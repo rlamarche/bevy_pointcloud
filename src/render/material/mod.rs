@@ -228,6 +228,7 @@ pub trait PointCloudMaterial: Asset + AsBindGroup + Clone + Sized {
 
     /// Customizes the default [`RenderPipelineDescriptor`] for a specific entity using the entity's
     /// [`MaterialPipelineKey`] and [`MeshVertexBufferLayoutRef`] as input.
+    /// Return `false` to skip this pass.
     #[expect(
         unused_variables,
         reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
@@ -239,8 +240,8 @@ pub trait PointCloudMaterial: Asset + AsBindGroup + Clone + Sized {
         splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
         key: PointCloudMaterialPipelineKey<Self>,
-    ) -> Result<(), SpecializedMeshPipelineError> {
-        Ok(())
+    ) -> Result<bool, SpecializedMeshPipelineError> {
+        Ok(true)
     }
 }
 

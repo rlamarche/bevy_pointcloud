@@ -33,7 +33,7 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
         key: Self::Key,
         splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
-    ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
+    ) -> Result<Option<RenderPipelineDescriptor>, SpecializedMeshPipelineError> {
         info!(
             "Specialize pointcloud pipeline for pass {:?}",
             key.maybe_pass
@@ -41,7 +41,7 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
 
         let concrete_mesh_key: MeshPipelineKey = key.mesh_key.downcast();
         let concrete_splat_key: SplatPipelineKey = key.splat_key.downcast();
-        let mut descriptor = self.pipeline.pointcloud_pipeline.specialize(
+        let Some(mut descriptor) = self.pipeline.pointcloud_pipeline.specialize(
             (
                 concrete_mesh_key,
                 concrete_splat_key,
@@ -50,7 +50,10 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
             ),
             splat_layout,
             instance_layout,
-        )?;
+        )?
+        else {
+            return Ok(None);
+        };
 
         let mut shader_defs: Vec<ShaderDefVal> = Vec::new();
 
@@ -136,14 +139,16 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
             .layout
             .push(self.properties.material_layout.as_ref().unwrap().clone());
 
-        if let Some(specialize) = self.properties.user_specialize {
-            specialize(
+        if let Some(specialize) = self.properties.user_specialize
+            && !specialize(
                 &self.pipeline as &dyn Any,
                 &mut descriptor,
                 splat_layout,
                 instance_layout,
                 key,
-            )?;
+            )?
+        {
+            return Ok(None);
         }
 
         // If bindless mode is on, add a `BINDLESS` define.
@@ -159,7 +164,7 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
             fragment.shader_defs.extend(shader_defs);
         }
 
-        Ok(descriptor)
+        Ok(Some(descriptor))
     }
 }
 
@@ -169,14 +174,15 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
 /// - Downcast the erased key to the concrete key type
 /// - Call `SpecializedMeshPipelines::specialize` with the specializer and return the resulting
 ///   pipeline id
-pub type BaseSpecializeFn = fn(
-    &mut World,
-    ErasedPointCloudMaterialPipelineKey,
-    &MeshVertexBufferLayoutRef,
-    &MeshVertexBufferLayoutRef,
-    &Arc<PointCloudMaterialProperties>,
-    Option<&Arc<PassProperties>>,
-) -> Result<CachedRenderPipelineId, SpecializedMeshPipelineError>;
+pub type BaseSpecializeFn =
+    fn(
+        &mut World,
+        ErasedPointCloudMaterialPipelineKey,
+        &MeshVertexBufferLayoutRef,
+        &MeshVertexBufferLayoutRef,
+        &Arc<PointCloudMaterialProperties>,
+        Option<&Arc<PassProperties>>,
+    ) -> Result<Option<CachedRenderPipelineId>, SpecializedMeshPipelineError>;
 
 /// A type erased function pointer for specializing a material prepass pipeline. The implementation
 /// is expected to:
@@ -184,13 +190,14 @@ pub type BaseSpecializeFn = fn(
 /// - Downcast the erased key to the concrete key type
 /// - Call `SpecializedMeshPipelines::specialize` with the specializer and return the resulting
 ///   pipeline id
-pub type PrepassSpecializeFn = fn(
-    &mut World,
-    ErasedPointCloudMaterialPipelineKey,
-    &MeshVertexBufferLayoutRef,
-    &MeshVertexBufferLayoutRef,
-    &Arc<PointCloudMaterialProperties>,
-) -> Result<CachedRenderPipelineId, SpecializedMeshPipelineError>;
+pub type PrepassSpecializeFn =
+    fn(
+        &mut World,
+        ErasedPointCloudMaterialPipelineKey,
+        &MeshVertexBufferLayoutRef,
+        &MeshVertexBufferLayoutRef,
+        &Arc<PointCloudMaterialProperties>,
+    ) -> Result<Option<CachedRenderPipelineId>, SpecializedMeshPipelineError>;
 
 /// A type erased function pointer for specializing a material prepass pipeline. The implementation
 /// is expected to:
@@ -204,4 +211,4 @@ pub type UserSpecializeFn = fn(
     &MeshVertexBufferLayoutRef,
     &MeshVertexBufferLayoutRef,
     ErasedPointCloudMaterialPipelineKey,
-) -> Result<(), SpecializedMeshPipelineError>;
+) -> Result<bool, SpecializedMeshPipelineError>;

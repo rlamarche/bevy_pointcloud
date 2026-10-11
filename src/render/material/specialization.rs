@@ -42,11 +42,10 @@ use bevy::{
 use crate::{
     render::{
         prepass::{PrepassPipeline, PrepassPipelineSpecializer},
-        EntitiesNeedingSpecialization, ErasedMaterialPreparedPasses,
-        ErasedMaterialViewSettingsKeys, ErasedPointCloudMaterialPipelineKey,
-        ErasedSplatPipelineKey, ErasedViewSettingsKey, PassProperties,
-        PendingPointCloudMaterialQueues, PointCloudDirtySpecializations, PointCloudMaterial,
-        PointCloudMaterialPipeline, PointCloudMaterialPipelineKey,
+        EntitiesNeedingSpecialization, ErasedMaterialViewSettingsKeys,
+        ErasedPointCloudMaterialPipelineKey, ErasedSplatPipelineKey, ErasedViewSettingsKey,
+        PassProperties, PendingPointCloudMaterialQueues, PointCloudDirtySpecializations,
+        PointCloudMaterial, PointCloudMaterialPipeline, PointCloudMaterialPipelineKey,
         PointCloudMaterialPipelineSpecializer, PointCloudMaterialProperties, PointCloudPipeline,
         PreparedPointCloudMaterial, RenderPointCloudChunkInstances, RenderPointCloudInstances,
         RenderPointCloudMaterialInstances, SpecializedPointCloudMaterialPipelineCache,
@@ -172,7 +171,6 @@ pub(crate) struct SpecializePointCloudMaterialsSystemParam<'w, 's> {
             &'static ExtractedView,
             &'static RenderVisibleEntities,
             &'static ErasedMaterialViewSettingsKeys,
-            &'static ErasedMaterialPreparedPasses,
         ),
     >,
     view_key_cache: Res<'w, ViewKeyCache>,
@@ -213,7 +211,7 @@ pub(crate) fn specialize_point_cloud_materials(
             dirty_specializations,
         } = state.get_mut(world).unwrap();
 
-        for (view, visible_entities, view_settings_keys, material_prepared_passes) in &views {
+        for (view, visible_entities, view_settings_keys) in &views {
             all_views.insert(view.retained_view_entity);
 
             if !transparent_render_phases.contains_key(&view.retained_view_entity)
@@ -312,16 +310,6 @@ pub(crate) fn specialize_point_cloud_materials(
                         .insert((*render_entity, *visible_entity));
                     continue;
                 };
-
-                // if there is any prepared pass, this is a multi pass material, and we have nothing
-                // to do except removing previous specialized materials.
-                let maybe_prepared_passes =
-                    material_prepared_passes.get(&material_instance.asset_id.type_id());
-                if maybe_prepared_passes.is_some() {
-                    // If the material was previously specialized, remove it
-                    removals.push((view.retained_view_entity, *render_entity));
-                    continue;
-                }
 
                 // get the mesh instance from the root entity
                 let Some(mesh_instance) = render_mesh_instances
@@ -464,13 +452,15 @@ pub(crate) fn specialize_point_cloud_materials(
             &item.properties,
             None,
         ) {
-            Ok(pipeline_id) => {
+            Ok(Some(pipeline_id)) => {
                 world
                     .resource_mut::<SpecializedPointCloudMaterialPipelineCache>()
                     .entry(item.retained_view_entity)
                     .or_default()
                     .insert(item.render_entity, pipeline_id);
             }
+            // skip this pass
+            Ok(None) => {}
             Err(err) => error!("{}", err),
         }
     }
@@ -496,7 +486,7 @@ pub fn base_specialize(
     instance_layout: &MeshVertexBufferLayoutRef,
     properties: &Arc<PointCloudMaterialProperties>,
     maybe_pass_properties: Option<&Arc<PassProperties>>,
-) -> Result<CachedRenderPipelineId, SpecializedMeshPipelineError> {
+) -> Result<Option<CachedRenderPipelineId>, SpecializedMeshPipelineError> {
     world.resource_scope(
         |world,
          mut pipelines: Mut<
@@ -530,7 +520,7 @@ pub fn prepass_specialize(
     splat_layout: &MeshVertexBufferLayoutRef,
     instance_layout: &MeshVertexBufferLayoutRef,
     properties: &Arc<PointCloudMaterialProperties>,
-) -> Result<CachedRenderPipelineId, SpecializedMeshPipelineError> {
+) -> Result<Option<CachedRenderPipelineId>, SpecializedMeshPipelineError> {
     world.resource_scope(
         |world, mut pipelines: Mut<SpecializedPointCloudPipelines<PrepassPipelineSpecializer>>| {
             let prepass_pipeline = world.resource::<PrepassPipeline>().clone();
@@ -558,7 +548,7 @@ pub fn user_specialize<M: PointCloudMaterial>(
     splat_layout: &MeshVertexBufferLayoutRef,
     instance_layout: &MeshVertexBufferLayoutRef,
     erased_key: ErasedPointCloudMaterialPipelineKey,
-) -> Result<(), SpecializedMeshPipelineError>
+) -> Result<bool, SpecializedMeshPipelineError>
 where
     M::Data: Hash + Clone,
 {

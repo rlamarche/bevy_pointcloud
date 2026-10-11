@@ -30,12 +30,13 @@ pub trait SpecializedPointCloudPipeline {
     ///
     /// The returned pipeline descriptor should have a single vertex buffer, which is derived from
     /// `layout`.
+    /// If `None` is returned, the pass will be skipped.
     fn specialize(
         &self,
         key: Self::Key,
         splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
-    ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError>;
+    ) -> Result<Option<RenderPipelineDescriptor>, SpecializedMeshPipelineError>;
 }
 
 /// A cache of different variants of a render pipeline based on a key and the particular mesh's
@@ -44,7 +45,7 @@ pub trait SpecializedPointCloudPipeline {
 pub struct SpecializedPointCloudPipelines<S: SpecializedPointCloudPipeline> {
     mesh_layout_cache: HashMap<
         (MeshVertexBufferLayoutRef, MeshVertexBufferLayoutRef, S::Key),
-        CachedRenderPipelineId,
+        Option<CachedRenderPipelineId>,
     >,
     vertex_layout_cache: VertexLayoutCache<S>,
 }
@@ -52,7 +53,7 @@ pub struct SpecializedPointCloudPipelines<S: SpecializedPointCloudPipeline> {
 type VertexLayoutCache<S> = HashMap<
     // the vertex buffer layout of the shape & the mesh
     (VertexBufferLayout, VertexBufferLayout),
-    HashMap<<S as SpecializedPointCloudPipeline>::Key, CachedRenderPipelineId>,
+    HashMap<<S as SpecializedPointCloudPipeline>::Key, Option<CachedRenderPipelineId>>,
 >;
 
 impl<S: SpecializedPointCloudPipeline> Default for SpecializedPointCloudPipelines<S> {
@@ -75,7 +76,7 @@ impl<S: SpecializedPointCloudPipeline> SpecializedPointCloudPipelines<S> {
         key: S::Key,
         splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
-    ) -> Result<CachedRenderPipelineId, SpecializedMeshPipelineError> {
+    ) -> Result<Option<CachedRenderPipelineId>, SpecializedMeshPipelineError> {
         return match self.mesh_layout_cache.entry((
             splat_layout.clone(),
             instance_layout.clone(),
@@ -103,14 +104,14 @@ impl<S: SpecializedPointCloudPipeline> SpecializedPointCloudPipelines<S> {
             instance_layout: &MeshVertexBufferLayoutRef,
             entry: VacantEntry<
                 (MeshVertexBufferLayoutRef, MeshVertexBufferLayoutRef, S::Key),
-                CachedRenderPipelineId,
+                Option<CachedRenderPipelineId>,
                 FixedHasher,
             >,
-        ) -> Result<CachedRenderPipelineId, SpecializedMeshPipelineError>
+        ) -> Result<Option<CachedRenderPipelineId>, SpecializedMeshPipelineError>
         where
             S: SpecializedPointCloudPipeline,
         {
-            let descriptor = specialize_pipeline
+            let maybe_descriptor = specialize_pipeline
                 .specialize(key.clone(), splat_layout, instance_layout)
                 .map_err(|mut err| {
                     {
@@ -119,46 +120,63 @@ impl<S: SpecializedPointCloudPipeline> SpecializedPointCloudPipelines<S> {
                     }
                     err
                 })?;
+
             // Different MeshVertexBufferLayouts can produce the same final VertexBufferLayout
             // We want compatible vertex buffer layouts to use the same pipelines, so we must
             // "deduplicate" them
             // There is 2 vertex buffers because one for the shape, the other for the mesh
-            let layout_map = match vertex_layout_cache.raw_entry_mut().from_key(&(
-                descriptor.vertex.buffers[0].clone(),
-                descriptor.vertex.buffers[1].clone(),
-            )) {
+
+            let layout_key = maybe_descriptor
+                .as_ref()
+                .map(|descriptor| {
+                    (
+                        descriptor.vertex.buffers[0].clone(),
+                        descriptor.vertex.buffers[1].clone(),
+                    )
+                })
+                .unwrap_or_default();
+
+            let layout_map = match vertex_layout_cache.raw_entry_mut().from_key(&layout_key) {
                 RawEntryMut::Occupied(entry) => entry.into_mut(),
-                RawEntryMut::Vacant(entry) => {
-                    entry
-                        .insert(
-                            (
-                                descriptor.vertex.buffers[0].clone(),
-                                descriptor.vertex.buffers[1].clone(),
-                            ),
-                            Default::default(),
-                        )
-                        .1
-                }
+                RawEntryMut::Vacant(entry) => entry.insert(layout_key, Default::default()).1,
             };
             Ok(*entry.insert(match layout_map.entry(key) {
                 Entry::Occupied(entry) => {
                     if cfg!(debug_assertions) {
-                        let stored_descriptor = cache.get_render_pipeline_descriptor(*entry.get());
-                        if stored_descriptor != &descriptor {
-                            error!(
-                                "The cached pipeline descriptor for {} is not \
+                        if let Some(descriptor) = &maybe_descriptor
+                            && let Some(key) = entry.get()
+                        {
+                            let stored_descriptor = cache.get_render_pipeline_descriptor(*key);
+                            if stored_descriptor != descriptor {
+                                error!(
+                                    "The cached pipeline descriptor for {} is not \
                                     equal to the generated descriptor for the given key. \
                                     This means the SpecializePipeline implementation uses \
                                     unused' MeshVertexBufferLayout information to specialize \
                                     the pipeline. This is not allowed because it would invalidate \
                                     the pipeline cache.",
-                                core::any::type_name::<S>()
-                            );
+                                    core::any::type_name::<S>()
+                                );
+                            }
+                        } else {
+                            if !entry.get().is_none() {
+                                error!(
+                                    "The cached pipeline descriptor for {} is not \
+                                    equal to the generated descriptor for the given key. \
+                                    This means the SpecializePipeline implementation uses \
+                                    unused' MeshVertexBufferLayout information to specialize \
+                                    the pipeline. This is not allowed because it would invalidate \
+                                    the pipeline cache.",
+                                    core::any::type_name::<S>()
+                                );
+                            }
                         }
                     }
                     *entry.into_mut()
                 }
-                Entry::Vacant(entry) => *entry.insert(cache.queue_render_pipeline(descriptor)),
+                Entry::Vacant(entry) => *entry.insert(
+                    maybe_descriptor.map(|descriptor| cache.queue_render_pipeline(descriptor)),
+                ),
             }))
         }
     }
