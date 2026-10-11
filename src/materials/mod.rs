@@ -15,7 +15,36 @@ pub use standard::*;
 
 use crate::ViewSettings;
 
-#[derive(Clone, Debug, Copy, Default)]
+bitflags! {
+    #[repr(C)]
+    #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
+    pub struct RenderModes: u32 {
+        const NORMAL        = 1_u32 <<  0;
+        const HQ            = 1_u32 <<  1;
+        const XRAY          = 1_u32 <<  2;
+        const EDL           = 1_u32 <<  3;
+    }
+}
+
+impl Default for RenderModes {
+    fn default() -> Self {
+        RenderModes::NORMAL
+    }
+}
+
+impl From<RenderMode> for RenderModes {
+    fn from(value: RenderMode) -> Self {
+        match value {
+            RenderMode::Normal => RenderModes::NORMAL,
+            RenderMode::HighQuality => RenderModes::HQ,
+            RenderMode::XRay => RenderModes::XRAY,
+            RenderMode::EyeDome => RenderModes::EDL,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, Default, PartialEq, Reflect, Serialize, Deserialize)]
+#[reflect(Default, PartialEq, Debug, Serialize, Deserialize)]
 pub enum RenderMode {
     #[default]
     Normal,
@@ -27,7 +56,7 @@ pub enum RenderMode {
 #[derive(Component, Clone, Default, ExtractComponent)]
 #[extract_component_filter(Changed<PointCloudViewSettings>)]
 pub struct PointCloudViewSettings {
-    pub render_mode: RenderMode,
+    pub render_modes: RenderModes,
     /// Max 8 clipping planes
     pub clipping_planes: Vec<Vec4>,
     /// Max 8 clipping spheres
@@ -45,29 +74,34 @@ bitflags! {
     #[repr(C)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash)]
     pub struct PointCloudViewSettingsKey: u64 {
-        const RENDER_MODE_0            = 1_u64 <<  0;
-        const RENDER_MODE_1            = 1_u64 <<  1;
-        const CLIPPING_PLANES          = 1_u64 <<  2;
-        const CLIPPING_SPHERES         = 1_u64 <<  3;
+        const RENDER_MODE_NORMAL       = 1_u64 <<  0;
+        const RENDER_MODE_HQ           = 1_u64 <<  1;
+        const RENDER_MODE_XRAY         = 1_u64 <<  2;
+        const RENDER_MODE_EDL          = 1_u64 <<  3;
 
-        const RENDER_MODE_MASK          = Self::RENDER_MODE_0.bits() | Self::RENDER_MODE_1.bits();
+        const CLIPPING_PLANES          = 1_u64 <<  4;
+        const CLIPPING_SPHERES         = 1_u64 <<  5;
 
-        const RENDER_MODE_NORMAL       = 0;
-        const RENDER_MODE_HQ           = Self::RENDER_MODE_0.bits();
-        const RENDER_MODE_XRAY         = Self::RENDER_MODE_1.bits();
-        const RENDER_MODE_EDL          = Self::RENDER_MODE_0.bits() | Self::RENDER_MODE_1.bits();
+        const RENDER_MODES_MASK          = Self::RENDER_MODE_NORMAL.bits() | Self::RENDER_MODE_HQ.bits() | Self::RENDER_MODE_XRAY.bits() | Self::RENDER_MODE_EDL.bits();
     }
 }
 
 impl PointCloudViewSettingsKey {
-    pub fn render_mode(&self) -> RenderMode {
-        match *self & PointCloudViewSettingsKey::RENDER_MODE_MASK {
-            PointCloudViewSettingsKey::RENDER_MODE_NORMAL => RenderMode::Normal,
-            PointCloudViewSettingsKey::RENDER_MODE_HQ => RenderMode::HighQuality,
-            PointCloudViewSettingsKey::RENDER_MODE_XRAY => RenderMode::XRay,
-            PointCloudViewSettingsKey::RENDER_MODE_EDL => RenderMode::EyeDome,
-            _ => unreachable!("Invalid render mode bits state encountered in pipeline key."),
+    pub fn render_modes(&self) -> RenderModes {
+        let mut render_modes = RenderModes::empty();
+        if self.contains(PointCloudViewSettingsKey::RENDER_MODE_NORMAL) {
+            render_modes.insert(RenderModes::NORMAL);
         }
+        if self.contains(PointCloudViewSettingsKey::RENDER_MODE_HQ) {
+            render_modes.insert(RenderModes::HQ);
+        }
+        if self.contains(PointCloudViewSettingsKey::RENDER_MODE_XRAY) {
+            render_modes.insert(RenderModes::XRAY);
+        }
+        if self.contains(PointCloudViewSettingsKey::RENDER_MODE_EDL) {
+            render_modes.insert(RenderModes::EDL);
+        }
+        render_modes
     }
 }
 
@@ -86,7 +120,18 @@ impl From<&PointCloudViewSettings> for PointCloudViewSettingsKey {
     fn from(settings: &PointCloudViewSettings) -> Self {
         let mut key = PointCloudViewSettingsKey::empty();
 
-        key.insert((&settings.render_mode).into());
+        if settings.render_modes.contains(RenderModes::NORMAL) {
+            key.insert(PointCloudViewSettingsKey::RENDER_MODE_NORMAL);
+        }
+        if settings.render_modes.contains(RenderModes::HQ) {
+            key.insert(PointCloudViewSettingsKey::RENDER_MODE_HQ);
+        }
+        if settings.render_modes.contains(RenderModes::EDL) {
+            key.insert(PointCloudViewSettingsKey::RENDER_MODE_EDL);
+        }
+        if settings.render_modes.contains(RenderModes::XRAY) {
+            key.insert(PointCloudViewSettingsKey::RENDER_MODE_XRAY);
+        }
         key.set(
             PointCloudViewSettingsKey::CLIPPING_PLANES,
             !settings.clipping_planes.is_empty(),

@@ -765,6 +765,7 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
     mut removals: Local<Vec<(RetainedViewEntity, Entity)>>,
     mut all_views: Local<HashSet<RetainedViewEntity, FixedHasher>>,
 ) {
+    let material_type_id = TypeId::of::<M>();
     work_items.clear();
     removals.clear();
     all_views.clear();
@@ -897,6 +898,11 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
                         .insert((*render_entity, *visible_entity));
                     continue;
                 };
+
+                // check if the material match
+                if !material_instance.asset_id.type_id().eq(&material_type_id) {
+                    continue;
+                }
 
                 // get the mesh instance from the root entity
                 let Some(mesh_instance) = render_mesh_instances
@@ -1045,13 +1051,15 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
             &item.properties,
             Some(&item.pass_properties),
         ) {
-            Ok(pipeline_id) => {
+            Ok(Some(pipeline_id)) => {
                 world
                     .resource_mut::<SpecializedMultipassMaterialPipelineCache>()
                     .entry((item.retained_view_entity, PASS))
                     .or_default()
                     .insert(item.render_entity, pipeline_id);
             }
+            // skip this pass
+            Ok(None) => {}
             Err(err) => error!("{}", err),
         }
     }

@@ -679,7 +679,6 @@ pub fn prepare_view_point_cloud_bind_groups<M: PointCloudMaterial>(
     point_cloud_pipeline: Res<PointCloudPipeline>,
     render_device: Res<RenderDevice>,
     views: Query<(
-        &ErasedMaterialPreparedPasses,
         &VisibleNodesTexture,
         &PreparedViewSettingsUniform<M>,
         &mut ViewPointCloudBindGroups,
@@ -698,18 +697,9 @@ pub fn prepare_view_point_cloud_bind_groups<M: PointCloudMaterial>(
 
     let layout = &pipeline_cache.get_bind_group_layout(&layout);
 
-    for (
-        material_prepared_passes,
-        visible_nodes_texture,
-        prepared_view_settings_uniform,
-        mut view_point_cloud_bind_groups,
-    ) in views
+    for (visible_nodes_texture, prepared_view_settings_uniform, mut view_point_cloud_bind_groups) in
+        views
     {
-        // if there is prepared passes, we do not have to create the bind groups
-        if material_prepared_passes.get(&material_type_id).is_some() {
-            continue;
-        };
-
         let bind_groups = view_point_cloud_bind_groups
             .bind_groups
             .entry(material_type_id)

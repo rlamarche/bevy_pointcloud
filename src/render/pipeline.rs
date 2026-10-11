@@ -83,7 +83,7 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
         (key, splat_key, _view_settings_key, _pass): Self::Key,
         splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
-    ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
+    ) -> Result<Option<RenderPipelineDescriptor>, SpecializedMeshPipelineError> {
         let mut shader_defs = Vec::new();
 
         // Let the shader code know that it's running in a mesh pipeline.
@@ -509,7 +509,7 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             ));
         }
 
-        Ok(RenderPipelineDescriptor {
+        Ok(Some(RenderPipelineDescriptor {
             vertex: VertexState {
                 shader: self.shader.clone(),
                 shader_defs: shader_defs.clone(),
@@ -558,6 +558,6 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             },
             label: Some(label),
             ..default()
-        })
+        }))
     }
 }

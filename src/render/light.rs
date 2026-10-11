@@ -405,13 +405,15 @@ pub(crate) fn specialize_shadows(
             &item.instance_layout,
             &item.properties,
         ) {
-            Ok(pipeline_id) => {
+            Ok(Some(pipeline_id)) => {
                 world
                     .resource_mut::<SpecializedShadowMaterialPipelineCache>()
                     .entry(item.retained_view_entity)
                     .or_default()
                     .insert(item.render_entity, (pipeline_id, draw_function));
             }
+            // skip this pass
+            Ok(None) => {}
             Err(err) => error!("{}", err),
         }
     }
