@@ -52,6 +52,7 @@ impl From<ByteSourceError> for CopcError {
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct CopcLoaderSettings {
+    pub load_normals: bool,
     pub filter_classification: FilterClassification,
 }
 
@@ -208,11 +209,14 @@ impl<S: ByteSource> OctreeLoader for CopcLoader<S> {
         let key = node.key;
         let reader = self.reader.read().await;
 
-        let las_header = reader.header().las_header();
+        let header = reader.header().las_header();
 
-        let has_color = las_header.point_format().has_color;
-        // TODO use settings
-        let has_normal = false;
+        let has_color = header.point_format().has_color;
+
+        // assume normals are stored in extra bytes in f32 format
+        // TODO: add an option to load normals from double ?
+        let has_normals = self.settings.load_normals
+            && header.point_format().extra_bytes > 3 * size_of::<f32>() as u16;
 
         // let spacing = reader.copc_info().spacing;
         // let aabb = node.key.bounds(&reader.copc_info().root_bounds());
@@ -264,10 +268,14 @@ impl<S: ByteSource> OctreeLoader for CopcLoader<S> {
             false => None,
         };
 
-        let mut maybe_normals: Option<Vec<[f32; 3]>> = match has_normal {
-            true => Some(Vec::with_capacity(point_count)),
-            false => None,
-        };
+        let mut maybe_normals: Option<Vec<[f32; 3]>> =
+            // assume normals are stored in extra bytes in f32 format
+            // TODO: add an option to load normals from double ?
+            if has_normals {
+                Some(Vec::with_capacity(point_count))
+            } else {
+                None
+            };
 
         // TODO load more attributes
         for point in points {
@@ -296,8 +304,13 @@ impl<S: ByteSource> OctreeLoader for CopcLoader<S> {
                 }
             }
             if let Some(normals) = maybe_normals.as_mut() {
-                // always z up normal (testing)
-                normals.push([0.0, 0.0, 1.0]);
+                if point.extra_bytes.len() > size_of::<f32>() * 3 {
+                    normals.push(*bytemuck::from_bytes(
+                        &point.extra_bytes[0..size_of::<f32>() * 3],
+                    ));
+                } else {
+                    normals.push([0.0, 0.0, 0.0]);
+                }
             }
         }
 
