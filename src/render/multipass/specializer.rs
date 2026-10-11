@@ -1,7 +1,7 @@
 use bevy::{
     asset::Handle,
     core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT,
-    ecs::{error::BevyError, resource::Resource},
+    ecs::resource::Resource,
     material::{
         descriptor::{CachedRenderPipelineId, FragmentState, RenderPipelineDescriptor},
         specialize::SpecializedMeshPipelineError,
@@ -16,15 +16,14 @@ use bevy::{
     },
     render::render_resource::{
         binding_types::{texture_2d, texture_2d_multisampled},
-        Canonical, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
-        DepthStencilState, MultisampleState, PipelineCache, RenderPipeline, Specializer,
-        SpecializerKey, StencilFaceState, StencilState,
+        ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState,
+        MultisampleState, PipelineCache, SpecializerKey, StencilFaceState, StencilState,
     },
     shader::{Shader, ShaderDefVal},
     utils::default,
 };
 
-use std::{hash::Hash, sync::Arc};
+use std::{any::Any, hash::Hash, sync::Arc};
 
 use crate::render::{
     multipass::FullscreenMaterialPassPipeline, ErasedViewSettingsKey, PassProperties,
@@ -119,31 +118,6 @@ pub struct FullscreenMaterialPipelineSpecializer {
     pub pass: Arc<PassProperties>,
 }
 
-impl Specializer<RenderPipeline> for FullscreenMaterialPipelineSpecializer {
-    type Key = FullscreenPassMaterialPipelineKey;
-
-    fn specialize(
-        &self,
-        key: Self::Key,
-        descriptor: &mut RenderPipelineDescriptor,
-    ) -> Result<Canonical<Self::Key>, BevyError> {
-        let target_format = match &self.pass.output {
-            crate::render::PassOutput::TransientTarget(transient_target) => transient_target.format,
-            crate::render::PassOutput::MainColorTarget => key.view_key.target_format(),
-        };
-
-        let fragment = descriptor.fragment_mut()?;
-        let color_target_state = ColorTargetState {
-            format: target_format,
-            blend: self.pass.blend,
-            write_mask: ColorWrites::ALL,
-        };
-        fragment.set_target(0, color_target_state);
-
-        Ok(key)
-    }
-}
-
 impl SpecializedFullscreenPointCloudPipeline for FullscreenMaterialPassPipeline {
     type Key = FullscreenPassMaterialPipelineKey;
 
@@ -154,15 +128,27 @@ impl SpecializedFullscreenPointCloudPipeline for FullscreenMaterialPassPipeline 
         let mut vertex_state = self.vertex_state.clone();
         vertex_state
             .shader_defs
-            .push(ShaderDefVal::UInt("POINTCLOUD_BIND_GROUP".into(), 0));
+            .push(ShaderDefVal::UInt("POINTCLOUD_BIND_GROUP".into(), 2));
 
         if key.view_key.msaa_samples() > 1 {
             vertex_state.shader_defs.push("MULTISAMPLED".into());
         };
 
+        // self.mesh_pipeline
+        //     .view_layouts
+        //     .get_view_layout(MeshPipelineViewLayoutKey::empty())
+        //     .main_layout,
+
+        let bind_group_layout = self.mesh_pipeline.get_view_layout(key.view_key.into());
+        let bind_group_layout = vec![
+            bind_group_layout.main_layout.clone(),
+            bind_group_layout.binding_array_layout.clone(),
+            self.fullscreen_layout.clone(),
+        ];
+
         let desc = RenderPipelineDescriptor {
             label: Some("fullscreen_material_pass_pipeline".into()),
-            layout: vec![self.point_cloud_layout.clone()],
+            layout: bind_group_layout,
             vertex: vertex_state,
             depth_stencil: Some(DepthStencilState {
                 format: CORE_3D_DEPTH_FORMAT,
@@ -204,6 +190,10 @@ impl SpecializedFullscreenPointCloudPipeline for FullscreenMaterialPipelineSpeci
         let mut descriptor = self.fullscreen_pipeline.specialize(key.clone())?;
 
         if let Some(pointcloud_layout) = descriptor.layout.last_mut() {
+            if let Some(view_settings_layout_entry) = &self.pass.view_settings_layout_entry {
+                pointcloud_layout.entries.push(*view_settings_layout_entry);
+            }
+
             for input in &self.pass.inputs {
                 let entry = if key.view_key.msaa_samples() > 1 {
                     texture_2d_multisampled(input.texture_sample_type)
@@ -244,6 +234,15 @@ impl SpecializedFullscreenPointCloudPipeline for FullscreenMaterialPipelineSpeci
 
         if let Some(depth_stencil) = descriptor.depth_stencil.as_mut() {
             depth_stencil.depth_write_enabled = self.pass.depth_write_enabled;
+        }
+
+        if let Some(fullscreen_specialize) = self.pass.fullscreen_specialize {
+            fullscreen_specialize(
+                &self.fullscreen_pipeline as &dyn Any,
+                &mut descriptor,
+                key.pass,
+                &key.settings_key,
+            )?;
         }
 
         Ok(descriptor)

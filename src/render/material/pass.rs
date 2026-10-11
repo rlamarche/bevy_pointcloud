@@ -1,10 +1,25 @@
+use std::{any::Any, hash::Hash};
+
 use bevy::{
     asset::Handle,
-    material::labels::{InternedShaderLabel, ShaderLabel},
-    render::render_resource::{BlendState, ShaderStages, TextureFormat, TextureSampleType},
+    material::{
+        descriptor::RenderPipelineDescriptor,
+        labels::{InternedShaderLabel, ShaderLabel},
+        specialize::SpecializedMeshPipelineError,
+    },
+    render::render_resource::{
+        BindGroupLayoutEntry, BlendState, ShaderStages, TextureFormat, TextureSampleType,
+    },
     shader::{Shader, ShaderRef},
 };
 use smallvec::SmallVec;
+
+use crate::{
+    render::{
+        multipass::FullscreenMaterialPassPipeline, ErasedViewSettingsKey, PointCloudMaterial,
+    },
+    ViewSettings,
+};
 
 #[derive(Clone, Debug, Copy)]
 pub enum PassKind {
@@ -70,6 +85,31 @@ pub struct FullscreenPassParams {
     pub depth_write_enabled: Option<bool>,
 }
 
+pub type FullscreenUserSpecializeFn = fn(
+    &dyn Any,
+    &mut RenderPipelineDescriptor,
+    pass: usize,
+    &ErasedViewSettingsKey,
+) -> Result<(), SpecializedMeshPipelineError>;
+
+pub fn fullscreen_user_specialize<M: PointCloudMaterial>(
+    pipeline: &dyn Any,
+    descriptor: &mut RenderPipelineDescriptor,
+    pass: usize,
+    settings_key: &ErasedViewSettingsKey,
+) -> Result<(), SpecializedMeshPipelineError>
+where
+    <M::ViewSettings as ViewSettings>::Key: Hash + Clone,
+{
+    let pipeline = pipeline
+        .downcast_ref::<FullscreenMaterialPassPipeline>()
+        .unwrap();
+    let pass_id = M::PassId::from(pass);
+    let view_settings_key = settings_key.to_key();
+
+    M::fullscreen_specialize(pipeline, descriptor, pass_id, view_settings_key)
+}
+
 pub struct PassProperties {
     pub label: &'static str,
     pub kind: PassKind,
@@ -82,6 +122,8 @@ pub struct PassProperties {
     pub output: PassOutput,
     pub blend: Option<BlendState>,
     pub depth_write_enabled: Option<bool>,
+    pub fullscreen_specialize: Option<FullscreenUserSpecializeFn>,
+    pub view_settings_layout_entry: Option<BindGroupLayoutEntry>,
 }
 
 impl PassProperties {

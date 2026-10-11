@@ -52,7 +52,7 @@ use smallvec::SmallVec;
 
 use crate::{
     render::{
-        base_specialize,
+        base_specialize, fullscreen_user_specialize,
         material::{clone_shader_ref, prepass_specialize, user_specialize},
         material_uses_bindless_resources,
         multipass::ViewMultipassTextures,
@@ -522,6 +522,8 @@ pub fn prepare_material_view_settings_key_and_passes<M: PointCloudMaterial>(
                                         output: prepared_pass.output.clone(),
                                         blend: prepared_pass.blend,
                                         depth_write_enabled: prepared_pass.depth_write_enabled,
+                                        fullscreen_specialize: None,
+                                        view_settings_layout_entry: None,
                                     }),
                                 );
                             };
@@ -552,6 +554,12 @@ pub fn prepare_material_view_settings_key_and_passes<M: PointCloudMaterial>(
                                     clone_shader_ref(&prepared_pass.fragment_shader),
                                 );
 
+                                let view_settings_layout_entry =
+                                    uniform_buffer::<<M::ViewSettings as ViewSettings>::Data>(
+                                        false,
+                                    )
+                                    .build(3, ShaderStages::VERTEX_FRAGMENT);
+
                                 prepared_passes.insert(
                                     pass.id.into(),
                                     Arc::new(PassProperties {
@@ -562,6 +570,12 @@ pub fn prepare_material_view_settings_key_and_passes<M: PointCloudMaterial>(
                                         output: prepared_pass.output.clone(),
                                         blend: prepared_pass.blend,
                                         depth_write_enabled: prepared_pass.depth_write_enabled,
+                                        fullscreen_specialize: Some(
+                                            fullscreen_user_specialize::<M>,
+                                        ),
+                                        view_settings_layout_entry: Some(
+                                            view_settings_layout_entry,
+                                        ),
                                     }),
                                 );
                             };
