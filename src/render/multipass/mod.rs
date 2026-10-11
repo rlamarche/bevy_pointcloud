@@ -35,9 +35,10 @@ use bevy::{
     pbr::{
         alpha_mode_pipeline_key, skins_use_uniform_buffers, tonemapping_pipeline_key,
         ContactShadows, DistanceFog, ExtractedAtmosphere, MeshLayouts, MeshPipeline,
-        MeshPipelineKey, RenderMeshInstanceFlags, RenderMeshInstances, RenderViewLightProbes,
-        ScreenSpaceAmbientOcclusion, ScreenSpaceReflectionsUniform, ScreenSpaceTransmission,
-        SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup, ShadowView,
+        MeshPipelineKey, MeshViewBindGroup, RenderMeshInstanceFlags, RenderMeshInstances,
+        RenderViewLightProbes, ScreenSpaceAmbientOcclusion, ScreenSpaceReflectionsUniform,
+        ScreenSpaceTransmission, SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup,
+        ShadowView,
     },
     prelude::{Deref, DerefMut},
     render::{
@@ -1327,6 +1328,7 @@ pub fn main_opaque_multipass_3d<M: PointCloudMaterial, const PASS: usize>(
         &ViewDepthTexture,
         &ErasedMaterialPreparedPasses,
         &ViewMultipassTextures<M>,
+        &MeshViewBindGroup,
         Option<&FullscreenMaterialBindGroup<M, PASS>>,
         Option<&FullscreenMaterialPipelineId<M, PASS>>,
         Option<&MainPassResolutionOverride>,
@@ -1344,6 +1346,7 @@ pub fn main_opaque_multipass_3d<M: PointCloudMaterial, const PASS: usize>(
         depth,
         material_prepared_passes,
         multipass_textures,
+        mesh_view_bind_group,
         fullscreen_bind_group,
         fullscreen_pipeline_id,
         resolution_override,
@@ -1445,7 +1448,13 @@ pub fn main_opaque_multipass_3d<M: PointCloudMaterial, const PASS: usize>(
             {
                 let mut render_pass = ctx.command_encoder().begin_render_pass(&pass_descriptor);
                 render_pass.set_pipeline(pipeline);
-                render_pass.set_bind_group(0, bind_group, &[]);
+                render_pass.set_bind_group(
+                    0,
+                    &mesh_view_bind_group.main,
+                    &mesh_view_bind_group.main_offsets,
+                );
+                render_pass.set_bind_group(1, &mesh_view_bind_group.binding_array, &[]);
+                render_pass.set_bind_group(2, bind_group, &[]);
                 render_pass.draw(0..3, 0..1);
             }
         }

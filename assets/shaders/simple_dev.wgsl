@@ -44,7 +44,7 @@ struct PointCloudViewSettings {
 struct FragmentOutput {
 #ifdef POINTCLOUD_PASS_DEPTH
     @builtin(frag_depth) depth: f32,
-    #ifdef USE_EDL
+    #ifdef RENDER_MODE_EDL
         @location(0) depth_texture: vec2<f32>,
     #else // USE EDL
         @location(0) depth_texture: f32,
@@ -85,12 +85,13 @@ fn fragment(
     #endif // POINTCLOUD_VIEW_SETTINGS
 
     #ifdef POINTCLOUD_PASS_DEPTH
-        #ifdef USE_EDL
+        #ifdef RENDER_MODE_EDL
             out.depth_texture.r = in.position.z;
-            out.depth_texture.g = in.log_depth;
-        #else // USE_EDL
+            // TODO compute this in vertex shader ?
+            out.depth_texture.g = log2(-in.position.z + 1.0);
+        #else // RENDER_MODE_EDL
             out.depth_texture = in.position.z;
-        #endif // USE_EDL
+        #endif // RENDER_MODE_EDL
 
 //         #ifdef PARABOLOID_POINT_SHAPE
 //             let radius = in.radius;

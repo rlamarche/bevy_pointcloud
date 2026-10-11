@@ -12,8 +12,9 @@ use bevy::{
     },
     render::{
         render_resource::{
-            binding_types::{texture_2d, texture_2d_multisampled},
+            binding_types::{texture_2d, texture_2d_multisampled, uniform_buffer},
             BindGroup, BindGroupEntry, CachedRenderPipelineId, IntoBinding, PipelineCache,
+            ShaderStages,
         },
         renderer::RenderDevice,
         view::Msaa,
@@ -21,12 +22,16 @@ use bevy::{
     },
 };
 
-use crate::render::{
-    multipass::{
-        prepare_fullscreen_material_pipelines, prepare_multipass_textures,
-        FullscreenMaterialPassPipeline, ViewMultipassTextures,
+use crate::{
+    render::{
+        multipass::{
+            prepare_fullscreen_material_pipelines, prepare_multipass_textures,
+            FullscreenMaterialPassPipeline, ViewMultipassTextures,
+        },
+        ErasedMaterialPreparedPasses, PointCloudMaterial, PreparedViewSettingsUniform,
+        VisibleNodesTexture,
     },
-    ErasedMaterialPreparedPasses, PointCloudMaterial, VisibleNodesTexture,
+    ViewSettings,
 };
 
 pub struct FullscreenPassPlugin<M, const PASS: usize> {
@@ -89,6 +94,7 @@ pub fn prepare_fullscreen_bind_groups<M: PointCloudMaterial, const PASS: usize>(
         &ErasedMaterialPreparedPasses,
         &VisibleNodesTexture,
         &ViewMultipassTextures<M>,
+        &PreparedViewSettingsUniform<M>,
         &Msaa,
         Option<&mut FullscreenMaterialBindGroup<M, PASS>>,
     )>,
@@ -103,6 +109,7 @@ pub fn prepare_fullscreen_bind_groups<M: PointCloudMaterial, const PASS: usize>(
         erased_material_prepared_passes,
         visible_nodes_texture,
         view_multipass_textures,
+        prepared_view_settings_uniform,
         msaa,
         mut existing_bind_group,
     ) in &mut view
@@ -123,7 +130,11 @@ pub fn prepare_fullscreen_bind_groups<M: PointCloudMaterial, const PASS: usize>(
         };
 
         // TODO: cache this layout somewhere ? (eg in a resource or component)
-        let mut pointcloud_layout = point_cloud_pipeline.point_cloud_layout.clone();
+        let mut pointcloud_layout = point_cloud_pipeline.fullscreen_layout.clone();
+        pointcloud_layout.entries.push(
+            uniform_buffer::<<M::ViewSettings as ViewSettings>::Data>(false)
+                .build(3, ShaderStages::VERTEX_FRAGMENT),
+        );
 
         for input in &pass_properties.inputs {
             let entry = match msaa {
@@ -155,6 +166,12 @@ pub fn prepare_fullscreen_bind_groups<M: PointCloudMaterial, const PASS: usize>(
                     // keep the same binding index as in geometry passes
                     binding: 2,
                     resource: texture.default_view.into_binding(),
+                });
+
+                bind_group_entries.push(BindGroupEntry {
+                    binding: 3,
+                    resource: (&prepared_view_settings_uniform.view_settings_uniform_buffer)
+                        .into_binding(),
                 });
 
                 for input in &pass_properties.inputs {

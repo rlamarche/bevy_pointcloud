@@ -54,8 +54,8 @@ use crate::{
         check_views_need_specialization, clear_dirty_specializations,
         expire_specializations_for_views,
         multipass::{
-            MultipassMaterialPlugin, MultipassMaterialsPlugin, MultipassPipelinePlugin,
-            ViewMultipassTextures,
+            FullscreenMaterialPassPipeline, MultipassMaterialPlugin, MultipassMaterialsPlugin,
+            MultipassPipelinePlugin, ViewMultipassTextures,
         },
         prepass::{DrawDepthOnlyPrepass, DrawPrepass, PrepassPipelinePlugin, PrepassPlugin},
         queue_shadows, specialize_shadows, PendingShadowQueues, PointCloudDirtySpecializations,
@@ -86,6 +86,12 @@ impl From<NoPassId> for usize {
     }
 }
 
+impl From<usize> for NoPassId {
+    fn from(_: usize) -> Self {
+        panic!("should not happen");
+    }
+}
+
 /// Materials are used alongside [`PointCloudMaterialPlugin`], [`PointCloud3d`], and
 /// [`PointCloudMaterial3d`] to spawn entities that are rendered with a specific [`Material`] type.
 /// They serve as an easy to use high level way to render [`PointCloud3d`] entities with custom
@@ -98,7 +104,7 @@ impl From<NoPassId> for usize {
 /// Materials must also define a [`PointCloudMaterial::ViewSettings`] type for view based settings
 /// (eg: clipping planes, multipass materials, ...).
 pub trait PointCloudMaterial: Asset + AsBindGroup + Clone + Sized {
-    type PassId: Send + Sync + 'static + Clone + Copy + Into<usize>;
+    type PassId: Send + Sync + 'static + Clone + Copy + Into<usize> + From<usize>;
 
     type ViewSettings: ViewSettings;
     // type ViewSettings: Component
@@ -242,6 +248,20 @@ pub trait PointCloudMaterial: Asset + AsBindGroup + Clone + Sized {
         key: PointCloudMaterialPipelineKey<Self>,
     ) -> Result<bool, SpecializedMeshPipelineError> {
         Ok(true)
+    }
+
+    #[expect(
+        unused_variables,
+        reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
+    )]
+    #[inline]
+    fn fullscreen_specialize(
+        pipeline: &FullscreenMaterialPassPipeline,
+        descriptor: &mut RenderPipelineDescriptor,
+        pass: Self::PassId,
+        settings_key: <Self::ViewSettings as ViewSettings>::Key,
+    ) -> Result<(), SpecializedMeshPipelineError> {
+        Ok(())
     }
 }
 

@@ -4,7 +4,7 @@ mod standard;
 use bevy::{
     color::{Color, ColorToComponents, LinearRgba},
     ecs::{component::Component, query::Changed},
-    math::{Vec3, Vec4},
+    math::{Vec2, Vec3, Vec4},
     reflect::{prelude::ReflectDefault, Reflect, ReflectDeserialize, ReflectSerialize},
     render::{extract_component::ExtractComponent, render_resource::*},
 };
@@ -38,7 +38,6 @@ impl From<RenderMode> for RenderModes {
             RenderMode::Normal => RenderModes::NORMAL,
             RenderMode::HighQuality => RenderModes::HQ,
             RenderMode::XRay => RenderModes::XRAY,
-            RenderMode::EyeDome => RenderModes::EDL,
         }
     }
 }
@@ -50,10 +49,9 @@ pub enum RenderMode {
     Normal,
     HighQuality,
     XRay,
-    EyeDome,
 }
 
-#[derive(Component, Clone, Default, ExtractComponent)]
+#[derive(Component, Clone, ExtractComponent)]
 #[extract_component_filter(Changed<PointCloudViewSettings>)]
 pub struct PointCloudViewSettings {
     pub render_modes: RenderModes,
@@ -61,6 +59,27 @@ pub struct PointCloudViewSettings {
     pub clipping_planes: Vec<Vec4>,
     /// Max 8 clipping spheres
     pub clipping_spheres: Vec<Vec4>,
+    /// Max 8 edl neighbours
+    /// TODO: optimize this
+    pub edl_neighbours: Vec<Vec4>,
+}
+
+impl Default for PointCloudViewSettings {
+    fn default() -> Self {
+        Self {
+            render_modes: Default::default(),
+            clipping_planes: Default::default(),
+            clipping_spheres: Default::default(),
+            edl_neighbours: (0..8)
+                .step_by(2)
+                .chain((1..8).step_by(2))
+                .map(|i| {
+                    let angle = 2.0 * i as f32 * std::f32::consts::PI / 8.0;
+                    Vec4::new(angle.cos(), angle.sin(), 0.0, 0.0)
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, ShaderType, Default)]
@@ -68,6 +87,7 @@ pub struct PointCloudViewSettingsUniform {
     pub nb_clipping_planes: u32,
     pub _padding: Vec3,
     pub clipping_planes: [Vec4; 8],
+    pub edl_neighbours: [Vec4; 8],
 }
 
 bitflags! {
@@ -111,7 +131,6 @@ impl From<&RenderMode> for PointCloudViewSettingsKey {
             RenderMode::Normal => PointCloudViewSettingsKey::RENDER_MODE_NORMAL,
             RenderMode::HighQuality => PointCloudViewSettingsKey::RENDER_MODE_HQ,
             RenderMode::XRay => PointCloudViewSettingsKey::RENDER_MODE_XRAY,
-            RenderMode::EyeDome => PointCloudViewSettingsKey::RENDER_MODE_EDL,
         }
     }
 }
@@ -156,6 +175,9 @@ impl ViewSettings for PointCloudViewSettings {
             _padding: Default::default(),
             clipping_planes: std::array::from_fn(|i| {
                 self.clipping_planes.get(i).copied().unwrap_or_default()
+            }),
+            edl_neighbours: std::array::from_fn(|i| {
+                self.edl_neighbours.get(i).copied().unwrap_or_default()
             }),
         }
     }

@@ -3,6 +3,7 @@ use bevy::{
     asset::{embedded_asset, Asset, Handle},
     color::{Color, ColorToComponents, LinearRgba},
     image::Image,
+    log::info,
     math::{Affine2, Vec3, Vec4},
     pbr::MeshPipelineKey,
     reflect::{std_traits::ReflectDefault, Reflect},
@@ -164,6 +165,17 @@ impl From<SimplePasses> for usize {
     }
 }
 
+impl From<usize> for SimplePasses {
+    fn from(value: usize) -> Self {
+        match value {
+            0 => SimplePasses::Depth,
+            1 => SimplePasses::Attribute,
+            2 => SimplePasses::Normalize,
+            _ => panic!("Invalid pass {} for `SimplePasses`", value),
+        }
+    }
+}
+
 impl PointCloudMaterial for SimplePointCloudMaterial {
     type PassId = SimplePasses;
     type ViewSettings = PointCloudViewSettings;
@@ -184,6 +196,38 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
 
     fn enable_shadows() -> bool {
         true
+    }
+
+    fn fullscreen_specialize(
+        _pipeline: &crate::render::multipass::FullscreenMaterialPassPipeline,
+        descriptor: &mut bevy::material::descriptor::RenderPipelineDescriptor,
+        _pass: Self::PassId,
+        settings_key: <Self::ViewSettings as ViewSettings>::Key,
+    ) -> bevy::ecs::error::Result<(), bevy::material::specialize::SpecializedMeshPipelineError>
+    {
+        // Collect all shader defs for both vertex and fragment stages
+        let mut shader_defs = Vec::new();
+
+        // Evaluate single boolean flags
+        #[expect(clippy::single_element_loop, reason = "todo")]
+        for (flags, shader_def) in [(
+            PointCloudViewSettingsKey::RENDER_MODE_EDL,
+            "RENDER_MODE_EDL",
+        )] {
+            if settings_key.intersects(flags) {
+                shader_defs.push(shader_def.into());
+            }
+        }
+
+        // Forward shader defs to the vertex stage
+        descriptor.vertex.shader_defs.extend(shader_defs.clone());
+
+        // Forward shader defs to the fragment stage if it exists
+        if let Some(fragment) = descriptor.fragment.as_mut() {
+            fragment.shader_defs.extend(shader_defs);
+        }
+
+        Ok(())
     }
 
     fn specialize(
@@ -222,6 +266,10 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         // Evaluate single boolean flags
         for (flags, shader_def) in [
             (
+                PointCloudViewSettingsKey::RENDER_MODE_EDL,
+                "RENDER_MODE_EDL",
+            ),
+            (
                 PointCloudViewSettingsKey::CLIPPING_PLANES,
                 "CLIPPING_PLANES",
             ),
@@ -245,9 +293,6 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
             }
             RenderMode::XRay => {
                 shader_defs.push("RENDER_MODE_XRAY".into());
-            }
-            RenderMode::EyeDome => {
-                shader_defs.push("RENDER_MODE_EDL".into());
             }
         }
 
@@ -361,7 +406,11 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
                 fragment_shader: "shaders/simple_dev.wgsl".into(),
                 inputs: vec![],
                 output: PassOutput::TransientTarget(TransientTarget {
-                    format: TextureFormat::R16Float,
+                    format: if settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_EDL) {
+                        TextureFormat::Rg16Float
+                    } else {
+                        TextureFormat::R16Float
+                    },
                 }),
                 blend: None,
                 depth_write_enabled: Some(true),
@@ -558,7 +607,6 @@ bitflags! {
         const RENDER_MODE_NORMAL       = 0;
         const RENDER_MODE_HQ           = Self::RENDER_MODE_0.bits();
         const RENDER_MODE_XRAY         = Self::RENDER_MODE_1.bits();
-        const RENDER_MODE_EDL          = Self::RENDER_MODE_0.bits() | Self::RENDER_MODE_1.bits();
 
         const COLOR_STOP_1             = 1_u64 <<  5;
         const COLOR_STOP_2             = 1_u64 <<  6;
@@ -578,7 +626,6 @@ impl SimplePointCloudMaterialKey {
             SimplePointCloudMaterialKey::RENDER_MODE_NORMAL => RenderMode::Normal,
             SimplePointCloudMaterialKey::RENDER_MODE_HQ => RenderMode::HighQuality,
             SimplePointCloudMaterialKey::RENDER_MODE_XRAY => RenderMode::XRay,
-            SimplePointCloudMaterialKey::RENDER_MODE_EDL => RenderMode::EyeDome,
             _ => unreachable!("Invalid render mode bits state encountered in pipeline key."),
         }
     }
@@ -597,10 +644,6 @@ impl From<&SimplePointCloudMaterial> for SimplePointCloudMaterialKey {
         key.set(
             SimplePointCloudMaterialKey::RENDER_MODE_HQ,
             material.render_mode == RenderMode::HighQuality,
-        );
-        key.set(
-            SimplePointCloudMaterialKey::RENDER_MODE_EDL,
-            material.render_mode == RenderMode::EyeDome,
         );
         key.set(
             SimplePointCloudMaterialKey::RENDER_MODE_XRAY,
