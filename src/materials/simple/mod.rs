@@ -438,7 +438,7 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
             SimplePasses::XRay | SimplePasses::Attribute => {
                 Some(GeometryPassParams {
                     vertex_shader: ShaderRef::Default,
-                    fragment_shader: "shaders/simple_dev.wgsl".into(),
+                    fragment_shader: ShaderRef::Default,
                     inputs: vec![PassInput {
                         source_pass: SimplePasses::Depth.into(),
                         binding_slot: 10,
