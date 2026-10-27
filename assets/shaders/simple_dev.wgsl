@@ -132,41 +132,30 @@ fn fragment(
             base_color *= texture_color;
         }
 
+        // TODO: do not compute on the single pass path
+        #ifdef WEIGHTED_SPLATS_ENABLED
+            #ifdef SHAPE_UVS_A
+                #ifndef SPLAT_RADIUS
+                    let dist = distance(in.shape_uv, vec2<f32>(0.5, 0.5));
+                #endif
+
+                var weight = max(0.0, 1.0 - dist * 2.0);
+                weight = pow(weight, 1.5);
+            #else // SHAPE_UVS_A
+                let weight = 1.0;
+            #endif // SHAPE_UVS_A
+        #else // WEIGHTED_SPLATS_ENABLED
+            let weight = 1.0;
+        #endif // WEIGHTED_SPLATS_ENABLED
+
+
         #ifdef VERTEX_COLORS
             let color = functions::srgb_to_rgb_simple(in.color.xyz * base_color.xyz);
-
-            #ifdef POINTCLOUD_PASS_XRAY
-                out.color = vec4<f32>(color, in.position.z);
-            #else // POINTCLOUD_PASS_XRAY
-
-                #ifdef POINTCLOUD_PASS_ATTRIBUTE
-                    #ifdef WEIGHTED_SPLATS_ENABLED
-                        #ifdef SHAPE_UVS_A
-                            #ifndef SPLAT_RADIUS
-                                let dist = distance(in.shape_uv, vec2<f32>(0.5, 0.5));
-                            #endif
-
-                            var weight = max(0.0, 1.0 - dist * 2.0);
-                            weight = pow(weight, 1.5);
-
-                            out.color = vec4(color, weight);
-                        #else // SHAPE_UVS_A
-                            out.color = vec4<f32>(color, 1.0);
-                        #endif // SHAPE_UVS_A
-                    #else // WEIGHTED_SPLATS_ENABLED
-                        out.color = vec4<f32>(color, 1.0);
-                    #endif // WEIGHTED_SPLATS_ENABLED
-                #else // POINTCLOUD_PASS_ATTRIBUTE
-                    out.color = vec4<f32>(color, 1.0);
-                #endif // POINTCLOUD_PASS_ATTRIBUTE
-            #endif // POINTCLOUD_PASS_XRAY
         #else
-            #ifdef POINTCLOUD_PASS_XRAY
-                out.color = vec4<f32>(functions::srgb_to_rgb_simple(base_color.xyz), in.position.z);
-            #else // POINTCLOUD_PASS_XRAY
-                out.color = vec4<f32>(functions::srgb_to_rgb_simple(base_color.xyz), 1.0);
-            #endif // POINTCLOUD_PASS_XRAY
+            let color = functions::srgb_to_rgb_simple(base_color.xyz);
         #endif
+
+        out.color = vec4(color, weight);
 
     #endif // POINTCLOUD_PASS_DEPTH
 
