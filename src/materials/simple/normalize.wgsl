@@ -3,8 +3,6 @@
 // Licensed under BSD 2-Clause (see THIRD_PARTY_LICENSES.md)
 
 
-// This shader computes the chromatic aberration effect
-
 // Since post processing is a fullscreen effect, we use the fullscreen vertex shader provided by bevy.
 // This will import a vertex shader that renders a single fullscreen triangle.
 //
@@ -112,9 +110,6 @@ fn fragment(in: FullscreenVertexOutput) -> FragmentOutput {
     #ifdef POINTCLOUD_PASS_XRAY_NORMALIZE
         output.color = stored_color / stored_color.a;
     #endif
-
-
-    // output.color = vec4<f32>(1.0, 0.0, 0.0, 1.0);
 
     return output;
 }
