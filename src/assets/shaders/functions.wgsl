@@ -136,12 +136,9 @@ fn compute_radius(
 
 /// This function computes the view position of the point using the shape vertice, in billboard mode.
 /// params:
-/// - `position`: the position of the point (the instance)
-/// - `world_from_local`: transform matrix from local (in the point cloud space) to the world
+/// - `view_position`: the position of the point in the view space
 /// - `shape_position`: the position of a vertice of the shape
-/// - `point_size`: the point size is juste a scale applied to the shape
-/// Note that the scale from `world_from_local` is also applied (the max scale) to preserve coherent point sizing.
-/// The shape is always face to the camera. Later we would be using the normal of the points to orient the shapes.
+/// - `radius`: the radius of the point in the view space
 fn compute_view_billboard_vertex_position(
     view_position: vec3<f32>,
     shape_position: vec3<f32>,

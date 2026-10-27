@@ -241,7 +241,7 @@ impl FromWorld for ChildChunkOf {
     }
 }
 
-#[derive(Component, Default, Debug, PartialEq, Eq, Reflect, Serialize, Deserialize)]
+#[derive(Component, Default, Debug, PartialEq, Eq, Reflect, Serialize, Deserialize, Deref)]
 #[relationship_target(relationship = ChildChunkOf, linked_spawn)]
 #[reflect(Component, FromWorld, Default, Serialize, Deserialize)]
 pub struct ChildrenChunks(Vec<Entity>);

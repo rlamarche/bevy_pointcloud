@@ -29,7 +29,6 @@
 }
 
 struct FragmentOutput {
-    @builtin(frag_depth) depth: f32,
     @location(0) color: vec4<f32>,
 }
 
@@ -45,11 +44,11 @@ struct FragmentOutput {
 
 #endif // MULTISAMPLED
 
-
-
 struct PointCloudViewSettings {
     nb_clipping_planes: u32,
-    _padding: vec3<f32>,
+    nb_edl_neighbours: u32,
+    edl_radius: f32,
+    edl_strength: f32,
     clipping_planes: array<vec4<f32>, 8>,
     edl_neighbours: array<vec4<f32>, 8>,
 }
@@ -60,11 +59,11 @@ struct PointCloudViewSettings {
 #ifdef RENDER_MODE_EDL
 
 fn response(depth: f32, uv: vec2<f32>) -> f32{
-	let uv_radius = /* view_settings.radius*/ 1.4 / vec2<f32>(view.viewport[2], view.viewport[3]);
+	let uv_radius = view_settings.edl_radius / vec2<f32>(view.viewport[2], view.viewport[3]);
 
 	var sum: f32 = 0.0;
 
-	for(var i: u32 = 0u; i < 4; i++) {
+	for(var i: u32 = 0u; i < view_settings.nb_edl_neighbours; i++) {
 		var uv_neighbor_0 = uv + uv_radius * view_settings.edl_neighbours[i].xy;
 		uv_neighbor_0.x *= view.viewport[2];
 		uv_neighbor_0.y *= view.viewport[3];
@@ -96,22 +95,24 @@ fn fragment(in: FullscreenVertexOutput) -> FragmentOutput {
     if (stored_color.a == 0.0) {
         discard;
     }
-    let depth =  textureLoad(depth_texture, vec2<i32>(in.position.xy), 0);
 
-    output.depth = 1.0 - depth.x;
-    output.color = stored_color / stored_color.a;
+    #ifdef POINTCLOUD_PASS_EDL_NORMALIZE
+        output.color = stored_color / stored_color.a;
 
-    var edl_strength = 0.4;
+        #ifdef RENDER_MODE_EDL
+            let edl_depth = textureLoad(depth_texture, vec2<i32>(in.position.xy), 0).g;
 
-    #ifdef RENDER_MODE_EDL
-        let edl_depth = textureLoad(depth_texture, vec2<i32>(in.position.xy), 0).g;
+            let res = response(edl_depth, in.uv);
+            let shade = exp(-res * 300.0 * view_settings.edl_strength);
 
-        let res = response(edl_depth, in.uv);
-        let shade = exp(-res * 300.0 * edl_strength);
+            output.color = output.color * shade;
+        #endif // RENDER_MODE_EDL
+    #endif
 
-        output.color = output.color * shade;
-        // output.color = vec4<f32>(shade, shade, shade, 1.0);
-    #endif // RENDER_MODE_EDL
+    #ifdef POINTCLOUD_PASS_XRAY_NORMALIZE
+        output.color = stored_color / stored_color.a;
+    #endif
+
 
     // output.color = vec4<f32>(1.0, 0.0, 0.0, 1.0);
 

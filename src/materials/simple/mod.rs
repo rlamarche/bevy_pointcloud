@@ -68,6 +68,8 @@ pub struct SimplePointCloudMaterial {
 
     pub render_mode: RenderMode,
 
+    pub weighted_splats: bool,
+
     /// A vec of color stops. Up to 8 color stops are currently supported.
     /// Empty by default.
     pub color_stops: Vec<ColorStop>,
@@ -127,6 +129,7 @@ impl Default for SimplePointCloudMaterial {
             // a texture.
             base_color: Color::WHITE,
             render_mode: RenderMode::Normal,
+            weighted_splats: false,
             color_stops: Vec::new(),
             gradient_direction: None,
             gradient_start: None,
@@ -148,11 +151,13 @@ impl From<Color> for SimplePointCloudMaterial {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SimplePasses {
     Depth = 0,
     Attribute = 1,
-    Normalize = 2,
+    EDLNormalize = 2,
+    XRay = 3,
+    XRayNormalize = 4,
 }
 
 impl From<SimplePasses> for usize {
@@ -160,7 +165,9 @@ impl From<SimplePasses> for usize {
         match val {
             SimplePasses::Depth => 0,
             SimplePasses::Attribute => 1,
-            SimplePasses::Normalize => 2,
+            SimplePasses::EDLNormalize => 2,
+            SimplePasses::XRay => 3,
+            SimplePasses::XRayNormalize => 4,
         }
     }
 }
@@ -170,7 +177,9 @@ impl From<usize> for SimplePasses {
         match value {
             0 => SimplePasses::Depth,
             1 => SimplePasses::Attribute,
-            2 => SimplePasses::Normalize,
+            2 => SimplePasses::EDLNormalize,
+            3 => SimplePasses::XRay,
+            4 => SimplePasses::XRayNormalize,
             _ => panic!("Invalid pass {} for `SimplePasses`", value),
         }
     }
@@ -210,10 +219,7 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
 
         // Evaluate single boolean flags
         #[expect(clippy::single_element_loop, reason = "todo")]
-        for (flags, shader_def) in [(
-            PointCloudViewSettingsKey::RENDER_MODE_EDL,
-            "RENDER_MODE_EDL",
-        )] {
+        for (flags, shader_def) in [(PointCloudViewSettingsKey::EDL_ENABLED, "RENDER_MODE_EDL")] {
             if settings_key.intersects(flags) {
                 shader_defs.push(shader_def.into());
             }
@@ -238,6 +244,8 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         key: PointCloudMaterialPipelineKey<Self>,
     ) -> bevy::ecs::error::Result<bool, bevy::material::specialize::SpecializedMeshPipelineError>
     {
+        info!("User specialize for pass {:?}", key.pass);
+
         // Extract the custom material key from the bind group data
         let material_key = key.bind_group_data;
 
@@ -245,18 +253,28 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         let settings_key = key.view_settings_key;
 
         let render_mode = material_key.render_mode();
+        let weighted_splats_enabled = material_key.weighted_splats_enabled();
+        let edl_enabled = settings_key.edl_enabled();
 
-        // no custom pass for normal render mode
-        if matches!(render_mode, RenderMode::Normal) && key.pass.is_some() {
-            return Ok(false);
-        }
-
-        // only custom pass when render mode is not [`RenderMode::Normal`]
-        if !matches!(render_mode, RenderMode::Normal) && key.pass.is_none() {
-            return Ok(false);
-        }
-
+        // Check if the render mode is enabled in settings
         if !settings_key.render_modes().contains(render_mode.into()) {
+            return Ok(false);
+        }
+
+        // Handle specific custom passes rules
+        let should_disable = match key.pass {
+            None => {
+                matches!(render_mode, RenderMode::XRay) || weighted_splats_enabled || edl_enabled
+            }
+            Some(SimplePasses::Depth) | Some(SimplePasses::Attribute) => {
+                !matches!(render_mode, RenderMode::Normal)
+                    || (!weighted_splats_enabled && !edl_enabled)
+            }
+            Some(SimplePasses::XRay) => !matches!(render_mode, RenderMode::XRay),
+            _ => panic!("Invalid pass in simple material specialization."),
+        };
+
+        if should_disable {
             return Ok(false);
         }
 
@@ -265,10 +283,7 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
 
         // Evaluate single boolean flags
         for (flags, shader_def) in [
-            (
-                PointCloudViewSettingsKey::RENDER_MODE_EDL,
-                "RENDER_MODE_EDL",
-            ),
+            (PointCloudViewSettingsKey::EDL_ENABLED, "RENDER_MODE_EDL"),
             (
                 PointCloudViewSettingsKey::CLIPPING_PLANES,
                 "CLIPPING_PLANES",
@@ -288,9 +303,6 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
             RenderMode::Normal => {
                 shader_defs.push("RENDER_MODE_NORMAL".into());
             }
-            RenderMode::HighQuality => {
-                shader_defs.push("RENDER_MODE_HQ".into());
-            }
             RenderMode::XRay => {
                 shader_defs.push("RENDER_MODE_XRAY".into());
             }
@@ -298,6 +310,10 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
 
         // Evaluate single boolean flags
         for (flags, shader_def) in [
+            (
+                SimplePointCloudMaterialKey::WEIGHTED_SPLATS_ENABLED,
+                "WEIGHTED_SPLATS_ENABLED",
+            ),
             (
                 SimplePointCloudMaterialKey::GRADIENT,
                 "SIMPLE_MATERIAL_GRADIENT",
@@ -382,9 +398,19 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
                 label: "attribute",
             },
             PassDescriptor {
-                id: SimplePasses::Normalize,
+                id: SimplePasses::EDLNormalize,
                 kind: PassKind::Fullscreen,
-                label: "normalize",
+                label: "edl_normalize",
+            },
+            PassDescriptor {
+                id: SimplePasses::XRay,
+                kind: PassKind::Geometry,
+                label: "xray",
+            },
+            PassDescriptor {
+                id: SimplePasses::XRayNormalize,
+                kind: PassKind::Fullscreen,
+                label: "xray_normalize",
             },
         ]
     }
@@ -393,20 +419,19 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         pass: &Self::PassId,
         settings_key: &<Self::ViewSettings as ViewSettings>::Key,
     ) -> Option<GeometryPassParams> {
-        if !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_EDL)
-            && !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_HQ)
+        if matches!(pass, SimplePasses::XRayNormalize)
             && !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_XRAY)
         {
             return None;
-        };
-
+        }
+        // TODO disable if weighted splats & edl are disabled in view settings
         match pass {
             SimplePasses::Depth => Some(GeometryPassParams {
                 vertex_shader: ShaderRef::Default,
                 fragment_shader: "shaders/simple_dev.wgsl".into(),
                 inputs: vec![],
                 output: PassOutput::TransientTarget(TransientTarget {
-                    format: if settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_EDL) {
+                    format: if settings_key.edl_enabled() {
                         TextureFormat::Rg16Float
                     } else {
                         TextureFormat::R16Float
@@ -415,39 +440,39 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
                 blend: None,
                 depth_write_enabled: Some(true),
             }),
-            SimplePasses::Attribute => Some(GeometryPassParams {
-                vertex_shader: ShaderRef::Default,
-                fragment_shader: "shaders/simple_dev.wgsl".into(),
-                inputs: vec![PassInput {
-                    source_pass: SimplePasses::Depth.into(),
-                    binding_slot: 10,
-                    texture_sample_type: bevy::render::render_resource::TextureSampleType::Float {
-                        filterable: false,
-                    },
-                    visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
-                }],
-                // output: PassOutput::TransientTarget(TransientTarget {
-                //     format: TextureFormat::Rgba32Float,
-                // }),
-                output: PassOutput::TransientTarget(TransientTarget {
-                    format: TextureFormat::Rgba32Float,
-                }),
-                blend: Some(BlendState {
-                    color: BlendComponent {
-                        // To match Potree blending
-                        src_factor: BlendFactor::SrcAlpha,
-                        dst_factor: BlendFactor::One,
-                        operation: BlendOperation::Add,
-                    },
-                    alpha: BlendComponent {
-                        // To match Potree blending
-                        src_factor: BlendFactor::One,
-                        dst_factor: BlendFactor::One,
-                        operation: BlendOperation::Add,
-                    },
-                }),
-                depth_write_enabled: Some(false),
-            }),
+            SimplePasses::XRay | SimplePasses::Attribute => {
+                Some(GeometryPassParams {
+                    vertex_shader: ShaderRef::Default,
+                    fragment_shader: "shaders/simple_dev.wgsl".into(),
+                    inputs: vec![PassInput {
+                        source_pass: SimplePasses::Depth.into(),
+                        binding_slot: 10,
+                        texture_sample_type:
+                            bevy::render::render_resource::TextureSampleType::Float {
+                                filterable: false,
+                            },
+                        visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                    }],
+                    output: PassOutput::TransientTarget(TransientTarget {
+                        format: TextureFormat::Rgba32Float,
+                    }),
+                    blend: Some(BlendState {
+                        color: BlendComponent {
+                            // To match Potree blending
+                            src_factor: BlendFactor::SrcAlpha,
+                            dst_factor: BlendFactor::One,
+                            operation: BlendOperation::Add,
+                        },
+                        alpha: BlendComponent {
+                            // To match Potree blending
+                            src_factor: BlendFactor::One,
+                            dst_factor: BlendFactor::One,
+                            operation: BlendOperation::Add,
+                        },
+                    }),
+                    depth_write_enabled: Some(false),
+                })
+            }
             _ => None,
         }
     }
@@ -456,41 +481,56 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         pass: &Self::PassId,
         settings_key: &<Self::ViewSettings as ViewSettings>::Key,
     ) -> Option<FullscreenPassParams> {
-        if !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_EDL)
-            && !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_HQ)
+        if matches!(pass, SimplePasses::XRayNormalize)
             && !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_XRAY)
         {
             return None;
-        };
-
+        }
+        // TODO disable if weighted splats & edl are disabled in view settings
         match pass {
-            SimplePasses::Normalize => Some(FullscreenPassParams {
-                vertex_shader: ShaderRef::Default,
-                fragment_shader: "shaders/normalize_dev.wgsl".into(),
-                inputs: vec![
-                    PassInput {
-                        source_pass: SimplePasses::Depth.into(),
-                        binding_slot: 10,
-                        texture_sample_type:
-                            bevy::render::render_resource::TextureSampleType::Float {
-                                filterable: false,
-                            },
-                        visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
-                    },
-                    PassInput {
-                        source_pass: SimplePasses::Attribute.into(),
-                        binding_slot: 11,
-                        texture_sample_type:
-                            bevy::render::render_resource::TextureSampleType::Float {
-                                filterable: false,
-                            },
-                        visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
-                    },
-                ],
-                output: PassOutput::MainColorTarget,
-                blend: None,
-                depth_write_enabled: Some(true),
-            }),
+            SimplePasses::XRayNormalize | SimplePasses::EDLNormalize => {
+                Some(FullscreenPassParams {
+                    vertex_shader: ShaderRef::Default,
+                    fragment_shader: "shaders/normalize_dev.wgsl".into(),
+                    inputs: vec![
+                        PassInput {
+                            source_pass: SimplePasses::Depth.into(),
+                            binding_slot: 10,
+                            texture_sample_type:
+                                bevy::render::render_resource::TextureSampleType::Float {
+                                    filterable: false,
+                                },
+                            visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                        },
+                        {
+                            if matches!(pass, SimplePasses::XRayNormalize) {
+                                PassInput {
+                                    source_pass: SimplePasses::XRay.into(),
+                                    binding_slot: 11,
+                                    texture_sample_type:
+                                        bevy::render::render_resource::TextureSampleType::Float {
+                                            filterable: false,
+                                        },
+                                    visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                                }
+                            } else {
+                                PassInput {
+                                    source_pass: SimplePasses::Attribute.into(),
+                                    binding_slot: 11,
+                                    texture_sample_type:
+                                        bevy::render::render_resource::TextureSampleType::Float {
+                                            filterable: false,
+                                        },
+                                    visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                                }
+                            }
+                        },
+                    ],
+                    output: PassOutput::MainColorTarget,
+                    blend: None,
+                    depth_write_enabled: Some(false),
+                })
+            }
             _ => None,
         }
     }
@@ -600,13 +640,13 @@ bitflags! {
         const GRADIENT                 = 1_u64 <<  2;
 
         const RENDER_MODE_0            = 1_u64 <<  3;
-        const RENDER_MODE_1            = 1_u64 <<  4;
 
-        const RENDER_MODE_MASK          = Self::RENDER_MODE_0.bits() | Self::RENDER_MODE_1.bits();
+        const RENDER_MODE_MASK          = Self::RENDER_MODE_0.bits();
 
         const RENDER_MODE_NORMAL       = 0;
-        const RENDER_MODE_HQ           = Self::RENDER_MODE_0.bits();
-        const RENDER_MODE_XRAY         = Self::RENDER_MODE_1.bits();
+        const RENDER_MODE_XRAY         = Self::RENDER_MODE_0.bits();
+
+        const WEIGHTED_SPLATS_ENABLED = 1_u64  <<  4;
 
         const COLOR_STOP_1             = 1_u64 <<  5;
         const COLOR_STOP_2             = 1_u64 <<  6;
@@ -624,10 +664,12 @@ impl SimplePointCloudMaterialKey {
     pub fn render_mode(&self) -> RenderMode {
         match *self & SimplePointCloudMaterialKey::RENDER_MODE_MASK {
             SimplePointCloudMaterialKey::RENDER_MODE_NORMAL => RenderMode::Normal,
-            SimplePointCloudMaterialKey::RENDER_MODE_HQ => RenderMode::HighQuality,
             SimplePointCloudMaterialKey::RENDER_MODE_XRAY => RenderMode::XRay,
             _ => unreachable!("Invalid render mode bits state encountered in pipeline key."),
         }
+    }
+    pub fn weighted_splats_enabled(&self) -> bool {
+        self.contains(SimplePointCloudMaterialKey::WEIGHTED_SPLATS_ENABLED)
     }
 }
 
@@ -642,14 +684,13 @@ impl From<&SimplePointCloudMaterial> for SimplePointCloudMaterialKey {
             material.render_mode == RenderMode::Normal,
         );
         key.set(
-            SimplePointCloudMaterialKey::RENDER_MODE_HQ,
-            material.render_mode == RenderMode::HighQuality,
-        );
-        key.set(
             SimplePointCloudMaterialKey::RENDER_MODE_XRAY,
             material.render_mode == RenderMode::XRay,
         );
-
+        key.set(
+            SimplePointCloudMaterialKey::WEIGHTED_SPLATS_ENABLED,
+            material.weighted_splats,
+        );
         key.set(
             SimplePointCloudMaterialKey::CULL_FRONT,
             material.cull_mode == Some(Face::Front),

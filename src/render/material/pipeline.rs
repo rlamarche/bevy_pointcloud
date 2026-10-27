@@ -22,7 +22,7 @@ pub struct PointCloudMaterialPipelineKey<M: PointCloudMaterial> {
     pub mesh_key: MeshPipelineKey,
     pub splat_key: SplatPipelineKey,
     pub bind_group_data: M::Data,
-    pub pass: Option<usize>,
+    pub pass: Option<M::PassId>,
     pub view_settings_key: <M::ViewSettings as ViewSettings>::Key,
 }
 

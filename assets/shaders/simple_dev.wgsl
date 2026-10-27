@@ -1,6 +1,5 @@
 #import bevy_pbr::{
     mesh_view_bindings::view,
-    view_transformations::position_world_to_view,
 }
 
 #import bevy_pointcloud::{
@@ -43,7 +42,6 @@ struct PointCloudViewSettings {
 
 struct FragmentOutput {
 #ifdef POINTCLOUD_PASS_DEPTH
-    @builtin(frag_depth) depth: f32,
     #ifdef RENDER_MODE_EDL
         @location(0) depth_texture: vec2<f32>,
     #else // USE EDL
@@ -87,24 +85,11 @@ fn fragment(
     #ifdef POINTCLOUD_PASS_DEPTH
         #ifdef RENDER_MODE_EDL
             out.depth_texture.r = in.position.z;
-            // TODO compute this in vertex shader ?
-            out.depth_texture.g = log2(-in.position.z + 1.0);
+            out.depth_texture.g = in.log_depth;
         #else // RENDER_MODE_EDL
             out.depth_texture = in.position.z;
         #endif // RENDER_MODE_EDL
 
-//         #ifdef PARABOLOID_POINT_SHAPE
-//             let radius = in.radius;
-//             let wi = 0.0 - cc;
-//             var pos = in.view_position;
-//
-//             pos.z += wi * radius;
-//             let linear_depth = -pos.z;
-//             let clip_pos = position_view_to_ndc(pos);
-//             let exp_depth = clip_pos.z * 2.0 - 1.0;
-//
-//             output.depth = clip_pos.z;
-//         #endif // PARABOLOID_POINT_SHAPE
     #else // POINTCLOUD_PASS_DEPTH
         var base_color = material_bindings::material.base_color;
 
@@ -148,35 +133,40 @@ fn fragment(
         }
 
         #ifdef VERTEX_COLORS
-            #ifdef POINTCLOUD_PASS_ATTRIBUTE
-                out.color = vec4<f32>(functions::srgb_to_rgb_simple(in.color.xyz * base_color.xyz), in.position.z);
-            #else // POINTCLOUD_PASS_ATTRIBUTE
-                out.color = vec4<f32>(functions::srgb_to_rgb_simple(in.color.xyz * base_color.xyz), 1.0);
-            #endif // POINTCLOUD_PASS_ATTRIBUTE
+            let color = functions::srgb_to_rgb_simple(in.color.xyz * base_color.xyz);
+
+            #ifdef POINTCLOUD_PASS_XRAY
+                out.color = vec4<f32>(color, in.position.z);
+            #else // POINTCLOUD_PASS_XRAY
+
+                #ifdef POINTCLOUD_PASS_ATTRIBUTE
+                    #ifdef WEIGHTED_SPLATS_ENABLED
+                        #ifdef SHAPE_UVS_A
+                            #ifndef SPLAT_RADIUS
+                                let dist = distance(in.shape_uv, vec2<f32>(0.5, 0.5));
+                            #endif
+
+                            var weight = max(0.0, 1.0 - dist * 2.0);
+                            weight = pow(weight, 1.5);
+
+                            out.color = vec4(color, weight);
+                        #else // SHAPE_UVS_A
+                            out.color = vec4<f32>(color, 1.0);
+                        #endif // SHAPE_UVS_A
+                    #else // WEIGHTED_SPLATS_ENABLED
+                        out.color = vec4<f32>(color, 1.0);
+                    #endif // WEIGHTED_SPLATS_ENABLED
+                #else // POINTCLOUD_PASS_ATTRIBUTE
+                    out.color = vec4<f32>(color, 1.0);
+                #endif // POINTCLOUD_PASS_ATTRIBUTE
+            #endif // POINTCLOUD_PASS_XRAY
         #else
-            #ifdef POINTCLOUD_PASS_ATTRIBUTE
+            #ifdef POINTCLOUD_PASS_XRAY
                 out.color = vec4<f32>(functions::srgb_to_rgb_simple(base_color.xyz), in.position.z);
-            #else // POINTCLOUD_PASS_ATTRIBUTE
+            #else // POINTCLOUD_PASS_XRAY
                 out.color = vec4<f32>(functions::srgb_to_rgb_simple(base_color.xyz), 1.0);
-            #endif // POINTCLOUD_PASS_ATTRIBUTE
+            #endif // POINTCLOUD_PASS_XRAY
         #endif
-
-//     #ifdef POINTCLOUD_PASS_ATTRIBUTE
-//         let uv = 2.0 * in.shape_uv - vec2<f32>(1.0);
-//         let cc = dot(uv, uv);
-//         let distance = distance(in.shape_uv, vec2<f32>(0.5, 0.5));
-//
-//         var weight = max(0.0, 1.0 - distance);
-//         weight = pow(weight, 1.5);
-//
-//         out.color = vec4(out.color.rgb * weight, weight * out.color.a);
-//     #endif // POINTCLOUD_PASS_ATTRIBUTE
-
-        // #ifdef POINTCLOUD_PASS_ATTRIBUTE
-        //     let xy = vec2<i32>(in.position.xy) + vec2<i32>(50);
-        //     let depth_color = textureLoad(depth_texture, xy, 0);
-        //     out.color = depth_color;
-        // #endif
 
     #endif // POINTCLOUD_PASS_DEPTH
 

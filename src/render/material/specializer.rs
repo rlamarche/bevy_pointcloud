@@ -20,9 +20,9 @@ use crate::render::{
 };
 
 pub struct PointCloudMaterialPipelineSpecializer {
-    pub(crate) pipeline: PointCloudMaterialPipeline,
-    pub(crate) properties: Arc<PointCloudMaterialProperties>,
-    pub(crate) maybe_pass_properties: Option<Arc<PassProperties>>,
+    pub pipeline: PointCloudMaterialPipeline,
+    pub properties: Arc<PointCloudMaterialProperties>,
+    pub maybe_pass_properties: Option<Arc<PassProperties>>,
 }
 
 impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
@@ -34,11 +34,6 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
         splat_layout: &MeshVertexBufferLayoutRef,
         instance_layout: &MeshVertexBufferLayoutRef,
     ) -> Result<Option<RenderPipelineDescriptor>, SpecializedMeshPipelineError> {
-        info!(
-            "Specialize pointcloud pipeline for pass {:?}",
-            key.maybe_pass
-        );
-
         let concrete_mesh_key: MeshPipelineKey = key.mesh_key.downcast();
         let concrete_splat_key: SplatPipelineKey = key.splat_key.downcast();
         let Some(mut descriptor) = self.pipeline.pointcloud_pipeline.specialize(
@@ -139,6 +134,11 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
             .layout
             .push(self.properties.material_layout.as_ref().unwrap().clone());
 
+        descriptor.vertex.shader_defs.extend(shader_defs.clone());
+        if let Some(ref mut fragment) = descriptor.fragment {
+            fragment.shader_defs.extend(shader_defs);
+        }
+
         if let Some(specialize) = self.properties.user_specialize
             && !specialize(
                 &self.pipeline as &dyn Any,
@@ -158,11 +158,6 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
         //         fragment.shader_defs.push("BINDLESS".into());
         //     }
         // }
-
-        descriptor.vertex.shader_defs.extend(shader_defs.clone());
-        if let Some(ref mut fragment) = descriptor.fragment {
-            fragment.shader_defs.extend(shader_defs);
-        }
 
         Ok(Some(descriptor))
     }

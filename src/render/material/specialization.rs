@@ -9,6 +9,7 @@ use bevy::{
     core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d},
     ecs::{
         entity::{Entity, EntityHashSet},
+        hierarchy::Children,
         query::{Changed, Or, With},
         system::{Local, Query, Res, ResMut, SystemParam, SystemState},
         world::{Mut, World},
@@ -51,8 +52,7 @@ use crate::{
         RenderPointCloudMaterialInstances, SpecializedPointCloudMaterialPipelineCache,
         SpecializedPointCloudPipelines, SplatPipelineKey,
     },
-    GlobalVisiblePointCloudChunks, PointCloud3d, PointCloudChunk3d, PointCloudMaterial3d,
-    PointCloudTopologyKind, SplatSettings,
+    PointCloud3d, PointCloudChunk3d, PointCloudMaterial3d, PointCloudTopologyKind, SplatSettings,
 };
 
 pub fn clear_entities_needing_specialization_removed<M: PointCloudMaterial>(
@@ -65,7 +65,7 @@ pub fn clear_entities_needing_specialization_removed<M: PointCloudMaterial>(
 /// specialization and adds them to the [`EntitiesNeedingSpecialization`] list.
 pub fn check_entities_needing_specialization<M>(
     needs_specialization: Query<
-        Entity,
+        (Entity, Option<&Children>),
         (
             Or<(
                 Changed<PointCloud3d>,
@@ -85,7 +85,6 @@ pub fn check_entities_needing_specialization<M>(
             With<PointCloudChunk3d>,
         ),
     >,
-    global_visible_point_cloud_chunks: Res<GlobalVisiblePointCloudChunks>,
     mut par_local: Local<Parallel<Vec<Entity>>>,
     mut entities_needing_specialization: ResMut<EntitiesNeedingSpecialization<M>>,
     // reused hashset to prevent duplicates
@@ -99,15 +98,20 @@ pub fn check_entities_needing_specialization<M>(
 
     // When a [`PointCloud3d`] or its material changed, we need to re-specialize all it's
     // children.
-    needs_specialization.par_iter().for_each(|entity| {
-        // When a [`PointCloud3d`] or its material changed, we need to re-specialize all it's
-        // children.
-        if let Some(chunks) = global_visible_point_cloud_chunks.get(&entity) {
-            for chunk_entity in chunks.keys() {
-                par_local.borrow_local_mut().push(*chunk_entity);
+    needs_specialization
+        .par_iter()
+        .for_each(|(entity, maybe_children)| {
+            // When a [`PointCloud3d`] or its material changed, we need to re-specialize all it's
+            // chunks if any.
+
+            par_local.borrow_local_mut().push(entity);
+            if let Some(children) = maybe_children {
+                // TODO check if it is really a chunk ?
+                for chunk_entity in children.iter() {
+                    par_local.borrow_local_mut().push(*chunk_entity);
+                }
             }
-        }
-    });
+        });
     for entity in par_local.drain() {
         deduplicate_entities_hash_set.insert(entity);
     }
@@ -130,6 +134,7 @@ pub fn check_entities_needing_specialization<M>(
             .push((entity, RenderEntity::from(Entity::PLACEHOLDER)));
     }
 
+    // TODO handle correctly despawned entities, this code below does nothing (check bevy impl)
     for entity in deduplicate_entities_hash_set.drain() {
         entities_needing_specialization
             .removed
@@ -460,7 +465,10 @@ pub(crate) fn specialize_point_cloud_materials(
                     .insert(item.render_entity, pipeline_id);
             }
             // skip this pass
-            Ok(None) => {}
+            Ok(None) => {
+                // remove the view cache so the phase will not be added
+                // removals.push((item.retained_view_entity, item.render_entity.entity()));
+            }
             Err(err) => error!("{}", err),
         }
     }
@@ -569,7 +577,7 @@ where
             mesh_key,
             splat_key,
             bind_group_data: material_key,
-            pass: erased_key.maybe_pass,
+            pass: erased_key.maybe_pass.map(From::from),
             view_settings_key,
         },
     )

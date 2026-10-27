@@ -4,7 +4,7 @@ mod standard;
 use bevy::{
     color::{Color, ColorToComponents, LinearRgba},
     ecs::{component::Component, query::Changed},
-    math::{Vec2, Vec3, Vec4},
+    math::Vec4,
     reflect::{prelude::ReflectDefault, Reflect, ReflectDeserialize, ReflectSerialize},
     render::{extract_component::ExtractComponent, render_resource::*},
 };
@@ -20,9 +20,7 @@ bitflags! {
     #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
     pub struct RenderModes: u32 {
         const NORMAL        = 1_u32 <<  0;
-        const HQ            = 1_u32 <<  1;
-        const XRAY          = 1_u32 <<  2;
-        const EDL           = 1_u32 <<  3;
+        const XRAY          = 1_u32 <<  1;
     }
 }
 
@@ -36,7 +34,6 @@ impl From<RenderMode> for RenderModes {
     fn from(value: RenderMode) -> Self {
         match value {
             RenderMode::Normal => RenderModes::NORMAL,
-            RenderMode::HighQuality => RenderModes::HQ,
             RenderMode::XRay => RenderModes::XRAY,
         }
     }
@@ -47,7 +44,6 @@ impl From<RenderMode> for RenderModes {
 pub enum RenderMode {
     #[default]
     Normal,
-    HighQuality,
     XRay,
 }
 
@@ -59,9 +55,13 @@ pub struct PointCloudViewSettings {
     pub clipping_planes: Vec<Vec4>,
     /// Max 8 clipping spheres
     pub clipping_spheres: Vec<Vec4>,
+    /// Eye Dome Lighting
+    pub edl_enabled: bool,
     /// Max 8 edl neighbours
     /// TODO: optimize this
     pub edl_neighbours: Vec<Vec4>,
+    pub edl_radius: f32,
+    pub edl_strength: f32,
 }
 
 impl Default for PointCloudViewSettings {
@@ -70,14 +70,17 @@ impl Default for PointCloudViewSettings {
             render_modes: Default::default(),
             clipping_planes: Default::default(),
             clipping_spheres: Default::default(),
+            edl_enabled: false,
             edl_neighbours: (0..8)
                 .step_by(2)
-                .chain((1..8).step_by(2))
+                .chain((1..9).step_by(2))
                 .map(|i| {
                     let angle = 2.0 * i as f32 * std::f32::consts::PI / 8.0;
                     Vec4::new(angle.cos(), angle.sin(), 0.0, 0.0)
                 })
                 .collect(),
+            edl_radius: 1.4,
+            edl_strength: 0.4,
         }
     }
 }
@@ -85,7 +88,9 @@ impl Default for PointCloudViewSettings {
 #[derive(Clone, Copy, ShaderType, Default)]
 pub struct PointCloudViewSettingsUniform {
     pub nb_clipping_planes: u32,
-    pub _padding: Vec3,
+    pub nb_edl_neighbours: u32,
+    pub edl_radius: f32,
+    pub edl_strength: f32,
     pub clipping_planes: [Vec4; 8],
     pub edl_neighbours: [Vec4; 8],
 }
@@ -95,14 +100,13 @@ bitflags! {
     #[derive(Clone, Copy, PartialEq, Eq, Hash)]
     pub struct PointCloudViewSettingsKey: u64 {
         const RENDER_MODE_NORMAL       = 1_u64 <<  0;
-        const RENDER_MODE_HQ           = 1_u64 <<  1;
-        const RENDER_MODE_XRAY         = 1_u64 <<  2;
-        const RENDER_MODE_EDL          = 1_u64 <<  3;
+        const RENDER_MODE_XRAY         = 1_u64 <<  1;
+        const EDL_ENABLED              = 1_u64 <<  2;
 
-        const CLIPPING_PLANES          = 1_u64 <<  4;
-        const CLIPPING_SPHERES         = 1_u64 <<  5;
+        const CLIPPING_PLANES          = 1_u64 <<  3;
+        const CLIPPING_SPHERES         = 1_u64 <<  4;
 
-        const RENDER_MODES_MASK          = Self::RENDER_MODE_NORMAL.bits() | Self::RENDER_MODE_HQ.bits() | Self::RENDER_MODE_XRAY.bits() | Self::RENDER_MODE_EDL.bits();
+        const RENDER_MODES_MASK          = Self::RENDER_MODE_NORMAL.bits() | Self::RENDER_MODE_XRAY.bits();
     }
 }
 
@@ -112,16 +116,14 @@ impl PointCloudViewSettingsKey {
         if self.contains(PointCloudViewSettingsKey::RENDER_MODE_NORMAL) {
             render_modes.insert(RenderModes::NORMAL);
         }
-        if self.contains(PointCloudViewSettingsKey::RENDER_MODE_HQ) {
-            render_modes.insert(RenderModes::HQ);
-        }
         if self.contains(PointCloudViewSettingsKey::RENDER_MODE_XRAY) {
             render_modes.insert(RenderModes::XRAY);
         }
-        if self.contains(PointCloudViewSettingsKey::RENDER_MODE_EDL) {
-            render_modes.insert(RenderModes::EDL);
-        }
         render_modes
+    }
+
+    pub fn edl_enabled(&self) -> bool {
+        self.contains(PointCloudViewSettingsKey::EDL_ENABLED)
     }
 }
 
@@ -129,7 +131,6 @@ impl From<&RenderMode> for PointCloudViewSettingsKey {
     fn from(value: &RenderMode) -> Self {
         match value {
             RenderMode::Normal => PointCloudViewSettingsKey::RENDER_MODE_NORMAL,
-            RenderMode::HighQuality => PointCloudViewSettingsKey::RENDER_MODE_HQ,
             RenderMode::XRay => PointCloudViewSettingsKey::RENDER_MODE_XRAY,
         }
     }
@@ -142,14 +143,11 @@ impl From<&PointCloudViewSettings> for PointCloudViewSettingsKey {
         if settings.render_modes.contains(RenderModes::NORMAL) {
             key.insert(PointCloudViewSettingsKey::RENDER_MODE_NORMAL);
         }
-        if settings.render_modes.contains(RenderModes::HQ) {
-            key.insert(PointCloudViewSettingsKey::RENDER_MODE_HQ);
-        }
-        if settings.render_modes.contains(RenderModes::EDL) {
-            key.insert(PointCloudViewSettingsKey::RENDER_MODE_EDL);
-        }
         if settings.render_modes.contains(RenderModes::XRAY) {
             key.insert(PointCloudViewSettingsKey::RENDER_MODE_XRAY);
+        }
+        if settings.edl_enabled {
+            key.insert(PointCloudViewSettingsKey::EDL_ENABLED);
         }
         key.set(
             PointCloudViewSettingsKey::CLIPPING_PLANES,
@@ -172,7 +170,9 @@ impl ViewSettings for PointCloudViewSettings {
     fn to_data(&self) -> Self::Data {
         PointCloudViewSettingsUniform {
             nb_clipping_planes: self.clipping_planes.len() as u32,
-            _padding: Default::default(),
+            nb_edl_neighbours: self.edl_neighbours.len() as u32,
+            edl_radius: self.edl_radius,
+            edl_strength: self.edl_strength,
             clipping_planes: std::array::from_fn(|i| {
                 self.clipping_planes.get(i).copied().unwrap_or_default()
             }),

@@ -1,5 +1,8 @@
 #import bevy_pbr::{
-    view_transformations::position_world_to_view,
+    view_transformations::{
+        position_world_to_view,
+        position_view_to_clip,
+    }
 }
 
 #import bevy_pointcloud::{
@@ -30,6 +33,7 @@ fn vertex(
         ).xyz;
 
     let point_view_position = position_world_to_view(point_world_position);
+    out.point_view_position = point_view_position;
 
     let radius = pointcloud_functions::compute_point_radius(
         vertex.position,
@@ -59,7 +63,7 @@ fn vertex(
     #endif
 
     // Compute vertex positions
-    let pos = pointcloud_functions::compute_point_vertex_positions_normal(
+    var pos = pointcloud_functions::compute_point_vertex_positions_normal(
         point_world_position,
         world_from_local,
         shape.position,
@@ -70,6 +74,25 @@ fn vertex(
     );
 
     out.position = pos.clip_position;
+    out.view_position = pos.view_position;
+
+    out.radius = radius;
+    out.log_depth = log2(-pos.view_position.z);
+
+    // TODO move this in simple material
+    #ifdef WEIGHTED_SPLATS_ENABLED
+        #ifdef POINTCLOUD_PASS_DEPTH
+    		let original_depth = pos.clip_position.w;
+            if (original_depth > 0.0) {
+        		let adjusted_depth = original_depth + 2.0 * radius;
+        		let adjust = adjusted_depth / original_depth;
+
+                pos.view_position *= adjust;
+                out.position = position_view_to_clip(pos.view_position);
+            }
+        #endif // POINTCLOUD_PASS_DEPTH
+	#endif // WEIGHTED_SPLATS_ENABLED
+
     out.world_position = vec4<f32>(pos.world_position, 1.0);
     out.world_normal = pos.world_normal;
 

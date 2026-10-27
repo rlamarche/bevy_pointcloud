@@ -40,26 +40,30 @@ struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) world_position: vec4<f32>,
     @location(1) world_normal: vec3<f32>,
+    @location(2) point_view_position: vec3<f32>,
+    @location(3) view_position: vec3<f32>,
+    @location(4) radius: f32,
+    @location(5) log_depth: f32,
 #ifdef VERTEX_UVS_A
-    @location(2) uv: vec2<f32>,
+    @location(6) uv: vec2<f32>,
 #endif
 #ifdef VERTEX_UVS_B
-    @location(3) uv_b: vec2<f32>,
+    @location(7) uv_b: vec2<f32>,
 #endif
 #ifdef VERTEX_TANGENTS
-    @location(4) world_tangent: vec4<f32>,
+    @location(8) world_tangent: vec4<f32>,
 #endif
 #ifdef VERTEX_COLORS
-    @location(5) color: vec4<f32>,
+    @location(9) color: vec4<f32>,
 #endif
 #ifdef VERTEX_OUTPUT_INSTANCE_INDEX
-    @location(6) @interpolate(flat) instance_index: u32,
+    @location(10) @interpolate(flat) instance_index: u32,
 #endif
 #ifdef VISIBILITY_RANGE_DITHER
-    @location(7) @interpolate(flat) visibility_range_dither: i32,
+    @location(11) @interpolate(flat) visibility_range_dither: i32,
 #endif
 #ifdef SHAPE_UVS_A
-    @location(8) shape_uv: vec2<f32>,
+    @location(12) shape_uv: vec2<f32>,
 #endif
 }
 
