@@ -256,12 +256,6 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
         ));
         bind_group_layout.push(self.point_cloud_layout.clone());
 
-        // if splat_key.contains(SplatPipelineKey::IS_OCTREE) {
-        //     bind_group_layout.push(self.point_cloud_octree_visible_nodes_layout.clone());
-        // } else {
-        //     bind_group_layout.push(self.empty_layout.clone());
-        // }
-
         if key.contains(MeshPipelineKey::SCREEN_SPACE_AMBIENT_OCCLUSION) {
             shader_defs.push("SCREEN_SPACE_AMBIENT_OCCLUSION".into());
         }

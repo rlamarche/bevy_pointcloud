@@ -2,7 +2,6 @@ use std::{any::Any, sync::Arc};
 
 use bevy::{
     ecs::world::World,
-    log::info,
     material::{
         descriptor::{CachedRenderPipelineId, RenderPipelineDescriptor},
         specialize::SpecializedMeshPipelineError,
@@ -85,12 +84,19 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
 
             if let Some(vertex_shader) = pass_properties.get_shader(MaterialVertexShader) {
                 descriptor.vertex.shader = vertex_shader.clone();
+            } else if let Some(vertex_shader) = self.properties.get_shader(MaterialVertexShader) {
+                descriptor.vertex.shader = vertex_shader.clone();
             }
 
             if let Some(fragment) = descriptor.fragment.as_mut() {
                 if let Some(fragment_shader) = pass_properties.get_shader(MaterialFragmentShader) {
                     fragment.shader = fragment_shader.clone();
+                } else if let Some(fragment_shader) =
+                    self.properties.get_shader(MaterialFragmentShader)
+                {
+                    fragment.shader = fragment_shader.clone();
                 }
+
                 if let Some(Some(target)) = fragment.targets.get_mut(0) {
                     target.blend = pass_properties.blend;
                 }

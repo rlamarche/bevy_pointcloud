@@ -21,8 +21,8 @@ use bitflags::bitflags;
 
 use crate::{
     render::{
-        FullscreenPassParams, GeometryPassParams, PassDescriptor, PassInput, PassKind, PassOutput,
-        PointCloudMaterial, PointCloudMaterialPipeline, PointCloudMaterialPipelineKey,
+        shader_ref, FullscreenPassParams, GeometryPassParams, PassDescriptor, PassInput, PassKind,
+        PassOutput, PointCloudMaterial, PointCloudMaterialPipeline, PointCloudMaterialPipelineKey,
         PointCloudMaterialPlugin, TransientTarget,
     },
     ColorStop, ColorStopUniform, PointCloudViewSettings, PointCloudViewSettingsKey, RenderMode,
@@ -37,6 +37,7 @@ impl Plugin for SimplePointCloudMaterialPlugin {
         load_shader_library!(app, "simple_functions.wgsl");
         load_shader_library!(app, "simple_types.wgsl");
         embedded_asset!(app, "simple.wgsl");
+        embedded_asset!(app, "normalize.wgsl");
 
         app.add_plugins(PointCloudMaterialPlugin::<SimplePointCloudMaterial>::default());
     }
@@ -190,14 +191,8 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
     type ViewSettings = PointCloudViewSettings;
 
     fn fragment_shader() -> ShaderRef {
-        // shader_ref(bevy::asset::embedded_path!("simple.wgsl"))
-        "shaders/simple_dev.wgsl".into()
+        shader_ref(bevy::asset::embedded_path!("simple.wgsl"))
     }
-
-    // fn prepass_fragment_shader() -> bevy::shader::ShaderRef {
-    //     shader_ref(bevy::asset::embedded_path!("prepass.wgsl"))
-    //     // "shaders/prepass_dev.wgsl".into()
-    // }
 
     fn enable_prepass() -> bool {
         true
@@ -428,7 +423,7 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         match pass {
             SimplePasses::Depth => Some(GeometryPassParams {
                 vertex_shader: ShaderRef::Default,
-                fragment_shader: "shaders/simple_dev.wgsl".into(),
+                fragment_shader: ShaderRef::Default,
                 inputs: vec![],
                 output: PassOutput::TransientTarget(TransientTarget {
                     format: if settings_key.edl_enabled() {
@@ -491,7 +486,7 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
             SimplePasses::XRayNormalize | SimplePasses::EDLNormalize => {
                 Some(FullscreenPassParams {
                     vertex_shader: ShaderRef::Default,
-                    fragment_shader: "shaders/normalize_dev.wgsl".into(),
+                    fragment_shader: shader_ref(bevy::asset::embedded_path!("normalize.wgsl")),
                     inputs: vec![
                         PassInput {
                             source_pass: SimplePasses::Depth.into(),
