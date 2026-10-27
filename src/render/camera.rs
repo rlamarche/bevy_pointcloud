@@ -184,6 +184,7 @@ impl PointCloudDirtySpecializations {
     ///
     /// `last_frame_view_pending_queues` should be the contents of the
     /// [`ViewPendingQueues::prev_frame`] list.
+    /// TODO: integrate this fix : https://github.com/bevyengine/bevy/commit/244e0e6ae2c165a8d87b5e169768d5f70ab0f96d
     pub fn iter_to_queue<'a>(
         &'a self,
         view: RetainedViewEntity,

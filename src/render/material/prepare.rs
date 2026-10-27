@@ -590,12 +590,12 @@ pub fn prepare_material_view_settings_key_and_passes<M: PointCloudMaterial>(
                 } else {
                     // cleanup passes
                     material_prepared_passes.remove(&type_id);
+                }
 
-                    // clear not needed anymore multipass texture
-                    if let Some(mut multipass_textures) = maybe_multipass_textures {
-                        multipass_textures.textures.clear();
-                        multipass_textures.has_changed = true;
-                    }
+                // always clear existing textures when view settings have changed
+                if let Some(mut multipass_textures) = maybe_multipass_textures {
+                    multipass_textures.textures.clear();
+                    multipass_textures.has_changed = true;
                 }
 
                 // if the key has changed, mark the view as dirty to force respecialization

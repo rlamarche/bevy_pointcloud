@@ -152,9 +152,8 @@ impl SpecializedFullscreenPointCloudPipeline for FullscreenMaterialPassPipeline 
             vertex: vertex_state,
             depth_stencil: Some(DepthStencilState {
                 format: CORE_3D_DEPTH_FORMAT,
-                // TODO: make it customizable
-                depth_write_enabled: Some(true),
-                depth_compare: Some(CompareFunction::GreaterEqual),
+                depth_write_enabled: Some(false),
+                depth_compare: Some(CompareFunction::Always),
                 stencil: StencilState {
                     front: StencilFaceState::IGNORE,
                     back: StencilFaceState::IGNORE,
@@ -170,7 +169,6 @@ impl SpecializedFullscreenPointCloudPipeline for FullscreenMaterialPassPipeline 
             multisample: MultisampleState {
                 count: key.view_key.msaa_samples(),
                 mask: !0,
-                // TODO: make it customizable
                 alpha_to_coverage_enabled: false,
             },
             ..default()
@@ -188,6 +186,17 @@ impl SpecializedFullscreenPointCloudPipeline for FullscreenMaterialPipelineSpeci
         key: Self::Key,
     ) -> Result<RenderPipelineDescriptor, SpecializedMeshPipelineError> {
         let mut descriptor = self.fullscreen_pipeline.specialize(key.clone())?;
+
+        let shader_defs = &mut descriptor.vertex.shader_defs;
+
+        // add useful shaderdefs (eg: `POINTCLOUD_PASS_DEPTH` and `POINTCLOUD_PASS_0`)
+        shader_defs.push(ShaderDefVal::UInt(
+            "POINTCLOUD_PASS".into(),
+            key.pass as u32,
+        ));
+
+        shader_defs.push(format!("POINTCLOUD_PASS_{}", key.pass).into());
+        shader_defs.push(format!("POINTCLOUD_PASS_{}", self.pass.label.to_uppercase()).into());
 
         if let Some(pointcloud_layout) = descriptor.layout.last_mut() {
             if let Some(view_settings_layout_entry) = &self.pass.view_settings_layout_entry {

@@ -201,6 +201,24 @@ impl<M: PointCloudMaterial> Plugin for MultipassMaterialPlugin<M> {
             4 => {
                 register_passes!(app, M, self.debug_flags, 0, 1, 2, 3);
             }
+            5 => {
+                register_passes!(app, M, self.debug_flags, 0, 1, 2, 3, 4);
+            }
+            6 => {
+                register_passes!(app, M, self.debug_flags, 0, 1, 2, 3, 4, 5);
+            }
+            7 => {
+                register_passes!(app, M, self.debug_flags, 0, 1, 2, 3, 4, 5, 6);
+            }
+            8 => {
+                register_passes!(app, M, self.debug_flags, 0, 1, 2, 3, 4, 5, 6, 7);
+            }
+            9 => {
+                register_passes!(app, M, self.debug_flags, 0, 1, 2, 3, 4, 5, 6, 7, 8);
+            }
+            10 => {
+                register_passes!(app, M, self.debug_flags, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
+            }
             _ => panic!("Unsupported number of passes."),
         }
 
@@ -830,7 +848,7 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
                 {
                     specialized_multipass_material_pipeline_cache.clear();
                 } else {
-                    for (&renderable_entity, &_main_entity) in
+                    for (&renderable_entity, _main_entity) in
                         dirty_specializations.iter_to_despecialize()
                     {
                         specialized_multipass_material_pipeline_cache.remove(&renderable_entity);
@@ -1060,7 +1078,10 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
                     .insert(item.render_entity, pipeline_id);
             }
             // skip this pass
-            Ok(None) => {}
+            Ok(None) => {
+                // remove the view cache so the phase will not be added
+                // removals.push((item.retained_view_entity, item.render_entity));
+            }
             Err(err) => error!("{}", err),
         }
     }

@@ -104,7 +104,7 @@ impl From<usize> for NoPassId {
 /// Materials must also define a [`PointCloudMaterial::ViewSettings`] type for view based settings
 /// (eg: clipping planes, multipass materials, ...).
 pub trait PointCloudMaterial: Asset + AsBindGroup + Clone + Sized {
-    type PassId: Send + Sync + 'static + Clone + Copy + Into<usize> + From<usize>;
+    type PassId: Send + Sync + 'static + Clone + Copy + Into<usize> + From<usize> + Debug;
 
     type ViewSettings: ViewSettings;
     // type ViewSettings: Component

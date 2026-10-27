@@ -69,7 +69,7 @@ async fn ehttp_get_size(
     response
         .headers
         .get("Content-Length")
-        .map(&str::parse)
+        .map(str::parse)
         .transpose()
         .map_err(|e: ParseIntError| ByteSourceError::ByteSource(e.into()))
 }
