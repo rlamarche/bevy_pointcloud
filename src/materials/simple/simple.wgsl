@@ -17,12 +17,10 @@
 #ifdef MULTISAMPLED
 
 @group(#{POINTCLOUD_BIND_GROUP}) @binding(10) var depth_texture: texture_multisampled_2d<f32>;
-// @group(2) @binding(1) var attribute_texture: texture_multisampled_2d<f32>;
 
 #else // MULTISAMPLED
 
 @group(#{POINTCLOUD_BIND_GROUP}) @binding(10) var depth_texture: texture_2d<f32>;
-// @group(2) @binding(1) var attribute_texture: texture_2d<f32>;
 
 #endif // MULTISAMPLED
 
@@ -30,13 +28,7 @@
 
 
 #ifdef POINTCLOUD_VIEW_SETTINGS
-struct PointCloudViewSettings {
-    nb_clipping_planes: u32,
-    _padding: vec3<f32>,
-    clipping_planes: array<vec4<f32>, 8>,
-}
-
-@group(#{POINTCLOUD_BIND_GROUP}) @binding(3) var<uniform> view_settings: PointCloudViewSettings;
+@group(#{POINTCLOUD_BIND_GROUP}) @binding(3) var<uniform> view_settings: material_types::PointCloudViewSettings;
 #endif // POINTCLOUD_VIEW_SETTINGS
 
 

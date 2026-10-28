@@ -26,6 +26,10 @@
     mesh_view_bindings::view,
 }
 
+#import bevy_pointcloud::{
+    simple_material_types as material_types,
+}
+
 struct FragmentOutput {
     @location(0) color: vec4<f32>,
 }
@@ -51,7 +55,7 @@ struct PointCloudViewSettings {
     edl_neighbours: array<vec4<f32>, 8>,
 }
 
-@group(#{POINTCLOUD_BIND_GROUP}) @binding(3) var<uniform> view_settings: PointCloudViewSettings;
+@group(#{POINTCLOUD_BIND_GROUP}) @binding(3) var<uniform> view_settings: material_types::PointCloudViewSettings;
 
 
 #ifdef RENDER_MODE_EDL
@@ -109,6 +113,8 @@ fn fragment(in: FullscreenVertexOutput) -> FragmentOutput {
 
     #ifdef POINTCLOUD_PASS_XRAY_NORMALIZE
         output.color = stored_color / stored_color.a;
+        // TODO: make it configurable
+        output.color.a = 0.9; //stored_color.a;
     #endif
 
     return output;

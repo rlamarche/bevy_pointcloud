@@ -37,6 +37,7 @@ impl Plugin for SimplePointCloudMaterialPlugin {
         load_shader_library!(app, "simple_functions.wgsl");
         load_shader_library!(app, "simple_types.wgsl");
         embedded_asset!(app, "simple.wgsl");
+        embedded_asset!(app, "simple_prepass.wgsl");
         embedded_asset!(app, "normalize.wgsl");
 
         app.add_plugins(PointCloudMaterialPlugin::<SimplePointCloudMaterial>::default());
@@ -194,190 +195,16 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         shader_ref(bevy::asset::embedded_path!("simple.wgsl"))
     }
 
+    fn prepass_fragment_shader() -> ShaderRef {
+        shader_ref(bevy::asset::embedded_path!("simple_prepass.wgsl"))
+    }
+
     fn enable_prepass() -> bool {
         true
     }
 
     fn enable_shadows() -> bool {
         true
-    }
-
-    fn fullscreen_specialize(
-        _pipeline: &crate::render::multipass::FullscreenMaterialPassPipeline,
-        descriptor: &mut bevy::material::descriptor::RenderPipelineDescriptor,
-        _pass: Self::PassId,
-        settings_key: <Self::ViewSettings as ViewSettings>::Key,
-    ) -> bevy::ecs::error::Result<(), bevy::material::specialize::SpecializedMeshPipelineError>
-    {
-        // Collect all shader defs for both vertex and fragment stages
-        let mut shader_defs = Vec::new();
-
-        // Evaluate single boolean flags
-        #[expect(clippy::single_element_loop, reason = "todo")]
-        for (flags, shader_def) in [(PointCloudViewSettingsKey::EDL_ENABLED, "RENDER_MODE_EDL")] {
-            if settings_key.intersects(flags) {
-                shader_defs.push(shader_def.into());
-            }
-        }
-
-        // Forward shader defs to the vertex stage
-        descriptor.vertex.shader_defs.extend(shader_defs.clone());
-
-        // Forward shader defs to the fragment stage if it exists
-        if let Some(fragment) = descriptor.fragment.as_mut() {
-            fragment.shader_defs.extend(shader_defs);
-        }
-
-        Ok(())
-    }
-
-    fn specialize(
-        _pipeline: &PointCloudMaterialPipeline,
-        descriptor: &mut bevy::material::descriptor::RenderPipelineDescriptor,
-        _splat_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
-        _instance_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
-        key: PointCloudMaterialPipelineKey<Self>,
-    ) -> bevy::ecs::error::Result<bool, bevy::material::specialize::SpecializedMeshPipelineError>
-    {
-        info!("User specialize for pass {:?}", key.pass);
-
-        // Extract the custom material key from the bind group data
-        let material_key = key.bind_group_data;
-
-        // TODO: use this key to define a shaderdef with number of clipping planes
-        let settings_key = key.view_settings_key;
-
-        let render_mode = material_key.render_mode();
-        let weighted_splats_enabled = material_key.weighted_splats_enabled();
-        let edl_enabled = settings_key.edl_enabled();
-
-        // Check if the render mode is enabled in settings
-        if !settings_key.render_modes().contains(render_mode.into()) {
-            return Ok(false);
-        }
-
-        // Handle specific custom passes rules
-        let should_disable = match key.pass {
-            None => {
-                matches!(render_mode, RenderMode::XRay) || weighted_splats_enabled || edl_enabled
-            }
-            Some(SimplePasses::Depth) | Some(SimplePasses::Attribute) => {
-                !matches!(render_mode, RenderMode::Normal)
-                    || (!weighted_splats_enabled && !edl_enabled)
-            }
-            Some(SimplePasses::XRay) => !matches!(render_mode, RenderMode::XRay),
-            _ => panic!("Invalid pass in simple material specialization."),
-        };
-
-        if should_disable {
-            return Ok(false);
-        }
-
-        // Collect all shader defs for both vertex and fragment stages
-        let mut shader_defs = Vec::new();
-
-        // Evaluate single boolean flags
-        for (flags, shader_def) in [
-            (PointCloudViewSettingsKey::EDL_ENABLED, "RENDER_MODE_EDL"),
-            (
-                PointCloudViewSettingsKey::CLIPPING_PLANES,
-                "CLIPPING_PLANES",
-            ),
-            (
-                PointCloudViewSettingsKey::CLIPPING_SPHERES,
-                "CLIPPING_SPHERES",
-            ),
-        ] {
-            if settings_key.intersects(flags) {
-                shader_defs.push(shader_def.into());
-            }
-        }
-
-        // Evaluate multi-bit point size mode using the mask
-        match material_key.render_mode() {
-            RenderMode::Normal => {
-                shader_defs.push("RENDER_MODE_NORMAL".into());
-            }
-            RenderMode::XRay => {
-                shader_defs.push("RENDER_MODE_XRAY".into());
-            }
-        }
-
-        // Evaluate single boolean flags
-        for (flags, shader_def) in [
-            (
-                SimplePointCloudMaterialKey::WEIGHTED_SPLATS_ENABLED,
-                "WEIGHTED_SPLATS_ENABLED",
-            ),
-            (
-                SimplePointCloudMaterialKey::GRADIENT,
-                "SIMPLE_MATERIAL_GRADIENT",
-            ),
-            (
-                SimplePointCloudMaterialKey::COLOR_STOP_1,
-                "SIMPLE_MATERIAL_COLOR_STOP_1",
-            ),
-            (
-                SimplePointCloudMaterialKey::COLOR_STOP_2,
-                "SIMPLE_MATERIAL_COLOR_STOP_2",
-            ),
-            (
-                SimplePointCloudMaterialKey::COLOR_STOP_3,
-                "SIMPLE_MATERIAL_COLOR_STOP_3",
-            ),
-            (
-                SimplePointCloudMaterialKey::COLOR_STOP_4,
-                "SIMPLE_MATERIAL_COLOR_STOP_4",
-            ),
-            (
-                SimplePointCloudMaterialKey::COLOR_STOP_5,
-                "SIMPLE_MATERIAL_COLOR_STOP_5",
-            ),
-            (
-                SimplePointCloudMaterialKey::COLOR_STOP_6,
-                "SIMPLE_MATERIAL_COLOR_STOP_6",
-            ),
-            (
-                SimplePointCloudMaterialKey::COLOR_STOP_7,
-                "SIMPLE_MATERIAL_COLOR_STOP_7",
-            ),
-            (
-                SimplePointCloudMaterialKey::COLOR_STOP_8,
-                "SIMPLE_MATERIAL_COLOR_STOP_8",
-            ),
-            (
-                SimplePointCloudMaterialKey::UV_TRANSFORM,
-                "SIMPLE_MATERIAL_HAS_UV_TRANSFORM",
-            ),
-        ] {
-            if material_key.intersects(flags) {
-                shader_defs.push(shader_def.into());
-            }
-        }
-
-        // Forward shader defs to the vertex stage
-        descriptor.vertex.shader_defs.extend(shader_defs.clone());
-
-        // Forward shader defs to the fragment stage if it exists
-        if let Some(fragment) = descriptor.fragment.as_mut() {
-            fragment.shader_defs.extend(shader_defs);
-        }
-
-        // Generally, we want to cull front faces if `CULL_FRONT` is present and
-        // backfaces if `CULL_BACK` is present. However, if the view has
-        // `INVERT_CULLING` on (usually used for mirrors and the like), we do
-        // the opposite.
-        descriptor.primitive.cull_mode = match (
-            material_key.contains(SimplePointCloudMaterialKey::CULL_FRONT),
-            material_key.contains(SimplePointCloudMaterialKey::CULL_BACK),
-            key.mesh_key.contains(MeshPipelineKey::INVERT_CULLING),
-        ) {
-            (true, false, false) | (false, true, true) => Some(Face::Front),
-            (false, true, false) | (true, false, true) => Some(Face::Back),
-            _ => None,
-        };
-
-        Ok(true)
     }
 
     fn passes() -> &'static [PassDescriptor<Self::PassId>] {
@@ -522,12 +349,205 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
                         },
                     ],
                     output: PassOutput::MainColorTarget,
-                    blend: None,
+                    blend: {
+                        if matches!(pass, SimplePasses::XRayNormalize) {
+                            Some(BlendState {
+                                color: BlendComponent {
+                                    src_factor: BlendFactor::SrcAlpha,
+                                    dst_factor: BlendFactor::OneMinusSrcAlpha,
+                                    operation: BlendOperation::Add,
+                                },
+                                alpha: BlendComponent {
+                                    src_factor: BlendFactor::Zero,
+                                    dst_factor: BlendFactor::One,
+                                    operation: BlendOperation::Add,
+                                },
+                            })
+                        } else {
+                            None
+                        }
+                    },
                     depth_write_enabled: Some(false),
                 })
             }
             _ => None,
         }
+    }
+
+    fn fullscreen_specialize(
+        _pipeline: &crate::render::multipass::FullscreenMaterialPassPipeline,
+        descriptor: &mut bevy::material::descriptor::RenderPipelineDescriptor,
+        _pass: Self::PassId,
+        settings_key: <Self::ViewSettings as ViewSettings>::Key,
+    ) -> bevy::ecs::error::Result<(), bevy::material::specialize::SpecializedMeshPipelineError>
+    {
+        // Collect all shader defs for both vertex and fragment stages
+        let mut shader_defs = Vec::new();
+
+        // Evaluate single boolean flags
+        #[expect(clippy::single_element_loop, reason = "todo")]
+        for (flags, shader_def) in [(PointCloudViewSettingsKey::EDL_ENABLED, "RENDER_MODE_EDL")] {
+            if settings_key.intersects(flags) {
+                shader_defs.push(shader_def.into());
+            }
+        }
+
+        // Forward shader defs to the vertex stage
+        descriptor.vertex.shader_defs.extend(shader_defs.clone());
+
+        // Forward shader defs to the fragment stage if it exists
+        if let Some(fragment) = descriptor.fragment.as_mut() {
+            fragment.shader_defs.extend(shader_defs);
+        }
+
+        Ok(())
+    }
+
+    fn specialize(
+        _pipeline: &PointCloudMaterialPipeline,
+        descriptor: &mut bevy::material::descriptor::RenderPipelineDescriptor,
+        _splat_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
+        _instance_layout: &bevy::mesh::MeshVertexBufferLayoutRef,
+        key: PointCloudMaterialPipelineKey<Self>,
+    ) -> bevy::ecs::error::Result<bool, bevy::material::specialize::SpecializedMeshPipelineError>
+    {
+        // Extract the custom material key from the bind group data
+        let material_key = key.bind_group_data;
+
+        // TODO: use this key to define a shaderdef with number of clipping planes
+        let settings_key = key.view_settings_key;
+
+        let render_mode = material_key.render_mode();
+        let weighted_splats_enabled = material_key.weighted_splats_enabled();
+        let edl_enabled = settings_key.edl_enabled();
+
+        // Check if the render mode is enabled in settings
+        if !settings_key.render_modes().contains(render_mode.into()) {
+            return Ok(false);
+        }
+
+        // Handle specific custom passes rules
+        let should_disable = match key.pass {
+            None => {
+                matches!(render_mode, RenderMode::XRay) || weighted_splats_enabled || edl_enabled
+            }
+            Some(SimplePasses::Depth) | Some(SimplePasses::Attribute) => {
+                !matches!(render_mode, RenderMode::Normal)
+                    || (!weighted_splats_enabled && !edl_enabled)
+            }
+            Some(SimplePasses::XRay) => !matches!(render_mode, RenderMode::XRay),
+            _ => panic!("Invalid pass in simple material specialization."),
+        };
+
+        if should_disable {
+            return Ok(false);
+        }
+
+        // Collect all shader defs for both vertex and fragment stages
+        let mut shader_defs = Vec::new();
+
+        // Evaluate single boolean flags
+        for (flags, shader_def) in [
+            (PointCloudViewSettingsKey::EDL_ENABLED, "RENDER_MODE_EDL"),
+            (
+                PointCloudViewSettingsKey::CLIPPING_PLANES,
+                "CLIPPING_PLANES",
+            ),
+            (
+                PointCloudViewSettingsKey::CLIPPING_SPHERES,
+                "CLIPPING_SPHERES",
+            ),
+        ] {
+            if settings_key.intersects(flags) {
+                shader_defs.push(shader_def.into());
+            }
+        }
+
+        // Evaluate multi-bit point size mode using the mask
+        match material_key.render_mode() {
+            RenderMode::Normal => {
+                shader_defs.push("RENDER_MODE_NORMAL".into());
+            }
+            RenderMode::XRay => {
+                shader_defs.push("RENDER_MODE_XRAY".into());
+            }
+        }
+
+        // Evaluate single boolean flags
+        for (flags, shader_def) in [
+            (
+                SimplePointCloudMaterialKey::WEIGHTED_SPLATS_ENABLED,
+                "WEIGHTED_SPLATS_ENABLED",
+            ),
+            (
+                SimplePointCloudMaterialKey::GRADIENT,
+                "SIMPLE_MATERIAL_GRADIENT",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_1,
+                "SIMPLE_MATERIAL_COLOR_STOP_1",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_2,
+                "SIMPLE_MATERIAL_COLOR_STOP_2",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_3,
+                "SIMPLE_MATERIAL_COLOR_STOP_3",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_4,
+                "SIMPLE_MATERIAL_COLOR_STOP_4",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_5,
+                "SIMPLE_MATERIAL_COLOR_STOP_5",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_6,
+                "SIMPLE_MATERIAL_COLOR_STOP_6",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_7,
+                "SIMPLE_MATERIAL_COLOR_STOP_7",
+            ),
+            (
+                SimplePointCloudMaterialKey::COLOR_STOP_8,
+                "SIMPLE_MATERIAL_COLOR_STOP_8",
+            ),
+            (
+                SimplePointCloudMaterialKey::UV_TRANSFORM,
+                "SIMPLE_MATERIAL_HAS_UV_TRANSFORM",
+            ),
+        ] {
+            if material_key.intersects(flags) {
+                shader_defs.push(shader_def.into());
+            }
+        }
+
+        // Forward shader defs to the vertex stage
+        descriptor.vertex.shader_defs.extend(shader_defs.clone());
+
+        // Forward shader defs to the fragment stage if it exists
+        if let Some(fragment) = descriptor.fragment.as_mut() {
+            fragment.shader_defs.extend(shader_defs);
+        }
+
+        // Generally, we want to cull front faces if `CULL_FRONT` is present and
+        // backfaces if `CULL_BACK` is present. However, if the view has
+        // `INVERT_CULLING` on (usually used for mirrors and the like), we do
+        // the opposite.
+        descriptor.primitive.cull_mode = match (
+            material_key.contains(SimplePointCloudMaterialKey::CULL_FRONT),
+            material_key.contains(SimplePointCloudMaterialKey::CULL_BACK),
+            key.mesh_key.contains(MeshPipelineKey::INVERT_CULLING),
+        ) {
+            (true, false, false) | (false, true, true) => Some(Face::Front),
+            (false, true, false) | (true, false, true) => Some(Face::Back),
+            _ => None,
+        };
+
+        Ok(true)
     }
 }
 
