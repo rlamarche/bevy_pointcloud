@@ -1,5 +1,14 @@
 #define_import_path bevy_pointcloud::simple_material_types
 
+struct PointCloudViewSettings {
+    nb_clipping_planes: u32,
+    nb_edl_neighbours: u32,
+    edl_radius: f32,
+    edl_strength: f32,
+    clipping_planes: array<vec4<f32>, 8>,
+    edl_neighbours: array<vec4<f32>, 8>,
+}
+
 struct SimplePointCloudMaterial {
     base_color: vec4<f32>,
     end_color: vec4<f32>,
