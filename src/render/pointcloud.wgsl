@@ -77,7 +77,7 @@ fn vertex(
     out.view_position = pos.view_position;
 
     out.radius = radius;
-    out.log_depth = log2(-pos.view_position.z);
+    out.log_depth = log2(-point_view_position.z);
 
     // TODO move this in simple material
     #ifdef WEIGHTED_SPLATS_ENABLED
