@@ -43,7 +43,7 @@ struct VertexOutput {
     @location(2) point_view_position: vec3<f32>,
     @location(3) view_position: vec3<f32>,
     @location(4) radius: f32,
-    @location(5) log_depth: f32,
+    @location(5) @interpolate(flat) log_depth: f32,
 #ifdef VERTEX_UVS_A
     @location(6) uv: vec2<f32>,
 #endif

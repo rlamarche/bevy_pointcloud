@@ -72,7 +72,7 @@ fn response(depth: f32, uv: vec2<f32>) -> f32{
 
 		let neighbour_depth_0 = textureLoad(depth_texture, vec2<i32>(uv_neighbor_0), 0).g;
 
-		if(neighbour_depth_0 != 0.0){
+		if (neighbour_depth_0 != 0.0){
 			if(depth == 0.0){
 				sum += 100.0;
 			}else{
