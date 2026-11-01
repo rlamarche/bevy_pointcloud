@@ -1,8 +1,11 @@
+use std::hash::Hash;
+
 use bevy::{
     ecs::entity::Entity,
     material::{descriptor::CachedRenderPipelineId, labels::DrawFunctionId},
     platform::collections::hash_map::Entry,
     render::{
+        batching::gpu_preprocessing::{IndirectParametersIndexed, IndirectParametersNonIndexed},
         mesh::allocator::MeshSlabs,
         render_phase::{BinnedPhaseItem, BinnedRenderPhase, PhaseItemBatchSetKey},
         sync_world::MainEntity,
@@ -60,7 +63,7 @@ where
 /// A batch set is a set of batches that can be multi-drawn together, if
 /// multi-draw is in use.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ChunkOpaque3dBatchSetKey {
+pub struct Opaque3dChunkBatchSetKey {
     /// The identifier of the render pipeline.
     pub pipeline: CachedRenderPipelineId,
 
@@ -83,8 +86,14 @@ pub struct ChunkOpaque3dBatchSetKey {
     pub slabs: MeshSlabs,
 }
 
-impl PhaseItemBatchSetKey for ChunkOpaque3dBatchSetKey {
+impl PhaseItemBatchSetKey for Opaque3dChunkBatchSetKey {
     fn indexed(&self) -> bool {
         self.splat_slabs.index_slab_id.is_some()
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum IndirectParameters {
+    Indexed(IndirectParametersIndexed),
+    NonIndexed(IndirectParametersNonIndexed),
 }

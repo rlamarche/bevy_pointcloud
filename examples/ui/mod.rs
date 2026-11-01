@@ -18,7 +18,13 @@ impl Plugin for MyUiPlugin {
             .init_resource::<UiSettings>()
             // Messages
             // .add_message::<LoadPointCloudMessage>()
-            .add_systems(Startup, settings_root.spawn())
+            .add_systems(
+                Startup,
+                |ui_settings: Res<UiSettings>, mut commands: Commands| {
+                    let scene = settings_root(&ui_settings);
+                    commands.spawn_scene(scene);
+                },
+            )
             // .add_systems(
             //     PreUpdate,
             //     (
@@ -38,11 +44,11 @@ impl Plugin for MyUiPlugin {
     }
 }
 
-fn scene() -> impl SceneList {
-    bsn_list![settings_root()]
+fn scene(ui_settings: &UiSettings) -> impl SceneList {
+    bsn_list![settings_root(ui_settings)]
 }
 
-pub fn settings_root() -> impl Scene {
+pub fn settings_root(ui_settings: &UiSettings) -> impl Scene {
     bsn! {
         Node {
             width: percent(100),
@@ -56,7 +62,7 @@ pub fn settings_root() -> impl Scene {
         TabGroup
         // ThemeBackgroundColor(tokens::WINDOW_BG),
         Children[
-            settings_panel()
+            settings_panel(ui_settings)
         ]
     }
 }

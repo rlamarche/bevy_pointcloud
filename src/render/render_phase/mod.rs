@@ -26,8 +26,11 @@ use bevy::{
 use indexmap::IndexMap;
 use smallvec::SmallVec;
 
-use crate::render::render_phase::batching::{
-    clear_indirect_parameters_buffers, GetBatchData, PhaseIndirectParametersBuffers,
+use crate::render::{
+    render_phase::batching::{
+        clear_indirect_parameters_buffers, GetBatchData, PhaseIndirectParametersBuffers,
+    },
+    IndirectParameters,
 };
 
 #[derive(Resource, Deref, DerefMut)]
@@ -84,11 +87,10 @@ where
     pub(crate) range: Option<Range<u32>>,
 }
 
-impl<BPI> RenderMultidrawableChunks<BPI> where BPI: BinnedPhaseItem {}
-
 #[derive(Clone)]
 pub struct RenderMultidrawableChunk {
     pub representative_entity: (Entity, MainEntity),
+    pub indirect_parameters: Option<IndirectParameters>,
 }
 
 impl<BPI> Default for ViewBinnedChunksRenderPhases<BPI>
@@ -237,6 +239,7 @@ where
                     bin_key.clone(),
                     RenderMultidrawableChunk {
                         representative_entity: (entity, main_entity),
+                        indirect_parameters: None,
                     },
                 );
             }
@@ -246,6 +249,7 @@ where
                     bin_key.clone(),
                     RenderMultidrawableChunk {
                         representative_entity: (entity, main_entity),
+                        indirect_parameters: None,
                     },
                 );
                 entry.insert(RenderMultidrawableChunks {

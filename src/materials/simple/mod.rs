@@ -3,7 +3,6 @@ use bevy::{
     asset::{embedded_asset, Asset, Handle},
     color::{Color, ColorToComponents, LinearRgba},
     image::Image,
-    log::info,
     math::{Affine2, Vec3, Vec4},
     pbr::MeshPipelineKey,
     reflect::{std_traits::ReflectDefault, Reflect},

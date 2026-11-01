@@ -1,9 +1,6 @@
 use bevy::{
     core_pipeline::{
-        core_3d::{
-            AlphaMask3d, Opaque3d, Opaque3dBatchSetKey, Opaque3dBinKey, Transparent3d,
-            TransparentSortingInfo3d,
-        },
+        core_3d::{AlphaMask3d, Opaque3dBinKey, Transparent3d, TransparentSortingInfo3d},
         prepass::{OpaqueNoLightmap3dBatchSetKey, OpaqueNoLightmap3dBinKey},
     },
     ecs::system::{Query, Res, ResMut},
@@ -28,10 +25,11 @@ use bevy::{
 
 use crate::{
     render::{
-        BinnedRenderPhaseExt, MainPassAlphaMaskDrawFunction, MainPassOpaqueDrawFunction,
-        MainPassTransmissiveDrawFunction, MainPassTransparentDrawFunction,
-        PendingPointCloudMaterialQueues, PointCloudDirtySpecializations,
-        PreparedPointCloudMaterial, RenderPointCloudChunkInstances,
+        render_phase::ViewBinnedChunksRenderPhases, BinnedRenderPhaseExt,
+        MainPassAlphaMaskDrawFunction, MainPassOpaqueDrawFunction,
+        MainPassTransmissiveDrawFunction, MainPassTransparentDrawFunction, Opaque3dChunk,
+        Opaque3dChunkBatchSetKey, PendingPointCloudMaterialQueues, PointCloudDirtySpecializations,
+        PreparedPointCloudMaterial, RenderPointCloudChunkInstances, RenderPointCloudInstances,
         RenderPointCloudMaterialInstances, SpecializedPointCloudMaterialPipelineCache,
     },
     PointCloudChunk3d,
@@ -43,13 +41,14 @@ pub fn queue_material_meshes(
     render_materials: Res<ErasedRenderAssets<PreparedPointCloudMaterial>>,
     render_mesh_instances: Res<RenderMeshInstances>,
     render_material_instances: Res<RenderPointCloudMaterialInstances>,
+    render_point_cloud_instances: Res<RenderPointCloudInstances>,
     render_point_cloud_chunk_instances: Res<RenderPointCloudChunkInstances>,
     mesh_assets: Res<RenderAssets<RenderMesh>>,
     mesh_allocator: Res<MeshAllocator>,
     maybe_batched_instance_buffers: Option<
         Res<BatchedInstanceBuffers<MeshUniform, MeshInputUniform>>,
     >,
-    mut opaque_render_phases: ResMut<ViewBinnedRenderPhases<Opaque3d>>,
+    mut opaque_render_phases: ResMut<ViewBinnedChunksRenderPhases<Opaque3dChunk>>,
     mut alpha_mask_render_phases: ResMut<ViewBinnedRenderPhases<AlphaMask3d>>,
     mut transmissive_render_phases: ResMut<ViewSortedRenderPhases<Transmissive3d>>,
     mut transparent_render_phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
@@ -106,9 +105,9 @@ pub fn queue_material_meshes(
                 continue;
             };
 
-            opaque_phase.remove_unbatchable_entity_pair(
-                render_entity,
-                &render_point_cloud_chunk_instance.root_entity,
+            opaque_phase.remove(
+                *render_entity,
+                render_point_cloud_chunk_instance.root_entity,
             );
             alpha_mask_phase.remove_unbatchable_entity_pair(
                 render_entity,
@@ -158,6 +157,16 @@ pub fn queue_material_meshes(
                 continue;
             };
 
+            let Some(point_cloud_instance) =
+                render_point_cloud_instances.get(&render_point_cloud_chunk_instance.root_entity)
+            else {
+                warn!(
+                    "RenderPointCloudInstance not found for entity {:?}",
+                    visible_entity
+                );
+                continue;
+            };
+
             // Check for material instance, mesh, and material. If any of these
             // fail, it's probably because the relevant asset hasn't loaded yet.
             // In that case, add the entity to the list of pending mesh
@@ -184,6 +193,18 @@ pub fn queue_material_meshes(
             };
             let Some(material) = render_materials.get(material_instance.asset_id) else {
                 warn!("material not ready, queue");
+                view_pending_mesh_material_queues
+                    .current_frame
+                    .insert((*render_entity, *visible_entity));
+                continue;
+            };
+
+            // Fetch the slabs that the splat resides in.
+            let Some(splat_slabs) = mesh_allocator.mesh_slabs(&point_cloud_instance.splat) else {
+                warn!(
+                    "splat slab not found for visible entity {:?}",
+                    visible_entity,
+                );
                 view_pending_mesh_material_queues
                     .current_frame
                     .insert((*render_entity, *visible_entity));
@@ -250,7 +271,11 @@ pub fn queue_material_meshes(
                         // a bin, we still want to update its cache entry. That
                         // way, we know we don't need to re-examine it in future
                         // frames.
-                        opaque_phase.update_cache(*visible_entity, None);
+                        opaque_phase.update_cache(
+                            *render_entity,
+                            render_point_cloud_chunk_instance.root_entity,
+                            None,
+                        );
                         continue;
                     }
                     let Some(draw_function) = material
@@ -260,15 +285,16 @@ pub fn queue_material_meshes(
                         warn!("draw function not found");
                         continue;
                     };
-                    let batch_set_key = Opaque3dBatchSetKey {
+                    let batch_set_key = Opaque3dChunkBatchSetKey {
                         pipeline: pipeline_id,
                         draw_function,
                         material_bind_group_index: Some(material.binding.group.0),
                         slabs: mesh_slabs,
-                        lightmap_slab: mesh_instance
-                            .shared
-                            .lightmap_slab_index()
-                            .map(|index| *index),
+                        splat_slabs,
+                        // lightmap_slab: mesh_instance
+                        //     .shared
+                        //     .lightmap_slab_index()
+                        //     .map(|index| *index),
                     };
                     let bin_key = Opaque3dBinKey {
                         asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
@@ -284,8 +310,6 @@ pub fn queue_material_meshes(
                             // in binned render phases
                             render_point_cloud_chunk_instance.root_entity,
                         ),
-                        mesh_instance.current_uniform_index,
-                        BinnedRenderPhaseType::UnbatchableMesh,
                     );
                 }
                 // Alpha mask

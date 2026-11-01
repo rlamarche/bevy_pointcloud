@@ -7,7 +7,7 @@ use bevy::{
     render::{
         mesh::RenderMesh,
         render_asset::prepare_assets,
-        render_phase::{AddRenderCommand, DrawFunctions, ViewBinnedRenderPhases},
+        render_phase::{AddRenderCommand, DrawFunctions},
         ExtractSchedule, Render, RenderApp, RenderDebugFlags, RenderSystems,
     },
 };
@@ -16,7 +16,7 @@ use crate::render::{
     multipass::{
         extract_camera_multipass_phase, prepare_pointcloud_bind_groups,
         queue_multipass_material_meshes, specialize_multipass_material_meshes, DrawMultipass,
-        Opaque3dMultipass,
+        Opaque3dChunkMultipass,
     },
     render_phase::BinnedChunksRenderPhasePlugin,
     PointCloudMaterial, PointCloudPipeline,
@@ -40,7 +40,7 @@ impl<M: PointCloudMaterial, const PASS: usize> GeometryPassPlugin<M, PASS> {
 impl<M: PointCloudMaterial, const PASS: usize> Plugin for GeometryPassPlugin<M, PASS> {
     fn build(&self, app: &mut App) {
         app.add_plugins(BinnedChunksRenderPhasePlugin::<
-            Opaque3dMultipass<M, PASS>,
+            Opaque3dChunkMultipass<M, PASS>,
             PointCloudPipeline,
         >::new(self.debug_flags));
 
@@ -48,14 +48,11 @@ impl<M: PointCloudMaterial, const PASS: usize> Plugin for GeometryPassPlugin<M, 
             return;
         };
 
-        render_app
-            .init_resource::<DrawFunctions<Opaque3dMultipass<M, PASS>>>()
-            // TODO: is this needed given we load `BinnedRenderPhasePlugin` above ?
-            .init_resource::<ViewBinnedRenderPhases<Opaque3dMultipass<M, PASS>>>();
+        render_app.init_resource::<DrawFunctions<Opaque3dChunkMultipass<M, PASS>>>();
 
         render_app
             // .init_gpu_resource::<PendingMultipassMeshMaterialQueues>()
-            .add_render_command::<Opaque3dMultipass<M, PASS>, DrawMultipass<M, PASS>>()
+            .add_render_command::<Opaque3dChunkMultipass<M, PASS>, DrawMultipass<M, PASS>>()
             .add_systems(ExtractSchedule, extract_camera_multipass_phase::<M, PASS>)
             .add_systems(
                 Render,

@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use bevy::{
     feathers::{
-        controls::{FeathersCheckbox, FeathersSlider},
+        controls::{FeathersButton, FeathersCheckbox, FeathersSlider},
         theme::{ThemeBackgroundColor, ThemedText},
         tokens,
     },
@@ -11,11 +11,15 @@ use bevy::{
     prelude::*,
     ui::Checked,
     ui_widgets::{
-        checkbox_self_update, observe, slider_self_update, SliderPrecision, SliderStep, ValueChange,
+        checkbox_self_update, slider_self_update, Activate, SliderPrecision, SliderStep,
+        ValueChange,
     },
 };
+use bevy_pointcloud::SplatOrientation;
 
-use crate::ui::SettingsPanel;
+use crate::ui::{
+    SettingsPanel, UiClickDespawnEvent, UiClickSetSplatOrientation, UiClickSpawnEvent,
+};
 
 use super::{DraggablePanel, UiDraggingEvent, UiHoveringEvent, UiSettings};
 
@@ -23,7 +27,7 @@ use super::{DraggablePanel, UiDraggingEvent, UiHoveringEvent, UiSettings};
 // UI Components
 // ---------------------------------------------------------------------------
 
-pub fn settings_panel() -> impl Scene {
+pub fn settings_panel(ui_settings: &UiSettings) -> impl Scene {
     bsn! {
         SettingsPanel
         DraggablePanel
@@ -65,7 +69,7 @@ pub fn settings_panel() -> impl Scene {
             // ),
             settings_section(
                 "Min Node Size",
-                settings_slider(30.0, 1000.0, 150.0, 10.0, 0, |ui_settings, value| {
+                settings_slider(30.0, 1000.0, ui_settings.min_node_size, 10.0, 0, |ui_settings, value| {
                     ui_settings.min_node_size = value;
                 })
             ),
@@ -74,7 +78,7 @@ pub fn settings_panel() -> impl Scene {
                 settings_slider(
                     100_000.0,
                     10_000_000.0,
-                    1_000_000.0,
+                    ui_settings.point_budget as f32,
                     100.0,
                     -2,
                     |ui_settings, value| {
@@ -84,7 +88,7 @@ pub fn settings_panel() -> impl Scene {
             ),
             settings_section(
                 "Light Min Node Size",
-                settings_slider(30.0, 1000.0, 150.0, 10.0, 0, |ui_settings, value| {
+                settings_slider(30.0, 1000.0, ui_settings.light_min_node_size, 10.0, 0, |ui_settings, value| {
                     ui_settings.light_min_node_size = value;
                 })
             ),
@@ -93,7 +97,7 @@ pub fn settings_panel() -> impl Scene {
                 settings_slider(
                     100_000.0,
                     10_000_000.0,
-                    1_000_000.0,
+                    ui_settings.light_point_budget as f32,
                     100.0,
                     -2,
                     |ui_settings, value| {
@@ -101,20 +105,100 @@ pub fn settings_panel() -> impl Scene {
                     }
                 )
             ),
+            settings_checkbox("X-Ray", ui_settings.xray, |ui_settings, value| {
+                ui_settings.xray = value;
+            }),
+            settings_checkbox("Eye Dome Lighting", ui_settings.edl_enabled, |ui_settings, value| {
+                ui_settings.edl_enabled = value;
+            }),
+            settings_checkbox("Weighted Splats", ui_settings.weighted_splats, |ui_settings, value| {
+                ui_settings.weighted_splats = value;
+            }),
+            settings_section(
+                "Plane distance 1",
+                settings_slider(
+                    -20.0,
+                    20.0,
+                    ui_settings.plane_distance_0,
+                    0.01,
+                    2,
+                    |ui_settings, value| {
+                        ui_settings.plane_distance_0 = value;
+                    }
+                )
+            ),
+            settings_section(
+                "Plane distance 2",
+                settings_slider(
+                    -20.0,
+                    20.0,
+                    ui_settings.plane_distance_1,
+                    0.01,
+                    2,
+                    |ui_settings, value| {
+                        ui_settings.plane_distance_1 = value;
+                    }
+                )
+            ),
+            (
+                @FeathersButton {
+                    @caption: bsn! { Text("Despawn") ThemedText },
+                }
+                on(|_activate: On<Activate>, mut commands: Commands| {
+                    info!("Despawn button clicked!");
+                    commands.trigger(UiClickDespawnEvent);
+                })
+            ),
+            (
+                @FeathersButton {
+                    @caption: bsn! { Text("Spawn") ThemedText },
+                }
+                on(|_activate: On<Activate>, mut commands: Commands| {
+                    info!("Spawn button clicked!");
+                    commands.trigger(UiClickSpawnEvent);
+                })
+            ),
+            (
+                @FeathersButton {
+                    @caption: bsn! { Text("Set splat orientation billboard") ThemedText },
+                }
+                on(|_activate: On<Activate>, mut commands: Commands| {
+                    info!("Set splat orientation Billboard clicked!");
+                    commands.trigger(UiClickSetSplatOrientation(SplatOrientation::Billboard));
+                })
+            ),
+            (
+                @FeathersButton {
+                    @caption: bsn! { Text("Set splat orientation face normal") ThemedText },
+                }
+                on(|_activate: On<Activate>, mut commands: Commands| {
+                    info!("Set splat orientation FaceNormal clicked!");
+                    commands.trigger(UiClickSetSplatOrientation(SplatOrientation::FaceNormal));
+                })
+            ),
         ]
     }
 }
 
-fn settings_checkbox() -> impl Scene {
+fn settings_checkbox(
+    label: &str,
+    checked: bool,
+    callback: fn(settings: &mut UiSettings, value: bool) -> (),
+) -> impl Scene {
+    let checked: Box<dyn Scene> = if checked {
+        Box::new(bsn! { Checked })
+    } else {
+        Box::new(bsn! {})
+    };
     bsn! {
         @FeathersCheckbox {
-            @caption: bsn! { Text("Checkbox") ThemedText }
+            @caption: bsn! { Text(label) ThemedText }
         }
-        Checked
+        {checked}
         AccessibleLabel("Checkbox Example")
         on(
-            |change: On<ValueChange<bool>>| {
-                info!("Checkbox clicked: {}", change.value);
+            move |change: On<ValueChange<bool>>, mut ui_settings: ResMut<UiSettings>| {
+                callback(&mut ui_settings, change.value);
             }
         )
         on(checkbox_self_update)

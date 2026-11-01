@@ -6,7 +6,7 @@ use std::{
 
 use bevy::{
     asset::prelude::AssetChanged,
-    core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d},
+    core_pipeline::core_3d::{AlphaMask3d, Transparent3d},
     ecs::{
         entity::{Entity, EntityHashSet},
         hierarchy::Children,
@@ -43,12 +43,14 @@ use bevy::{
 use crate::{
     render::{
         prepass::{PrepassPipeline, PrepassPipelineSpecializer},
+        render_phase::ViewBinnedChunksRenderPhases,
         EntitiesNeedingSpecialization, ErasedMaterialViewSettingsKeys,
         ErasedPointCloudMaterialPipelineKey, ErasedSplatPipelineKey, ErasedViewSettingsKey,
-        PassProperties, PendingPointCloudMaterialQueues, PointCloudDirtySpecializations,
-        PointCloudMaterial, PointCloudMaterialPipeline, PointCloudMaterialPipelineKey,
-        PointCloudMaterialPipelineSpecializer, PointCloudMaterialProperties, PointCloudPipeline,
-        PreparedPointCloudMaterial, RenderPointCloudChunkInstances, RenderPointCloudInstances,
+        Opaque3dChunk, PassProperties, PendingPointCloudMaterialQueues,
+        PointCloudDirtySpecializations, PointCloudMaterial, PointCloudMaterialPipeline,
+        PointCloudMaterialPipelineKey, PointCloudMaterialPipelineSpecializer,
+        PointCloudMaterialProperties, PointCloudPipeline, PreparedPointCloudMaterial,
+        RenderPointCloudChunkInstances, RenderPointCloudInstances,
         RenderPointCloudMaterialInstances, SpecializedPointCloudMaterialPipelineCache,
         SpecializedPointCloudPipelines, SplatPipelineKey,
     },
@@ -165,7 +167,7 @@ pub(crate) struct SpecializePointCloudMaterialsSystemParam<'w, 's> {
     render_point_cloud_chunk_instances: Res<'w, RenderPointCloudChunkInstances>,
     // render_lightmaps: Res<'w, RenderLightmaps>,
     render_visibility_ranges: Res<'w, RenderVisibilityRanges>,
-    opaque_render_phases: Res<'w, ViewBinnedRenderPhases<Opaque3d>>,
+    opaque_render_phases: Res<'w, ViewBinnedChunksRenderPhases<Opaque3dChunk>>,
     alpha_mask_render_phases: Res<'w, ViewBinnedRenderPhases<AlphaMask3d>>,
     transmissive_render_phases: Res<'w, ViewSortedRenderPhases<Transmissive3d>>,
     transparent_render_phases: Res<'w, ViewSortedRenderPhases<Transparent3d>>,

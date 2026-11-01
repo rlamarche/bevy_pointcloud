@@ -22,7 +22,7 @@ use bevy::{
 };
 
 use crate::render::{
-    render_phase::ViewBinnedChunksRenderPhases, ChunkOpaque3dBatchSetKey, PointCloudMaterial,
+    render_phase::ViewBinnedChunksRenderPhases, Opaque3dChunkBatchSetKey, PointCloudMaterial,
 };
 
 /// Opaque phase of the 3D multipass.
@@ -30,12 +30,12 @@ use crate::render::{
 /// Sorted by pipeline, then by mesh to improve batching.
 ///
 /// Used to render all 3D meshes with materials that have no transparency.
-pub struct Opaque3dMultipass<M: PointCloudMaterial, const PASS: usize> {
+pub struct Opaque3dChunkMultipass<M: PointCloudMaterial, const PASS: usize> {
     /// Determines which objects can be placed into a *batch set*.
     ///
     /// Objects in a single batch set can potentially be multi-drawn together,
     /// if it's enabled and the current platform supports it.
-    pub batch_set_key: ChunkOpaque3dBatchSetKey,
+    pub batch_set_key: Opaque3dChunkBatchSetKey,
     /// Information that separates items into bins.
     pub bin_key: Opaque3dBinKey,
 
@@ -48,7 +48,7 @@ pub struct Opaque3dMultipass<M: PointCloudMaterial, const PASS: usize> {
 }
 
 impl<M: PointCloudMaterial, const PASS: usize> CachedRenderPipelinePhaseItem
-    for Opaque3dMultipass<M, PASS>
+    for Opaque3dChunkMultipass<M, PASS>
 {
     #[inline]
     fn cached_pipeline(&self) -> CachedRenderPipelineId {
@@ -56,7 +56,7 @@ impl<M: PointCloudMaterial, const PASS: usize> CachedRenderPipelinePhaseItem
     }
 }
 
-impl<M: PointCloudMaterial, const PASS: usize> PhaseItem for Opaque3dMultipass<M, PASS> {
+impl<M: PointCloudMaterial, const PASS: usize> PhaseItem for Opaque3dChunkMultipass<M, PASS> {
     #[inline]
     fn entity(&self) -> Entity {
         self.representative_entity.0
@@ -92,8 +92,8 @@ impl<M: PointCloudMaterial, const PASS: usize> PhaseItem for Opaque3dMultipass<M
     }
 }
 
-impl<M: PointCloudMaterial, const PASS: usize> BinnedPhaseItem for Opaque3dMultipass<M, PASS> {
-    type BatchSetKey = ChunkOpaque3dBatchSetKey;
+impl<M: PointCloudMaterial, const PASS: usize> BinnedPhaseItem for Opaque3dChunkMultipass<M, PASS> {
+    type BatchSetKey = Opaque3dChunkBatchSetKey;
     type BinKey = Opaque3dBinKey;
 
     #[inline]
@@ -104,7 +104,7 @@ impl<M: PointCloudMaterial, const PASS: usize> BinnedPhaseItem for Opaque3dMulti
         batch_range: Range<u32>,
         extra_index: PhaseItemExtraIndex,
     ) -> Self {
-        Opaque3dMultipass::<M, PASS> {
+        Opaque3dChunkMultipass::<M, PASS> {
             batch_set_key,
             bin_key,
             representative_entity,
@@ -117,7 +117,7 @@ impl<M: PointCloudMaterial, const PASS: usize> BinnedPhaseItem for Opaque3dMulti
 
 pub fn extract_camera_multipass_phase<M: PointCloudMaterial, const PASS: usize>(
     mut opaque_3d_multipass_phases: ResMut<
-        ViewBinnedChunksRenderPhases<Opaque3dMultipass<M, PASS>>,
+        ViewBinnedChunksRenderPhases<Opaque3dChunkMultipass<M, PASS>>,
     >,
     cameras_3d: Extract<Query<(Entity, &Camera, Has<NoIndirectDrawing>), With<Camera3d>>>,
     mut live_entities: Local<HashSet<RetainedViewEntity>>,

@@ -3,6 +3,7 @@ mod draw;
 mod extract;
 mod key;
 mod pass;
+mod phase;
 mod pipeline;
 mod prepare;
 mod queue;
@@ -14,7 +15,7 @@ use bevy::{
     app::{App, First, Plugin, PostUpdate},
     asset::{Asset, AssetApp, AssetEventSystems},
     camera::Camera,
-    core_pipeline::core_3d::{AlphaMask3d, Opaque3d, Transparent3d},
+    core_pipeline::core_3d::{AlphaMask3d, Transparent3d},
     ecs::prelude::*,
     light::DirectionalLight,
     material::{
@@ -70,6 +71,7 @@ pub use draw::*;
 pub use extract::*;
 pub use key::*;
 pub use pass::*;
+pub use phase::*;
 pub use pipeline::*;
 pub use prepare::*;
 pub use queue::*;
@@ -273,10 +275,6 @@ pub struct MaterialsPlugin {
 
 impl Plugin for MaterialsPlugin {
     fn build(&self, app: &mut App) {
-        // app.add_plugins(
-        //     BinnedChunksRenderPhasePlugin::<Opaque3d, PointCloudPipeline>::new(self.debug_flags),
-        // );
-
         app.add_plugins((
             PrepassPipelinePlugin,
             PrepassPlugin::new(self.debug_flags),
@@ -324,7 +322,7 @@ impl Plugin for MaterialsPlugin {
                 .add_render_command::<Shadow, DrawPrepass>()
                 .add_render_command::<Shadow, DrawDepthOnlyPrepass>()
                 .add_render_command::<Transparent3d, DrawPointCloudMaterial>()
-                .add_render_command::<Opaque3d, DrawPointCloudMaterial>()
+                .add_render_command::<Opaque3dChunk, DrawPointCloudMaterialBatched>()
                 .add_render_command::<AlphaMask3d, DrawPointCloudMaterial>()
                 .add_render_command::<Transmissive3d, DrawPointCloudMaterial>()
                 .add_systems(
