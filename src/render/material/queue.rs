@@ -1,7 +1,7 @@
 use bevy::{
     core_pipeline::{
-        core_3d::{AlphaMask3d, Opaque3dBinKey, Transparent3d, TransparentSortingInfo3d},
-        prepass::{OpaqueNoLightmap3dBatchSetKey, OpaqueNoLightmap3dBinKey},
+        core_3d::{Opaque3dBinKey, Transparent3d, TransparentSortingInfo3d},
+        prepass::OpaqueNoLightmap3dBinKey,
     },
     ecs::system::{Query, Res, ResMut},
     log::{info, warn},
@@ -15,18 +15,15 @@ use bevy::{
         erased_render_asset::ErasedRenderAssets,
         mesh::{allocator::MeshAllocator, RenderMesh},
         render_asset::RenderAssets,
-        render_phase::{
-            BinnedRenderPhaseType, PhaseItemExtraIndex, ViewBinnedRenderPhases,
-            ViewSortedRenderPhases,
-        },
+        render_phase::{PhaseItemExtraIndex, ViewSortedRenderPhases},
         view::{ExtractedView, RenderVisibleEntities},
     },
 };
 
 use crate::{
     render::{
-        render_phase::ViewBinnedChunksRenderPhases, BinnedRenderPhaseExt,
-        MainPassAlphaMaskDrawFunction, MainPassOpaqueDrawFunction,
+        prepass::OpaqueChunkNoLightmap3dBatchSetKey, render_phase::ViewBinnedChunksRenderPhases,
+        AlphaMask3dChunk, MainPassAlphaMaskDrawFunction, MainPassOpaqueDrawFunction,
         MainPassTransmissiveDrawFunction, MainPassTransparentDrawFunction, Opaque3dChunk,
         Opaque3dChunkBatchSetKey, PendingPointCloudMaterialQueues, PointCloudDirtySpecializations,
         PreparedPointCloudMaterial, RenderPointCloudChunkInstances, RenderPointCloudInstances,
@@ -49,7 +46,7 @@ pub fn queue_material_meshes(
         Res<BatchedInstanceBuffers<MeshUniform, MeshInputUniform>>,
     >,
     mut opaque_render_phases: ResMut<ViewBinnedChunksRenderPhases<Opaque3dChunk>>,
-    mut alpha_mask_render_phases: ResMut<ViewBinnedRenderPhases<AlphaMask3d>>,
+    mut alpha_mask_render_phases: ResMut<ViewBinnedChunksRenderPhases<AlphaMask3dChunk>>,
     mut transmissive_render_phases: ResMut<ViewSortedRenderPhases<Transmissive3d>>,
     mut transparent_render_phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
     mut pending_mesh_material_queues: ResMut<PendingPointCloudMaterialQueues>,
@@ -109,9 +106,9 @@ pub fn queue_material_meshes(
                 *render_entity,
                 render_point_cloud_chunk_instance.root_entity,
             );
-            alpha_mask_phase.remove_unbatchable_entity_pair(
-                render_entity,
-                &render_point_cloud_chunk_instance.root_entity,
+            alpha_mask_phase.remove(
+                *render_entity,
+                render_point_cloud_chunk_instance.root_entity,
             );
             transmissive_phase.remove(
                 *render_entity,
@@ -321,10 +318,11 @@ pub fn queue_material_meshes(
                         info!("missing drawfunction for MainPassAlphaMaskDrawFunction");
                         continue;
                     };
-                    let batch_set_key = OpaqueNoLightmap3dBatchSetKey {
+                    let batch_set_key = OpaqueChunkNoLightmap3dBatchSetKey {
                         draw_function,
                         pipeline: pipeline_id,
                         material_bind_group_index: Some(material.binding.group.0),
+                        splat_slabs,
                         slabs: mesh_slabs,
                     };
                     let bin_key = OpaqueNoLightmap3dBinKey {
@@ -340,8 +338,6 @@ pub fn queue_material_meshes(
                             // in binned render phases
                             render_point_cloud_chunk_instance.root_entity,
                         ),
-                        mesh_instance.current_uniform_index,
-                        BinnedRenderPhaseType::UnbatchableMesh,
                     );
                 }
                 RenderPhaseType::Transparent => {

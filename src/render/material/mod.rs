@@ -3,7 +3,6 @@ mod draw;
 mod extract;
 mod key;
 mod pass;
-mod phase;
 mod pipeline;
 mod prepare;
 mod queue;
@@ -58,10 +57,14 @@ use crate::{
             FullscreenMaterialPassPipeline, MultipassMaterialPlugin, MultipassMaterialsPlugin,
             MultipassPipelinePlugin, ViewMultipassTextures,
         },
-        prepass::{DrawDepthOnlyPrepass, DrawPrepass, PrepassPipelinePlugin, PrepassPlugin},
-        queue_shadows, specialize_shadows, PendingShadowQueues, PointCloudDirtySpecializations,
-        PointCloudPipelineSystems, SpecializedPointCloudPipelines,
-        SpecializedShadowMaterialPipelineCache,
+        prepare_light_phase,
+        prepass::{
+            AlphaMask3dChunkPrepass, DrawDepthOnlyPrepass, DrawPrepass, Opaque3dChunkPrepass,
+            PrepassPipelinePlugin, PrepassPlugin,
+        },
+        queue_shadows, specialize_shadows, AlphaMask3dChunk, Opaque3dChunk, PendingShadowQueues,
+        PointCloudDirtySpecializations, PointCloudPipelineSystems, ShadowChunk,
+        SpecializedPointCloudPipelines, SpecializedShadowMaterialPipelineCache,
     },
     PointCloudChunk3d, PointCloudMaterial3d, ViewSettings,
 };
@@ -71,7 +74,6 @@ pub use draw::*;
 pub use extract::*;
 pub use key::*;
 pub use pass::*;
-pub use phase::*;
 pub use pipeline::*;
 pub use prepare::*;
 pub use queue::*;
@@ -319,12 +321,13 @@ impl Plugin for MaterialsPlugin {
                 .allow_ambiguous_resource::<PendingPointCloudMaterialQueues>()
                 .init_gpu_resource::<PendingShadowQueues>()
                 .allow_ambiguous_resource::<PendingShadowQueues>()
-                .add_render_command::<Shadow, DrawPrepass>()
-                .add_render_command::<Shadow, DrawDepthOnlyPrepass>()
                 .add_render_command::<Transparent3d, DrawPointCloudMaterial>()
                 .add_render_command::<Opaque3dChunk, DrawPointCloudMaterialBatched>()
-                .add_render_command::<AlphaMask3d, DrawPointCloudMaterial>()
+                .add_render_command::<AlphaMask3dChunk, DrawPointCloudMaterialBatched>()
                 .add_render_command::<Transmissive3d, DrawPointCloudMaterial>()
+                .add_render_command::<ShadowChunk, DrawPrepass>()
+                .add_render_command::<ShadowChunk, DrawDepthOnlyPrepass>()
+
                 .add_systems(
                     RenderStartup,
                     init_point_cloud_material_pipeline.after(PointCloudPipelineSystems),
@@ -343,6 +346,9 @@ impl Plugin for MaterialsPlugin {
                 .add_systems(
                     Render,
                     (
+                        prepare_light_phase
+                            .in_set(RenderSystems::CreateViews)
+                            .after(prepare_lights),
                         // specialize_shadows also needs to run after
                         // prepare_assets::<PreparedMaterial>,
                         // which is fine since Specialize is after PrepareAssets

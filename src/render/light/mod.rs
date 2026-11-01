@@ -1,3 +1,6 @@
+mod node;
+mod phase;
+
 use std::{any::TypeId, sync::Arc};
 
 use bevy::{
@@ -16,7 +19,7 @@ use bevy::{
     mesh::MeshVertexBufferLayoutRef,
     pbr::{
         LightEntity, LightKeyCache, MeshPipelineKey, PrepassPipeline, RenderLightmaps,
-        RenderMeshInstanceFlags, RenderMeshInstances, Shadow, ShadowBatchSetKey, ShadowBinKey,
+        RenderMeshInstanceFlags, RenderMeshInstances, ShadowBinKey,
     },
     platform::{
         collections::{HashMap, HashSet},
@@ -29,7 +32,6 @@ use bevy::{
         erased_render_asset::ErasedRenderAssets,
         mesh::{allocator::MeshAllocator, RenderMesh},
         render_asset::RenderAssets,
-        render_phase::{BinnedRenderPhaseType, ViewBinnedRenderPhases},
         sync_world::MainEntity,
         view::{
             ExtractedView, RenderShadowMapVisibleEntities, RenderVisibleEntities,
@@ -40,15 +42,18 @@ use bevy::{
 
 use crate::{
     render::{
-        BinnedRenderPhaseExt, ErasedMaterialViewSettingsKeys, ErasedPointCloudMaterialPipelineKey,
-        ErasedSplatPipelineKey, ErasedViewSettingsKey, PointCloudChunk3d,
-        PointCloudDirtySpecializations, PointCloudMaterialProperties, PreparedPointCloudMaterial,
-        RenderPointCloudChunkInstances, RenderPointCloudInstances,
+        render_phase::ViewBinnedChunksRenderPhases, ErasedMaterialViewSettingsKeys,
+        ErasedPointCloudMaterialPipelineKey, ErasedSplatPipelineKey, ErasedViewSettingsKey,
+        PointCloudChunk3d, PointCloudDirtySpecializations, PointCloudMaterialProperties,
+        PreparedPointCloudMaterial, RenderPointCloudChunkInstances, RenderPointCloudInstances,
         RenderPointCloudMaterialInstances, ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction,
         SplatPipelineKey,
     },
     PointCloudTopologyKind,
 };
+
+pub use node::*;
+pub use phase::*;
 
 pub(crate) struct ShadowSpecializationWorkItem {
     render_entity: Entity,
@@ -91,7 +96,7 @@ pub(crate) struct SpecializeShadowsSystemParam<'w, 's> {
     render_material_instances: Res<'w, RenderPointCloudMaterialInstances>,
     render_point_cloud_instances: Res<'w, RenderPointCloudInstances>,
     render_point_cloud_chunk_instances: Res<'w, RenderPointCloudChunkInstances>,
-    shadow_render_phases: Res<'w, ViewBinnedRenderPhases<Shadow>>,
+    shadow_render_phases: Res<'w, ViewBinnedChunksRenderPhases<ShadowChunk>>,
     render_lightmaps: Res<'w, RenderLightmaps>,
     view_light_entities: Query<'w, 's, (&'static LightEntity, &'static ExtractedView)>,
     view_settings_keys: Query<'w, 's, &'static ErasedMaterialViewSettingsKeys>,
@@ -431,8 +436,9 @@ pub fn queue_shadows(
     render_mesh_instances: Res<RenderMeshInstances>,
     render_materials: Res<ErasedRenderAssets<PreparedPointCloudMaterial>>,
     render_material_instances: Res<RenderPointCloudMaterialInstances>,
+    render_point_cloud_instances: Res<RenderPointCloudInstances>,
     render_point_cloud_chunk_instances: Res<RenderPointCloudChunkInstances>,
-    mut shadow_render_phases: ResMut<ViewBinnedRenderPhases<Shadow>>,
+    mut shadow_render_phases: ResMut<ViewBinnedChunksRenderPhases<ShadowChunk>>,
     _gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
     mesh_allocator: Res<MeshAllocator>,
     view_light_entities: Query<(&LightEntity, &ExtractedView, Option<&RenderLayers>)>,
@@ -493,9 +499,9 @@ pub fn queue_shadows(
                 "remove shadow phase {:?}/{:?}",
                 render_point_cloud_chunk_instance.root_entity, render_entity
             );
-            shadow_phase.remove_unbatchable_entity_pair(
-                render_entity,
-                &render_point_cloud_chunk_instance.root_entity,
+            shadow_phase.remove(
+                *render_entity,
+                render_point_cloud_chunk_instance.root_entity,
             );
         }
 
@@ -519,6 +525,12 @@ pub fn queue_shadows(
             // & material
             let Some(render_point_cloud_chunk_instance) =
                 render_point_cloud_chunk_instances.get(render_entity)
+            else {
+                continue;
+            };
+
+            let Some(point_cloud_instance) =
+                render_point_cloud_instances.get(&render_point_cloud_chunk_instance.root_entity)
             else {
                 continue;
             };
@@ -571,6 +583,14 @@ pub fn queue_shadows(
                 continue;
             };
 
+            // Fetch the slabs that the splat resides in.
+            let Some(splat_slabs) = mesh_allocator.mesh_slabs(&point_cloud_instance.splat) else {
+                view_pending_shadow_queues
+                    .current_frame
+                    .insert((*render_entity, *visible_entity));
+                continue;
+            };
+
             let depth_only_draw_function = material
                 .properties
                 .get_draw_function(ShadowsDepthOnlyDrawFunction);
@@ -593,10 +613,11 @@ pub fn queue_shadows(
                 continue;
             };
 
-            let batch_set_key = ShadowBatchSetKey {
+            let batch_set_key = ShadowChunkBatchSetKey {
                 pipeline: pipeline_id,
                 draw_function,
                 material_bind_group_index,
+                splat_slabs,
                 slabs: mesh_slabs,
             };
 
@@ -612,8 +633,6 @@ pub fn queue_shadows(
                     // in binned render phases
                     render_point_cloud_chunk_instance.root_entity,
                 ),
-                mesh_instance.current_uniform_index,
-                BinnedRenderPhaseType::UnbatchableMesh,
             );
         }
     }

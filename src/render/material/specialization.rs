@@ -6,7 +6,7 @@ use std::{
 
 use bevy::{
     asset::prelude::AssetChanged,
-    core_pipeline::core_3d::{AlphaMask3d, Transparent3d},
+    core_pipeline::core_3d::Transparent3d,
     ecs::{
         entity::{Entity, EntityHashSet},
         hierarchy::Children,
@@ -30,7 +30,7 @@ use bevy::{
         erased_render_asset::ErasedRenderAssets,
         mesh::RenderMesh,
         render_asset::RenderAssets,
-        render_phase::{ViewBinnedRenderPhases, ViewSortedRenderPhases},
+        render_phase::ViewSortedRenderPhases,
         render_resource::PipelineCache,
         sync_world::{MainEntity, RenderEntity},
         view::{
@@ -44,7 +44,7 @@ use crate::{
     render::{
         prepass::{PrepassPipeline, PrepassPipelineSpecializer},
         render_phase::ViewBinnedChunksRenderPhases,
-        EntitiesNeedingSpecialization, ErasedMaterialViewSettingsKeys,
+        AlphaMask3dChunk, EntitiesNeedingSpecialization, ErasedMaterialViewSettingsKeys,
         ErasedPointCloudMaterialPipelineKey, ErasedSplatPipelineKey, ErasedViewSettingsKey,
         Opaque3dChunk, PassProperties, PendingPointCloudMaterialQueues,
         PointCloudDirtySpecializations, PointCloudMaterial, PointCloudMaterialPipeline,
@@ -168,7 +168,7 @@ pub(crate) struct SpecializePointCloudMaterialsSystemParam<'w, 's> {
     // render_lightmaps: Res<'w, RenderLightmaps>,
     render_visibility_ranges: Res<'w, RenderVisibilityRanges>,
     opaque_render_phases: Res<'w, ViewBinnedChunksRenderPhases<Opaque3dChunk>>,
-    alpha_mask_render_phases: Res<'w, ViewBinnedRenderPhases<AlphaMask3d>>,
+    alpha_mask_render_phases: Res<'w, ViewBinnedChunksRenderPhases<AlphaMask3dChunk>>,
     transmissive_render_phases: Res<'w, ViewSortedRenderPhases<Transmissive3d>>,
     transparent_render_phases: Res<'w, ViewSortedRenderPhases<Transparent3d>>,
     views: Query<

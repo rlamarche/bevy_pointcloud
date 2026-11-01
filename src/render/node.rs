@@ -11,7 +11,7 @@ use bevy::{
     },
 };
 
-use crate::render::{render_phase::ViewBinnedChunksRenderPhases, Opaque3dChunk};
+use crate::render::{render_phase::ViewBinnedChunksRenderPhases, AlphaMask3dChunk, Opaque3dChunk};
 
 pub fn main_opaque_pass_3d_chunk(
     world: &World,
@@ -23,13 +23,17 @@ pub fn main_opaque_pass_3d_chunk(
         Option<&MainPassResolutionOverride>,
     )>,
     opaque_phases: Res<ViewBinnedChunksRenderPhases<Opaque3dChunk>>,
+    alpha_mask_phases: Res<ViewBinnedChunksRenderPhases<AlphaMask3dChunk>>,
     mut ctx: RenderContext,
 ) {
     let view_entity = view.entity();
 
     let (camera, extracted_view, target, depth, resolution_override) = view.into_inner();
 
-    let Some(opaque_phase) = opaque_phases.get(&extracted_view.retained_view_entity) else {
+    let (Some(opaque_phase), Some(alpha_mask_phase)) = (
+        opaque_phases.get(&extracted_view.retained_view_entity),
+        alpha_mask_phases.get(&extracted_view.retained_view_entity),
+    ) else {
         return;
     };
 
@@ -43,7 +47,7 @@ pub fn main_opaque_pass_3d_chunk(
     let depth_stencil_attachment = Some(depth.get_attachment(StoreOp::Store));
 
     let mut render_pass = ctx.begin_tracked_render_pass(RenderPassDescriptor {
-        label: Some("main_opaque_pass_3d"),
+        label: Some("main_opaque_pass_3d_chunk"),
         color_attachments: &color_attachments,
         depth_stencil_attachment,
         timestamp_writes: None,
@@ -60,9 +64,17 @@ pub fn main_opaque_pass_3d_chunk(
 
     if !opaque_phase.is_empty() {
         #[cfg(feature = "trace")]
-        let _opaque_main_pass_3d_span = info_span!("opaque_main_pass_3d").entered();
+        let _opaque_main_pass_3d_span = info_span!("opaque_main_pass_3d_chunk").entered();
         if let Err(err) = opaque_phase.render(&mut render_pass, world, view_entity) {
-            error!("Error encountered while rendering the opaque phase {err:?}");
+            error!("Error encountered while rendering the opaque chunk phase {err:?}");
+        }
+    }
+
+    if !alpha_mask_phase.is_empty() {
+        #[cfg(feature = "trace")]
+        let _alpha_mask_main_pass_3d_span = info_span!("alpha_mask_main_pass_3d_chunk").entered();
+        if let Err(err) = alpha_mask_phase.render(&mut render_pass, world, view_entity) {
+            error!("Error encountered while rendering the alpha mask chunk phase {err:?}");
         }
     }
 
