@@ -5,8 +5,8 @@ mod extract;
 mod key;
 mod light;
 mod material;
-// mod material_bind_groups;
 pub mod multipass;
+mod node;
 mod phase;
 mod pipeline;
 mod pipeline_specializer;
@@ -21,6 +21,7 @@ use std::path::PathBuf;
 use bevy::{
     app::Plugin,
     asset::{embedded_asset, AssetPath, Assets, Handle, RenderAssetUsages},
+    core_pipeline::{core_3d::main_opaque_pass_3d, Core3d, Core3dSystems},
     ecs::{
         resource::Resource,
         schedule::{IntoScheduleConfigs, SystemSet},
@@ -35,8 +36,10 @@ use bevy::{
         extract_resource::{ExtractResource, ExtractResourcePlugin},
         init_gpu_resource,
         render_asset::RenderAssetPlugin,
+        render_phase::DrawFunctions,
         view::ExtractedView,
-        ExtractSchedule, GpuResourceAppExt, Render, RenderApp, RenderStartup, RenderSystems,
+        ExtractSchedule, GpuResourceAppExt, Render, RenderApp, RenderDebugFlags, RenderStartup,
+        RenderSystems,
     },
     shader::ShaderRef,
 };
@@ -47,6 +50,7 @@ pub use extract::*;
 pub use key::*;
 pub use light::*;
 pub use material::*;
+pub use node::*;
 pub use phase::*;
 pub use pipeline::*;
 pub use pipeline_specializer::*;
@@ -54,9 +58,22 @@ pub use point_cloud::*;
 pub use prepare::*;
 pub use resources::*;
 
-use crate::{PointCloud3d, PointCloudChunk3d, SplatSettings};
+use crate::{
+    render::render_phase::BinnedChunksRenderPhasePlugin, PointCloud3d, PointCloudChunk3d,
+    SplatSettings,
+};
 
-pub struct RenderPointCloudPlugin;
+#[derive(Default)]
+pub struct RenderPointCloudPlugin {
+    /// Debugging flags that can optionally be set when constructing the renderer.
+    pub debug_flags: RenderDebugFlags,
+}
+
+impl RenderPointCloudPlugin {
+    pub fn new(debug_flags: RenderDebugFlags) -> Self {
+        Self { debug_flags }
+    }
+}
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, SystemSet)]
 pub struct PointCloudPipelineSystems;
@@ -70,6 +87,12 @@ pub enum PointCloudExtractionSystems {
 impl Plugin for RenderPointCloudPlugin {
     fn build(&self, app: &mut bevy::app::App) {
         embedded_asset!(app, "pointcloud.wgsl");
+        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
+            return;
+        };
+
+        // must be initialized before [`MaterialsPlugin`]
+        render_app.init_resource::<DrawFunctions<Opaque3dChunk>>();
 
         app.add_plugins(MaterialsPlugin::default()) // TODO add debug flags opt
             .add_plugins(ExtractComponentPlugin::<PointCloud3d>::default())
@@ -77,6 +100,10 @@ impl Plugin for RenderPointCloudPlugin {
             .add_plugins(ExtractComponentPlugin::<SplatSettings>::default())
             .add_plugins(ExtractResourcePlugin::<SplatMeshes>::default())
             .add_plugins(RenderAssetPlugin::<RenderPointCloudChunk>::default())
+            .add_plugins(BinnedChunksRenderPhasePlugin::<
+                Opaque3dChunk,
+                PointCloudPipeline,
+            >::new(self.debug_flags))
             .init_resource::<SplatMeshes>();
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -112,6 +139,7 @@ impl Plugin for RenderPointCloudPlugin {
             .add_systems(
                 ExtractSchedule,
                 (
+                    extract_camera_phase,
                     extract_pointcloud_instances
                         .in_set(PointCloudExtractionSystems::ExtractPointClouds),
                     extract_pointcloud_chunk_instances.in_set(PointCloudExtractionSystems::ExtractPointClouds), //.after(extract_meshes_for_cpu_building),
@@ -141,6 +169,12 @@ impl Plugin for RenderPointCloudPlugin {
                         .after(bevy::pbr::check_views_need_specialization)
                         .before(RenderSystems::Specialize),
                 ),
+            )
+            .add_systems(
+                Core3d,
+                main_opaque_pass_3d_chunk
+                    .in_set(Core3dSystems::MainPass)
+                    .after(main_opaque_pass_3d),
             )
             .init_gpu_resource::<RenderMaterialBindings>()
             .allow_ambiguous_resource::<RenderMaterialBindings>();

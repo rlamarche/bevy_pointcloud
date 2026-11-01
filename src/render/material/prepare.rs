@@ -3,7 +3,7 @@ use std::{any::TypeId, hash::Hash, sync::Arc};
 use bevy::{
     asset::{AssetId, AssetServer, Handle},
     core_pipeline::{
-        core_3d::{AlphaMask3d, Opaque3d, Transparent3d},
+        core_3d::{AlphaMask3d, Transparent3d},
         deferred::{AlphaMask3dDeferred, Opaque3dDeferred},
         prepass::{AlphaMask3dPrepass, Opaque3dPrepass},
     },
@@ -59,9 +59,10 @@ use crate::{
         prepass::{DrawDepthOnlyPrepass, DrawPrepass},
         BaseSpecializeFn, DeferredAlphaMaskDrawFunction, DeferredFragmentShader,
         DeferredOpaqueDrawFunction, DeferredVertexShader, DrawPointCloudMaterial,
-        ErasedViewSettingsKey, MainPassAlphaMaskDrawFunction, MainPassOpaqueDrawFunction,
-        MainPassTransmissiveDrawFunction, MainPassTransparentDrawFunction, MaterialFragmentShader,
-        MaterialVertexShader, PassKind, PassProperties, PointCloudDirtySpecializations,
+        DrawPointCloudMaterialBatched, ErasedViewSettingsKey, MainPassAlphaMaskDrawFunction,
+        MainPassOpaqueDrawFunction, MainPassTransmissiveDrawFunction,
+        MainPassTransparentDrawFunction, MaterialFragmentShader, MaterialVertexShader,
+        Opaque3dChunk, PassKind, PassProperties, PointCloudDirtySpecializations,
         PointCloudMaterial, PointCloudPipeline, PreparedPointCloudMaterial,
         PreparedPointCloudUniforms, PreparedViewSettingsUniform, PrepassAlphaMaskDrawFunction,
         PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction, PrepassOpaqueDrawFunction,
@@ -168,7 +169,7 @@ where
         SResMut<MaterialBindGroupAllocators>,
         SResMut<RenderMaterialBindings>,
         (
-            SRes<DrawFunctions<Opaque3d>>,
+            SRes<DrawFunctions<Opaque3dChunk>>,
             SRes<DrawFunctions<AlphaMask3d>>,
             SRes<DrawFunctions<Transmissive3d>>,
             SRes<DrawFunctions<Transparent3d>>,
@@ -269,7 +270,9 @@ where
         let shadows_enabled = M::enable_shadows();
         let prepass_enabled = M::enable_prepass();
 
-        let draw_opaque_pbr = opaque_draw_functions.read().id::<DrawPointCloudMaterial>();
+        let draw_opaque_pbr = opaque_draw_functions
+            .read()
+            .id::<DrawPointCloudMaterialBatched>();
         let draw_alpha_mask_pbr = alpha_mask_draw_functions
             .read()
             .id::<DrawPointCloudMaterial>();

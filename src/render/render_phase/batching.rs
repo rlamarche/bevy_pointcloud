@@ -27,9 +27,12 @@ use bevy::{
 use smallvec::SmallVec;
 use wgpu::BufferUsages;
 
-use crate::render::render_phase::{
-    BinnedChunksRenderPhaseBatch, BinnedChunksRenderPhaseBatchSet,
-    BinnedChunksRenderPhaseBatchSets, RenderMultidrawableChunk, ViewBinnedChunksRenderPhases,
+use crate::render::{
+    render_phase::{
+        BinnedChunksRenderPhaseBatch, BinnedChunksRenderPhaseBatchSet,
+        BinnedChunksRenderPhaseBatchSets, RenderMultidrawableChunk, ViewBinnedChunksRenderPhases,
+    },
+    IndirectParameters,
 };
 
 pub trait GetBatchData {
@@ -116,17 +119,34 @@ pub fn batch_and_prepare_binned_render_phase<BPI, GFBD>(
                 bin_key,
                 RenderMultidrawableChunk {
                     representative_entity,
+                    indirect_parameters,
                 },
             ) in chunks.entities.iter_mut()
             {
                 if multi_draw_indirect {
                     if key.indexed() {
-                        if let Some(indirect_parameters_indexed) =
-                            GFBD::get_indirect_parameters_indexed(
-                                &system_param_item,
-                                *representative_entity,
-                            )
-                        {
+                        if let Some(indirect_parameters_indexed) = {
+                            match indirect_parameters {
+                                Some(IndirectParameters::Indexed(indirect_parameters_indexed)) => {
+                                    Some(*indirect_parameters_indexed)
+                                }
+                                _ => {
+                                    if let Some(indirect_parameters_indexed) =
+                                        GFBD::get_indirect_parameters_indexed(
+                                            &system_param_item,
+                                            *representative_entity,
+                                        )
+                                    {
+                                        *indirect_parameters = Some(IndirectParameters::Indexed(
+                                            indirect_parameters_indexed,
+                                        ));
+                                        Some(indirect_parameters_indexed)
+                                    } else {
+                                        None
+                                    }
+                                }
+                            }
+                        } {
                             phase_indirect_parameters_buffers
                                 .buffers
                                 .add_batch_set_indexed(indirect_parameters_indexed);
@@ -135,15 +155,32 @@ pub fn batch_and_prepare_binned_render_phase<BPI, GFBD>(
                             warn!("Missing indirect parameters indexed");
                         }
                     } else {
-                        if let Some(indirect_parameters_non_indexed) =
-                            GFBD::get_indirect_parameters_non_indexed(
-                                &system_param_item,
-                                *representative_entity,
-                            )
-                        {
+                        if let Some(indirect_parameters_indexed) = {
+                            match indirect_parameters {
+                                Some(IndirectParameters::NonIndexed(
+                                    indirect_parameters_non_indexed,
+                                )) => Some(*indirect_parameters_non_indexed),
+                                _ => {
+                                    if let Some(indirect_parameters_non_indexed) =
+                                        GFBD::get_indirect_parameters_non_indexed(
+                                            &system_param_item,
+                                            *representative_entity,
+                                        )
+                                    {
+                                        *indirect_parameters =
+                                            Some(IndirectParameters::NonIndexed(
+                                                indirect_parameters_non_indexed,
+                                            ));
+                                        Some(indirect_parameters_non_indexed)
+                                    } else {
+                                        None
+                                    }
+                                }
+                            }
+                        } {
                             phase_indirect_parameters_buffers
                                 .buffers
-                                .add_batch_set_non_indexed(indirect_parameters_non_indexed);
+                                .add_batch_set_non_indexed(indirect_parameters_indexed);
                             batch_count += 1;
                         } else {
                             warn!("Missing indirect parameters non indexed");

@@ -17,7 +17,12 @@ pub struct UiSettings {
     pub point_budget: usize,
     pub light_min_node_size: f32,
     pub light_point_budget: usize,
+    pub plane_distance_0: f32,
+    pub plane_distance_1: f32,
     pub skip_visibility: bool,
+    pub xray: bool,
+    pub edl_enabled: bool,
+    pub weighted_splats: bool,
 }
 
 impl Default for UiSettings {
@@ -28,10 +33,15 @@ impl Default for UiSettings {
             edl_strength: 0.4,
             edl_neighbour_count: 4,
             min_node_size: 30.0,
-            point_budget: 1_000_000,
+            point_budget: 10_000_000,
             light_min_node_size: 30.0,
             light_point_budget: 1_000_000,
+            plane_distance_0: 20.0,
+            plane_distance_1: 20.0,
             skip_visibility: false,
+            xray: false,
+            edl_enabled: false,
+            weighted_splats: false,
         }
     }
 }

@@ -16,7 +16,7 @@ use bevy::{
     log::{info, warn},
     mesh::Mesh3d,
     platform::collections::HashMap,
-    render::batching::NoAutomaticBatching,
+    render::{batching::NoAutomaticBatching, RenderDebugFlags},
     shader::load_shader_library,
 };
 
@@ -50,6 +50,8 @@ use crate::render::RenderPointCloudPlugin;
 
 #[derive(Default)]
 pub struct PointCloudPlugin {
+    /// Debugging flags that can optionally be set when constructing the renderer.
+    pub debug_flags: RenderDebugFlags,
     #[cfg(feature = "server")]
     settings: PointCloudServerSettings,
 }
@@ -83,7 +85,7 @@ impl Plugin for PointCloudPlugin {
             settings: self.settings.clone(),
         });
         app.add_plugins(PointCloudVisiblityPlugin);
-        app.add_plugins(RenderPointCloudPlugin);
+        app.add_plugins(RenderPointCloudPlugin::new(self.debug_flags));
         app.add_plugins(SimplePointCloudMaterialPlugin);
         app.add_plugins(StandardPointCloudMaterialPlugin);
 

@@ -9,7 +9,7 @@ use bevy::{
 };
 
 use crate::render::{
-    DrawPointCloudInstanced, MySetItemPipeline, PreparedPointCloudMaterial,
+    DrawPointCloudBatched, DrawPointCloudInstanced, MySetItemPipeline, PreparedPointCloudMaterial,
     RenderPointCloudChunkInstances, RenderPointCloudMaterialInstances, SetPointCloudBindGroup,
 };
 
@@ -21,6 +21,16 @@ pub type DrawPointCloudMaterial = (
     SetPointCloudBindGroup<2>,
     SetMaterialBindGroup<3>,
     DrawPointCloudInstanced,
+);
+
+pub type DrawPointCloudMaterialBatched = (
+    MySetItemPipeline,
+    // SetItemPipeline,
+    SetMeshViewBindGroup<0>,
+    SetMeshViewBindingArrayBindGroup<1>,
+    SetPointCloudBindGroup<2>,
+    SetMaterialBindGroup<3>,
+    DrawPointCloudBatched,
 );
 
 /// Sets the bind group for a given [`Material`] at the configured `I` index.

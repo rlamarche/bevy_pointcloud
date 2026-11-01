@@ -82,12 +82,12 @@ use crate::{
     render::{
         init_point_cloud_material_pipeline, init_point_cloud_pipeline,
         multipass::geometry::GeometryPassPlugin, render_phase::ViewBinnedChunksRenderPhases,
-        ChunkOpaque3dBatchSetKey, DrawPointCloudBatched, ErasedMaterialPreparedPasses,
-        ErasedMaterialViewSettingsKeys, ErasedPointCloudMaterialPipelineKey,
-        ErasedSplatPipelineKey, ErasedViewSettingsKey, MySetItemPipeline, PassKind, PassProperties,
-        PointCloudChunk3d, PointCloudDirtySpecializations, PointCloudMaterial,
-        PointCloudMaterialPipeline, PointCloudMaterialProperties, PointCloudPipeline,
-        PreparedPointCloudMaterial, RenderPointCloudChunkInstances, RenderPointCloudInstances,
+        DrawPointCloudBatched, ErasedMaterialPreparedPasses, ErasedMaterialViewSettingsKeys,
+        ErasedPointCloudMaterialPipelineKey, ErasedSplatPipelineKey, ErasedViewSettingsKey,
+        MySetItemPipeline, Opaque3dChunkBatchSetKey, PassKind, PassProperties, PointCloudChunk3d,
+        PointCloudDirtySpecializations, PointCloudMaterial, PointCloudMaterialPipeline,
+        PointCloudMaterialProperties, PointCloudPipeline, PreparedPointCloudMaterial,
+        RenderPointCloudChunkInstances, RenderPointCloudInstances,
         RenderPointCloudMaterialInstances, SetMaterialBindGroup, SplatPipelineKey,
     },
     PointCloudTopologyKind,
@@ -770,7 +770,7 @@ pub(crate) struct SpecializeMultipassSystemParam<'w, 's, M: PointCloudMaterial, 
         ),
     >,
     opaque_multipass_render_phases:
-        Res<'w, ViewBinnedChunksRenderPhases<Opaque3dMultipass<M, PASS>>>,
+        Res<'w, ViewBinnedChunksRenderPhases<Opaque3dChunkMultipass<M, PASS>>>,
     specialized_multipass_material_pipeline_cache:
         ResMut<'w, SpecializedMultipassMaterialPipelineCache>,
     pending_multipass_mesh_material_queues: ResMut<'w, PendingMultipassMeshMaterialQueues>,
@@ -1103,19 +1103,18 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
 
 pub fn queue_multipass_material_meshes<M: PointCloudMaterial, const PASS: usize>(
     render_materials: Res<ErasedRenderAssets<PreparedPointCloudMaterial>>,
-    render_mesh_instances: Res<RenderMeshInstances>,
     render_material_instances: Res<RenderPointCloudMaterialInstances>,
     render_point_cloud_instances: Res<RenderPointCloudInstances>,
     render_point_cloud_chunk_instances: Res<RenderPointCloudChunkInstances>,
     mesh_allocator: Res<MeshAllocator>,
     mut opaque_multipass_render_phases: ResMut<
-        ViewBinnedChunksRenderPhases<Opaque3dMultipass<M, PASS>>,
+        ViewBinnedChunksRenderPhases<Opaque3dChunkMultipass<M, PASS>>,
     >,
     views: Query<(&ExtractedView, &RenderVisibleEntities)>,
     specialized_material_pipeline_cache: Res<SpecializedMultipassMaterialPipelineCache>,
     mut pending_multipass_mesh_material_queues: ResMut<PendingMultipassMeshMaterialQueues>,
     dirty_specializations: Res<PointCloudDirtySpecializations>,
-    draw_functions: Res<DrawFunctions<Opaque3dMultipass<M, PASS>>>,
+    draw_functions: Res<DrawFunctions<Opaque3dChunkMultipass<M, PASS>>>,
 ) {
     for (view, visible_entities) in &views {
         let mut opaque_phase = opaque_multipass_render_phases.get_mut(&view.retained_view_entity);
@@ -1219,16 +1218,7 @@ pub fn queue_multipass_material_meshes<M: PointCloudMaterial, const PASS: usize>
                     .insert((*render_entity, *visible_entity));
                 continue;
             };
-            // get the mesh instance from the root entity
-            let Some(mesh_instance) = render_mesh_instances
-                .render_mesh_queue_data(render_point_cloud_chunk_instance.root_entity)
-            else {
-                warn!("mesh instance not ready, queue for pass {}", PASS);
-                view_pending_prepass_mesh_material_queues
-                    .current_frame
-                    .insert((*render_entity, *visible_entity));
-                continue;
-            };
+
             let Some(material) = render_materials.get(material_instance.asset_id) else {
                 warn!("material not ready, queue for pass {}", PASS);
                 view_pending_prepass_mesh_material_queues
@@ -1279,18 +1269,7 @@ pub fn queue_multipass_material_meshes<M: PointCloudMaterial, const PASS: usize>
 
                 let draw_function = draw_functions.read().id::<DrawMultipass<M, PASS>>();
 
-                // let Some(draw_function) = material
-                //     .properties
-                //     .get_draw_function(MultiPassOpaqueDrawFunction)
-                // let Some(draw_function) = material
-                //     .properties
-                //     .get_draw_function(MainPassOpaqueDrawFunction)
-                // else {
-                //     warn!("draw function not found for multipass");
-                //     continue;
-                // };
-
-                let batch_set_key = ChunkOpaque3dBatchSetKey {
+                let batch_set_key = Opaque3dChunkBatchSetKey {
                     pipeline: pipeline_id,
                     draw_function,
                     material_bind_group_index: Some(material.binding.group.0),
@@ -1383,7 +1362,7 @@ pub fn main_opaque_multipass_3d<M: PointCloudMaterial, const PASS: usize>(
         Option<&FullscreenMaterialPipelineId<M, PASS>>,
         Option<&MainPassResolutionOverride>,
     )>,
-    maybe_opaque_phases: Option<Res<ViewBinnedChunksRenderPhases<Opaque3dMultipass<M, PASS>>>>,
+    maybe_opaque_phases: Option<Res<ViewBinnedChunksRenderPhases<Opaque3dChunkMultipass<M, PASS>>>>,
     pipeline_cache: Res<PipelineCache>,
     mut ctx: RenderContext,
 ) {
