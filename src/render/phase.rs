@@ -1,15 +1,33 @@
-use std::hash::Hash;
+use std::{hash::Hash, ops::Range};
 
 use bevy::{
-    ecs::entity::Entity,
-    material::{descriptor::CachedRenderPipelineId, labels::DrawFunctionId},
-    platform::collections::hash_map::Entry,
-    render::{
-        batching::gpu_preprocessing::{IndirectParametersIndexed, IndirectParametersNonIndexed},
-        mesh::allocator::MeshSlabs,
-        render_phase::{BinnedPhaseItem, BinnedRenderPhase, PhaseItemBatchSetKey},
-        sync_world::MainEntity,
+    camera::{Camera, Camera3d},
+    core_pipeline::{core_3d::Opaque3dBinKey, prepass::OpaqueNoLightmap3dBinKey},
+    ecs::{
+        entity::Entity,
+        query::{Has, With},
+        system::{Local, Query, Res, ResMut},
     },
+    material::{descriptor::CachedRenderPipelineId, labels::DrawFunctionId},
+    platform::collections::{hash_map::Entry, HashSet},
+    render::{
+        batching::gpu_preprocessing::{
+            GpuPreprocessingMode, GpuPreprocessingSupport, IndirectParametersIndexed,
+            IndirectParametersNonIndexed,
+        },
+        mesh::allocator::MeshSlabs,
+        render_phase::{
+            BinnedPhaseItem, BinnedRenderPhase, CachedRenderPipelinePhaseItem, PhaseItem,
+            PhaseItemBatchSetKey, PhaseItemExtraIndex,
+        },
+        sync_world::MainEntity,
+        view::{NoIndirectDrawing, RetainedViewEntity},
+        Extract,
+    },
+};
+
+use crate::render::{
+    prepass::OpaqueChunkNoLightmap3dBatchSetKey, render_phase::ViewBinnedChunksRenderPhases,
 };
 
 pub trait BinnedRenderPhaseExt {
@@ -57,6 +75,92 @@ where
     }
 }
 
+/// Opaque phase of the 3D multipass.
+///
+/// Sorted by pipeline, then by mesh to improve batching.
+///
+/// Used to render all 3D meshes with materials that have no transparency.
+pub struct Opaque3dChunk {
+    /// Determines which objects can be placed into a *batch set*.
+    ///
+    /// Objects in a single batch set can potentially be multi-drawn together,
+    /// if it's enabled and the current platform supports it.
+    pub batch_set_key: Opaque3dChunkBatchSetKey,
+    /// Information that separates items into bins.
+    pub bin_key: Opaque3dBinKey,
+
+    /// An entity from which Bevy fetches data common to all instances in this
+    /// batch, such as the mesh.
+    pub representative_entity: (Entity, MainEntity),
+    pub batch_range: Range<u32>,
+    pub extra_index: PhaseItemExtraIndex,
+}
+
+impl CachedRenderPipelinePhaseItem for Opaque3dChunk {
+    #[inline]
+    fn cached_pipeline(&self) -> CachedRenderPipelineId {
+        self.batch_set_key.pipeline
+    }
+}
+
+impl PhaseItem for Opaque3dChunk {
+    #[inline]
+    fn entity(&self) -> Entity {
+        self.representative_entity.0
+    }
+
+    fn main_entity(&self) -> MainEntity {
+        self.representative_entity.1
+    }
+
+    #[inline]
+    fn draw_function(&self) -> DrawFunctionId {
+        self.batch_set_key.draw_function
+    }
+
+    #[inline]
+    fn batch_range(&self) -> &Range<u32> {
+        &self.batch_range
+    }
+
+    #[inline]
+    fn batch_range_mut(&mut self) -> &mut Range<u32> {
+        &mut self.batch_range
+    }
+
+    #[inline]
+    fn extra_index(&self) -> PhaseItemExtraIndex {
+        self.extra_index.clone()
+    }
+
+    #[inline]
+    fn batch_range_and_extra_index_mut(&mut self) -> (&mut Range<u32>, &mut PhaseItemExtraIndex) {
+        (&mut self.batch_range, &mut self.extra_index)
+    }
+}
+
+impl BinnedPhaseItem for Opaque3dChunk {
+    type BatchSetKey = Opaque3dChunkBatchSetKey;
+    type BinKey = Opaque3dBinKey;
+
+    #[inline]
+    fn new(
+        batch_set_key: Self::BatchSetKey,
+        bin_key: Self::BinKey,
+        representative_entity: (Entity, MainEntity),
+        batch_range: Range<u32>,
+        extra_index: PhaseItemExtraIndex,
+    ) -> Self {
+        Opaque3dChunk {
+            batch_set_key,
+            bin_key,
+            representative_entity,
+            batch_range,
+            extra_index,
+        }
+    }
+}
+
 /// Information that must be identical in order to place opaque meshes in the
 /// same *batch set*.
 ///
@@ -92,8 +196,128 @@ impl PhaseItemBatchSetKey for Opaque3dChunkBatchSetKey {
     }
 }
 
+pub struct AlphaMask3dChunk {
+    /// Determines which objects can be placed into a *batch set*.
+    ///
+    /// Objects in a single batch set can potentially be multi-drawn together,
+    /// if it's enabled and the current platform supports it.
+    pub batch_set_key: OpaqueChunkNoLightmap3dBatchSetKey,
+    /// The key, which determines which can be batched.
+    pub bin_key: OpaqueNoLightmap3dBinKey,
+    pub representative_entity: (Entity, MainEntity),
+    pub batch_range: Range<u32>,
+    pub extra_index: PhaseItemExtraIndex,
+}
+
+impl PhaseItem for AlphaMask3dChunk {
+    #[inline]
+    fn entity(&self) -> Entity {
+        self.representative_entity.0
+    }
+
+    fn main_entity(&self) -> MainEntity {
+        self.representative_entity.1
+    }
+
+    #[inline]
+    fn draw_function(&self) -> DrawFunctionId {
+        self.batch_set_key.draw_function
+    }
+
+    #[inline]
+    fn batch_range(&self) -> &Range<u32> {
+        &self.batch_range
+    }
+
+    #[inline]
+    fn batch_range_mut(&mut self) -> &mut Range<u32> {
+        &mut self.batch_range
+    }
+
+    #[inline]
+    fn extra_index(&self) -> PhaseItemExtraIndex {
+        self.extra_index.clone()
+    }
+
+    #[inline]
+    fn batch_range_and_extra_index_mut(&mut self) -> (&mut Range<u32>, &mut PhaseItemExtraIndex) {
+        (&mut self.batch_range, &mut self.extra_index)
+    }
+}
+
+impl BinnedPhaseItem for AlphaMask3dChunk {
+    type BinKey = OpaqueNoLightmap3dBinKey;
+    type BatchSetKey = OpaqueChunkNoLightmap3dBatchSetKey;
+
+    #[inline]
+    fn new(
+        batch_set_key: Self::BatchSetKey,
+        bin_key: Self::BinKey,
+        representative_entity: (Entity, MainEntity),
+        batch_range: Range<u32>,
+        extra_index: PhaseItemExtraIndex,
+    ) -> Self {
+        Self {
+            batch_set_key,
+            bin_key,
+            representative_entity,
+            batch_range,
+            extra_index,
+        }
+    }
+}
+
+impl CachedRenderPipelinePhaseItem for AlphaMask3dChunk {
+    #[inline]
+    fn cached_pipeline(&self) -> CachedRenderPipelineId {
+        self.batch_set_key.pipeline
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum IndirectParameters {
     Indexed(IndirectParametersIndexed),
     NonIndexed(IndirectParametersNonIndexed),
+}
+
+pub fn extract_camera_phase(
+    mut opaque_3d_phases: ResMut<ViewBinnedChunksRenderPhases<Opaque3dChunk>>,
+    mut alpha_mask_3d_phases: ResMut<ViewBinnedChunksRenderPhases<AlphaMask3dChunk>>,
+    cameras_3d: Extract<Query<(Entity, &Camera, Has<NoIndirectDrawing>), With<Camera3d>>>,
+    mut live_entities: Local<HashSet<RetainedViewEntity>>,
+    gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
+) {
+    live_entities.clear();
+
+    for (main_entity, camera, no_indirect_drawing) in cameras_3d.iter() {
+        if !camera.is_active {
+            continue;
+        }
+
+        // If GPU culling is in use, use it (and indirect mode); otherwise, just
+        // preprocess the meshes.
+        let gpu_preprocessing_mode = gpu_preprocessing_support.min(if !no_indirect_drawing {
+            GpuPreprocessingMode::Culling
+        } else {
+            GpuPreprocessingMode::PreprocessingOnly
+        });
+
+        // This is the main 3D camera, so we use the first subview index (0).
+        let retained_view_entity = RetainedViewEntity::new(main_entity.into(), None, 0);
+        opaque_3d_phases.prepare_for_new_frame(
+            retained_view_entity,
+            gpu_preprocessing_mode,
+            no_indirect_drawing,
+        );
+        alpha_mask_3d_phases.prepare_for_new_frame(
+            retained_view_entity,
+            gpu_preprocessing_mode,
+            no_indirect_drawing,
+        );
+
+        live_entities.insert(retained_view_entity);
+    }
+
+    opaque_3d_phases.retain(|view_entity, _| live_entities.contains(view_entity));
+    alpha_mask_3d_phases.retain(|view_entity, _| live_entities.contains(view_entity));
 }

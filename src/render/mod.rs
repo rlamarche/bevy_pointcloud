@@ -21,7 +21,12 @@ use std::path::PathBuf;
 use bevy::{
     app::Plugin,
     asset::{embedded_asset, AssetPath, Assets, Handle, RenderAssetUsages},
-    core_pipeline::{core_3d::main_opaque_pass_3d, Core3d, Core3dSystems},
+    core_pipeline::{
+        core_3d::main_opaque_pass_3d,
+        mip_generation::experimental::depth::early_downsample_depth,
+        prepass::node::{early_prepass, late_prepass},
+        Core3d, Core3dSystems,
+    },
     ecs::{
         resource::Resource,
         schedule::{IntoScheduleConfigs, SystemSet},
@@ -29,7 +34,10 @@ use bevy::{
     },
     math::primitives::Rectangle,
     mesh::{Indices, Mesh, PrimitiveTopology},
-    pbr::{extract_lights, ExtractedDirectionalLight, MeshPipelineSystems},
+    pbr::{
+        extract_lights, main_build_indirect_parameters, per_view_shadow_pass, shared_shadow_pass,
+        ExtractedDirectionalLight, MeshPipelineSystems,
+    },
     render::{
         camera::extract_cameras,
         extract_component::ExtractComponentPlugin,
@@ -59,8 +67,14 @@ pub use prepare::*;
 pub use resources::*;
 
 use crate::{
-    render::render_phase::BinnedChunksRenderPhasePlugin, PointCloud3d, PointCloudChunk3d,
-    SplatSettings,
+    render::{
+        prepass::{
+            early_chunk_prepass, extract_camera_prepass_phase, late_chunk_prepass,
+            AlphaMask3dChunkPrepass, Opaque3dChunkPrepass,
+        },
+        render_phase::{BinnedChunksRenderPhasePlugin, ViewBinnedChunksRenderPhases},
+    },
+    PointCloud3d, PointCloudChunk3d, SplatSettings,
 };
 
 #[derive(Default)]
@@ -92,7 +106,17 @@ impl Plugin for RenderPointCloudPlugin {
         };
 
         // must be initialized before [`MaterialsPlugin`]
-        render_app.init_resource::<DrawFunctions<Opaque3dChunk>>();
+        render_app
+            .init_resource::<DrawFunctions<Opaque3dChunk>>()
+            .init_resource::<DrawFunctions<AlphaMask3dChunk>>()
+            .init_resource::<DrawFunctions<Opaque3dChunkPrepass>>()
+            .init_resource::<DrawFunctions<AlphaMask3dChunkPrepass>>()
+            .init_resource::<DrawFunctions<ShadowChunk>>()
+            .init_resource::<ViewBinnedChunksRenderPhases<Opaque3dChunk>>()
+            .init_resource::<ViewBinnedChunksRenderPhases<AlphaMask3dChunk>>()
+            .init_resource::<ViewBinnedChunksRenderPhases<Opaque3dChunkPrepass>>()
+            .init_resource::<ViewBinnedChunksRenderPhases<AlphaMask3dChunkPrepass>>()
+            .init_resource::<ViewBinnedChunksRenderPhases<ShadowChunk>>();
 
         app.add_plugins(MaterialsPlugin::default()) // TODO add debug flags opt
             .add_plugins(ExtractComponentPlugin::<PointCloud3d>::default())
@@ -100,10 +124,17 @@ impl Plugin for RenderPointCloudPlugin {
             .add_plugins(ExtractComponentPlugin::<SplatSettings>::default())
             .add_plugins(ExtractResourcePlugin::<SplatMeshes>::default())
             .add_plugins(RenderAssetPlugin::<RenderPointCloudChunk>::default())
-            .add_plugins(BinnedChunksRenderPhasePlugin::<
-                Opaque3dChunk,
-                PointCloudPipeline,
-            >::new(self.debug_flags))
+            .add_plugins((
+                BinnedChunksRenderPhasePlugin::<Opaque3dChunk, PointCloudPipeline>::new(
+                    self.debug_flags,
+                ),
+                BinnedChunksRenderPhasePlugin::<AlphaMask3dChunk, PointCloudPipeline>::new(
+                    self.debug_flags,
+                ),
+                BinnedChunksRenderPhasePlugin::<ShadowChunk, PointCloudPipeline>::new(
+                    self.debug_flags,
+                ),
+            ))
             .init_resource::<SplatMeshes>();
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
@@ -140,6 +171,7 @@ impl Plugin for RenderPointCloudPlugin {
                 ExtractSchedule,
                 (
                     extract_camera_phase,
+                    extract_camera_prepass_phase,
                     extract_pointcloud_instances
                         .in_set(PointCloudExtractionSystems::ExtractPointClouds),
                     extract_pointcloud_chunk_instances.in_set(PointCloudExtractionSystems::ExtractPointClouds), //.after(extract_meshes_for_cpu_building),
@@ -175,6 +207,42 @@ impl Plugin for RenderPointCloudPlugin {
                 main_opaque_pass_3d_chunk
                     .in_set(Core3dSystems::MainPass)
                     .after(main_opaque_pass_3d),
+            )
+            // prepass
+            .add_systems(
+                Core3d,
+                (
+                    (
+                        early_chunk_prepass.after(early_prepass),
+                        // early_deferred_prepass,
+                        late_chunk_prepass.after(late_prepass),
+                        // late_deferred_prepass,
+                    )
+                        .chain()
+                        .in_set(Core3dSystems::Prepass),
+                ),
+            )
+            // render shadow maps
+            .add_systems(
+                Core3d,
+                (
+                    per_view_shadow_chunk_pass::<EARLY_SHADOW_PASS>
+                        .after(per_view_shadow_pass::<EARLY_SHADOW_PASS>)
+                        .before(early_downsample_depth)
+                        .before(per_view_shadow_chunk_pass::<LATE_SHADOW_PASS>),
+                    per_view_shadow_chunk_pass::<LATE_SHADOW_PASS>
+                        .after(per_view_shadow_pass::<LATE_SHADOW_PASS>)
+                        .before(main_build_indirect_parameters)
+                        .before(Core3dSystems::MainPass),
+                    shared_shadow_chunk_pass::<EARLY_SHADOW_PASS>
+                        .after(shared_shadow_pass::<EARLY_SHADOW_PASS>)
+                        .before(early_downsample_depth)
+                        .before(shared_shadow_pass::<LATE_SHADOW_PASS>),
+                    shared_shadow_chunk_pass::<LATE_SHADOW_PASS>
+                        .after(shared_shadow_pass::<LATE_SHADOW_PASS>)
+                        .before(main_build_indirect_parameters)
+                        .before(Core3dSystems::MainPass),
+                ),
             )
             .init_gpu_resource::<RenderMaterialBindings>()
             .allow_ambiguous_resource::<RenderMaterialBindings>();

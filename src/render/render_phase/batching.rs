@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{any::TypeId, marker::PhantomData};
 
 use bevy::{
     ecs::{
@@ -28,6 +28,7 @@ use smallvec::SmallVec;
 use wgpu::BufferUsages;
 
 use crate::render::{
+    prepass::Opaque3dChunkPrepass,
     render_phase::{
         BinnedChunksRenderPhaseBatch, BinnedChunksRenderPhaseBatchSet,
         BinnedChunksRenderPhaseBatchSets, RenderMultidrawableChunk, ViewBinnedChunksRenderPhases,
@@ -155,7 +156,7 @@ pub fn batch_and_prepare_binned_render_phase<BPI, GFBD>(
                             warn!("Missing indirect parameters indexed");
                         }
                     } else {
-                        if let Some(indirect_parameters_indexed) = {
+                        if let Some(indirect_parameters_non_indexed) = {
                             match indirect_parameters {
                                 Some(IndirectParameters::NonIndexed(
                                     indirect_parameters_non_indexed,
@@ -180,7 +181,7 @@ pub fn batch_and_prepare_binned_render_phase<BPI, GFBD>(
                         } {
                             phase_indirect_parameters_buffers
                                 .buffers
-                                .add_batch_set_non_indexed(indirect_parameters_indexed);
+                                .add_batch_set_non_indexed(indirect_parameters_non_indexed);
                             batch_count += 1;
                         } else {
                             warn!("Missing indirect parameters non indexed");

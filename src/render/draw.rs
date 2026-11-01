@@ -26,7 +26,8 @@ use bevy::{
 };
 
 use crate::render::{
-    prepass::skins_use_uniform_buffers, render_phase::batching::PhaseIndirectParametersBuffers,
+    prepass::{skins_use_uniform_buffers, Opaque3dChunkPrepass},
+    render_phase::batching::PhaseIndirectParametersBuffers,
     RenderPointCloudChunkInstances, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
     ViewPointCloudBindGroups,
 };

@@ -3,9 +3,8 @@ use std::{any::TypeId, hash::Hash, sync::Arc};
 use bevy::{
     asset::{AssetId, AssetServer, Handle},
     core_pipeline::{
-        core_3d::{AlphaMask3d, Transparent3d},
+        core_3d::Transparent3d,
         deferred::{AlphaMask3dDeferred, Opaque3dDeferred},
-        prepass::{AlphaMask3dPrepass, Opaque3dPrepass},
     },
     ecs::{
         component::Component,
@@ -56,8 +55,10 @@ use crate::{
         material::{clone_shader_ref, prepass_specialize, user_specialize},
         material_uses_bindless_resources,
         multipass::ViewMultipassTextures,
-        prepass::{DrawDepthOnlyPrepass, DrawPrepass},
-        BaseSpecializeFn, DeferredAlphaMaskDrawFunction, DeferredFragmentShader,
+        prepass::{
+            AlphaMask3dChunkPrepass, DrawDepthOnlyPrepass, DrawPrepass, Opaque3dChunkPrepass,
+        },
+        AlphaMask3dChunk, BaseSpecializeFn, DeferredAlphaMaskDrawFunction, DeferredFragmentShader,
         DeferredOpaqueDrawFunction, DeferredVertexShader, DrawPointCloudMaterial,
         DrawPointCloudMaterialBatched, ErasedViewSettingsKey, MainPassAlphaMaskDrawFunction,
         MainPassOpaqueDrawFunction, MainPassTransmissiveDrawFunction,
@@ -66,7 +67,7 @@ use crate::{
         PointCloudMaterial, PointCloudPipeline, PreparedPointCloudMaterial,
         PreparedPointCloudUniforms, PreparedViewSettingsUniform, PrepassAlphaMaskDrawFunction,
         PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction, PrepassOpaqueDrawFunction,
-        PrepassSpecializeFn, PrepassVertexShader, RenderMaterialBindings,
+        PrepassSpecializeFn, PrepassVertexShader, RenderMaterialBindings, ShadowChunk,
         ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction, UserSpecializeFn,
         ViewPointCloudBindGroups, VisibleNodesTexture,
     },
@@ -165,20 +166,18 @@ where
     type Param = (
         SRes<RenderDevice>,
         SRes<PipelineCache>,
-        // SRes<DefaultOpaqueRendererMethod>,
         SResMut<MaterialBindGroupAllocators>,
         SResMut<RenderMaterialBindings>,
         (
             SRes<DrawFunctions<Opaque3dChunk>>,
-            SRes<DrawFunctions<AlphaMask3d>>,
+            SRes<DrawFunctions<AlphaMask3dChunk>>,
             SRes<DrawFunctions<Transmissive3d>>,
             SRes<DrawFunctions<Transparent3d>>,
-            // SRes<DrawFunctions<Opaque3dMultipass<M>>>,
-            SRes<DrawFunctions<Opaque3dPrepass>>,
-            SRes<DrawFunctions<AlphaMask3dPrepass>>,
+            SRes<DrawFunctions<Opaque3dChunkPrepass>>,
+            SRes<DrawFunctions<AlphaMask3dChunkPrepass>>,
             SRes<DrawFunctions<Opaque3dDeferred>>,
             SRes<DrawFunctions<AlphaMask3dDeferred>>,
-            SRes<DrawFunctions<Shadow>>,
+            SRes<DrawFunctions<ShadowChunk>>,
         ),
         SRes<AssetServer>,
         M::Param,
@@ -275,7 +274,7 @@ where
             .id::<DrawPointCloudMaterialBatched>();
         let draw_alpha_mask_pbr = alpha_mask_draw_functions
             .read()
-            .id::<DrawPointCloudMaterial>();
+            .id::<DrawPointCloudMaterialBatched>();
         let draw_transmissive_pbr = transmissive_draw_functions
             .read()
             .id::<DrawPointCloudMaterial>();
