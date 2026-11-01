@@ -106,6 +106,15 @@ copc-streaming = {
 }
 async-lock = { version = "3.0", default-features = false, optional = true }
 
+wgpu = { version = "29.0.3", default-features = false, features = [
+  "wgsl",
+  "dx12",
+  "metal",
+  "vulkan",
+  "naga-ir",
+  "fragile-send-sync-non-atomic-wasm",
+] }
+
 [dependencies.bevy]
 version = "0.19"
 # path = "../bevy"

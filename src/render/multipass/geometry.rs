@@ -3,13 +3,11 @@ use core::marker::PhantomData;
 use bevy::{
     app::{App, Plugin},
     ecs::schedule::IntoScheduleConfigs,
-    pbr::{collect_meshes_for_gpu_building, set_mesh_motion_vector_flags, MeshPipeline},
+    pbr::{collect_meshes_for_gpu_building, set_mesh_motion_vector_flags},
     render::{
         mesh::RenderMesh,
         render_asset::prepare_assets,
-        render_phase::{
-            AddRenderCommand, BinnedRenderPhasePlugin, DrawFunctions, ViewBinnedRenderPhases,
-        },
+        render_phase::{AddRenderCommand, DrawFunctions, ViewBinnedRenderPhases},
         ExtractSchedule, Render, RenderApp, RenderDebugFlags, RenderSystems,
     },
 };
@@ -20,7 +18,8 @@ use crate::render::{
         queue_multipass_material_meshes, specialize_multipass_material_meshes, DrawMultipass,
         Opaque3dMultipass,
     },
-    PointCloudMaterial,
+    render_phase::BinnedChunksRenderPhasePlugin,
+    PointCloudMaterial, PointCloudPipeline,
 };
 
 pub struct GeometryPassPlugin<M, const PASS: usize> {
@@ -40,9 +39,9 @@ impl<M: PointCloudMaterial, const PASS: usize> GeometryPassPlugin<M, PASS> {
 
 impl<M: PointCloudMaterial, const PASS: usize> Plugin for GeometryPassPlugin<M, PASS> {
     fn build(&self, app: &mut App) {
-        app.add_plugins(BinnedRenderPhasePlugin::<
+        app.add_plugins(BinnedChunksRenderPhasePlugin::<
             Opaque3dMultipass<M, PASS>,
-            MeshPipeline,
+            PointCloudPipeline,
         >::new(self.debug_flags));
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {

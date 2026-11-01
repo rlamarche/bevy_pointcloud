@@ -2,9 +2,11 @@ use bevy::{
     asset::{load_embedded_asset, AssetServer, Handle},
     core_pipeline::core_3d::CORE_3D_DEPTH_FORMAT,
     ecs::{
+        entity::Entity,
         resource::Resource,
-        system::{Commands, Res},
+        system::{lifetimeless::SRes, Commands, Res},
     },
+    log::warn,
     material::{
         descriptor::{
             BindGroupLayoutDescriptor, FragmentState, RenderPipelineDescriptor, VertexState,
@@ -17,6 +19,8 @@ use bevy::{
         TONEMAPPING_LUT_SAMPLER_BINDING_INDEX, TONEMAPPING_LUT_TEXTURE_BINDING_INDEX,
     },
     render::{
+        batching::gpu_preprocessing::{IndirectParametersIndexed, IndirectParametersNonIndexed},
+        mesh::allocator::MeshAllocator,
         render_resource::{
             binding_types::{texture_2d, uniform_buffer},
             BindGroupLayoutEntries, BlendComponent, BlendFactor, BlendOperation, BlendState,
@@ -25,14 +29,16 @@ use bevy::{
             StencilState, TextureSampleType, VertexStepMode,
         },
         renderer::RenderDevice,
+        sync_world::MainEntity,
     },
     shader::{Shader, ShaderDefVal},
     utils::default,
 };
 
 use crate::render::{
-    pipeline_specializer::SpecializedPointCloudPipeline, ErasedViewSettingsKey, PointCloudUniform,
-    SplatPipelineKey,
+    pipeline_specializer::SpecializedPointCloudPipeline, render_phase::batching::GetBatchData,
+    ErasedViewSettingsKey, PointCloudUniform, RenderPointCloudChunkInstances,
+    RenderPointCloudInstances, SplatPipelineKey,
 };
 
 pub(crate) const IRRADIANCE_VOLUMES_ARE_USABLE: bool = cfg!(not(target_arch = "wasm32"));
@@ -553,5 +559,93 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             label: Some(label),
             ..default()
         }))
+    }
+}
+
+impl GetBatchData for PointCloudPipeline {
+    type Param = (
+        SRes<RenderPointCloudInstances>,
+        SRes<RenderPointCloudChunkInstances>,
+        SRes<MeshAllocator>,
+    );
+
+    fn get_indirect_parameters_indexed(
+        (render_point_cloud_instances, render_point_cloud_chunk_instances, mesh_allocator): &bevy::ecs::system::SystemParamItem<
+            Self::Param,
+        >,
+        (entity, _): (Entity, MainEntity),
+    ) -> Option<IndirectParametersIndexed> {
+        let Some(chunk_instance) = render_point_cloud_chunk_instances.get(&entity) else {
+            warn!("chunk instance not found");
+            return None;
+        };
+
+        let Some(pointcloud_instance) =
+            render_point_cloud_instances.get(&chunk_instance.root_entity)
+        else {
+            warn!("point cloud instance not found");
+            return None;
+        };
+
+        let splat_mesh_id = pointcloud_instance.splat;
+
+        let Some(splat_vertex_buffer_slice) = mesh_allocator.mesh_vertex_slice(&splat_mesh_id)
+        else {
+            warn!("splat_vertex_buffer_slice not found");
+            return None;
+        };
+
+        let Some(index_buffer_slice) = mesh_allocator.mesh_index_slice(&splat_mesh_id) else {
+            warn!("index_buffer_slice not found");
+            return None;
+        };
+
+        let Some(vertex_buffer_slice) =
+            mesh_allocator.mesh_vertex_slice(&chunk_instance.mesh_asset_id)
+        else {
+            warn!("vertex buffer slice not found");
+            return None;
+        };
+
+        Some(IndirectParametersIndexed {
+            index_count: index_buffer_slice.range.end - index_buffer_slice.range.start,
+            instance_count: vertex_buffer_slice.range.end - vertex_buffer_slice.range.start,
+            first_index: index_buffer_slice.range.start,
+            base_vertex: splat_vertex_buffer_slice.range.start,
+            first_instance: vertex_buffer_slice.range.start,
+        })
+    }
+
+    fn get_indirect_parameters_non_indexed(
+        (render_point_cloud_instances, render_point_cloud_chunk_instances, mesh_allocator): &bevy::ecs::system::SystemParamItem<
+            Self::Param,
+        >,
+        (entity, _): (Entity, MainEntity),
+    ) -> Option<IndirectParametersNonIndexed> {
+        let Some(chunk_instance) = render_point_cloud_chunk_instances.get(&entity) else {
+            warn!("chunk instance not found");
+            return None;
+        };
+
+        let pointcloud_instance = render_point_cloud_instances.get(&chunk_instance.root_entity)?;
+
+        let splat_mesh_id = pointcloud_instance.splat;
+
+        let splat_vertex_buffer_slice = mesh_allocator.mesh_vertex_slice(&splat_mesh_id)?;
+
+        let Some(vertex_buffer_slice) =
+            mesh_allocator.mesh_vertex_slice(&chunk_instance.mesh_asset_id)
+        else {
+            warn!("vertex buffer slice not found");
+            return None;
+        };
+
+        Some(IndirectParametersNonIndexed {
+            vertex_count: splat_vertex_buffer_slice.range.end
+                - splat_vertex_buffer_slice.range.start,
+            instance_count: vertex_buffer_slice.range.end - vertex_buffer_slice.range.start,
+            base_vertex: splat_vertex_buffer_slice.range.start,
+            first_instance: vertex_buffer_slice.range.start,
+        })
     }
 }

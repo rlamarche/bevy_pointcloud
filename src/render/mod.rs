@@ -13,6 +13,7 @@ mod pipeline_specializer;
 mod point_cloud;
 mod prepare;
 pub mod prepass;
+pub mod render_phase;
 mod resources;
 
 use std::path::PathBuf;
