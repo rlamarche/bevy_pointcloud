@@ -1,8 +1,10 @@
 use bevy::{
     ecs::entity::Entity,
+    material::{descriptor::CachedRenderPipelineId, labels::DrawFunctionId},
     platform::collections::hash_map::Entry,
     render::{
-        render_phase::{BinnedPhaseItem, BinnedRenderPhase},
+        mesh::allocator::MeshSlabs,
+        render_phase::{BinnedPhaseItem, BinnedRenderPhase, PhaseItemBatchSetKey},
         sync_world::MainEntity,
     },
 };
@@ -49,5 +51,40 @@ where
             count += entities.entities.len();
         }
         count
+    }
+}
+
+/// Information that must be identical in order to place opaque meshes in the
+/// same *batch set*.
+///
+/// A batch set is a set of batches that can be multi-drawn together, if
+/// multi-draw is in use.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ChunkOpaque3dBatchSetKey {
+    /// The identifier of the render pipeline.
+    pub pipeline: CachedRenderPipelineId,
+
+    /// The function used to draw.
+    pub draw_function: DrawFunctionId,
+
+    /// The ID of a bind group specific to the material instance.
+    ///
+    /// In the case of PBR, this is the `MaterialBindGroupIndex`.
+    pub material_bind_group_index: Option<u32>,
+
+    pub splat_slabs: MeshSlabs,
+
+    /// The IDs of the slabs of GPU memory in the mesh allocator that contain
+    /// the mesh data.
+    ///
+    /// For non-mesh items, you can fill the [`MeshSlabs::vertex_slab_id`] with
+    /// 0 if your items can be multi-drawn, or with a unique value if they
+    /// can't.
+    pub slabs: MeshSlabs,
+}
+
+impl PhaseItemBatchSetKey for ChunkOpaque3dBatchSetKey {
+    fn indexed(&self) -> bool {
+        self.splat_slabs.index_slab_id.is_some()
     }
 }

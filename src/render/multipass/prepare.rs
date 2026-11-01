@@ -17,7 +17,6 @@ use bevy::{
     pbr::ViewKeyCache,
     render::{
         camera::ExtractedCamera,
-        render_phase::ViewBinnedRenderPhases,
         render_resource::{
             binding_types::{texture_2d, texture_2d_multisampled, uniform_buffer},
             BindGroupEntry, IntoBinding, PipelineCache, ShaderStages, TextureDescriptor,
@@ -39,6 +38,7 @@ use crate::{
             MultipassTexture, Opaque3dMultipass, SpecializedFullscreenPointCloudPipelines,
             ViewMultipassTextures, ViewPointCloudPassBindGroups,
         },
+        render_phase::ViewBinnedChunksRenderPhases,
         ErasedMaterialPreparedPasses, ErasedViewSettingsKey, MaterialFragmentShader,
         MaterialVertexShader, PassOutput, PointCloud3d, PointCloudMaterial, PointCloudPipeline,
         PreparedPointCloudUniforms, PreparedViewSettingsUniform, VisibleNodesTexture,
@@ -50,7 +50,7 @@ use crate::{
 pub fn prepare_multipass_textures<M: PointCloudMaterial>(
     render_device: Res<RenderDevice>,
     // check only against first pass for simplification
-    opaque_3d_multipass_phases: Res<ViewBinnedRenderPhases<Opaque3dMultipass<M, 0>>>,
+    opaque_3d_multipass_phases: Res<ViewBinnedChunksRenderPhases<Opaque3dMultipass<M, 0>>>,
     mut views_3d: Query<(
         &ExtractedCamera,
         &ExtractedView,

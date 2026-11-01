@@ -273,6 +273,10 @@ pub struct MaterialsPlugin {
 
 impl Plugin for MaterialsPlugin {
     fn build(&self, app: &mut App) {
+        // app.add_plugins(
+        //     BinnedChunksRenderPhasePlugin::<Opaque3d, PointCloudPipeline>::new(self.debug_flags),
+        // );
+
         app.add_plugins((
             PrepassPipelinePlugin,
             PrepassPlugin::new(self.debug_flags),

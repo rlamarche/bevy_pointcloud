@@ -13,6 +13,7 @@ use bevy::{
     log::warn,
     pbr::{MeshBindGroups, MeshMorphBindGroupKey, MorphIndices, RenderMeshInstances, SkinUniforms},
     render::{
+        batching::gpu_preprocessing::{IndirectParametersIndexed, IndirectParametersNonIndexed},
         mesh::{allocator::MeshAllocator, RenderMesh, RenderMeshBufferInfo},
         render_asset::RenderAssets,
         render_phase::{
@@ -25,8 +26,9 @@ use bevy::{
 };
 
 use crate::render::{
-    prepass::skins_use_uniform_buffers, RenderPointCloudChunkInstances, RenderPointCloudInstances,
-    RenderPointCloudMaterialInstances, ViewPointCloudBindGroups,
+    prepass::skins_use_uniform_buffers, render_phase::batching::PhaseIndirectParametersBuffers,
+    RenderPointCloudChunkInstances, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
+    ViewPointCloudBindGroups,
 };
 
 /// A [`RenderCommand`] that sets the pipeline for the [`CachedRenderPipelinePhaseItem`].
@@ -383,6 +385,157 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudInstanced {
             }
             RenderMeshBufferInfo::NonIndexed => {
                 pass.draw(quad_vertex_buffer_slice.range, vertex_buffer_slice.range);
+            }
+        }
+
+        RenderCommandResult::Success
+    }
+}
+
+pub struct DrawPointCloudBatched;
+
+impl<P: PhaseItem> RenderCommand<P> for DrawPointCloudBatched {
+    type Param = (
+        SRes<RenderPointCloudInstances>,
+        SRes<RenderPointCloudChunkInstances>,
+        SRes<RenderAssets<RenderMesh>>,
+        SRes<MeshAllocator>,
+        SRes<PhaseIndirectParametersBuffers<P>>,
+    );
+    type ViewQuery = ();
+    type ItemQuery = ();
+
+    fn render<'w>(
+        item: &P,
+        _view: (),
+        _item_query: Option<()>,
+        (
+            render_point_cloud_instances,
+            render_point_cloud_chunk_instances,
+            meshes,
+            mesh_allocator,
+            indirect_parameters_buffer,
+        ): SystemParamItem<'w, '_, Self::Param>,
+        pass: &mut TrackedRenderPass<'w>,
+    ) -> RenderCommandResult {
+        let mesh_allocator = mesh_allocator.into_inner();
+        let indirect_parameters_buffer = indirect_parameters_buffer.into_inner();
+
+        let Some(chunk_instance) = render_point_cloud_chunk_instances.get(&item.entity()) else {
+            return RenderCommandResult::Skip;
+        };
+
+        let Some(pointcloud_instance) =
+            render_point_cloud_instances.get(&chunk_instance.root_entity)
+        else {
+            return RenderCommandResult::Skip;
+        };
+
+        let splat_mesh_id = pointcloud_instance.splat;
+
+        let Some(splat_mesh) = meshes.get(splat_mesh_id) else {
+            return RenderCommandResult::Failure("splat mesh missing");
+        };
+
+        let Some(quad_vertex_buffer_slice) = mesh_allocator.mesh_vertex_slice(&splat_mesh_id)
+        else {
+            return RenderCommandResult::Failure("unable to get quad vertex slice");
+        };
+
+        let Some(vertex_buffer_slice) =
+            mesh_allocator.mesh_vertex_slice(&chunk_instance.mesh_asset_id)
+        else {
+            warn!("vertex buffer slice not found");
+            return RenderCommandResult::Skip;
+        };
+
+        pass.set_vertex_buffer(0, quad_vertex_buffer_slice.buffer.slice(..));
+        pass.set_vertex_buffer(1, vertex_buffer_slice.buffer.slice(..));
+
+        match &splat_mesh.buffer_info {
+            RenderMeshBufferInfo::Indexed {
+                count,
+                index_format,
+            } => {
+                let Some(index_buffer_slice) = mesh_allocator.mesh_index_slice(&splat_mesh_id)
+                else {
+                    warn!("index_buffer_slice slice not found for shape");
+                    return RenderCommandResult::Skip;
+                };
+
+                pass.set_index_buffer(index_buffer_slice.buffer.slice(..), *index_format);
+
+                match item.extra_index() {
+                    PhaseItemExtraIndex::None | PhaseItemExtraIndex::DynamicOffset(_) => {
+                        pass.draw_indexed(
+                            index_buffer_slice.range.start
+                                ..(index_buffer_slice.range.start + count),
+                            quad_vertex_buffer_slice.range.start as i32,
+                            vertex_buffer_slice.range,
+                        );
+                    }
+                    PhaseItemExtraIndex::IndirectParametersIndex {
+                        range: indirect_parameters_range,
+                        batch_set_index: _,
+                    } => {
+                        let Some(indirect_parameters_buffer) =
+                            indirect_parameters_buffer.buffers.indexed.data_buffer()
+                        else {
+                            warn!(
+                                "Not rendering mesh because indexed indirect parameters buffer \
+                                 wasn't present",
+                            );
+                            return RenderCommandResult::Skip;
+                        };
+
+                        // Calculate the location of the indirect parameters
+                        // within the buffer.
+                        let indirect_parameters_offset = indirect_parameters_range.start as u64
+                            * size_of::<IndirectParametersIndexed>() as u64;
+                        let indirect_parameters_count =
+                            indirect_parameters_range.end - indirect_parameters_range.start;
+
+                        pass.multi_draw_indexed_indirect(
+                            indirect_parameters_buffer,
+                            indirect_parameters_offset,
+                            indirect_parameters_count,
+                        );
+                    }
+                }
+            }
+            RenderMeshBufferInfo::NonIndexed => {
+                match item.extra_index() {
+                    PhaseItemExtraIndex::None | PhaseItemExtraIndex::DynamicOffset(_) => {
+                        pass.draw(quad_vertex_buffer_slice.range, vertex_buffer_slice.range);
+                    }
+                    PhaseItemExtraIndex::IndirectParametersIndex {
+                        range: indirect_parameters_range,
+                        batch_set_index: _,
+                    } => {
+                        let Some(indirect_parameters_buffer) =
+                            indirect_parameters_buffer.buffers.non_indexed.data_buffer()
+                        else {
+                            warn!(
+                                "Not rendering mesh because indexed indirect parameters buffer \
+                                 wasn't present",
+                            );
+                            return RenderCommandResult::Skip;
+                        };
+
+                        // Calculate the location of the indirect parameters
+                        // within the buffer.
+                        let indirect_parameters_offset = indirect_parameters_range.start as u64
+                            * size_of::<IndirectParametersNonIndexed>() as u64;
+                        let indirect_parameters_count =
+                            indirect_parameters_range.end - indirect_parameters_range.start;
+
+                        pass.multi_draw_indirect(
+                            indirect_parameters_buffer,
+                            indirect_parameters_offset,
+                            indirect_parameters_count,
+                        );
+                    }
+                }
             }
         }
 

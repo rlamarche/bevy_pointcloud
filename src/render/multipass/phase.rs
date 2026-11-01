@@ -2,7 +2,7 @@ use std::{marker::PhantomData, ops::Range};
 
 use bevy::{
     camera::{Camera, Camera3d},
-    core_pipeline::core_3d::{Opaque3dBatchSetKey, Opaque3dBinKey},
+    core_pipeline::core_3d::Opaque3dBinKey,
     ecs::{
         entity::Entity,
         query::{Has, With},
@@ -14,7 +14,6 @@ use bevy::{
         batching::gpu_preprocessing::{GpuPreprocessingMode, GpuPreprocessingSupport},
         render_phase::{
             BinnedPhaseItem, CachedRenderPipelinePhaseItem, PhaseItem, PhaseItemExtraIndex,
-            ViewBinnedRenderPhases,
         },
         sync_world::MainEntity,
         view::{NoIndirectDrawing, RetainedViewEntity},
@@ -22,7 +21,9 @@ use bevy::{
     },
 };
 
-use crate::render::PointCloudMaterial;
+use crate::render::{
+    render_phase::ViewBinnedChunksRenderPhases, ChunkOpaque3dBatchSetKey, PointCloudMaterial,
+};
 
 /// Opaque phase of the 3D multipass.
 ///
@@ -34,7 +35,7 @@ pub struct Opaque3dMultipass<M: PointCloudMaterial, const PASS: usize> {
     ///
     /// Objects in a single batch set can potentially be multi-drawn together,
     /// if it's enabled and the current platform supports it.
-    pub batch_set_key: Opaque3dBatchSetKey,
+    pub batch_set_key: ChunkOpaque3dBatchSetKey,
     /// Information that separates items into bins.
     pub bin_key: Opaque3dBinKey,
 
@@ -92,7 +93,7 @@ impl<M: PointCloudMaterial, const PASS: usize> PhaseItem for Opaque3dMultipass<M
 }
 
 impl<M: PointCloudMaterial, const PASS: usize> BinnedPhaseItem for Opaque3dMultipass<M, PASS> {
-    type BatchSetKey = Opaque3dBatchSetKey;
+    type BatchSetKey = ChunkOpaque3dBatchSetKey;
     type BinKey = Opaque3dBinKey;
 
     #[inline]
@@ -115,7 +116,9 @@ impl<M: PointCloudMaterial, const PASS: usize> BinnedPhaseItem for Opaque3dMulti
 }
 
 pub fn extract_camera_multipass_phase<M: PointCloudMaterial, const PASS: usize>(
-    mut opaque_3d_multipass_phases: ResMut<ViewBinnedRenderPhases<Opaque3dMultipass<M, PASS>>>,
+    mut opaque_3d_multipass_phases: ResMut<
+        ViewBinnedChunksRenderPhases<Opaque3dMultipass<M, PASS>>,
+    >,
     cameras_3d: Extract<Query<(Entity, &Camera, Has<NoIndirectDrawing>), With<Camera3d>>>,
     mut live_entities: Local<HashSet<RetainedViewEntity>>,
     gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
@@ -137,9 +140,11 @@ pub fn extract_camera_multipass_phase<M: PointCloudMaterial, const PASS: usize>(
 
         // This is the main 3D camera, so we use the first subview index (0).
         let retained_view_entity = RetainedViewEntity::new(main_entity.into(), None, 0);
-
-        opaque_3d_multipass_phases
-            .prepare_for_new_frame(retained_view_entity, gpu_preprocessing_mode);
+        opaque_3d_multipass_phases.prepare_for_new_frame(
+            retained_view_entity,
+            gpu_preprocessing_mode,
+            no_indirect_drawing,
+        );
 
         live_entities.insert(retained_view_entity);
     }
