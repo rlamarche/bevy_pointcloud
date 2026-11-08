@@ -579,7 +579,9 @@ where
             mesh_key,
             splat_key,
             bind_group_data: material_key,
-            pass: erased_key.maybe_pass.map(From::from),
+            pass: erased_key
+                .maybe_pass
+                .and_then(|pass| M::PassId::try_from(pass).ok()),
             view_settings_key,
         },
     )

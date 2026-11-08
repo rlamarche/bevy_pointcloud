@@ -67,6 +67,7 @@ use bevy::{
     },
 };
 use core::any::TypeId;
+use strum::IntoEnumIterator;
 
 use bevy::{
     ecs::system::SystemChangeTick,
@@ -188,7 +189,7 @@ impl<M: PointCloudMaterial> Plugin for MultipassMaterialPlugin<M> {
             prepare_multipass_textures::<M>.in_set(RenderSystems::PrepareResources),
         );
 
-        match M::passes().len() {
+        match <M::PassId as IntoEnumIterator>::iter().count() {
             1 => {
                 register_passes!(app, M, self.debug_flags, 0);
             }
@@ -281,7 +282,10 @@ macro_rules! add_pass_system {
 
 impl<M: PointCloudMaterial, const PASS: usize> Plugin for MaterialPassPlugin<M, PASS> {
     fn build(&self, app: &mut App) {
-        let pass = &M::passes()[PASS];
+        let Ok(pass_id) = <M::PassId as TryFrom<usize>>::try_from(PASS) else {
+            return;
+        };
+        let pass = M::pass_descriptor(&pass_id);
 
         match pass.kind {
             PassKind::Geometry => {

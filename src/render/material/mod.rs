@@ -47,7 +47,8 @@ use bevy::{
     shader::ShaderRef,
 };
 use core::{any::TypeId, hash::Hash, marker::PhantomData};
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, iter::Empty, sync::Arc};
+use strum::IntoEnumIterator;
 
 use crate::{
     render::{
@@ -88,16 +89,26 @@ impl From<NoPassId> for usize {
     }
 }
 
-impl From<usize> for NoPassId {
-    fn from(_: usize) -> Self {
-        panic!("should not happen");
+impl TryFrom<usize> for NoPassId {
+    type Error = ();
+
+    fn try_from(_value: usize) -> Result<Self, Self::Error> {
+        Err(())
+    }
+}
+
+impl IntoEnumIterator for NoPassId {
+    type Iterator = Empty<NoPassId>;
+
+    fn iter() -> Self::Iterator {
+        std::iter::empty()
     }
 }
 
 /// Materials are used alongside [`PointCloudMaterialPlugin`], [`PointCloud3d`], and
-/// [`PointCloudMaterial3d`] to spawn entities that are rendered with a specific [`Material`] type.
-/// They serve as an easy to use high level way to render [`PointCloud3d`] entities with custom
-/// shader logic.
+/// [`PointCloudMaterial3d`] to spawn entities that are rendered with a specific
+/// [`PointCloudMaterial`] type. They serve as an easy to use high level way to render
+/// [`PointCloud3d`] entities with custom shader logic.
 ///
 /// Materials must implement [`AsBindGroup`] to define how data will be transferred to the GPU and
 /// bound in shaders. [`AsBindGroup`] can be derived, which makes generating bindings
@@ -106,17 +117,17 @@ impl From<usize> for NoPassId {
 /// Materials must also define a [`PointCloudMaterial::ViewSettings`] type for view based settings
 /// (eg: clipping planes, multipass materials, ...).
 pub trait PointCloudMaterial: Asset + AsBindGroup + Clone + Sized {
-    type PassId: Send + Sync + 'static + Clone + Copy + Into<usize> + From<usize> + Debug;
+    type PassId: Send
+        + Sync
+        + 'static
+        + Clone
+        + Copy
+        + Into<usize>
+        + TryFrom<usize>
+        + Debug
+        + IntoEnumIterator;
 
     type ViewSettings: ViewSettings;
-    // type ViewSettings: Component
-    //     + ExtractComponent
-    //     + Clone
-    //     + Copy
-    //     + ShaderType
-    //     + WriteInto
-    //     + Default
-    //     + ViewSettingsPipelineKey;
 
     /// Returns this material's vertex shader. If [`ShaderRef::Default`] is returned, the default
     /// mesh vertex shader will be used.
@@ -130,30 +141,22 @@ pub trait PointCloudMaterial: Asset + AsBindGroup + Clone + Sized {
         ShaderRef::Default
     }
 
-    /// The passes in case this is a multipass material
-    fn passes() -> &'static [PassDescriptor<Self::PassId>] {
-        &[]
+    #[expect(
+        unused_variables,
+        reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
+    )]
+    fn pass_descriptor(pass: &Self::PassId) -> PassDescriptor<Self::PassId> {
+        panic!("Default material has no custom passes.")
     }
 
     #[expect(
         unused_variables,
         reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
     )]
-    fn prepare_geometry_pass(
+    fn prepare_pass(
         pass: &Self::PassId,
         settings_key: &<Self::ViewSettings as ViewSettings>::Key,
-    ) -> Option<GeometryPassParams> {
-        None
-    }
-
-    #[expect(
-        unused_variables,
-        reason = "The parameters here are intentionally unused by the default implementation; however, putting underscores here will result in the underscores being copied by rust-analyzer's tab completion."
-    )]
-    fn prepare_fullscreen_pass(
-        pass: &Self::PassId,
-        settings_key: &<Self::ViewSettings as ViewSettings>::Key,
-    ) -> Option<FullscreenPassParams> {
+    ) -> Option<PassParams> {
         None
     }
 
@@ -463,7 +466,7 @@ where
                     ),
                 );
 
-            if !M::passes().is_empty() {
+            if <M::PassId as IntoEnumIterator>::iter().count() > 0 {
                 render_app
                     .world_mut()
                     .register_required_components::<ExtractedCamera, ViewMultipassTextures<M>>();

@@ -44,6 +44,7 @@ use bevy::{
 };
 use derive_more::DerefMut;
 use smallvec::SmallVec;
+use strum::IntoEnumIterator;
 
 use crate::{
     render::{
@@ -484,11 +485,12 @@ pub fn prepare_material_view_settings_key_and_passes<M: PointCloudMaterial>(
                     HashMap::<usize, Arc<PassProperties>, NoOpHash>::default();
 
                 // prepare the passes
-                for pass in M::passes() {
+                for pass_id in <M::PassId as IntoEnumIterator>::iter() {
+                    let pass = M::pass_descriptor(&pass_id);
                     match pass.kind {
                         PassKind::Geometry => {
                             if let Some(prepared_pass) =
-                                M::prepare_geometry_pass(&pass.id, &view_settings_key)
+                                M::prepare_pass(&pass.id, &view_settings_key)
                             {
                                 let mut shaders = SmallVec::new();
                                 let mut add_shader =
@@ -530,7 +532,7 @@ pub fn prepare_material_view_settings_key_and_passes<M: PointCloudMaterial>(
                         }
                         PassKind::Fullscreen => {
                             if let Some(prepared_pass) =
-                                M::prepare_fullscreen_pass(&pass.id, &view_settings_key)
+                                M::prepare_pass(&pass.id, &view_settings_key)
                             {
                                 let mut shaders = SmallVec::new();
                                 let mut add_shader =
