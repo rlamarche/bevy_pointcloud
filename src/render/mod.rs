@@ -24,6 +24,7 @@ use bevy::{
     asset::{embedded_asset, AssetPath, Assets, Handle, RenderAssetUsages},
     core_pipeline::{
         core_3d::main_opaque_pass_3d,
+        deferred::node::late_deferred_prepass,
         mip_generation::experimental::depth::early_downsample_depth,
         prepass::node::{early_prepass, late_prepass},
         Core3d, Core3dSystems,
@@ -230,14 +231,12 @@ impl Plugin for RenderPointCloudPlugin {
                     (
                         early_chunk_prepass.after(early_prepass),
                         early_chunk_deferred_prepass
-                            .before(early_downsample_depth),
+                            .after(early_downsample_depth),
                         // TODO: if `early_deferred_prepass` gets public, uncomment the following line and remove the previous one
                             // .after(early_deferred_prepass),
                         late_chunk_prepass.after(late_prepass),
                         late_chunk_deferred_prepass
-                            .before(main_build_indirect_parameters),
-                        // TODO: if `late_deferred_prepass` gets public, uncomment the following line and remove the previous one
-                            // .after(late_deferred_prepass),
+                            .after(late_deferred_prepass),
                     )
                         .chain()
                         .in_set(Core3dSystems::Prepass),

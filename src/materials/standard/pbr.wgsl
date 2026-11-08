@@ -19,7 +19,7 @@
 }
 #else
 #import bevy_pbr::{
-    forward_io::{VertexOutput as PbrVertexOutput, FragmentOutput},
+    forward_io::{VertexOutput as PbrVertexOutput},
     pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
     pbr_types::STANDARD_MATERIAL_FLAGS_UNLIT_BIT,
 }
@@ -34,6 +34,7 @@
 #import bevy_pointcloud::{
     functions,
     pointcloud_bindings::pointcloud,
+    simple_material_types as material_types,
 }
 
 // ============================================================================
@@ -54,6 +55,26 @@
 
 #ifdef FORWARD_DECAL
 #import bevy_pbr::decal::forward::get_forward_decal_info
+#endif
+
+
+#ifdef POINTCLOUD_VIEW_SETTINGS
+@group(#{POINTCLOUD_BIND_GROUP}) @binding(3) var<uniform> view_settings: material_types::PointCloudViewSettings;
+#endif // POINTCLOUD_VIEW_SETTINGS
+
+
+#ifndef PREPASS_PIPELINE
+    struct FragmentOutput {
+    #ifdef POINTCLOUD_PASS_DEPTH
+        #ifdef RENDER_MODE_EDL
+            @location(0) depth_texture: vec2<f32>,
+        #else // USE EDL
+            @location(0) depth_texture: f32,
+        #endif // USE EDL
+    #else // POINTCLOUD_PASS_DEPTH
+        @location(0) color: vec4<f32>,
+    #endif // POINTCLOUD_PASS_DEPTH
+    }
 #endif
 
 @fragment
@@ -85,6 +106,29 @@ fn fragment(
         }
     #endif // SIMPLE_MATERIAL_SHAPE_RADIUS
 #endif // SHAPE_UVS_A
+
+#ifdef POINTCLOUD_VIEW_SETTINGS
+    #ifdef CLIPPING_PLANES
+        for (var i: u32 = 0u; i < view_settings.nb_clipping_planes; i ++) {
+            let clip_dist = dot(vertex_output.world_position.xyz, view_settings.clipping_planes[i].xyz) + view_settings.clipping_planes[i].w;
+            if (clip_dist < 0.0) {
+                discard;
+            }
+        }
+    #endif // CLIPPING_PLANES
+#endif // POINTCLOUD_VIEW_SETTINGS
+
+#ifdef POINTCLOUD_PASS_DEPTH
+    var out: FragmentOutput;
+
+    #ifdef RENDER_MODE_EDL
+        out.depth_texture.r = vertex_output.position.z;
+        out.depth_texture.g = vertex_output.log_depth;
+    #else // RENDER_MODE_EDL
+        out.depth_texture = vertex_output.position.z;
+    #endif // RENDER_MODE_EDL
+#else // POINTCLOUD_PASS_DEPTH
+
 
     var in: PbrVertexOutput;
 
@@ -179,6 +223,27 @@ fn fragment(
 
     // out.color = pbr_bindings::material.base_color;
     // out.color = vec4<f32>(in.uv.x, in.uv.y, in.uv.x, 1.0);
+
+
+    // TODO: do not compute on the single pass path
+    #ifdef WEIGHTED_SPLATS_ENABLED
+        #ifdef SHAPE_UVS_A
+            #ifndef SPLAT_RADIUS
+                let dist = distance(in.shape_uv, vec2<f32>(0.5, 0.5));
+            #endif
+
+            var weight = max(0.0, 1.0 - dist * 2.0);
+            weight = pow(weight, 1.5);
+        #else // SHAPE_UVS_A
+            let weight = 1.0;
+        #endif // SHAPE_UVS_A
+    #else // WEIGHTED_SPLATS_ENABLED
+        let weight = 1.0;
+    #endif // WEIGHTED_SPLATS_ENABLED
+
+    out.color.a = weight;
+
+#endif // POINTCLOUD_PASS_DEPTH
 
     return out;
 }

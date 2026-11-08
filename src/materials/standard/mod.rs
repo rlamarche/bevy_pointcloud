@@ -3,23 +3,32 @@ use bevy::{
     asset::{embedded_asset, Asset, Handle},
     color::Color,
     image::Image,
+    log::info,
     pbr::{StandardMaterial, StandardMaterialUniform},
     prelude::{Deref, DerefMut},
     reflect::{std_traits::ReflectDefault, Reflect},
-    render::render_resource::{
-        AsBindGroup, AsBindGroupShaderType, BindlessSlabResourceLimit, Face,
+    render::{
+        render_asset::RenderAssets,
+        render_resource::{
+            AsBindGroup, AsBindGroupShaderType, BindlessSlabResourceLimit, BlendComponent,
+            BlendFactor, BlendOperation, BlendState, Face, ShaderStages, TextureFormat,
+        },
+        texture::GpuImage,
     },
     shader::ShaderRef,
+    utils::default,
 };
 
 use bevy::pbr::{Material as SourceMaterial, MeshPipelineKey, StandardMaterialKey};
+use bitflags::bitflags;
 
 use crate::{
     render::{
-        shader_ref, NoPassId, PointCloudMaterial, PointCloudMaterialPipeline,
-        PointCloudMaterialPipelineKey, PointCloudMaterialPlugin,
+        shader_ref, PassDescriptor, PassInput, PassKind, PassOutput, PassParams,
+        PointCloudMaterial, PointCloudMaterialPipeline, PointCloudMaterialPipelineKey,
+        PointCloudMaterialPlugin, TransientTarget,
     },
-    EmptyViewSettings,
+    PointCloudViewSettings, PointCloudViewSettingsKey, RenderMode, StandardPasses, ViewSettings,
 };
 
 pub struct StandardPointCloudMaterialPlugin;
@@ -28,6 +37,7 @@ impl Plugin for StandardPointCloudMaterialPlugin {
     fn build(&self, app: &mut bevy::app::App) {
         embedded_asset!(app, "pbr.wgsl");
         embedded_asset!(app, "pbr_prepass.wgsl");
+        embedded_asset!(app, "pbr_normalize.wgsl");
 
         app.add_plugins(PointCloudMaterialPlugin::<StandardPointCloudMaterial>::default());
     }
@@ -35,11 +45,69 @@ impl Plugin for StandardPointCloudMaterialPlugin {
 
 #[derive(Asset, Debug, Clone, Default, Reflect, Deref, DerefMut)]
 #[reflect(Default, Debug, Clone)]
-pub struct StandardPointCloudMaterial(pub StandardMaterial);
+pub struct StandardPointCloudMaterial {
+    #[deref]
+    pub material: StandardMaterial,
+    pub render_mode: RenderMode,
+    pub weighted_splats: bool,
+}
+
+bitflags! {
+    /// The pipeline key for `StandardMaterial`, packed into 64 bits.
+    #[repr(C)]
+    #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct StandardPointCloudMaterialExtensionKey: u64 {
+        const RENDER_MODE_0            = 1_u64 <<  0;
+
+        const RENDER_MODE_MASK         = Self::RENDER_MODE_0.bits();
+
+        const RENDER_MODE_NORMAL       = 0;
+        const RENDER_MODE_XRAY         = Self::RENDER_MODE_0.bits();
+
+        const WEIGHTED_SPLATS_ENABLED  = 1_u64  <<  1;
+    }
+}
+
+impl StandardPointCloudMaterialExtensionKey {
+    pub fn render_mode(&self) -> RenderMode {
+        match *self & StandardPointCloudMaterialExtensionKey::RENDER_MODE_MASK {
+            StandardPointCloudMaterialExtensionKey::RENDER_MODE_NORMAL => RenderMode::Normal,
+            StandardPointCloudMaterialExtensionKey::RENDER_MODE_XRAY => RenderMode::XRay,
+            _ => unreachable!("Invalid render mode bits state encountered in pipeline key."),
+        }
+    }
+    pub fn weighted_splats_enabled(&self) -> bool {
+        self.contains(StandardPointCloudMaterialExtensionKey::WEIGHTED_SPLATS_ENABLED)
+    }
+}
+
+impl From<&StandardPointCloudMaterial> for StandardPointCloudMaterialExtensionKey {
+    fn from(material: &StandardPointCloudMaterial) -> Self {
+        let mut key = StandardPointCloudMaterialExtensionKey::empty();
+
+        key.set(
+            StandardPointCloudMaterialExtensionKey::RENDER_MODE_NORMAL,
+            material.render_mode == RenderMode::Normal,
+        );
+        key.set(
+            StandardPointCloudMaterialExtensionKey::RENDER_MODE_XRAY,
+            material.render_mode == RenderMode::XRay,
+        );
+        key.set(
+            StandardPointCloudMaterialExtensionKey::WEIGHTED_SPLATS_ENABLED,
+            material.weighted_splats,
+        );
+
+        key
+    }
+}
 
 /// Delegate implementation of [`AsBindGroup`] with bindless disabled.
 impl AsBindGroup for StandardPointCloudMaterial {
-    type Data = <StandardMaterial as AsBindGroup>::Data;
+    type Data = (
+        <StandardMaterial as AsBindGroup>::Data,
+        StandardPointCloudMaterialExtensionKey,
+    );
 
     type Param = <StandardMaterial as AsBindGroup>::Param;
 
@@ -48,7 +116,10 @@ impl AsBindGroup for StandardPointCloudMaterial {
     }
 
     fn bind_group_data(&self) -> Self::Data {
-        <StandardMaterial as AsBindGroup>::bind_group_data(&self.0)
+        (
+            <StandardMaterial as AsBindGroup>::bind_group_data(&self.material),
+            self.into(),
+        )
     }
 
     fn unprepared_bind_group(
@@ -62,7 +133,7 @@ impl AsBindGroup for StandardPointCloudMaterial {
         bevy::render::render_resource::AsBindGroupError,
     > {
         <StandardMaterial as AsBindGroup>::unprepared_bind_group(
-            &self.0,
+            &self.material,
             layout,
             render_device,
             param,
@@ -153,17 +224,17 @@ impl AsBindGroup for StandardPointCloudMaterial {
 impl AsBindGroupShaderType<StandardMaterialUniform> for StandardPointCloudMaterial {
     fn as_bind_group_shader_type(
         &self,
-        images: &bevy::render::render_asset::RenderAssets<bevy::render::texture::GpuImage>,
+        images: &RenderAssets<GpuImage>,
     ) -> StandardMaterialUniform {
-        <StandardMaterial as AsBindGroupShaderType::<StandardMaterialUniform>>::as_bind_group_shader_type(&self.0, images)
+        <StandardMaterial as AsBindGroupShaderType::<StandardMaterialUniform>>::as_bind_group_shader_type(&self.material, images)
     }
 }
 
 impl PointCloudMaterial for StandardPointCloudMaterial {
-    type PassId = NoPassId;
+    type PassId = StandardPasses;
 
     // TODO use PointCloudViewSettings and filter points in fragment shader
-    type ViewSettings = EmptyViewSettings;
+    type ViewSettings = PointCloudViewSettings;
 
     fn vertex_shader() -> ShaderRef {
         ShaderRef::Default
@@ -207,6 +278,183 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
         // "shaders/pbr_dev.wgsl".into()
     }
 
+    fn pass_descriptor(pass: &Self::PassId) -> PassDescriptor<Self::PassId> {
+        match pass {
+            StandardPasses::Depth => PassDescriptor {
+                id: StandardPasses::Depth,
+                kind: PassKind::Geometry,
+                label: "depth",
+            },
+            StandardPasses::Attribute => PassDescriptor {
+                id: StandardPasses::Attribute,
+                kind: PassKind::Geometry,
+                label: "attribute",
+            },
+            StandardPasses::EDLNormalize => PassDescriptor {
+                id: StandardPasses::EDLNormalize,
+                kind: PassKind::Fullscreen,
+                label: "edl_normalize",
+            },
+            StandardPasses::XRay => PassDescriptor {
+                id: StandardPasses::XRay,
+                kind: PassKind::Geometry,
+                label: "xray",
+            },
+            StandardPasses::XRayNormalize => PassDescriptor {
+                id: StandardPasses::XRayNormalize,
+                kind: PassKind::Fullscreen,
+                label: "xray_normalize",
+            },
+        }
+    }
+
+    fn prepare_pass(
+        pass: &Self::PassId,
+        settings_key: &<Self::ViewSettings as ViewSettings>::Key,
+    ) -> Option<PassParams> {
+        if matches!(pass, StandardPasses::XRay | StandardPasses::XRayNormalize)
+            && !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_XRAY)
+        {
+            return None;
+        }
+        if matches!(
+            pass,
+            StandardPasses::Depth | StandardPasses::Attribute | StandardPasses::EDLNormalize
+        ) && !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_MULTIPASS)
+        {
+            return None;
+        }
+
+        match pass {
+            StandardPasses::Depth => Some(PassParams {
+                vertex_shader: ShaderRef::Default,
+                fragment_shader: ShaderRef::Default,
+                inputs: vec![],
+                output: PassOutput::TransientTarget(TransientTarget {
+                    format: if settings_key.edl_enabled() {
+                        TextureFormat::Rg16Float
+                    } else {
+                        TextureFormat::R16Float
+                    },
+                }),
+                blend: None,
+                depth_write_enabled: Some(true),
+            }),
+            StandardPasses::XRay | StandardPasses::Attribute => {
+                Some(PassParams {
+                    vertex_shader: ShaderRef::Default,
+                    fragment_shader: ShaderRef::Default,
+                    inputs: vec![],
+                    output: PassOutput::TransientTarget(TransientTarget {
+                        format: TextureFormat::Rgba32Float,
+                    }),
+                    blend: Some(BlendState {
+                        color: BlendComponent {
+                            // To match Potree blending
+                            src_factor: BlendFactor::SrcAlpha,
+                            dst_factor: BlendFactor::One,
+                            operation: BlendOperation::Add,
+                        },
+                        alpha: BlendComponent {
+                            // To match Potree blending
+                            src_factor: BlendFactor::One,
+                            dst_factor: BlendFactor::One,
+                            operation: BlendOperation::Add,
+                        },
+                    }),
+                    depth_write_enabled: Some(false),
+                })
+            }
+            StandardPasses::XRayNormalize | StandardPasses::EDLNormalize => Some(PassParams {
+                vertex_shader: ShaderRef::Default,
+                fragment_shader: shader_ref(bevy::asset::embedded_path!("pbr_normalize.wgsl")),
+                inputs: vec![
+                    PassInput {
+                        source_pass: StandardPasses::Depth.into(),
+                        binding_slot: 10,
+                        texture_sample_type:
+                            bevy::render::render_resource::TextureSampleType::Float {
+                                filterable: false,
+                            },
+                        visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                    },
+                    {
+                        if matches!(pass, StandardPasses::XRayNormalize) {
+                            PassInput {
+                                source_pass: StandardPasses::XRay.into(),
+                                binding_slot: 11,
+                                texture_sample_type:
+                                    bevy::render::render_resource::TextureSampleType::Float {
+                                        filterable: false,
+                                    },
+                                visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                            }
+                        } else {
+                            PassInput {
+                                source_pass: StandardPasses::Attribute.into(),
+                                binding_slot: 11,
+                                texture_sample_type:
+                                    bevy::render::render_resource::TextureSampleType::Float {
+                                        filterable: false,
+                                    },
+                                visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                            }
+                        }
+                    },
+                ],
+                output: PassOutput::MainColorTarget,
+                blend: {
+                    if matches!(pass, StandardPasses::XRayNormalize) {
+                        Some(BlendState {
+                            color: BlendComponent {
+                                src_factor: BlendFactor::SrcAlpha,
+                                dst_factor: BlendFactor::OneMinusSrcAlpha,
+                                operation: BlendOperation::Add,
+                            },
+                            alpha: BlendComponent {
+                                src_factor: BlendFactor::Zero,
+                                dst_factor: BlendFactor::One,
+                                operation: BlendOperation::Add,
+                            },
+                        })
+                    } else {
+                        None
+                    }
+                },
+                depth_write_enabled: Some(false),
+            }),
+        }
+    }
+
+    fn fullscreen_specialize(
+        _pipeline: &crate::render::multipass::FullscreenMaterialPassPipeline,
+        descriptor: &mut bevy::material::descriptor::RenderPipelineDescriptor,
+        _pass: Self::PassId,
+        settings_key: <Self::ViewSettings as ViewSettings>::Key,
+    ) -> bevy::ecs::error::Result<(), bevy::material::specialize::SpecializedMeshPipelineError>
+    {
+        // Collect all shader defs for both vertex and fragment stages
+        let mut shader_defs = Vec::new();
+
+        // Evaluate single boolean flags
+        #[expect(clippy::single_element_loop, reason = "todo")]
+        for (flags, shader_def) in [(PointCloudViewSettingsKey::EDL_ENABLED, "RENDER_MODE_EDL")] {
+            if settings_key.intersects(flags) {
+                shader_defs.push(shader_def.into());
+            }
+        }
+
+        // Forward shader defs to the vertex stage
+        descriptor.vertex.shader_defs.extend(shader_defs.clone());
+
+        // Forward shader defs to the fragment stage if it exists
+        if let Some(fragment) = descriptor.fragment.as_mut() {
+            fragment.shader_defs.extend(shader_defs);
+        }
+
+        Ok(())
+    }
+
     fn specialize(
         _pipeline: &PointCloudMaterialPipeline,
         descriptor: &mut bevy::material::descriptor::RenderPipelineDescriptor,
@@ -215,8 +463,78 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
         key: PointCloudMaterialPipelineKey<Self>,
     ) -> bevy::ecs::error::Result<bool, bevy::material::specialize::SpecializedMeshPipelineError>
     {
+        // Extract the custom material key from the bind group data
+        let (material_key, point_cloud_material_key) = key.bind_group_data;
+
+        // TODO: use this key to define a shaderdef with number of clipping planes
+        let settings_key = key.view_settings_key;
+
+        let render_mode = point_cloud_material_key.render_mode();
+        let weighted_splats_enabled = point_cloud_material_key.weighted_splats_enabled();
+        let edl_enabled = settings_key.edl_enabled();
+
+        let should_render = match key.pass {
+            None => {
+                !matches!(render_mode, RenderMode::XRay) && !weighted_splats_enabled && !edl_enabled
+            }
+            Some(StandardPasses::Depth) | Some(StandardPasses::Attribute) => {
+                matches!(render_mode, RenderMode::Normal)
+                    && (weighted_splats_enabled || edl_enabled)
+            }
+            Some(StandardPasses::XRay) => {
+                matches!(render_mode, RenderMode::XRay)
+            }
+            _ => panic!("Invalid pass in simple material specialization."),
+        };
+
+        if !should_render {
+            return Ok(false);
+        }
+
+        if point_cloud_material_key
+            .intersects(StandardPointCloudMaterialExtensionKey::WEIGHTED_SPLATS_ENABLED)
+        {
+            descriptor
+                .vertex
+                .shader_defs
+                .push("WEIGHTED_SPLATS_ENABLED".into());
+        }
+
         if let Some(fragment) = descriptor.fragment.as_mut() {
             let shader_defs = &mut fragment.shader_defs;
+
+            // Evaluate single boolean flags
+            for (flags, shader_def) in [
+                (PointCloudViewSettingsKey::EDL_ENABLED, "RENDER_MODE_EDL"),
+                (
+                    PointCloudViewSettingsKey::CLIPPING_PLANES,
+                    "CLIPPING_PLANES",
+                ),
+                (
+                    PointCloudViewSettingsKey::CLIPPING_SPHERES,
+                    "CLIPPING_SPHERES",
+                ),
+            ] {
+                if settings_key.intersects(flags) {
+                    shader_defs.push(shader_def.into());
+                }
+            }
+
+            // Evaluate multi-bit point size mode using the mask
+            match point_cloud_material_key.render_mode() {
+                RenderMode::Normal => {
+                    shader_defs.push("RENDER_MODE_NORMAL".into());
+                }
+                RenderMode::XRay => {
+                    shader_defs.push("RENDER_MODE_XRAY".into());
+                }
+            }
+
+            if point_cloud_material_key
+                .intersects(StandardPointCloudMaterialExtensionKey::WEIGHTED_SPLATS_ENABLED)
+            {
+                shader_defs.push("WEIGHTED_SPLATS_ENABLED".into());
+            }
 
             for (flags, shader_def) in [
                 (
@@ -306,7 +624,7 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
                     "STANDARD_MATERIAL_SPECULAR_TINT_UV_B",
                 ),
             ] {
-                if key.bind_group_data.intersects(flags) {
+                if material_key.intersects(flags) {
                     shader_defs.push(shader_def.into());
                 }
             }
@@ -317,9 +635,8 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
         // `INVERT_CULLING` on (usually used for mirrors and the like), we do
         // the opposite.
         descriptor.primitive.cull_mode = match (
-            key.bind_group_data
-                .contains(StandardMaterialKey::CULL_FRONT),
-            key.bind_group_data.contains(StandardMaterialKey::CULL_BACK),
+            material_key.contains(StandardMaterialKey::CULL_FRONT),
+            material_key.contains(StandardMaterialKey::CULL_BACK),
             key.mesh_key.contains(MeshPipelineKey::INVERT_CULLING),
         ) {
             (true, false, false) | (false, true, true) => Some(Face::Front),
@@ -332,7 +649,7 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
         }
         if let Some(depth_stencil) = descriptor.depth_stencil.as_mut() {
             depth_stencil.bias.constant =
-                (key.bind_group_data.bits() >> STANDARD_MATERIAL_KEY_DEPTH_BIAS_SHIFT) as i32;
+                (material_key.bits() >> STANDARD_MATERIAL_KEY_DEPTH_BIAS_SHIFT) as i32;
         }
         Ok(true)
     }
@@ -343,18 +660,27 @@ const STANDARD_MATERIAL_KEY_DEPTH_BIAS_SHIFT: u64 = 32;
 
 impl From<Color> for StandardPointCloudMaterial {
     fn from(value: Color) -> Self {
-        Self(value.into())
+        Self {
+            material: value.into(),
+            ..default()
+        }
     }
 }
 
 impl From<Handle<Image>> for StandardPointCloudMaterial {
     fn from(value: Handle<Image>) -> Self {
-        Self(value.into())
+        Self {
+            material: value.into(),
+            ..default()
+        }
     }
 }
 
 impl From<StandardMaterial> for StandardPointCloudMaterial {
-    fn from(value: StandardMaterial) -> Self {
-        Self(value)
+    fn from(material: StandardMaterial) -> Self {
+        Self {
+            material,
+            ..default()
+        }
     }
 }

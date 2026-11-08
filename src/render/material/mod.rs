@@ -15,7 +15,7 @@ use bevy::{
     asset::{Asset, AssetApp, AssetEventSystems},
     camera::Camera,
     core_pipeline::core_3d::Transparent3d,
-    ecs::prelude::*,
+    ecs::{component::RequiredComponentsError, prelude::*},
     light::DirectionalLight,
     material::{
         labels::{DrawFunctionLabel, ShaderLabel},
@@ -425,11 +425,33 @@ where
             .add_observer(on_remove_point_cloud_chunk_3d::<M>)
             .add_observer(on_remove_point_cloud_material_3d::<M>);
 
-        app.world_mut()
-            .register_required_components::<Camera, M::ViewSettings>();
+        if let Err(err) = app
+            .world_mut()
+            .try_register_required_components::<Camera, M::ViewSettings>()
+        {
+            match err {
+                RequiredComponentsError::DuplicateRegistration(_, _) => {
+                    // it happens..
+                }
+                _ => {
+                    panic!("Unable to register view settings required component on Camera: {err:?}")
+                }
+            }
+        }
 
-        app.world_mut()
-            .register_required_components::<DirectionalLight, M::ViewSettings>();
+        if let Err(err) = app
+            .world_mut()
+            .try_register_required_components::<DirectionalLight, M::ViewSettings>()
+        {
+            match err {
+                RequiredComponentsError::DuplicateRegistration(_, _) => {
+                    // it happens..
+                }
+                _ => {
+                    panic!("Unable to register view settings required component on DirectionalLight: {err:?}")
+                }
+            }
+        }
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app

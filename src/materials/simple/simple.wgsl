@@ -12,21 +12,6 @@
     simple_material_bindings as material_bindings,
 }
 
-#ifdef POINTCLOUD_PASS_ATTRIBUTE
-
-#ifdef MULTISAMPLED
-
-@group(#{POINTCLOUD_BIND_GROUP}) @binding(10) var depth_texture: texture_multisampled_2d<f32>;
-
-#else // MULTISAMPLED
-
-@group(#{POINTCLOUD_BIND_GROUP}) @binding(10) var depth_texture: texture_2d<f32>;
-
-#endif // MULTISAMPLED
-
-#endif // POINTCLOUD_PASS_ATTRIBUTE
-
-
 #ifdef POINTCLOUD_VIEW_SETTINGS
 @group(#{POINTCLOUD_BIND_GROUP}) @binding(3) var<uniform> view_settings: material_types::PointCloudViewSettings;
 #endif // POINTCLOUD_VIEW_SETTINGS
