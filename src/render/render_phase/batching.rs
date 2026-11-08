@@ -18,14 +18,15 @@ use bevy::{
         render_phase::{
             BinnedPhaseItem, PhaseItem, PhaseItemBatchSetKey as _, PhaseItemExtraIndex,
         },
-        render_resource::{encase::private::WriteInto, Buffer, BufferVec, ShaderSize},
+        render_resource::{
+            encase::private::WriteInto, Buffer, BufferUsages, BufferVec, ShaderSize,
+        },
         renderer::{RenderDevice, RenderQueue},
         sync_world::MainEntity,
         view::{ExtractedView, NoIndirectDrawing},
     },
 };
 use smallvec::SmallVec;
-use wgpu::BufferUsages;
 
 use crate::render::{
     render_phase::{

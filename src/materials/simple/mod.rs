@@ -17,7 +17,6 @@ use bevy::{
     shader::{load_shader_library, ShaderRef},
 };
 use bitflags::bitflags;
-use strum::{EnumIter, FromRepr};
 
 use crate::{
     render::{
@@ -26,7 +25,7 @@ use crate::{
         PointCloudMaterialPlugin, TransientTarget,
     },
     ColorStop, ColorStopUniform, PointCloudViewSettings, PointCloudViewSettingsKey, RenderMode,
-    ViewSettings,
+    StandardPasses, ViewSettings,
 };
 
 pub struct SimplePointCloudMaterialPlugin;
@@ -153,32 +152,8 @@ impl From<Color> for SimplePointCloudMaterial {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, FromRepr, EnumIter)]
-#[repr(usize)]
-pub enum SimplePasses {
-    Depth = 0,
-    Attribute = 1,
-    EDLNormalize = 2,
-    XRay = 3,
-    XRayNormalize = 4,
-}
-
-impl TryFrom<usize> for SimplePasses {
-    type Error = ();
-
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        SimplePasses::from_repr(value).ok_or(())
-    }
-}
-
-impl From<SimplePasses> for usize {
-    fn from(value: SimplePasses) -> Self {
-        value as usize
-    }
-}
-
 impl PointCloudMaterial for SimplePointCloudMaterial {
-    type PassId = SimplePasses;
+    type PassId = StandardPasses;
     type ViewSettings = PointCloudViewSettings;
 
     fn fragment_shader() -> ShaderRef {
@@ -199,28 +174,28 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
 
     fn pass_descriptor(pass: &Self::PassId) -> PassDescriptor<Self::PassId> {
         match pass {
-            SimplePasses::Depth => PassDescriptor {
-                id: SimplePasses::Depth,
+            StandardPasses::Depth => PassDescriptor {
+                id: StandardPasses::Depth,
                 kind: PassKind::Geometry,
                 label: "depth",
             },
-            SimplePasses::Attribute => PassDescriptor {
-                id: SimplePasses::Attribute,
+            StandardPasses::Attribute => PassDescriptor {
+                id: StandardPasses::Attribute,
                 kind: PassKind::Geometry,
                 label: "attribute",
             },
-            SimplePasses::EDLNormalize => PassDescriptor {
-                id: SimplePasses::EDLNormalize,
+            StandardPasses::EDLNormalize => PassDescriptor {
+                id: StandardPasses::EDLNormalize,
                 kind: PassKind::Fullscreen,
                 label: "edl_normalize",
             },
-            SimplePasses::XRay => PassDescriptor {
-                id: SimplePasses::XRay,
+            StandardPasses::XRay => PassDescriptor {
+                id: StandardPasses::XRay,
                 kind: PassKind::Geometry,
                 label: "xray",
             },
-            SimplePasses::XRayNormalize => PassDescriptor {
-                id: SimplePasses::XRayNormalize,
+            StandardPasses::XRayNormalize => PassDescriptor {
+                id: StandardPasses::XRayNormalize,
                 kind: PassKind::Fullscreen,
                 label: "xray_normalize",
             },
@@ -231,21 +206,21 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         pass: &Self::PassId,
         settings_key: &<Self::ViewSettings as ViewSettings>::Key,
     ) -> Option<PassParams> {
-        if matches!(pass, SimplePasses::XRay | SimplePasses::XRayNormalize)
+        if matches!(pass, StandardPasses::XRay | StandardPasses::XRayNormalize)
             && !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_XRAY)
         {
             return None;
         }
         if matches!(
             pass,
-            SimplePasses::Depth | SimplePasses::Attribute | SimplePasses::EDLNormalize
+            StandardPasses::Depth | StandardPasses::Attribute | StandardPasses::EDLNormalize
         ) && !settings_key.contains(PointCloudViewSettingsKey::RENDER_MODE_MULTIPASS)
         {
             return None;
         }
 
         match pass {
-            SimplePasses::Depth => Some(PassParams {
+            StandardPasses::Depth => Some(PassParams {
                 vertex_shader: ShaderRef::Default,
                 fragment_shader: ShaderRef::Default,
                 inputs: vec![],
@@ -259,12 +234,12 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
                 blend: None,
                 depth_write_enabled: Some(true),
             }),
-            SimplePasses::XRay | SimplePasses::Attribute => {
+            StandardPasses::XRay | StandardPasses::Attribute => {
                 Some(PassParams {
                     vertex_shader: ShaderRef::Default,
                     fragment_shader: ShaderRef::Default,
                     inputs: vec![PassInput {
-                        source_pass: SimplePasses::Depth.into(),
+                        source_pass: StandardPasses::Depth.into(),
                         binding_slot: 10,
                         texture_sample_type:
                             bevy::render::render_resource::TextureSampleType::Float {
@@ -292,12 +267,12 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
                     depth_write_enabled: Some(false),
                 })
             }
-            SimplePasses::XRayNormalize | SimplePasses::EDLNormalize => Some(PassParams {
+            StandardPasses::XRayNormalize | StandardPasses::EDLNormalize => Some(PassParams {
                 vertex_shader: ShaderRef::Default,
                 fragment_shader: shader_ref(bevy::asset::embedded_path!("normalize.wgsl")),
                 inputs: vec![
                     PassInput {
-                        source_pass: SimplePasses::Depth.into(),
+                        source_pass: StandardPasses::Depth.into(),
                         binding_slot: 10,
                         texture_sample_type:
                             bevy::render::render_resource::TextureSampleType::Float {
@@ -306,9 +281,9 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
                         visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
                     },
                     {
-                        if matches!(pass, SimplePasses::XRayNormalize) {
+                        if matches!(pass, StandardPasses::XRayNormalize) {
                             PassInput {
-                                source_pass: SimplePasses::XRay.into(),
+                                source_pass: StandardPasses::XRay.into(),
                                 binding_slot: 11,
                                 texture_sample_type:
                                     bevy::render::render_resource::TextureSampleType::Float {
@@ -318,7 +293,7 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
                             }
                         } else {
                             PassInput {
-                                source_pass: SimplePasses::Attribute.into(),
+                                source_pass: StandardPasses::Attribute.into(),
                                 binding_slot: 11,
                                 texture_sample_type:
                                     bevy::render::render_resource::TextureSampleType::Float {
@@ -331,7 +306,7 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
                 ],
                 output: PassOutput::MainColorTarget,
                 blend: {
-                    if matches!(pass, SimplePasses::XRayNormalize) {
+                    if matches!(pass, StandardPasses::XRayNormalize) {
                         Some(BlendState {
                             color: BlendComponent {
                                 src_factor: BlendFactor::SrcAlpha,
@@ -404,11 +379,11 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
             None => {
                 !matches!(render_mode, RenderMode::XRay) && !weighted_splats_enabled && !edl_enabled
             }
-            Some(SimplePasses::Depth) | Some(SimplePasses::Attribute) => {
+            Some(StandardPasses::Depth) | Some(StandardPasses::Attribute) => {
                 matches!(render_mode, RenderMode::Normal)
                     && (weighted_splats_enabled || edl_enabled)
             }
-            Some(SimplePasses::XRay) => {
+            Some(StandardPasses::XRay) => {
                 matches!(render_mode, RenderMode::XRay)
             }
             _ => panic!("Invalid pass in simple material specialization."),

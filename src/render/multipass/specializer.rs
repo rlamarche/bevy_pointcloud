@@ -23,7 +23,7 @@ use bevy::{
     utils::default,
 };
 
-use std::{any::Any, hash::Hash, sync::Arc};
+use std::{any::Any, hash::Hash, marker::PhantomData, sync::Arc};
 
 use crate::render::{
     multipass::FullscreenMaterialPassPipeline, ErasedViewSettingsKey, PassProperties,
@@ -57,21 +57,23 @@ pub trait SpecializedFullscreenPointCloudPipeline {
 /// A cache of different variants of a render pipeline based on a key and the particular mesh's
 /// vertex buffer layout.
 #[derive(Resource)]
-pub struct SpecializedFullscreenPointCloudPipelines<S: SpecializedFullscreenPointCloudPipeline> {
+pub struct SpecializedFullscreenPointCloudPipelines<M, S: SpecializedFullscreenPointCloudPipeline> {
     view_layout_cache: HashMap<S::Key, CachedRenderPipelineId>,
+    _phantom: PhantomData<M>,
 }
 
-impl<S: SpecializedFullscreenPointCloudPipeline> Default
-    for SpecializedFullscreenPointCloudPipelines<S>
+impl<M, S: SpecializedFullscreenPointCloudPipeline> Default
+    for SpecializedFullscreenPointCloudPipelines<M, S>
 {
     fn default() -> Self {
         Self {
             view_layout_cache: Default::default(),
+            _phantom: Default::default(),
         }
     }
 }
 
-impl<S: SpecializedFullscreenPointCloudPipeline> SpecializedFullscreenPointCloudPipelines<S> {
+impl<M, S: SpecializedFullscreenPointCloudPipeline> SpecializedFullscreenPointCloudPipelines<M, S> {
     /// Construct a new render pipeline based on the provided key and the mesh's vertex buffer
     /// layout.
     #[inline]

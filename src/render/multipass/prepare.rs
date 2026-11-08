@@ -303,7 +303,7 @@ pub fn prepare_fullscreen_material_pipelines<M: PointCloudMaterial, const PASS: 
     view_key_cache: Res<ViewKeyCache>,
     fullscreen_pipeline: Res<FullscreenMaterialPassPipeline>,
     mut specialized_fullscreen_point_cloud_pipelines: ResMut<
-        SpecializedFullscreenPointCloudPipelines<FullscreenMaterialPipelineSpecializer>,
+        SpecializedFullscreenPointCloudPipelines<M, FullscreenMaterialPipelineSpecializer>,
     >,
 ) {
     let type_id = TypeId::of::<M>();

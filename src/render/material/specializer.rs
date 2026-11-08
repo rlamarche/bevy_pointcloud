@@ -2,6 +2,7 @@ use std::{any::Any, sync::Arc};
 
 use bevy::{
     ecs::world::World,
+    log::info,
     material::{
         descriptor::{CachedRenderPipelineId, RenderPipelineDescriptor},
         specialize::SpecializedMeshPipelineError,
@@ -75,6 +76,9 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
         if let (Some(pass), Some(pass_properties)) =
             (key.maybe_pass, self.maybe_pass_properties.as_ref())
         {
+            let label = format!("opaque_pointcloud_pipeline_{}", pass_properties.label);
+            descriptor.label = Some(label.into());
+
             // add useful shaderdefs (eg: `POINTCLOUD_PASS_DEPTH` and `POINTCLOUD_PASS_0`)
             shader_defs.push(ShaderDefVal::UInt("POINTCLOUD_PASS".into(), pass as u32));
 

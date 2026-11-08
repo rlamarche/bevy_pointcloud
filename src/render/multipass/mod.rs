@@ -28,7 +28,7 @@ use bevy::{
         },
     },
     light::{EnvironmentMapLight, IrradianceVolume, ShadowFilteringMethod},
-    log::{debug, error, warn},
+    log::{debug, error, info, warn},
     material::{key::ErasedMeshPipelineKey, OpaqueRendererMethod},
     math::{Mat4, Vec4},
     mesh::MeshVertexBufferLayoutRef,
@@ -77,7 +77,7 @@ use bevy::{
     },
     render::{erased_render_asset::ErasedRenderAssets, sync_world::MainEntity},
 };
-use std::{marker::PhantomData, num::NonZero, sync::Arc};
+use std::{any::type_name, marker::PhantomData, num::NonZero, sync::Arc};
 
 use crate::{
     render::{
@@ -113,7 +113,6 @@ impl Plugin for MultipassPipelinePlugin {
         };
 
         render_app
-            .init_resource::<SpecializedFullscreenPointCloudPipelines<FullscreenMaterialPipelineSpecializer>>()
             .add_systems(
                 RenderStartup,
                 (
@@ -155,9 +154,6 @@ impl Plugin for MultipassMaterialsPlugin {
 
         render_app
             .init_gpu_resource::<ViewKeyMultipassCache>()
-            .init_gpu_resource::<SpecializedMultipassMaterialPipelineCache>()
-            .init_gpu_resource::<SpecializedFullscreenPointCloudPipelines<FullscreenMaterialPipelineSpecializer>>()
-            .init_gpu_resource::<PendingMultipassMeshMaterialQueues>()
             .add_systems(
                 Render,
                 check_multipass_views_need_specialization.in_set(PrepareAssets),
@@ -184,10 +180,14 @@ impl<M: PointCloudMaterial> Plugin for MultipassMaterialPlugin<M> {
             return;
         };
 
-        render_app.add_systems(
-            Render,
-            prepare_multipass_textures::<M>.in_set(RenderSystems::PrepareResources),
-        );
+        render_app
+            .init_gpu_resource::<SpecializedMultipassMaterialPipelineCache<M>>()
+            .init_gpu_resource::<SpecializedFullscreenPointCloudPipelines<M, FullscreenMaterialPipelineSpecializer>>()
+            .init_gpu_resource::<PendingMultipassMeshMaterialQueues<M>>()
+            .add_systems(
+                Render,
+                prepare_multipass_textures::<M>.in_set(RenderSystems::PrepareResources),
+            );
 
         match <M::PassId as IntoEnumIterator>::iter().count() {
             1 => {
@@ -548,11 +548,21 @@ pub fn prepare_multipass_view_bind_group(
 }
 
 /// Stores the [`SpecializedPrepassMaterialViewPipelineCache`] for each view and pass.
-#[derive(Resource, Deref, DerefMut, Default)]
-pub struct SpecializedMultipassMaterialPipelineCache {
+#[derive(Resource, Deref, DerefMut)]
+pub struct SpecializedMultipassMaterialPipelineCache<M> {
     // view_entity -> view pipeline cache
     #[deref]
     map: HashMap<(RetainedViewEntity, usize), SpecializedMultipassMaterialViewPipelineCache>,
+    _phantom: PhantomData<M>,
+}
+
+impl<M> Default for SpecializedMultipassMaterialPipelineCache<M> {
+    fn default() -> Self {
+        Self {
+            map: Default::default(),
+            _phantom: Default::default(),
+        }
+    }
 }
 
 /// Stores the cached render pipeline ID for each entity in a single view, as
@@ -750,8 +760,21 @@ impl core::fmt::Debug for MultipassSpecializationWorkItem {
 /// specialized and/or queued because their materials hadn't loaded yet.
 ///
 /// See the [`PendingQueues`] documentation for more information.
-#[derive(Default, Deref, DerefMut, Resource)]
-pub struct PendingMultipassMeshMaterialQueues(pub PendingQueues);
+#[derive(Deref, DerefMut, Resource)]
+pub struct PendingMultipassMeshMaterialQueues<M> {
+    #[deref]
+    pub pending_queues: PendingQueues,
+    _phantom: PhantomData<M>,
+}
+
+impl<M> Default for PendingMultipassMeshMaterialQueues<M> {
+    fn default() -> Self {
+        Self {
+            pending_queues: Default::default(),
+            _phantom: Default::default(),
+        }
+    }
+}
 
 #[derive(SystemParam)]
 pub(crate) struct SpecializeMultipassSystemParam<'w, 's, M: PointCloudMaterial, const PASS: usize> {
@@ -776,8 +799,8 @@ pub(crate) struct SpecializeMultipassSystemParam<'w, 's, M: PointCloudMaterial, 
     opaque_multipass_render_phases:
         Res<'w, ViewBinnedChunksRenderPhases<Opaque3dChunkMultipass<M, PASS>>>,
     specialized_multipass_material_pipeline_cache:
-        ResMut<'w, SpecializedMultipassMaterialPipelineCache>,
-    pending_multipass_mesh_material_queues: ResMut<'w, PendingMultipassMeshMaterialQueues>,
+        ResMut<'w, SpecializedMultipassMaterialPipelineCache<M>>,
+    pending_multipass_mesh_material_queues: ResMut<'w, PendingMultipassMeshMaterialQueues<M>>,
     dirty_specializations: Res<'w, PointCloudDirtySpecializations>,
     this_run: SystemChangeTick,
 }
@@ -1077,7 +1100,7 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
         ) {
             Ok(Some(pipeline_id)) => {
                 world
-                    .resource_mut::<SpecializedMultipassMaterialPipelineCache>()
+                    .resource_mut::<SpecializedMultipassMaterialPipelineCache<M>>()
                     .entry((item.retained_view_entity, PASS))
                     .or_default()
                     .insert(item.render_entity, pipeline_id);
@@ -1092,7 +1115,7 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
     }
 
     if !removals.is_empty() {
-        let mut cache = world.resource_mut::<SpecializedMultipassMaterialPipelineCache>();
+        let mut cache = world.resource_mut::<SpecializedMultipassMaterialPipelineCache<M>>();
         for (view, entity) in removals.drain(..) {
             if let Some(view_cache) = cache.get_mut(&(view, PASS)) {
                 view_cache.remove(&entity);
@@ -1101,7 +1124,7 @@ pub(crate) fn specialize_multipass_material_meshes<M: PointCloudMaterial, const 
     }
 
     world
-        .resource_mut::<SpecializedMultipassMaterialPipelineCache>()
+        .resource_mut::<SpecializedMultipassMaterialPipelineCache<M>>()
         .retain(|(view, _), _| all_views.contains(view));
 }
 
@@ -1115,8 +1138,8 @@ pub fn queue_multipass_material_meshes<M: PointCloudMaterial, const PASS: usize>
         ViewBinnedChunksRenderPhases<Opaque3dChunkMultipass<M, PASS>>,
     >,
     views: Query<(&ExtractedView, &RenderVisibleEntities)>,
-    specialized_material_pipeline_cache: Res<SpecializedMultipassMaterialPipelineCache>,
-    mut pending_multipass_mesh_material_queues: ResMut<PendingMultipassMeshMaterialQueues>,
+    specialized_material_pipeline_cache: Res<SpecializedMultipassMaterialPipelineCache<M>>,
+    mut pending_multipass_mesh_material_queues: ResMut<PendingMultipassMeshMaterialQueues<M>>,
     dirty_specializations: Res<PointCloudDirtySpecializations>,
     draw_functions: Res<DrawFunctions<Opaque3dChunkMultipass<M, PASS>>>,
 ) {

@@ -12,8 +12,33 @@ use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 pub use simple::*;
 pub use standard::*;
+use strum::{EnumIter, FromRepr};
 
 use crate::ViewSettings;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, FromRepr, EnumIter)]
+#[repr(usize)]
+pub enum StandardPasses {
+    Depth = 0,
+    Attribute = 1,
+    EDLNormalize = 2,
+    XRay = 3,
+    XRayNormalize = 4,
+}
+
+impl TryFrom<usize> for StandardPasses {
+    type Error = ();
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        StandardPasses::from_repr(value).ok_or(())
+    }
+}
+
+impl From<StandardPasses> for usize {
+    fn from(value: StandardPasses) -> Self {
+        value as usize
+    }
+}
 
 bitflags! {
     #[repr(C)]
