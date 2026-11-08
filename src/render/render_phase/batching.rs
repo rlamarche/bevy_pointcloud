@@ -1,4 +1,4 @@
-use std::{any::TypeId, marker::PhantomData};
+use std::marker::PhantomData;
 
 use bevy::{
     ecs::{
@@ -28,7 +28,6 @@ use smallvec::SmallVec;
 use wgpu::BufferUsages;
 
 use crate::render::{
-    prepass::Opaque3dChunkPrepass,
     render_phase::{
         BinnedChunksRenderPhaseBatch, BinnedChunksRenderPhaseBatchSet,
         BinnedChunksRenderPhaseBatchSets, RenderMultidrawableChunk, ViewBinnedChunksRenderPhases,

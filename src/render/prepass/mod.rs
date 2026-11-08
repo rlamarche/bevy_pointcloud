@@ -15,7 +15,7 @@ use bevy::{
             SystemParam, SystemParamItem, SystemState,
         },
     },
-    log::{debug, error, info, warn},
+    log::{debug, error, warn},
     material::{key::ErasedMeshPipelineKey, AlphaMode, OpaqueRendererMethod, RenderPhaseType},
     math::{Mat4, Vec4},
     mesh::{Mesh, MeshVertexBufferLayoutRef},
@@ -70,18 +70,19 @@ use std::{num::NonZero, sync::Arc};
 
 use crate::{
     render::{
+        deferred::{AlphaMask3dChunkDeferred, Opaque3dChunkDeferred},
         init_point_cloud_material_pipeline, init_point_cloud_pipeline,
         render_phase::{BinnedChunksRenderPhasePlugin, ViewBinnedChunksRenderPhases},
-        BinnedRenderPhaseExt, DeferredAlphaMaskDrawFunction, DeferredFragmentShader,
-        DeferredOpaqueDrawFunction, DeferredVertexShader, DrawPointCloudBatched,
-        ErasedMaterialViewSettingsKeys, ErasedPointCloudMaterialPipelineKey,
-        ErasedSplatPipelineKey, ErasedViewSettingsKey, PointCloudChunk3d,
-        PointCloudDirtySpecializations, PointCloudMaterialPipeline, PointCloudMaterialProperties,
-        PointCloudPipeline, PreparedPointCloudMaterial, PrepassAlphaMaskDrawFunction,
-        PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction, PrepassOpaqueDrawFunction,
-        PrepassVertexShader, RenderPointCloudChunkInstances, RenderPointCloudInstances,
-        RenderPointCloudMaterialInstances, SetMaterialBindGroup, SetPointCloudBindGroup,
-        SpecializedPointCloudPipeline, SpecializedPointCloudPipelines, SplatPipelineKey,
+        DeferredAlphaMaskDrawFunction, DeferredFragmentShader, DeferredOpaqueDrawFunction,
+        DeferredVertexShader, DrawPointCloudBatched, ErasedMaterialViewSettingsKeys,
+        ErasedPointCloudMaterialPipelineKey, ErasedSplatPipelineKey, ErasedViewSettingsKey,
+        PointCloudChunk3d, PointCloudDirtySpecializations, PointCloudMaterialPipeline,
+        PointCloudMaterialProperties, PointCloudPipeline, PreparedPointCloudMaterial,
+        PrepassAlphaMaskDrawFunction, PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction,
+        PrepassOpaqueDrawFunction, PrepassVertexShader, RenderPointCloudChunkInstances,
+        RenderPointCloudInstances, RenderPointCloudMaterialInstances, SetMaterialBindGroup,
+        SetPointCloudBindGroup, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
+        SplatPipelineKey,
     },
     PointCloudTopologyKind,
 };
@@ -1070,8 +1071,9 @@ pub(crate) struct SpecializePrepassSystemParam<'w, 's> {
     opaque_prepass_render_phases: Res<'w, ViewBinnedChunksRenderPhases<Opaque3dChunkPrepass>>,
     alpha_mask_prepass_render_phases:
         Res<'w, ViewBinnedChunksRenderPhases<AlphaMask3dChunkPrepass>>,
-    opaque_deferred_render_phases: Res<'w, ViewBinnedRenderPhases<Opaque3dDeferred>>,
-    alpha_mask_deferred_render_phases: Res<'w, ViewBinnedRenderPhases<AlphaMask3dDeferred>>,
+    opaque_deferred_render_phases: Res<'w, ViewBinnedChunksRenderPhases<Opaque3dChunkDeferred>>,
+    alpha_mask_deferred_render_phases:
+        Res<'w, ViewBinnedChunksRenderPhases<AlphaMask3dChunkDeferred>>,
     specialized_prepass_material_pipeline_cache:
         ResMut<'w, SpecializedPrepassMaterialPipelineCache>,
     pending_prepass_mesh_material_queues: ResMut<'w, PendingPrepassMeshMaterialQueues>,
@@ -1310,7 +1312,6 @@ pub(crate) fn specialize_prepass_material_meshes(
                 let deferred = deferred_prepass.is_some() && !forward;
 
                 if deferred {
-                    info!("adding mesh key MeshPipelineKey::DEFERRED_PREPASS");
                     mesh_key |= MeshPipelineKey::DEFERRED_PREPASS;
                 }
 
@@ -1485,7 +1486,6 @@ pub(crate) fn specialize_prepass_material_meshes(
 }
 
 pub fn queue_prepass_material_meshes(
-    render_mesh_instances: Res<RenderMeshInstances>,
     render_materials: Res<ErasedRenderAssets<PreparedPointCloudMaterial>>,
     render_material_instances: Res<RenderPointCloudMaterialInstances>,
     render_point_cloud_instances: Res<RenderPointCloudInstances>,
@@ -1495,8 +1495,10 @@ pub fn queue_prepass_material_meshes(
     mut alpha_mask_prepass_render_phases: ResMut<
         ViewBinnedChunksRenderPhases<AlphaMask3dChunkPrepass>,
     >,
-    mut opaque_deferred_render_phases: ResMut<ViewBinnedRenderPhases<Opaque3dDeferred>>,
-    mut alpha_mask_deferred_render_phases: ResMut<ViewBinnedRenderPhases<AlphaMask3dDeferred>>,
+    mut opaque_deferred_render_phases: ResMut<ViewBinnedChunksRenderPhases<Opaque3dChunkDeferred>>,
+    mut alpha_mask_deferred_render_phases: ResMut<
+        ViewBinnedChunksRenderPhases<AlphaMask3dChunkDeferred>,
+    >,
     views: Query<(&ExtractedView, &RenderVisibleEntities)>,
     specialized_material_pipeline_cache: Res<SpecializedPrepassMaterialPipelineCache>,
     mut pending_prepass_mesh_material_queues: ResMut<PendingPrepassMeshMaterialQueues>,
@@ -1576,15 +1578,15 @@ pub fn queue_prepass_material_meshes(
                 );
             }
             if let Some(ref mut opaque_deferred_phase) = opaque_deferred_phase {
-                opaque_deferred_phase.remove_unbatchable_entity_pair(
-                    render_entity,
-                    &render_point_cloud_chunk_instance.root_entity,
+                opaque_deferred_phase.remove(
+                    *render_entity,
+                    render_point_cloud_chunk_instance.root_entity,
                 );
             }
             if let Some(ref mut alpha_mask_deferred_phase) = alpha_mask_deferred_phase {
-                alpha_mask_deferred_phase.remove_unbatchable_entity_pair(
-                    render_entity,
-                    &render_point_cloud_chunk_instance.root_entity,
+                alpha_mask_deferred_phase.remove(
+                    *render_entity,
+                    render_point_cloud_chunk_instance.root_entity,
                 );
             }
         }
@@ -1637,16 +1639,6 @@ pub fn queue_prepass_material_meshes(
                     .insert((*render_entity, *visible_entity));
                 continue;
             };
-            // get the mesh instance from the root entity
-            let Some(mesh_instance) = render_mesh_instances
-                .render_mesh_queue_data(render_point_cloud_chunk_instance.root_entity)
-            else {
-                warn!("mesh instance not ready, queue for prepass");
-                view_pending_prepass_mesh_material_queues
-                    .current_frame
-                    .insert((*render_entity, *visible_entity));
-                continue;
-            };
             let Some(material) = render_materials.get(material_instance.asset_id) else {
                 warn!("material not ready, queue for prepass");
                 view_pending_prepass_mesh_material_queues
@@ -1691,10 +1683,11 @@ pub fn queue_prepass_material_meshes(
                 RenderPhaseType::Opaque => {
                     if deferred {
                         opaque_deferred_phase.as_mut().unwrap().add(
-                            OpaqueNoLightmap3dBatchSetKey {
+                            OpaqueChunkNoLightmap3dBatchSetKey {
                                 draw_function,
                                 pipeline: pipeline_id,
                                 material_bind_group_index: Some(material.binding.group.0),
+                                splat_slabs,
                                 slabs: mesh_slabs,
                             },
                             OpaqueNoLightmap3dBinKey {
@@ -1707,8 +1700,6 @@ pub fn queue_prepass_material_meshes(
                                 // in binned render phases
                                 render_point_cloud_chunk_instance.root_entity,
                             ),
-                            mesh_instance.current_uniform_index,
-                            BinnedRenderPhaseType::UnbatchableMesh,
                         );
                     } else if let Some(opaque_phase) = opaque_phase.as_mut() {
                         let depth_only_draw_function = material
@@ -1745,10 +1736,11 @@ pub fn queue_prepass_material_meshes(
                 RenderPhaseType::AlphaMask => {
                     if deferred {
                         alpha_mask_deferred_phase.as_mut().unwrap().add(
-                            OpaqueNoLightmap3dBatchSetKey {
+                            OpaqueChunkNoLightmap3dBatchSetKey {
                                 draw_function,
                                 pipeline: pipeline_id,
                                 material_bind_group_index: Some(material.binding.group.0),
+                                splat_slabs,
                                 slabs: mesh_slabs,
                             },
                             OpaqueNoLightmap3dBinKey {
@@ -1761,8 +1753,6 @@ pub fn queue_prepass_material_meshes(
                                 // in binned render phases
                                 render_point_cloud_chunk_instance.root_entity,
                             ),
-                            mesh_instance.current_uniform_index,
-                            BinnedRenderPhaseType::UnbatchableMesh,
                         );
                     } else if let Some(alpha_mask_phase) = alpha_mask_phase.as_mut() {
                         alpha_mask_phase.add(

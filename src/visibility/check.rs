@@ -11,8 +11,7 @@ use crate::{
     SkipPointCloudVisibility, VisiblePointCloudFlatEntities, VisiblePointCloudNodeEntity,
     VisiblePointCloudOctreeEntities,
 };
-#[cfg(feature = "trace")]
-use bevy::log::info_span;
+
 use bevy::{
     asset::Assets,
     camera::{
@@ -57,12 +56,6 @@ pub fn check_point_cloud_nodes_visibility(
     mut global_visible_point_cloud_chunks: ResMut<GlobalVisiblePointCloudChunks>,
     point_cloud_instances: Res<PointCloudInstances>,
 ) {
-    #[cfg(feature = "trace")]
-    let _span = info_span!(
-        "check_point_cloud_nodes_visibility",
-        name = "check_point_cloud_nodes_visibility"
-    )
-    .entered();
     let start = Instant::now();
 
     // TODO clear outside of here to prevent conflicts with lights (see
@@ -265,8 +258,6 @@ pub fn compute_screen_pixel_radius(
     transform: &GlobalTransform,
     camera_view: &CameraView,
 ) -> Option<f32> {
-    #[cfg(feature = "trace")]
-    let _span = info_span!("compute_screen_pixel_radius").entered();
     let radius = (aabb.max() - aabb.min()).length() / 2.0;
 
     // Account for entity scale (uniform or non-uniform) so the filter size stays relative to the
@@ -327,8 +318,6 @@ pub fn compute_visible_nodes_stack(
     load_tasks: &mut PointCloudLoadTasks,
     eager_stop: bool,
 ) {
-    #[cfg(feature = "trace")]
-    let _span = info_span!("compute_visible_nodes_stack", name = "main").entered();
     while let Some(StackedPointCloudNodeEntity {
         entity,
         asset_id,
@@ -351,25 +340,13 @@ pub fn compute_visible_nodes_stack(
         // get the current node future index
         let current_index = visible_point_cloud_entity.node_entities.len();
 
-        #[cfg(feature = "trace")]
-        let filter_span = info_span!("compute_visible_nodes_stack", name = "filter").entered();
-
         // Check node visibility.
         // we ignore root node to prevent it from disappearing when getting far away.
         if filter.filter(node, transform, camera_view, screen_pixel_radius) {
             continue;
         }
 
-        #[cfg(feature = "trace")]
-        drop(filter_span);
-
         if !completely_visible {
-            #[cfg(feature = "trace")]
-            let _span = info_span!(
-                "compute_visible_nodes_stack",
-                name = "check_node_visibility"
-            )
-            .entered();
             // check if the node aabb against the frustum
 
             let Some(aabb) = &node.aabb else {
@@ -417,9 +394,6 @@ pub fn compute_visible_nodes_stack(
         // check if the chunk is loaded
         match node.chunk.is_some() {
             false => {
-                #[cfg(feature = "trace")]
-                let _span =
-                    info_span!("compute_visible_nodes_stack", name = "hierarchy_only").entered();
                 match node.status {
                     PointCloudNodeStatus::Proxy => {
                         // always load sub hierarchy
@@ -447,9 +421,6 @@ pub fn compute_visible_nodes_stack(
                 }
             }
             true => {
-                #[cfg(feature = "trace")]
-                let _span = info_span!("compute_visible_nodes_stack", name = "loaded").entered();
-
                 if budget_check {
                     // take into account the node
                     budget.add_node(node);
@@ -478,10 +449,6 @@ pub fn compute_visible_nodes_stack(
                     continue;
                 }
 
-                #[cfg(feature = "trace")]
-                let span_iter_children =
-                    info_span!("compute_visible_nodes_stack", name = "iter_children").entered();
-
                 // we have to process child nodes, sending flag `completely_visible` to prevent
                 // useless visibility checks
                 for i in node.children_mask.iter_one_bits() {
@@ -506,10 +473,6 @@ pub fn compute_visible_nodes_stack(
                         compute_screen_pixel_radius(aabb, transform, camera_view);
                     let weight = child_screen_pixel_radius.unwrap_or(f32::MAX);
 
-                    #[cfg(feature = "trace")]
-                    let span_append_stack =
-                        info_span!("compute_visible_nodes_stack", name = "append_stack").entered();
-
                     stack.push(StackedPointCloudNodeEntity {
                         entity,
                         asset_id,
@@ -520,11 +483,7 @@ pub fn compute_visible_nodes_stack(
                         completely_visible,
                         parent_index: Some(current_index),
                     });
-                    #[cfg(feature = "trace")]
-                    drop(span_append_stack);
                 }
-                #[cfg(feature = "trace")]
-                drop(span_iter_children);
             }
         }
     }

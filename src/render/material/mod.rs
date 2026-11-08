@@ -14,7 +14,7 @@ use bevy::{
     app::{App, First, Plugin, PostUpdate},
     asset::{Asset, AssetApp, AssetEventSystems},
     camera::Camera,
-    core_pipeline::core_3d::{AlphaMask3d, Transparent3d},
+    core_pipeline::core_3d::Transparent3d,
     ecs::prelude::*,
     light::DirectionalLight,
     material::{
@@ -25,7 +25,7 @@ use bevy::{
     pbr::{
         collect_meshes_for_gpu_building, prepare_lights, set_mesh_motion_vector_flags,
         ExtractedDirectionalLight, MaterialBindGroupAllocator, MaterialBindGroupAllocators,
-        MaterialBindingId, Shadow, Transmissive3d,
+        MaterialBindingId, Transmissive3d,
     },
     render::{
         camera::{
@@ -52,16 +52,14 @@ use std::{fmt::Debug, sync::Arc};
 use crate::{
     render::{
         check_views_need_specialization, clear_dirty_specializations,
+        deferred::{AlphaMask3dChunkDeferred, Opaque3dChunkDeferred},
         expire_specializations_for_views,
         multipass::{
             FullscreenMaterialPassPipeline, MultipassMaterialPlugin, MultipassMaterialsPlugin,
             MultipassPipelinePlugin, ViewMultipassTextures,
         },
         prepare_light_phase,
-        prepass::{
-            AlphaMask3dChunkPrepass, DrawDepthOnlyPrepass, DrawPrepass, Opaque3dChunkPrepass,
-            PrepassPipelinePlugin, PrepassPlugin,
-        },
+        prepass::{DrawDepthOnlyPrepass, DrawPrepass, PrepassPipelinePlugin, PrepassPlugin},
         queue_shadows, specialize_shadows, AlphaMask3dChunk, Opaque3dChunk, PendingShadowQueues,
         PointCloudDirtySpecializations, PointCloudPipelineSystems, ShadowChunk,
         SpecializedPointCloudPipelines, SpecializedShadowMaterialPipelineCache,
@@ -324,6 +322,8 @@ impl Plugin for MaterialsPlugin {
                 .add_render_command::<Transparent3d, DrawPointCloudMaterial>()
                 .add_render_command::<Opaque3dChunk, DrawPointCloudMaterialBatched>()
                 .add_render_command::<AlphaMask3dChunk, DrawPointCloudMaterialBatched>()
+                .add_render_command::<Opaque3dChunkDeferred, DrawPrepass>()
+                .add_render_command::<AlphaMask3dChunkDeferred, DrawPrepass>()
                 .add_render_command::<Transmissive3d, DrawPointCloudMaterial>()
                 .add_render_command::<ShadowChunk, DrawPrepass>()
                 .add_render_command::<ShadowChunk, DrawDepthOnlyPrepass>()
