@@ -12,7 +12,7 @@ use bevy::{
 };
 
 #[cfg(feature = "trace")]
-use tracing::info_span;
+use bevy::log::info_span;
 
 use crate::render::{render_phase::ViewBinnedChunksRenderPhases, ShadowChunk};
 

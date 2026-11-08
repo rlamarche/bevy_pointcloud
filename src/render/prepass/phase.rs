@@ -3,7 +3,7 @@ use std::ops::Range;
 use bevy::{
     camera::{Camera, Camera3d},
     core_pipeline::prepass::{
-        DepthPrepass, MotionVectorPrepass, NormalPrepass, OpaqueNoLightmap3dBinKey,
+        DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass, OpaqueNoLightmap3dBinKey,
     },
     ecs::{
         entity::Entity,
@@ -25,7 +25,10 @@ use bevy::{
     },
 };
 
-use crate::render::render_phase::ViewBinnedChunksRenderPhases;
+use crate::render::{
+    deferred::{AlphaMask3dChunkDeferred, Opaque3dChunkDeferred},
+    render_phase::ViewBinnedChunksRenderPhases,
+};
 
 /// Opaque phase of the 3D prepass.
 ///
@@ -53,6 +56,8 @@ pub struct Opaque3dChunkPrepass {
 ///
 /// A batch set is a set of batches that can be multi-drawn together, if
 /// multi-draw is in use.
+/// TODO: add point cloud entity id to batch per point cloud (because of point cloud uniform
+/// binding)
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct OpaqueChunkNoLightmap3dBatchSetKey {
     /// The ID of the GPU pipeline.
@@ -236,8 +241,10 @@ impl CachedRenderPipelinePhaseItem for AlphaMask3dChunkPrepass {
 pub fn extract_camera_prepass_phase(
     mut opaque_3d_prepass_phases: ResMut<ViewBinnedChunksRenderPhases<Opaque3dChunkPrepass>>,
     mut alpha_mask_3d_prepass_phases: ResMut<ViewBinnedChunksRenderPhases<AlphaMask3dChunkPrepass>>,
-    // mut opaque_3d_deferred_phases: ResMut<ViewBinnedRenderPhases<Opaque3dDeferred>>,
-    // mut alpha_mask_3d_deferred_phases: ResMut<ViewBinnedRenderPhases<AlphaMask3dDeferred>>,
+    mut opaque_3d_deferred_phases: ResMut<ViewBinnedChunksRenderPhases<Opaque3dChunkDeferred>>,
+    mut alpha_mask_3d_deferred_phases: ResMut<
+        ViewBinnedChunksRenderPhases<AlphaMask3dChunkDeferred>,
+    >,
     cameras_3d: Extract<
         Query<
             (
@@ -247,7 +254,7 @@ pub fn extract_camera_prepass_phase(
                 Has<DepthPrepass>,
                 Has<NormalPrepass>,
                 Has<MotionVectorPrepass>,
-                // Has<DeferredPrepass>,
+                Has<DeferredPrepass>,
                 // Has<DepthPrepassDoubleBuffer>,
                 // Has<DeferredPrepassDoubleBuffer>,
             ),
@@ -266,7 +273,7 @@ pub fn extract_camera_prepass_phase(
         depth_prepass,
         normal_prepass,
         motion_vector_prepass,
-        // deferred_prepass,
+        deferred_prepass,
         // depth_prepass_double_buffer,
         // deferred_prepass_double_buffer,
     ) in cameras_3d.iter()
@@ -302,20 +309,26 @@ pub fn extract_camera_prepass_phase(
             alpha_mask_3d_prepass_phases.remove(&retained_view_entity);
         }
 
-        // if deferred_prepass {
-        //     opaque_3d_deferred_phases
-        //         .prepare_for_new_frame(retained_view_entity, gpu_preprocessing_mode);
-        //     alpha_mask_3d_deferred_phases
-        //         .prepare_for_new_frame(retained_view_entity, gpu_preprocessing_mode);
-        // } else {
-        //     opaque_3d_deferred_phases.remove(&retained_view_entity);
-        //     alpha_mask_3d_deferred_phases.remove(&retained_view_entity);
-        // }
+        if deferred_prepass {
+            opaque_3d_deferred_phases.prepare_for_new_frame(
+                retained_view_entity,
+                gpu_preprocessing_mode,
+                no_indirect_drawing,
+            );
+            alpha_mask_3d_deferred_phases.prepare_for_new_frame(
+                retained_view_entity,
+                gpu_preprocessing_mode,
+                no_indirect_drawing,
+            );
+        } else {
+            opaque_3d_deferred_phases.remove(&retained_view_entity);
+            alpha_mask_3d_deferred_phases.remove(&retained_view_entity);
+        }
         live_entities.insert(retained_view_entity);
     }
 
     opaque_3d_prepass_phases.retain(|view_entity, _| live_entities.contains(view_entity));
     alpha_mask_3d_prepass_phases.retain(|view_entity, _| live_entities.contains(view_entity));
-    // opaque_3d_deferred_phases.retain(|view_entity, _| live_entities.contains(view_entity));
-    // alpha_mask_3d_deferred_phases.retain(|view_entity, _| live_entities.contains(view_entity));
+    opaque_3d_deferred_phases.retain(|view_entity, _| live_entities.contains(view_entity));
+    alpha_mask_3d_deferred_phases.retain(|view_entity, _| live_entities.contains(view_entity));
 }

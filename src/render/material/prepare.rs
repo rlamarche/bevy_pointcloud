@@ -2,10 +2,7 @@ use std::{any::TypeId, hash::Hash, sync::Arc};
 
 use bevy::{
     asset::{AssetId, AssetServer, Handle},
-    core_pipeline::{
-        core_3d::Transparent3d,
-        deferred::{AlphaMask3dDeferred, Opaque3dDeferred},
-    },
+    core_pipeline::core_3d::Transparent3d,
     ecs::{
         component::Component,
         entity::Entity,
@@ -25,8 +22,7 @@ use bevy::{
         AlphaMode, OpaqueRendererMethod, RenderPhaseType,
     },
     pbr::{
-        DirectionalLightViewEntities, MaterialBindGroupAllocators, MeshPipelineKey, Shadow,
-        Transmissive3d,
+        DirectionalLightViewEntities, MaterialBindGroupAllocators, MeshPipelineKey, Transmissive3d,
     },
     platform::{
         collections::{hash_map::Entry, HashMap},
@@ -51,7 +47,9 @@ use smallvec::SmallVec;
 
 use crate::{
     render::{
-        base_specialize, fullscreen_user_specialize,
+        base_specialize,
+        deferred::{AlphaMask3dChunkDeferred, Opaque3dChunkDeferred},
+        fullscreen_user_specialize,
         material::{clone_shader_ref, prepass_specialize, user_specialize},
         material_uses_bindless_resources,
         multipass::ViewMultipassTextures,
@@ -175,8 +173,8 @@ where
             SRes<DrawFunctions<Transparent3d>>,
             SRes<DrawFunctions<Opaque3dChunkPrepass>>,
             SRes<DrawFunctions<AlphaMask3dChunkPrepass>>,
-            SRes<DrawFunctions<Opaque3dDeferred>>,
-            SRes<DrawFunctions<AlphaMask3dDeferred>>,
+            SRes<DrawFunctions<Opaque3dChunkDeferred>>,
+            SRes<DrawFunctions<AlphaMask3dChunkDeferred>>,
             SRes<DrawFunctions<ShadowChunk>>,
         ),
         SRes<AssetServer>,

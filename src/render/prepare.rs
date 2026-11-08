@@ -1,21 +1,18 @@
 use bevy::{
-    core_pipeline::{
-        core_3d::Transparent3d,
-        deferred::{AlphaMask3dDeferred, Opaque3dDeferred},
-    },
+    core_pipeline::core_3d::Transparent3d,
     ecs::{
         entity::Entity,
         query::With,
         system::{Commands, Local, Query, Res, ResMut},
     },
     log::{info, warn},
-    pbr::{LightEntity, MeshUniform, RenderMeshInstances, Shadow},
+    pbr::{LightEntity, MeshUniform, RenderMeshInstances},
     platform::collections::{hash_map::Entry, HashMap},
     render::{
         camera::ExtractedCamera,
         mesh::{allocator::MeshAllocator, RenderMesh},
         render_asset::RenderAssets,
-        render_phase::{ViewBinnedRenderPhases, ViewSortedRenderPhases},
+        render_phase::ViewSortedRenderPhases,
         render_resource::{
             Extent3d, GpuArrayBuffer, TexelCopyBufferLayout, TextureDescriptor, TextureDimension,
             TextureFormat::Rgba8Uint, TextureUsages, TextureViewDescriptor, UniformBuffer,
@@ -30,11 +27,12 @@ use bytemuck::{Pod, Zeroable};
 
 use crate::{
     render::{
-        render_phase::ViewBinnedChunksRenderPhases, FallbackVisibleNodesTexture, Opaque3dChunk,
-        PointCloudUniform, PreparedPointCloudUniform, PreparedPointCloudUniforms,
-        RenderMaterialBindings, RenderOctreeInstancesIndex, RenderPointCloudChunk,
-        RenderPointCloudInstances, RenderPointCloudMaterialInstances,
-        RenderShadowMapVisiblePointCloudEntities, RenderVisiblePointCloudEntities,
+        deferred::{AlphaMask3dChunkDeferred, Opaque3dChunkDeferred},
+        render_phase::ViewBinnedChunksRenderPhases,
+        FallbackVisibleNodesTexture, Opaque3dChunk, PointCloudUniform, PreparedPointCloudUniform,
+        PreparedPointCloudUniforms, RenderMaterialBindings, RenderOctreeInstancesIndex,
+        RenderPointCloudChunk, RenderPointCloudInstances, RenderPointCloudMaterialInstances,
+        RenderShadowMapVisiblePointCloudEntities, RenderVisiblePointCloudEntities, ShadowChunk,
         VisibleNodesTexture,
     },
     NodeId, PointCloud3d, PointCloudTopologyKind,
@@ -179,8 +177,8 @@ pub fn prepare_camera_visible_nodes_texture(
     render_queue: Res<RenderQueue>,
     render_octree_index: Res<RenderOctreeInstancesIndex>,
     opaque_phases: Res<ViewBinnedChunksRenderPhases<Opaque3dChunk>>,
-    opaque_deferred_render_phases: Res<ViewBinnedRenderPhases<Opaque3dDeferred>>,
-    alpha_mask_deferred_render_phases: Res<ViewBinnedRenderPhases<AlphaMask3dDeferred>>,
+    opaque_deferred_render_phases: Res<ViewBinnedChunksRenderPhases<Opaque3dChunkDeferred>>,
+    alpha_mask_deferred_render_phases: Res<ViewBinnedChunksRenderPhases<AlphaMask3dChunkDeferred>>,
     transparent_phases: Res<ViewSortedRenderPhases<Transparent3d>>,
     views_3d: Query<
         (Entity, &ExtractedView, &RenderVisiblePointCloudEntities),
@@ -235,7 +233,7 @@ pub fn prepare_cascades_visible_nodes_texture(
     render_device: Res<RenderDevice>,
     render_queue: Res<RenderQueue>,
     render_octree_index: Res<RenderOctreeInstancesIndex>,
-    shadow_phases: Res<ViewBinnedRenderPhases<Shadow>>,
+    shadow_phases: Res<ViewBinnedChunksRenderPhases<ShadowChunk>>,
     views_3d: Query<(Entity, &ExtractedView, &LightEntity)>,
     mut visible_nodes_buffer: Local<Vec<VisibleOctreeNodeUniform>>,
     shadow_map_visible_entities: Query<&RenderShadowMapVisiblePointCloudEntities>,

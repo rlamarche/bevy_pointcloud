@@ -1,3 +1,5 @@
+#[cfg(feature = "trace")]
+use bevy::log::info_span;
 use bevy::{
     camera::{MainPassResolutionOverride, Viewport},
     ecs::{system::Res, world::World},

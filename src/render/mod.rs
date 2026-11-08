@@ -1,5 +1,6 @@
 mod camera;
 mod components;
+pub mod deferred;
 mod draw;
 mod extract;
 mod key;
@@ -68,6 +69,10 @@ pub use resources::*;
 
 use crate::{
     render::{
+        deferred::{
+            node::{early_chunk_deferred_prepass, late_chunk_deferred_prepass},
+            AlphaMask3dChunkDeferred, Opaque3dChunkDeferred,
+        },
         prepass::{
             early_chunk_prepass, extract_camera_prepass_phase, late_chunk_prepass,
             AlphaMask3dChunkPrepass, Opaque3dChunkPrepass,
@@ -109,6 +114,8 @@ impl Plugin for RenderPointCloudPlugin {
         render_app
             .init_resource::<DrawFunctions<Opaque3dChunk>>()
             .init_resource::<DrawFunctions<AlphaMask3dChunk>>()
+            .init_resource::<DrawFunctions<Opaque3dChunkDeferred>>()
+            .init_resource::<DrawFunctions<AlphaMask3dChunkDeferred>>()
             .init_resource::<DrawFunctions<Opaque3dChunkPrepass>>()
             .init_resource::<DrawFunctions<AlphaMask3dChunkPrepass>>()
             .init_resource::<DrawFunctions<ShadowChunk>>()
@@ -116,6 +123,8 @@ impl Plugin for RenderPointCloudPlugin {
             .init_resource::<ViewBinnedChunksRenderPhases<AlphaMask3dChunk>>()
             .init_resource::<ViewBinnedChunksRenderPhases<Opaque3dChunkPrepass>>()
             .init_resource::<ViewBinnedChunksRenderPhases<AlphaMask3dChunkPrepass>>()
+            .init_resource::<ViewBinnedChunksRenderPhases<Opaque3dChunkDeferred>>()
+            .init_resource::<ViewBinnedChunksRenderPhases<AlphaMask3dChunkDeferred>>()
             .init_resource::<ViewBinnedChunksRenderPhases<ShadowChunk>>();
 
         app.add_plugins(MaterialsPlugin::default()) // TODO add debug flags opt
@@ -129,6 +138,12 @@ impl Plugin for RenderPointCloudPlugin {
                     self.debug_flags,
                 ),
                 BinnedChunksRenderPhasePlugin::<AlphaMask3dChunk, PointCloudPipeline>::new(
+                    self.debug_flags,
+                ),
+                BinnedChunksRenderPhasePlugin::<Opaque3dChunkDeferred, PointCloudPipeline>::new(
+                    self.debug_flags,
+                ),
+                BinnedChunksRenderPhasePlugin::<AlphaMask3dChunkDeferred, PointCloudPipeline>::new(
                     self.debug_flags,
                 ),
                 BinnedChunksRenderPhasePlugin::<ShadowChunk, PointCloudPipeline>::new(
@@ -214,9 +229,15 @@ impl Plugin for RenderPointCloudPlugin {
                 (
                     (
                         early_chunk_prepass.after(early_prepass),
-                        // early_deferred_prepass,
+                        early_chunk_deferred_prepass
+                            .before(early_downsample_depth),
+                        // TODO: if `early_deferred_prepass` gets public, uncomment the following line and remove the previous one
+                            // .after(early_deferred_prepass),
                         late_chunk_prepass.after(late_prepass),
-                        // late_deferred_prepass,
+                        late_chunk_deferred_prepass
+                            .before(main_build_indirect_parameters),
+                        // TODO: if `late_deferred_prepass` gets public, uncomment the following line and remove the previous one
+                            // .after(late_deferred_prepass),
                     )
                         .chain()
                         .in_set(Core3dSystems::Prepass),
