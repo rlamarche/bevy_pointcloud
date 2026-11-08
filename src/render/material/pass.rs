@@ -53,34 +53,17 @@ pub struct PassShader {
     pub fragment: Handle<Shader>,
 }
 
-#[derive(Clone, Debug)]
-pub enum PassDepth {
-    TransientDepth,
-    ViewDepth,
-}
-
 pub struct PassDescriptor<PassId> {
     pub id: PassId,
     pub kind: PassKind,
     pub label: &'static str,
 }
 
-pub struct GeometryPassParams {
+pub struct PassParams {
     pub vertex_shader: ShaderRef,
     pub fragment_shader: ShaderRef,
     pub inputs: Vec<PassInput>,
     pub output: PassOutput,
-    // pub depth: PassDepth,
-    pub blend: Option<BlendState>,
-    pub depth_write_enabled: Option<bool>,
-}
-
-pub struct FullscreenPassParams {
-    pub vertex_shader: ShaderRef,
-    pub fragment_shader: ShaderRef,
-    pub inputs: Vec<PassInput>,
-    pub output: PassOutput,
-    // pub depth: PassDepth,
     pub blend: Option<BlendState>,
     pub depth_write_enabled: Option<bool>,
 }
@@ -104,7 +87,9 @@ where
     let pipeline = pipeline
         .downcast_ref::<FullscreenMaterialPassPipeline>()
         .unwrap();
-    let pass_id = M::PassId::from(pass);
+    let Ok(pass_id) = M::PassId::try_from(pass) else {
+        return Ok(());
+    };
     let view_settings_key = settings_key.to_key();
 
     M::fullscreen_specialize(pipeline, descriptor, pass_id, view_settings_key)

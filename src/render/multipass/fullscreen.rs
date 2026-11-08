@@ -180,8 +180,7 @@ pub fn prepare_fullscreen_bind_groups<M: PointCloudMaterial, const PASS: usize>(
                         .ok_or_else(|| {
                             BevyError::from(format!(
                                 "Pass {} references unexisting pass with name {}",
-                                M::passes()[PASS].label,
-                                input.source_pass
+                                pass_properties.label, input.source_pass
                             ))
                         })
                         .unwrap();

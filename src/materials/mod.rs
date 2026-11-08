@@ -19,21 +19,21 @@ bitflags! {
     #[repr(C)]
     #[derive(Clone, Debug, Copy, PartialEq, Eq, Hash)]
     pub struct RenderModes: u32 {
-        const NORMAL        = 1_u32 <<  0;
+        const MULTIPASS     = 1_u32 <<  0;
         const XRAY          = 1_u32 <<  1;
     }
 }
 
 impl Default for RenderModes {
     fn default() -> Self {
-        RenderModes::NORMAL
+        RenderModes::empty()
     }
 }
 
 impl From<RenderMode> for RenderModes {
     fn from(value: RenderMode) -> Self {
         match value {
-            RenderMode::Normal => RenderModes::NORMAL,
+            RenderMode::Normal => RenderModes::MULTIPASS,
             RenderMode::XRay => RenderModes::XRAY,
         }
     }
@@ -99,22 +99,22 @@ bitflags! {
     #[repr(C)]
     #[derive(Clone, Copy, PartialEq, Eq, Hash)]
     pub struct PointCloudViewSettingsKey: u64 {
-        const RENDER_MODE_NORMAL       = 1_u64 <<  0;
+        const RENDER_MODE_MULTIPASS    = 1_u64 <<  0;
         const RENDER_MODE_XRAY         = 1_u64 <<  1;
         const EDL_ENABLED              = 1_u64 <<  2;
 
         const CLIPPING_PLANES          = 1_u64 <<  3;
         const CLIPPING_SPHERES         = 1_u64 <<  4;
 
-        const RENDER_MODES_MASK          = Self::RENDER_MODE_NORMAL.bits() | Self::RENDER_MODE_XRAY.bits();
+        const RENDER_MODES_MASK          = Self::RENDER_MODE_MULTIPASS.bits() | Self::RENDER_MODE_XRAY.bits();
     }
 }
 
 impl PointCloudViewSettingsKey {
     pub fn render_modes(&self) -> RenderModes {
         let mut render_modes = RenderModes::empty();
-        if self.contains(PointCloudViewSettingsKey::RENDER_MODE_NORMAL) {
-            render_modes.insert(RenderModes::NORMAL);
+        if self.contains(PointCloudViewSettingsKey::RENDER_MODE_MULTIPASS) {
+            render_modes.insert(RenderModes::MULTIPASS);
         }
         if self.contains(PointCloudViewSettingsKey::RENDER_MODE_XRAY) {
             render_modes.insert(RenderModes::XRAY);
@@ -130,7 +130,7 @@ impl PointCloudViewSettingsKey {
 impl From<&RenderMode> for PointCloudViewSettingsKey {
     fn from(value: &RenderMode) -> Self {
         match value {
-            RenderMode::Normal => PointCloudViewSettingsKey::RENDER_MODE_NORMAL,
+            RenderMode::Normal => PointCloudViewSettingsKey::RENDER_MODE_MULTIPASS,
             RenderMode::XRay => PointCloudViewSettingsKey::RENDER_MODE_XRAY,
         }
     }
@@ -140,8 +140,8 @@ impl From<&PointCloudViewSettings> for PointCloudViewSettingsKey {
     fn from(settings: &PointCloudViewSettings) -> Self {
         let mut key = PointCloudViewSettingsKey::empty();
 
-        if settings.render_modes.contains(RenderModes::NORMAL) {
-            key.insert(PointCloudViewSettingsKey::RENDER_MODE_NORMAL);
+        if settings.render_modes.contains(RenderModes::MULTIPASS) {
+            key.insert(PointCloudViewSettingsKey::RENDER_MODE_MULTIPASS);
         }
         if settings.render_modes.contains(RenderModes::XRAY) {
             key.insert(PointCloudViewSettingsKey::RENDER_MODE_XRAY);
