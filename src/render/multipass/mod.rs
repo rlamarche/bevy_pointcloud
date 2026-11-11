@@ -1420,7 +1420,7 @@ pub fn main_opaque_multipass_3d<M: PointCloudMaterial, const PASS: usize>(
     };
 
     #[cfg(feature = "trace")]
-    let _main_opaque_pass_3d_span = info_span!("main_opaque_pass_3d_multipass").entered();
+    let _main_opaque_pass_3d_span = info_span!("main_opaque_pass_3d_multipass_{}", PASS).entered();
 
     let diagnostics = ctx.diagnostic_recorder();
     let diagnostics = diagnostics.as_deref();
@@ -1447,15 +1447,17 @@ pub fn main_opaque_multipass_3d<M: PointCloudMaterial, const PASS: usize>(
             };
 
             let mut render_pass = ctx.begin_tracked_render_pass(RenderPassDescriptor {
-                label: Some("main_opaque_pass_3d_multipass"),
+                label: Some(&format!("main_opaque_pass_3d_multipass_{}", PASS)),
                 color_attachments: &color_attachments,
                 depth_stencil_attachment,
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            let pass_span =
-                diagnostics.pass_span(&mut render_pass, "main_opaque_pass_3d_multipass");
+            let pass_span = diagnostics.pass_span(
+                &mut render_pass,
+                format!("main_opaque_pass_3d_multipass_{}", PASS),
+            );
 
             if let Some(viewport) =
                 Viewport::from_viewport_and_override(camera.viewport.as_ref(), resolution_override)

@@ -490,17 +490,32 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
             return Ok(false);
         }
 
+        let vertex_shader_defs = &mut descriptor.vertex.shader_defs;
+
         if point_cloud_material_key
             .intersects(StandardPointCloudMaterialExtensionKey::WEIGHTED_SPLATS_ENABLED)
         {
-            descriptor
-                .vertex
-                .shader_defs
-                .push("WEIGHTED_SPLATS_ENABLED".into());
+            vertex_shader_defs.push("WEIGHTED_SPLATS_ENABLED".into());
         }
+
+        if edl_enabled {
+            vertex_shader_defs.push("POINTCLOUD_NEEDS_LOG_DEPTH".into());
+        }
+
+        vertex_shader_defs.push("POINTCLOUD_NEEDS_UVS".into());
+        vertex_shader_defs.push("POINTCLOUD_NEEDS_NORMAL".into());
+        vertex_shader_defs.push("POINTCLOUD_NEEDS_WORLD_POSITION".into());
 
         if let Some(fragment) = descriptor.fragment.as_mut() {
             let shader_defs = &mut fragment.shader_defs;
+
+            shader_defs.push("POINTCLOUD_NEEDS_UVS".into());
+            shader_defs.push("POINTCLOUD_NEEDS_NORMAL".into());
+            shader_defs.push("POINTCLOUD_NEEDS_WORLD_POSITION".into());
+
+            if edl_enabled {
+                shader_defs.push("POINTCLOUD_NEEDS_LOG_DEPTH".into());
+            }
 
             // Evaluate single boolean flags
             for (flags, shader_def) in [

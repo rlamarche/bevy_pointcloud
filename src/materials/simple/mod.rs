@@ -392,6 +392,10 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         for (flags, shader_def) in [
             (PointCloudViewSettingsKey::EDL_ENABLED, "RENDER_MODE_EDL"),
             (
+                PointCloudViewSettingsKey::EDL_ENABLED,
+                "POINTCLOUD_NEEDS_LOG_DEPTH",
+            ),
+            (
                 PointCloudViewSettingsKey::CLIPPING_PLANES,
                 "CLIPPING_PLANES",
             ),
@@ -418,12 +422,20 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
         // Evaluate single boolean flags
         for (flags, shader_def) in [
             (
+                SimplePointCloudMaterialKey::BASE_COLOR_TEXTURE,
+                "POINTCLOUD_NEEDS_UVS",
+            ),
+            (
                 SimplePointCloudMaterialKey::WEIGHTED_SPLATS_ENABLED,
                 "WEIGHTED_SPLATS_ENABLED",
             ),
             (
                 SimplePointCloudMaterialKey::GRADIENT,
                 "SIMPLE_MATERIAL_GRADIENT",
+            ),
+            (
+                SimplePointCloudMaterialKey::GRADIENT,
+                "POINTCLOUD_NEEDS_WORLD_POSITION",
             ),
             (
                 SimplePointCloudMaterialKey::COLOR_STOP_1,
@@ -603,17 +615,19 @@ bitflags! {
         const RENDER_MODE_NORMAL       = 0;
         const RENDER_MODE_XRAY         = Self::RENDER_MODE_0.bits();
 
-        const WEIGHTED_SPLATS_ENABLED = 1_u64  <<  4;
+        const BASE_COLOR_TEXTURE       = 1_u64  <<  4;
 
-        const COLOR_STOP_1             = 1_u64 <<  5;
-        const COLOR_STOP_2             = 1_u64 <<  6;
-        const COLOR_STOP_3             = 1_u64 <<  7;
-        const COLOR_STOP_4             = 1_u64 <<  8;
-        const COLOR_STOP_5             = 1_u64 <<  9;
-        const COLOR_STOP_6             = 1_u64 <<  10;
-        const COLOR_STOP_7             = 1_u64 <<  11;
-        const COLOR_STOP_8             = 1_u64 <<  12;
-        const UV_TRANSFORM             = 1_u64 <<  13;
+        const WEIGHTED_SPLATS_ENABLED  = 1_u64  <<  5;
+
+        const COLOR_STOP_1             = 1_u64 <<  6;
+        const COLOR_STOP_2             = 1_u64 <<  7;
+        const COLOR_STOP_3             = 1_u64 <<  8;
+        const COLOR_STOP_4             = 1_u64 <<  9;
+        const COLOR_STOP_5             = 1_u64 <<  10;
+        const COLOR_STOP_6             = 1_u64 <<  11;
+        const COLOR_STOP_7             = 1_u64 <<  12;
+        const COLOR_STOP_8             = 1_u64 <<  13;
+        const UV_TRANSFORM             = 1_u64 <<  14;
     }
 }
 
@@ -643,6 +657,10 @@ impl From<&SimplePointCloudMaterial> for SimplePointCloudMaterialKey {
         key.set(
             SimplePointCloudMaterialKey::RENDER_MODE_XRAY,
             material.render_mode == RenderMode::XRay,
+        );
+        key.set(
+            SimplePointCloudMaterialKey::BASE_COLOR_TEXTURE,
+            material.base_color_texture.is_some(),
         );
         key.set(
             SimplePointCloudMaterialKey::WEIGHTED_SPLATS_ENABLED,
