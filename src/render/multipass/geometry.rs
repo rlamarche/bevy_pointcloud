@@ -13,10 +13,11 @@ use bevy::{
 };
 
 use crate::render::{
+    mark_visible_nodes_texture_not_changed,
     multipass::{
-        extract_camera_multipass_phase, prepare_pointcloud_bind_groups,
-        queue_multipass_material_meshes, specialize_multipass_material_meshes, DrawMultipass,
-        Opaque3dChunkMultipass,
+        extract_camera_multipass_phase, mark_view_point_cloud_bind_groups_not_changed,
+        prepare_pointcloud_bind_groups, queue_multipass_material_meshes,
+        specialize_multipass_material_meshes, DrawMultipass, Opaque3dChunkMultipass,
     },
     render_phase::BinnedChunksRenderPhasePlugin,
     PointCloudMaterial, PointCloudPipeline,
@@ -64,7 +65,9 @@ impl<M: PointCloudMaterial, const PASS: usize> Plugin for GeometryPassPlugin<M, 
                         .after(collect_meshes_for_gpu_building)
                         .after(set_mesh_motion_vector_flags),
                     prepare_pointcloud_bind_groups::<M, PASS>
-                        .in_set(RenderSystems::PrepareBindGroups),
+                        .in_set(RenderSystems::PrepareBindGroups)
+                        .before(mark_visible_nodes_texture_not_changed)
+                        .before(mark_view_point_cloud_bind_groups_not_changed::<M>),
                     queue_multipass_material_meshes::<M, PASS>.in_set(RenderSystems::QueueMeshes),
                 ),
             );

@@ -238,15 +238,7 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
                 Some(PassParams {
                     vertex_shader: ShaderRef::Default,
                     fragment_shader: ShaderRef::Default,
-                    inputs: vec![PassInput {
-                        source_pass: StandardPasses::Depth.into(),
-                        binding_slot: 10,
-                        texture_sample_type:
-                            bevy::render::render_resource::TextureSampleType::Float {
-                                filterable: false,
-                            },
-                        visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
-                    }],
+                    inputs: vec![],
                     output: PassOutput::TransientTarget(TransientTarget {
                         format: TextureFormat::Rgba32Float,
                     }),

@@ -619,6 +619,7 @@ pub fn queue_shadows(
                 material_bind_group_index,
                 splat_slabs,
                 slabs: mesh_slabs,
+                root_entity: render_point_cloud_chunk_instance.root_entity,
             };
 
             shadow_phase.add(

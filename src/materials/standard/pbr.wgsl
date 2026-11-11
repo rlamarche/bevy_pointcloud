@@ -229,7 +229,7 @@ fn fragment(
     #ifdef WEIGHTED_SPLATS_ENABLED
         #ifdef SHAPE_UVS_A
             #ifndef SPLAT_RADIUS
-                let dist = distance(in.shape_uv, vec2<f32>(0.5, 0.5));
+                let dist = distance(vertex_output.shape_uv, vec2<f32>(0.5, 0.5));
             #endif
 
             var weight = max(0.0, 1.0 - dist * 2.0);
