@@ -2,6 +2,7 @@
 use bevy::log::info_span;
 use bevy::{
     camera::{MainPassResolutionOverride, Viewport},
+    core_pipeline::prepass::ViewPrepassTextures,
     ecs::prelude::*,
     log::error,
     render::{
@@ -23,7 +24,7 @@ use crate::render::{
     render_phase::ViewBinnedChunksRenderPhases,
 };
 
-use super::{DeferredPrepass, PreviousViewUniformOffset, ViewPrepassTextures};
+use super::{DeferredPrepass, PreviousViewUniformOffset};
 
 /// Type alias for the prepass view query.
 type PrepassViewQueryData = (

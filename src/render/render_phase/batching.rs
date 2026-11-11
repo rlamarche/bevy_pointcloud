@@ -58,6 +58,10 @@ where
 {
     for phase in phases.values_mut() {
         phase.chunk_items.sort_unstable_keys();
+        for chunk_item in phase.chunk_items.values_mut() {
+            // this sorts chunk nodes from root to leaf
+            chunk_item.entities.sort_unstable_keys();
+        }
     }
 }
 

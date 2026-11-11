@@ -82,7 +82,7 @@ pub struct RenderMultidrawableChunks<BPI>
 where
     BPI: BinnedPhaseItem,
 {
-    pub(crate) entities: HashMap<BPI::BinKey, RenderMultidrawableChunk>,
+    pub(crate) entities: IndexMap<BPI::BinKey, RenderMultidrawableChunk>,
     /// The range in the indirect buffer
     pub(crate) range: Option<Range<u32>>,
 }
@@ -244,7 +244,7 @@ where
                 );
             }
             indexmap::map::Entry::Vacant(entry) => {
-                let mut entities = HashMap::default();
+                let mut entities = IndexMap::default();
                 entities.insert(
                     bin_key.clone(),
                     RenderMultidrawableChunk {

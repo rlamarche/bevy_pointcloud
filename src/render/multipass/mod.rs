@@ -85,10 +85,10 @@ use crate::{
         multipass::geometry::GeometryPassPlugin, render_phase::ViewBinnedChunksRenderPhases,
         DrawPointCloudBatched, ErasedMaterialPreparedPasses, ErasedMaterialViewSettingsKeys,
         ErasedPointCloudMaterialPipelineKey, ErasedSplatPipelineKey, ErasedViewSettingsKey,
-        MySetItemPipeline, Opaque3dChunkBatchSetKey, PassKind, PassProperties, PointCloudChunk3d,
-        PointCloudDirtySpecializations, PointCloudMaterial, PointCloudMaterialPipeline,
-        PointCloudMaterialProperties, PointCloudPipeline, PreparedPointCloudMaterial,
-        RenderPointCloudChunkInstances, RenderPointCloudInstances,
+        MySetItemPipeline, Opaque3dChunkBatchSetKey, Opaque3dChunkBinKey, PassKind, PassProperties,
+        PointCloudChunk3d, PointCloudDirtySpecializations, PointCloudMaterial,
+        PointCloudMaterialPipeline, PointCloudMaterialProperties, PointCloudPipeline,
+        PreparedPointCloudMaterial, RenderPointCloudChunkInstances, RenderPointCloudInstances,
         RenderPointCloudMaterialInstances, SetMaterialBindGroup, SplatPipelineKey,
     },
     PointCloudTopologyKind,
@@ -1311,8 +1311,9 @@ pub fn queue_multipass_material_meshes<M: PointCloudMaterial, const PASS: usize>
                     //     .lightmap_slab_index()
                     //     .map(|index| *index),
                 };
-                let bin_key = Opaque3dBinKey {
+                let bin_key = Opaque3dChunkBinKey {
                     asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
+                    depth: render_point_cloud_chunk_instance.depth,
                 };
 
                 opaque_phase.add(

@@ -2,9 +2,8 @@ pub mod node;
 
 use core::ops::Range;
 
-use crate::render::prepass::OpaqueChunkNoLightmap3dBatchSetKey;
+use crate::render::{prepass::OpaqueChunkNoLightmap3dBatchSetKey, OpaqueChunkNoLightmap3dBinKey};
 use bevy::{
-    core_pipeline::prepass::OpaqueNoLightmap3dBinKey,
     ecs::prelude::*,
     render::{
         render_phase::{
@@ -29,7 +28,7 @@ pub struct Opaque3dChunkDeferred {
     /// if it's enabled and the current platform supports it.
     pub batch_set_key: OpaqueChunkNoLightmap3dBatchSetKey,
     /// Information that separates items into bins.
-    pub bin_key: OpaqueNoLightmap3dBinKey,
+    pub bin_key: OpaqueChunkNoLightmap3dBinKey,
     pub representative_entity: (Entity, MainEntity),
     pub batch_range: Range<u32>,
     pub extra_index: PhaseItemExtraIndex,
@@ -73,7 +72,7 @@ impl PhaseItem for Opaque3dChunkDeferred {
 
 impl BinnedPhaseItem for Opaque3dChunkDeferred {
     type BatchSetKey = OpaqueChunkNoLightmap3dBatchSetKey;
-    type BinKey = OpaqueNoLightmap3dBinKey;
+    type BinKey = OpaqueChunkNoLightmap3dBinKey;
 
     #[inline]
     fn new(
@@ -112,7 +111,7 @@ pub struct AlphaMask3dChunkDeferred {
     /// if it's enabled and the current platform supports it.
     pub batch_set_key: OpaqueChunkNoLightmap3dBatchSetKey,
     /// Information that separates items into bins.
-    pub bin_key: OpaqueNoLightmap3dBinKey,
+    pub bin_key: OpaqueChunkNoLightmap3dBinKey,
     pub representative_entity: (Entity, MainEntity),
     pub batch_range: Range<u32>,
     pub extra_index: PhaseItemExtraIndex,
@@ -157,7 +156,7 @@ impl PhaseItem for AlphaMask3dChunkDeferred {
 
 impl BinnedPhaseItem for AlphaMask3dChunkDeferred {
     type BatchSetKey = OpaqueChunkNoLightmap3dBatchSetKey;
-    type BinKey = OpaqueNoLightmap3dBinKey;
+    type BinKey = OpaqueChunkNoLightmap3dBinKey;
 
     fn new(
         batch_set_key: Self::BatchSetKey,
