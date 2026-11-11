@@ -2,7 +2,6 @@ use std::{any::Any, sync::Arc};
 
 use bevy::{
     ecs::world::World,
-    log::info,
     material::{
         descriptor::{CachedRenderPipelineId, RenderPipelineDescriptor},
         specialize::SpecializedMeshPipelineError,

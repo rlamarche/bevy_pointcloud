@@ -188,7 +188,7 @@ impl<M: PointCloudMaterial> Plugin for MultipassMaterialPlugin<M> {
                 Render,
                 (
                     prepare_multipass_textures::<M>.in_set(RenderSystems::PrepareResources),
-                    mark_view_point_cloud_bind_groups_not_changed::<M>.in_set(RenderSystems::PrepareBindGroups),
+                    mark_view_multipass_textures_not_changed::<M>.in_set(RenderSystems::PrepareBindGroups),
                 ),
             );
 
