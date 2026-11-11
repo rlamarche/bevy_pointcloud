@@ -265,11 +265,18 @@ impl<P: PhaseItem, const I: usize> RenderCommand<P> for SetPointCloudBindGroup<I
             return RenderCommandResult::Skip;
         };
 
-        let Some(bind_group) = view_point_cloud_bind_groups
+        let Some(material_bind_groups) = view_point_cloud_bind_groups
             .bind_groups
             .get(&material_instance.asset_id.type_id())
-            .and_then(|map| map.get(&chunk_instance.root_entity))
         else {
+            warn!(
+                "view point cloud bind groups missing for point cloud {:?} and view {:?} and material type id {:?}",
+                chunk_instance.root_entity, view_entity, material_instance.asset_id.type_id()
+            );
+            return RenderCommandResult::Skip;
+        };
+
+        let Some(bind_group) = material_bind_groups.get(&chunk_instance.root_entity) else {
             warn!(
                 "view point cloud bind group missing for point cloud {:?} and view {:?} and material type id {:?}",
                 chunk_instance.root_entity, view_entity, material_instance.asset_id.type_id()
