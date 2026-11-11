@@ -23,19 +23,6 @@ fn clamp_point_size(point_size: f32, min: f32, max: f32) -> f32 {
 
 
 /// Computes the final World-Space quad size for a point configured in Screen-Space (pixel) units.
-///
-/// Projects the base pixel size to world space at the current view depth,
-/// clamps the pixel footprint between min and max pixel bounds to prevent sub-pixel
-/// disappearance or screen-filling overdraw, and returns the adjusted world-space size.
-///
-/// # Parameters
-/// * `view_position`: Vertex position in view/camera space (uses `z` for depth).
-/// * `point_size_px`: Base screen-space size of the point in pixels.
-/// * `min_point_size_px`: Minimum allowed screen size in pixels.
-/// * `max_point_size_px`: Maximum allowed screen size in pixels.
-///
-/// # Returns
-/// The adjusted World-Space size for the quad geometry.
 fn compute_screen_space_point_size(
     view_position: vec3<f32>,
     point_size_px: f32,
@@ -52,20 +39,6 @@ fn compute_screen_space_point_size(
     return radius_screen / proj_factor;
 }
 
-/// Computes the final World-Space quad size for a point configured in World-Space units.
-///
-/// Projects the base world-space size to screen pixels at depth Z,
-/// clamps the pixel footprint between min and max pixel bounds to prevent sub-pixel
-/// disappearance or screen-filling overdraw, and returns the adjusted world-space size.
-///
-/// # Parameters
-/// * `view_position`: Vertex position in view/camera space (uses `z` for depth).
-/// * `point_size_world`: Base world-space size of the point.
-/// * `min_point_size_px`: Minimum allowed screen size in pixels.
-/// * `max_point_size_px`: Maximum allowed screen size in pixels.
-///
-/// # Returns
-/// The adjusted World-Space size for the quad geometry.
 fn compute_world_space_point_size(
     view_position: vec3<f32>,
     point_size_world: f32,
@@ -75,22 +48,15 @@ fn compute_world_space_point_size(
     let depth = max(abs(view_position.z), 0.0001);
     let proj_factor = (view.viewport.w * view.clip_from_view[1][1]) / (2.0 * depth);
 
-    if (proj_factor < 0.0001) {
-        return point_size_world;
-    }
+    // Prevent division by zero since select() evaluates both sides
+    let safe_proj_factor = max(proj_factor, 0.0001);
 
-    // 1. Project world size to screen pixels at current depth
-    let size_px = point_size_world * proj_factor;
-
-    // 2. Always clamp resulting pixel size
+    let size_px = point_size_world * safe_proj_factor;
     let clamped_px = clamp(size_px, min_point_size_px, max_point_size_px);
+    let projected_world_size = clamped_px / safe_proj_factor;
 
-    // 3. Convert back to world space size for quad geometry
-    return clamped_px / proj_factor;
+    return select(projected_world_size, point_size_world, proj_factor < 0.0001);
 }
-
-
-
 
 
 
@@ -117,28 +83,6 @@ fn extract_scale(matrix: mat4x4<f32>) -> vec3<f32> {
     return vec3<f32>(scale_x, scale_y, scale_z);
 }
 
-/// WIP function to handle adaptive point sizing in octrees
-fn compute_radius(
-    // will be used for adaptive point size
-    vertex: InstanceInput,
-    // view_position: vec3<f32>,
-    world_from_local: mat4x4<f32>,
-    point_size: f32,
-) -> f32 {
-    let transform_scale = extract_max_scale(world_from_local);
-    // let fov = view.clip_from_view[1][1];
-    // let proj_factor = -0.5 * fov / view_position.z;
-
-    // this cancel the projection size
-    return point_size * transform_scale;
-}
-
-
-/// This function computes the view position of the point using the shape vertice, in billboard mode.
-/// params:
-/// - `view_position`: the position of the point in the view space
-/// - `shape_position`: the position of a vertice of the shape
-/// - `radius`: the radius of the point in the view space
 fn compute_view_billboard_vertex_position(
     view_position: vec3<f32>,
     shape_position: vec3<f32>,
@@ -149,14 +93,6 @@ fn compute_view_billboard_vertex_position(
     return view_position + offset;
 }
 
-/// This function computes the world position of the point using the 3D shape vertex oriented by the point's normal.
-/// The missing tangent will be computed automatically.
-/// params:
-/// - `world_position`: the position of the point in the world
-/// - `normal`: the local normal vector of the point (the instance)
-/// - `world_from_local`: transform matrix from local (in the point cloud space) to the world
-/// - `shape_position`: the 3D position of a vertex of the shape (e.g. vertices of a sphere)
-/// - `point_size`: the point size is just a scale applied to the shape
 fn compute_world_vertex_position_oriented(
     world_position: vec3<f32>,
     normal: vec3<f32>,
@@ -167,32 +103,25 @@ fn compute_world_vertex_position_oriented(
     // Transform the local normal into world space and normalize it (Local Z-Axis)
     let world_normal = normalize((world_from_local * vec4<f32>(normal, 0.0)).xyz);
 
-    // Build the remaining orthonormal basis (Tangent & Bitangent)
-    var up_ref = vec3<f32>(0.0, 1.0, 0.0);
-    if (abs(world_normal.y) > 0.99) {
-        up_ref = vec3<f32>(1.0, 0.0, 0.0);
-    }
+    let up_ref = select(
+        vec3<f32>(0.0, 1.0, 0.0),
+        vec3<f32>(1.0, 0.0, 0.0),
+        abs(world_normal.y) > 0.99
+    );
 
     // World tangent (Local X-Axis)
-    // up_ref and world_normal may not be orthogonal, that's why normalize is needed.
     let world_tangent = normalize(cross(up_ref, world_normal));
     // World bitangent (Local Y-Axis)
     let world_bitangent = cross(world_normal, world_tangent);
 
     // Offset the instance center using all 3 axes of the shape
-    // - shape_position.x moves along the Tangent (X)
-    // - shape_position.y moves along the Bitangent (Y)
-    // - shape_position.z moves along the Normal (Z)
     let offset = (world_tangent * shape_position.x)
                + (world_bitangent * shape_position.y)
                + (world_normal * shape_position.z);
 
     // Apply the scale and point size to the 3D offset, then add to the center
-    let world_vertex_position = world_position + offset * radius;
-
-    return world_vertex_position;
+    return world_position + offset * radius;
 }
-
 
 
 
@@ -240,18 +169,17 @@ fn compute_tangent_and_bitangent(
     normal: vec3<f32>,
 ) -> mat2x3<f32> {
     // Build the remaining orthonormal basis (Tangent & Bitangent)
-    var up_ref = vec3<f32>(0.0, 1.0, 0.0);
-    // TODO replace with select ?
-    if (abs(normal.y) > 0.99) {
-        up_ref = vec3<f32>(1.0, 0.0, 0.0);
-    }
+    let up_ref = select(
+        vec3<f32>(0.0, 1.0, 0.0),
+        vec3<f32>(1.0, 0.0, 0.0),
+        abs(normal.y) > 0.99
+    );
 
     let tangent = normalize(cross(up_ref, normal));
     let bitangent = cross(normal, tangent);
 
     return mat2x3<f32>(tangent, bitangent);
 }
-
 
 
 fn compute_world_vertex_normal_oriented_with_tangent(
@@ -282,37 +210,14 @@ fn compute_world_vertex_normal_oriented(
     shape_normal: vec3<f32>,
 ) -> vec3<f32> {
     let world_normal = normalize((world_from_local * vec4<f32>(normal, 0.0)).xyz);
-    var up_ref = vec3<f32>(0.0, 1.0, 0.0);
-    if (abs(world_normal.y) > 0.99) {
-        up_ref = vec3<f32>(1.0, 0.0, 0.0);
-    }
 
-    let world_tangent = normalize(cross(up_ref, world_normal));
-    let world_bitangent = cross(world_normal, world_tangent);
+    // Reuse your branchless helper (returns mat2x3 with tangent and bitangent)
+    let tb = compute_tangent_and_bitangent(world_normal);
 
-    let final_world_normal = (world_tangent * shape_normal.x)
-                               + (world_bitangent * shape_normal.y)
-                               + (world_normal * shape_normal.z);
+    // Build the full 3x3 TBN basis matrix and transform shape_normal in one step
+    let tbn = mat3x3<f32>(tb[0], tb[1], world_normal);
 
-    return normalize(final_world_normal);
-
-    // let N = normalize(normal);
-
-    // // Choose an axis that is not parallel to N to construct a stable tangent basis
-    // let up = select(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), abs(N.z) < 0.999);
-    // let T = normalize(cross(up, N));
-    // let B = cross(N, T);
-
-    // let tbn = mat3x3<f32>(T, B, N);
-    // let local_normal = tbn * shape_normal;
-
-    // let world_rot = mat3x3<f32>(
-    //     world_from_local[0].xyz,
-    //     world_from_local[1].xyz,
-    //     world_from_local[2].xyz
-    // );
-
-    // return normalize(world_rot * local_normal);
+    return normalize(tbn * shape_normal);
 }
 
 

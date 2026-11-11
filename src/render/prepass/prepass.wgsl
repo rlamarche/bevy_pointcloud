@@ -3,7 +3,7 @@
     skinning,
     morph,
     mesh_view_bindings::view,
-    view_transformations::position_world_to_view,
+    view_transformations::{position_world_to_view, position_world_to_prev_view},
 }
 
 #ifdef PREPASS_FRAGMENT
@@ -75,6 +75,7 @@ fn vertex(
     // Compute vertex positions
     #ifdef NORMAL_PREPASS_OR_DEFERRED_PREPASS
         let pos = pointcloud_functions::compute_point_vertex_positions_normal(
+            point_view_position,
             point_world_position,
             world_from_local,
             shape.position,
@@ -85,6 +86,7 @@ fn vertex(
         );
     #else // NORMAL_PREPASS_OR_DEFERRED_PREPASS
         let pos = pointcloud_functions::compute_point_vertex_positions(
+            point_view_position,
             point_world_position,
             world_from_local,
             shape.position,
@@ -144,9 +146,12 @@ fn vertex(
         vec4<f32>(vertex.position, 1.0)
     ).xyz;
 
+    let prev_point_view_position = position_world_to_prev_view(prev_point_world_position);
+
     // Compute previous vertex positions
     #ifdef NORMAL_PREPASS_OR_DEFERRED_PREPASS
         let prev_pos = pointcloud_functions::compute_point_vertex_positions_normal(
+            prev_point_view_position,
             prev_point_world_position,
             prev_model,
             shape.position,

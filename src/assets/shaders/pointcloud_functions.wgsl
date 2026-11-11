@@ -207,9 +207,9 @@ fn compute_point_radius(
     #ifdef ADAPTIVE_POINT_SIZE
         #ifdef IS_OCTREE
             let max_relative_depth = get_max_relative_depth(position);
-            let attenuation = exp2(max_relative_depth);
+            let inv_attenuation = exp2(-max_relative_depth);
             let spacing = select(1.0, pointcloud.spacing, pointcloud.spacing > 0.0);
-            radius = radius * spacing * 1.7 / attenuation;
+            radius = radius * spacing * 1.7 * inv_attenuation;
         #endif // IS_OCTREE
     #endif // ADAPTIVE_POINT_SIZE
 
@@ -219,6 +219,7 @@ fn compute_point_radius(
 
 /// Computes all vertex positions (world, view, clip) from the point center world position.
 fn compute_point_vertex_positions(
+    point_view_position: vec3<f32>,
     point_world_position: vec3<f32>,
     world_from_local: mat4x4<f32>,
     shape_position: vec3<f32>,
@@ -227,8 +228,6 @@ fn compute_point_vertex_positions(
     tangent: vec3<f32>,
 ) -> PointVertexPositions {
     var res: PointVertexPositions;
-
-    let point_view_position = position_world_to_view(point_world_position);
 
     #ifdef SPLAT_ORIENTATION_FACE_NORMAL
         #ifdef VERTEX_TANGENTS
@@ -277,6 +276,7 @@ fn compute_point_vertex_positions(
 /// - `point_normal`: Surface normal of the point cloud sample in local/world space.
 /// - `shape_normal`: Local normal of the current vertex from the splat geometry (mesh/cube/quad).
 fn compute_point_vertex_positions_normal(
+    point_view_position: vec3<f32>,
     point_world_position: vec3<f32>,
     world_from_local: mat4x4<f32>,
     shape_position: vec3<f32>,
@@ -286,8 +286,6 @@ fn compute_point_vertex_positions_normal(
     tangent: vec3<f32>,
 ) -> PointVertexPositionsNormal {
     var res: PointVertexPositionsNormal;
-
-    let point_view_position = position_world_to_view(point_world_position);
 
     #ifdef SPLAT_ORIENTATION_FACE_NORMAL
         #ifdef VERTEX_TANGENTS
@@ -485,37 +483,37 @@ fn get_max_relative_depth(
     for (var i = 0; i <= 30; i ++) {
         let current_node = textureLoad(visible_nodes, vec2<u32>(current_index, pointcloud.octree_index), 0);
 
-        // Extract data
-        let children_mask = current_node.r;  // u8 dans le canal R
+        let children_mask = current_node.r;
+        let first_child_index = current_node.b | (current_node.a << 8u);
 
-        let first_child_index = current_node.b | (current_node.a << 8u);  // u16 reconstruit à partir de B et A
-
-        // Determiner in which octant is the position
-        let relative_position = position - center;
+        // Determine in which octant is the position
+        let rel_pos = position - center;
 
         // index3d contains 0 or 1 for each axe
-        let index3d = step(vec3(0.0), relative_position);
+        let index3d = step(vec3(0.0), rel_pos);
 
         // compute the child_index
-        let child_index = u32(round(4.0 * index3d.x + 2.0 * index3d.y + index3d.z));
+        let bit_x = select(0u, 4u, rel_pos.x >= 0.0);
+        let bit_y = select(0u, 2u, rel_pos.y >= 0.0);
+        let bit_z = select(0u, 1u, rel_pos.z >= 0.0);
+        let child_index = bit_x | bit_y | bit_z;
 
         // check if a children exists at this index
-        if functions::is_bit_set(children_mask, child_index) {
-            // compute child offset
-            var child_offset: u32 = 0u;
-            if child_index > 0 {
-                child_offset = functions::count_bits_before(children_mask, child_index);
-            }
+        let mask_bit = 1u << child_index;
+        if (children_mask & mask_bit) != 0u {
+            let lower_mask = mask_bit - 1u;
+            #ifdef WEBGL2
+                let child_offset = count_one_bits_compat(children_mask & lower_mask);
+            #else
+                let child_offset = countOneBits(children_mask & lower_mask);
+            #endif
 
-            let actual_child_index = first_child_index + child_offset;
-
+            current_index = first_child_index + child_offset;
             relative_depth ++;
+            half_extents *= 0.5;
 
-            current_index = actual_child_index;
-            half_extents = half_extents  * 0.5;
-
-            let offset = (index3d * 2.0 - 1.0) * half_extents;
-            center = center + offset;
+            let sign_dir = select(vec3<f32>(-1.0), vec3<f32>(1.0), rel_pos >= vec3<f32>(0.0));
+            center += sign_dir * half_extents;
         } else {
             let offset = f32(current_node.g) / 10.0 - 10.0;
             return f32(relative_depth) + offset;
@@ -525,4 +523,13 @@ fn get_max_relative_depth(
 
     return f32(relative_depth);
 }
+
+
+fn count_one_bits_compat(x: u32) -> u32 {
+    var v = x;
+    v = v - ((v >> 1u) & 0x55555555u);
+    v = (v & 0x33333333u) + ((v >> 2u) & 0x33333333u);
+    return (((v + (v >> 4u)) & 0x0F0F0F0Fu) * 0x01010101u) >> 24u;
+}
+
 #endif // IS_OCTREE
