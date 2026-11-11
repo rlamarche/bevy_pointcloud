@@ -150,7 +150,15 @@ pub fn prepare_fullscreen_bind_groups<M: PointCloudMaterial, const PASS: usize>(
 
         let layout = &pipeline_cache.get_bind_group_layout(&pointcloud_layout);
 
-        if visible_nodes_texture.has_changed || view_multipass_textures.has_changed {
+        let bind_group_exists = match &existing_bind_group {
+            Some(existing_bind_group) => existing_bind_group.bind_group.is_some(),
+            None => false,
+        };
+
+        if visible_nodes_texture.has_changed
+            || view_multipass_textures.has_changed
+            || !bind_group_exists
+        {
             // Fetch or create the `FullscreenMaterialBindGroup` component
             let mut fullscreen_view_bind_group = match existing_bind_group {
                 Some(ref mut existing_bind_group) => std::mem::take(&mut **existing_bind_group),

@@ -730,7 +730,7 @@ pub fn prepare_view_point_cloud_bind_groups<M: PointCloudMaterial>(
                 continue;
             };
 
-            if visible_nodes_texture.has_changed {
+            if visible_nodes_texture.has_changed || !bind_groups.contains_key(main_entity) {
                 // first remove the previous bind group
                 bind_groups.remove(main_entity);
 

@@ -216,7 +216,12 @@ pub fn prepare_pointcloud_bind_groups<M: PointCloudMaterial, const PASS: usize>(
                 continue;
             };
 
-            if visible_nodes_texture.has_changed || view_multipass_textures.has_changed {
+            if visible_nodes_texture.has_changed
+                || view_multipass_textures.has_changed
+                || !view_point_cloud_bind_groups
+                    .bind_groups
+                    .contains_key(main_entity)
+            {
                 // first remove the previous bind group
                 view_point_cloud_bind_groups.bind_groups.remove(main_entity);
 
