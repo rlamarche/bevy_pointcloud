@@ -26,7 +26,7 @@ use bevy::{
 use crate::{
     render::{
         multipass::{
-            mark_view_point_cloud_bind_groups_not_changed, prepare_fullscreen_material_pipelines,
+            mark_view_multipass_textures_not_changed, prepare_fullscreen_material_pipelines,
             prepare_multipass_textures, FullscreenMaterialPassPipeline, ViewMultipassTextures,
         },
         ErasedMaterialPreparedPasses, PointCloudMaterial, PreparedViewSettingsUniform,
@@ -61,7 +61,7 @@ impl<M: PointCloudMaterial, const PASS: usize> Plugin for FullscreenPassPlugin<M
                 prepare_fullscreen_bind_groups::<M, PASS>
                     .in_set(RenderSystems::PrepareBindGroups)
                     .after(prepare_multipass_textures::<M>)
-                    .before(mark_view_point_cloud_bind_groups_not_changed::<M>),
+                    .before(mark_view_multipass_textures_not_changed::<M>),
             ),
         );
     }

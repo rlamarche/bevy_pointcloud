@@ -13,7 +13,7 @@ use bevy::{
         system::{Commands, Query, Res, ResMut},
     },
     image::ToExtents,
-    log::{error, warn},
+    log::error,
     pbr::ViewKeyCache,
     render::{
         camera::ExtractedCamera,
@@ -85,8 +85,6 @@ pub fn prepare_multipass_textures<M: PointCloudMaterial>(
             view_multipass_textures.size = size;
             view_multipass_textures.has_changed = true;
             view_multipass_textures.clear();
-        } else {
-            view_multipass_textures.has_changed = false;
         }
 
         for (&id, pass) in prepared_passes.iter() {
@@ -279,7 +277,7 @@ pub fn prepare_pointcloud_bind_groups<M: PointCloudMaterial, const PASS: usize>(
     }
 }
 
-pub fn mark_view_point_cloud_bind_groups_not_changed<M: PointCloudMaterial>(
+pub fn mark_view_multipass_textures_not_changed<M: PointCloudMaterial>(
     views: Query<&mut ViewMultipassTextures<M>>,
 ) {
     for mut view_multipass_textures in views {
