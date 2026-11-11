@@ -1689,6 +1689,7 @@ pub fn queue_prepass_material_meshes(
                                 material_bind_group_index: Some(material.binding.group.0),
                                 splat_slabs,
                                 slabs: mesh_slabs,
+                                root_entity: render_point_cloud_chunk_instance.root_entity,
                             },
                             OpaqueNoLightmap3dBinKey {
                                 asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
@@ -1719,6 +1720,7 @@ pub fn queue_prepass_material_meshes(
                                 material_bind_group_index,
                                 splat_slabs,
                                 slabs: mesh_slabs,
+                                root_entity: render_point_cloud_chunk_instance.root_entity,
                             },
                             OpaqueNoLightmap3dBinKey {
                                 asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
@@ -1742,6 +1744,7 @@ pub fn queue_prepass_material_meshes(
                                 material_bind_group_index: Some(material.binding.group.0),
                                 splat_slabs,
                                 slabs: mesh_slabs,
+                                root_entity: render_point_cloud_chunk_instance.root_entity,
                             },
                             OpaqueNoLightmap3dBinKey {
                                 asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
@@ -1762,6 +1765,7 @@ pub fn queue_prepass_material_meshes(
                                 material_bind_group_index: Some(material.binding.group.0),
                                 splat_slabs,
                                 slabs: mesh_slabs,
+                                root_entity: render_point_cloud_chunk_instance.root_entity,
                             },
                             OpaqueNoLightmap3dBinKey {
                                 asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),

@@ -476,3 +476,9 @@ fn prepare_visible_nodes_texture(
     );
     commands.entity(entity).insert(visible_nodes_texture);
 }
+
+pub fn mark_visible_nodes_texture_not_changed(views: Query<&mut VisibleNodesTexture>) {
+    for mut visible_nodes_texture in views {
+        visible_nodes_texture.has_changed = false;
+    }
+}

@@ -216,6 +216,8 @@ impl Plugin for RenderPointCloudPlugin {
                         .in_set(RenderSystems::PrepareAssets)
                         .after(bevy::pbr::check_views_need_specialization)
                         .before(RenderSystems::Specialize),
+                    mark_visible_nodes_texture_not_changed
+                        .in_set(RenderSystems::PrepareBindGroups)
                 ),
             )
             .add_systems(

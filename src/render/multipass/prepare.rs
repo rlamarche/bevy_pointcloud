@@ -13,7 +13,7 @@ use bevy::{
         system::{Commands, Query, Res, ResMut},
     },
     image::ToExtents,
-    log::error,
+    log::{error, warn},
     pbr::ViewKeyCache,
     render::{
         camera::ExtractedCamera,
@@ -276,6 +276,14 @@ pub fn prepare_pointcloud_bind_groups<M: PointCloudMaterial, const PASS: usize>(
 
         let mut entity_commands = commands.entity(entity);
         entity_commands.insert(view_point_cloud_bind_groups);
+    }
+}
+
+pub fn mark_view_point_cloud_bind_groups_not_changed<M: PointCloudMaterial>(
+    views: Query<&mut ViewMultipassTextures<M>>,
+) {
+    for mut view_multipass_textures in views {
+        view_multipass_textures.has_changed = false;
     }
 }
 

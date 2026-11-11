@@ -143,6 +143,9 @@ pub struct Opaque3dChunkBatchSetKey {
     /// 0 if your items can be multi-drawn, or with a unique value if they
     /// can't.
     pub slabs: MeshSlabs,
+
+    /// The parent point cloud entity
+    pub root_entity: MainEntity,
 }
 
 impl PhaseItemBatchSetKey for Opaque3dChunkBatchSetKey {

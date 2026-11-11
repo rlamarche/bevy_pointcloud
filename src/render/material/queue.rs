@@ -288,6 +288,7 @@ pub fn queue_material_meshes(
                         material_bind_group_index: Some(material.binding.group.0),
                         slabs: mesh_slabs,
                         splat_slabs,
+                        root_entity: render_point_cloud_chunk_instance.root_entity,
                         // lightmap_slab: mesh_instance
                         //     .shared
                         //     .lightmap_slab_index()
@@ -324,6 +325,7 @@ pub fn queue_material_meshes(
                         material_bind_group_index: Some(material.binding.group.0),
                         splat_slabs,
                         slabs: mesh_slabs,
+                        root_entity: render_point_cloud_chunk_instance.root_entity,
                     };
                     let bin_key = OpaqueNoLightmap3dBinKey {
                         asset_id: mesh_instance.mesh_asset_id().into(),

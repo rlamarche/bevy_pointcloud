@@ -28,7 +28,7 @@ use bevy::{
         },
     },
     light::{EnvironmentMapLight, IrradianceVolume, ShadowFilteringMethod},
-    log::{debug, error, info, warn},
+    log::{debug, error, warn},
     material::{key::ErasedMeshPipelineKey, OpaqueRendererMethod},
     math::{Mat4, Vec4},
     mesh::MeshVertexBufferLayoutRef,
@@ -77,7 +77,7 @@ use bevy::{
     },
     render::{erased_render_asset::ErasedRenderAssets, sync_world::MainEntity},
 };
-use std::{any::type_name, marker::PhantomData, num::NonZero, sync::Arc};
+use std::{marker::PhantomData, num::NonZero, sync::Arc};
 
 use crate::{
     render::{
@@ -186,7 +186,10 @@ impl<M: PointCloudMaterial> Plugin for MultipassMaterialPlugin<M> {
             .init_gpu_resource::<PendingMultipassMeshMaterialQueues<M>>()
             .add_systems(
                 Render,
-                prepare_multipass_textures::<M>.in_set(RenderSystems::PrepareResources),
+                (
+                    prepare_multipass_textures::<M>.in_set(RenderSystems::PrepareResources),
+                    mark_view_point_cloud_bind_groups_not_changed::<M>.in_set(RenderSystems::PrepareBindGroups),
+                ),
             );
 
         match <M::PassId as IntoEnumIterator>::iter().count() {
@@ -1302,6 +1305,7 @@ pub fn queue_multipass_material_meshes<M: PointCloudMaterial, const PASS: usize>
                     material_bind_group_index: Some(material.binding.group.0),
                     splat_slabs,
                     slabs: mesh_slabs,
+                    root_entity: render_point_cloud_chunk_instance.root_entity,
                     // lightmap_slab: mesh_instance
                     //     .shared
                     //     .lightmap_slab_index()

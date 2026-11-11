@@ -54,7 +54,7 @@ use crate::{
     render::{
         check_views_need_specialization, clear_dirty_specializations,
         deferred::{AlphaMask3dChunkDeferred, Opaque3dChunkDeferred},
-        expire_specializations_for_views,
+        expire_specializations_for_views, mark_visible_nodes_texture_not_changed,
         multipass::{
             FullscreenMaterialPassPipeline, MultipassMaterialPlugin, MultipassMaterialsPlugin,
             MultipassPipelinePlugin, ViewMultipassTextures,
@@ -484,7 +484,8 @@ where
                         )
                             .in_set(RenderSystems::PrepareResources),
                         prepare_view_point_cloud_bind_groups::<M>
-                            .in_set(RenderSystems::PrepareBindGroups),
+                            .in_set(RenderSystems::PrepareBindGroups)
+                            .before(mark_visible_nodes_texture_not_changed),
                     ),
                 );
 

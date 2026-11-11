@@ -10,6 +10,7 @@ use bevy::{
         schedule::IntoScheduleConfigs,
         system::{Commands, Query, Res},
     },
+    log::warn,
     render::{
         render_resource::{
             binding_types::{texture_2d, texture_2d_multisampled, uniform_buffer},
@@ -25,8 +26,8 @@ use bevy::{
 use crate::{
     render::{
         multipass::{
-            prepare_fullscreen_material_pipelines, prepare_multipass_textures,
-            FullscreenMaterialPassPipeline, ViewMultipassTextures,
+            mark_view_point_cloud_bind_groups_not_changed, prepare_fullscreen_material_pipelines,
+            prepare_multipass_textures, FullscreenMaterialPassPipeline, ViewMultipassTextures,
         },
         ErasedMaterialPreparedPasses, PointCloudMaterial, PreparedViewSettingsUniform,
         VisibleNodesTexture,
@@ -59,7 +60,8 @@ impl<M: PointCloudMaterial, const PASS: usize> Plugin for FullscreenPassPlugin<M
                 prepare_fullscreen_material_pipelines::<M, PASS>.in_set(RenderSystems::Prepare),
                 prepare_fullscreen_bind_groups::<M, PASS>
                     .in_set(RenderSystems::PrepareBindGroups)
-                    .after(prepare_multipass_textures::<M>),
+                    .after(prepare_multipass_textures::<M>)
+                    .before(mark_view_point_cloud_bind_groups_not_changed::<M>),
             ),
         );
     }
@@ -119,7 +121,7 @@ pub fn prepare_fullscreen_bind_groups<M: PointCloudMaterial, const PASS: usize>(
             continue;
         };
         let Some(pass_properties) = prepared_passes.get(&PASS) else {
-            // the pass is not needed anymode, remove the cached if some bind group and skip
+            // the pass is not needed anymore, remove the cached if some bind group and skip
             if existing_bind_group.is_some() {
                 commands
                     .entity(entity)
@@ -148,13 +150,12 @@ pub fn prepare_fullscreen_bind_groups<M: PointCloudMaterial, const PASS: usize>(
 
         let layout = &pipeline_cache.get_bind_group_layout(&pointcloud_layout);
 
-        // Fetch or create the `ViewPointCloudPassBindGroup` component
-        let mut fullscreen_view_bind_group = match existing_bind_group {
-            Some(ref mut existing_bind_group) => std::mem::take(&mut **existing_bind_group),
-            None => FullscreenMaterialBindGroup::default(),
-        };
-
         if visible_nodes_texture.has_changed || view_multipass_textures.has_changed {
+            // Fetch or create the `FullscreenMaterialBindGroup` component
+            let mut fullscreen_view_bind_group = match existing_bind_group {
+                Some(ref mut existing_bind_group) => std::mem::take(&mut **existing_bind_group),
+                None => FullscreenMaterialBindGroup::default(),
+            };
             // first remove the previous bind group
             fullscreen_view_bind_group.bind_group = None;
 
@@ -197,6 +198,8 @@ pub fn prepare_fullscreen_bind_groups<M: PointCloudMaterial, const PASS: usize>(
                 );
 
                 fullscreen_view_bind_group.bind_group = Some(bind_group);
+            } else {
+                warn!("Not computing fullscreen bindgroup for pass {}", PASS);
             }
 
             let mut entity_commands = commands.entity(entity);

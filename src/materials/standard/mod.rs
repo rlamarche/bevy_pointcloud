@@ -3,7 +3,6 @@ use bevy::{
     asset::{embedded_asset, Asset, Handle},
     color::Color,
     image::Image,
-    log::info,
     pbr::{StandardMaterial, StandardMaterialUniform},
     prelude::{Deref, DerefMut},
     reflect::{std_traits::ReflectDefault, Reflect},
