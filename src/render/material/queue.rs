@@ -1,8 +1,5 @@
 use bevy::{
-    core_pipeline::{
-        core_3d::{Opaque3dBinKey, Transparent3d, TransparentSortingInfo3d},
-        prepass::OpaqueNoLightmap3dBinKey,
-    },
+    core_pipeline::core_3d::{Transparent3d, TransparentSortingInfo3d},
     ecs::system::{Query, Res, ResMut},
     log::{info, warn},
     material::{OpaqueRendererMethod, RenderPhaseType},
@@ -25,7 +22,8 @@ use crate::{
         prepass::OpaqueChunkNoLightmap3dBatchSetKey, render_phase::ViewBinnedChunksRenderPhases,
         AlphaMask3dChunk, MainPassAlphaMaskDrawFunction, MainPassOpaqueDrawFunction,
         MainPassTransmissiveDrawFunction, MainPassTransparentDrawFunction, Opaque3dChunk,
-        Opaque3dChunkBatchSetKey, PendingPointCloudMaterialQueues, PointCloudDirtySpecializations,
+        Opaque3dChunkBatchSetKey, Opaque3dChunkBinKey, OpaqueChunkNoLightmap3dBinKey,
+        PendingPointCloudMaterialQueues, PointCloudDirtySpecializations,
         PreparedPointCloudMaterial, RenderPointCloudChunkInstances, RenderPointCloudInstances,
         RenderPointCloudMaterialInstances, SpecializedPointCloudMaterialPipelineCache,
     },
@@ -294,8 +292,9 @@ pub fn queue_material_meshes(
                         //     .lightmap_slab_index()
                         //     .map(|index| *index),
                     };
-                    let bin_key = Opaque3dBinKey {
+                    let bin_key = Opaque3dChunkBinKey {
                         asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
+                        depth: render_point_cloud_chunk_instance.depth,
                     };
 
                     opaque_phase.add(
@@ -327,8 +326,9 @@ pub fn queue_material_meshes(
                         slabs: mesh_slabs,
                         root_entity: render_point_cloud_chunk_instance.root_entity,
                     };
-                    let bin_key = OpaqueNoLightmap3dBinKey {
-                        asset_id: mesh_instance.mesh_asset_id().into(),
+                    let bin_key = OpaqueChunkNoLightmap3dBinKey {
+                        asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
+                        depth: render_point_cloud_chunk_instance.depth,
                     };
                     alpha_mask_phase.add(
                         batch_set_key,

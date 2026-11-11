@@ -30,8 +30,7 @@ fn compute_screen_space_point_size(
     max_point_size_px: f32,
 ) -> f32 {
     let f = view.clip_from_view[1][1];
-    let slope = 1.0 / f;
-    let proj_factor = -0.5 * view.viewport[3] / (slope * view_position.z);
+    let proj_factor = -0.5 * view.viewport[3] * f / view_position.z;
     var radius_screen = (point_size_px / min(view.viewport[2], view.viewport[3])) * proj_factor;
 
     radius_screen = clamp(radius_screen, min_point_size_px, max_point_size_px);

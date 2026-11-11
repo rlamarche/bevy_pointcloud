@@ -429,6 +429,7 @@ pub fn extract_pointcloud_chunk_instances(
                     root_entity: root_entity.into(),
                     mesh_asset_id: mesh_handle.id(),
                     topology: chunk.topology,
+                    depth: chunk.depth,
                 },
             ));
         },

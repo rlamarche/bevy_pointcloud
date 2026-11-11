@@ -193,6 +193,7 @@ pub struct RenderPointCloudChunkInstance {
     pub is_root: bool,
     pub mesh_asset_id: AssetId<Mesh>,
     pub topology: PointCloudTopologyKind,
+    pub depth: u32,
 }
 
 #[derive(ShaderType, Clone)]

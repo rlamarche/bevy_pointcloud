@@ -6,7 +6,13 @@ use bevy::{
     app::{App, Plugin},
     asset::{embedded_asset, load_embedded_asset, AssetServer, Handle},
     camera::{Camera, Camera3d},
-    core_pipeline::{core_3d::CORE_3D_DEPTH_FORMAT, deferred::*, prepass::*},
+    core_pipeline::{
+        core_3d::CORE_3D_DEPTH_FORMAT,
+        prepass::{
+            prepass_target_descriptors, DeferredPrepass, DepthPrepass, MotionVectorPrepass,
+            NormalPrepass, PreviousViewData, PreviousViewUniformOffset, PreviousViewUniforms,
+        },
+    },
     ecs::{
         entity::EntityHashMap,
         prelude::*,
@@ -76,13 +82,13 @@ use crate::{
         DeferredAlphaMaskDrawFunction, DeferredFragmentShader, DeferredOpaqueDrawFunction,
         DeferredVertexShader, DrawPointCloudBatched, ErasedMaterialViewSettingsKeys,
         ErasedPointCloudMaterialPipelineKey, ErasedSplatPipelineKey, ErasedViewSettingsKey,
-        PointCloudChunk3d, PointCloudDirtySpecializations, PointCloudMaterialPipeline,
-        PointCloudMaterialProperties, PointCloudPipeline, PreparedPointCloudMaterial,
-        PrepassAlphaMaskDrawFunction, PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction,
-        PrepassOpaqueDrawFunction, PrepassVertexShader, RenderPointCloudChunkInstances,
-        RenderPointCloudInstances, RenderPointCloudMaterialInstances, SetMaterialBindGroup,
-        SetPointCloudBindGroup, SpecializedPointCloudPipeline, SpecializedPointCloudPipelines,
-        SplatPipelineKey,
+        OpaqueChunkNoLightmap3dBinKey, PointCloudChunk3d, PointCloudDirtySpecializations,
+        PointCloudMaterialPipeline, PointCloudMaterialProperties, PointCloudPipeline,
+        PreparedPointCloudMaterial, PrepassAlphaMaskDrawFunction, PrepassFragmentShader,
+        PrepassOpaqueDepthOnlyDrawFunction, PrepassOpaqueDrawFunction, PrepassVertexShader,
+        RenderPointCloudChunkInstances, RenderPointCloudInstances,
+        RenderPointCloudMaterialInstances, SetMaterialBindGroup, SetPointCloudBindGroup,
+        SpecializedPointCloudPipeline, SpecializedPointCloudPipelines, SplatPipelineKey,
     },
     PointCloudTopologyKind,
 };
@@ -176,8 +182,6 @@ impl Plugin for PrepassPlugin {
             .add_render_command::<Opaque3dChunkPrepass, DrawPrepass>()
             .add_render_command::<Opaque3dChunkPrepass, DrawDepthOnlyPrepass>()
             .add_render_command::<AlphaMask3dChunkPrepass, DrawPrepass>()
-            .add_render_command::<Opaque3dDeferred, DrawPrepass>()
-            .add_render_command::<AlphaMask3dDeferred, DrawPrepass>()
             .add_systems(
                 Render,
                 (
@@ -1691,8 +1695,9 @@ pub fn queue_prepass_material_meshes(
                                 slabs: mesh_slabs,
                                 root_entity: render_point_cloud_chunk_instance.root_entity,
                             },
-                            OpaqueNoLightmap3dBinKey {
+                            OpaqueChunkNoLightmap3dBinKey {
                                 asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
+                                depth: render_point_cloud_chunk_instance.depth,
                             },
                             (
                                 *render_entity,
@@ -1722,8 +1727,9 @@ pub fn queue_prepass_material_meshes(
                                 slabs: mesh_slabs,
                                 root_entity: render_point_cloud_chunk_instance.root_entity,
                             },
-                            OpaqueNoLightmap3dBinKey {
+                            OpaqueChunkNoLightmap3dBinKey {
                                 asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
+                                depth: render_point_cloud_chunk_instance.depth,
                             },
                             (
                                 *render_entity,
@@ -1746,8 +1752,9 @@ pub fn queue_prepass_material_meshes(
                                 slabs: mesh_slabs,
                                 root_entity: render_point_cloud_chunk_instance.root_entity,
                             },
-                            OpaqueNoLightmap3dBinKey {
+                            OpaqueChunkNoLightmap3dBinKey {
                                 asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
+                                depth: render_point_cloud_chunk_instance.depth,
                             },
                             (
                                 *render_entity,
@@ -1767,8 +1774,9 @@ pub fn queue_prepass_material_meshes(
                                 slabs: mesh_slabs,
                                 root_entity: render_point_cloud_chunk_instance.root_entity,
                             },
-                            OpaqueNoLightmap3dBinKey {
+                            OpaqueChunkNoLightmap3dBinKey {
                                 asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
+                                depth: render_point_cloud_chunk_instance.depth,
                             },
                             (
                                 *render_entity,

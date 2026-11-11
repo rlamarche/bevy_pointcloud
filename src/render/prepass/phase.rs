@@ -2,9 +2,7 @@ use std::ops::Range;
 
 use bevy::{
     camera::{Camera, Camera3d},
-    core_pipeline::prepass::{
-        DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass, OpaqueNoLightmap3dBinKey,
-    },
+    core_pipeline::prepass::{DeferredPrepass, DepthPrepass, MotionVectorPrepass, NormalPrepass},
     ecs::{
         entity::Entity,
         query::{Has, With},
@@ -28,6 +26,7 @@ use bevy::{
 use crate::render::{
     deferred::{AlphaMask3dChunkDeferred, Opaque3dChunkDeferred},
     render_phase::ViewBinnedChunksRenderPhases,
+    OpaqueChunkNoLightmap3dBinKey,
 };
 
 /// Opaque phase of the 3D prepass.
@@ -42,7 +41,7 @@ pub struct Opaque3dChunkPrepass {
     /// if it's enabled and the current platform supports it.
     pub batch_set_key: OpaqueChunkNoLightmap3dBatchSetKey,
     /// Information that separates items into bins.
-    pub bin_key: OpaqueNoLightmap3dBinKey,
+    pub bin_key: OpaqueChunkNoLightmap3dBinKey,
 
     /// An entity from which Bevy fetches data common to all instances in this
     /// batch, such as the mesh.
@@ -129,7 +128,7 @@ impl PhaseItem for Opaque3dChunkPrepass {
 
 impl BinnedPhaseItem for Opaque3dChunkPrepass {
     type BatchSetKey = OpaqueChunkNoLightmap3dBatchSetKey;
-    type BinKey = OpaqueNoLightmap3dBinKey;
+    type BinKey = OpaqueChunkNoLightmap3dBinKey;
 
     #[inline]
     fn new(
@@ -168,7 +167,7 @@ pub struct AlphaMask3dChunkPrepass {
     /// if it's enabled and the current platform supports it.
     pub batch_set_key: OpaqueChunkNoLightmap3dBatchSetKey,
     /// Information that separates items into bins.
-    pub bin_key: OpaqueNoLightmap3dBinKey,
+    pub bin_key: OpaqueChunkNoLightmap3dBinKey,
     pub representative_entity: (Entity, MainEntity),
     pub batch_range: Range<u32>,
     pub extra_index: PhaseItemExtraIndex,
@@ -212,7 +211,7 @@ impl PhaseItem for AlphaMask3dChunkPrepass {
 
 impl BinnedPhaseItem for AlphaMask3dChunkPrepass {
     type BatchSetKey = OpaqueChunkNoLightmap3dBatchSetKey;
-    type BinKey = OpaqueNoLightmap3dBinKey;
+    type BinKey = OpaqueChunkNoLightmap3dBinKey;
 
     #[inline]
     fn new(

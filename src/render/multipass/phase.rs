@@ -2,7 +2,6 @@ use std::{marker::PhantomData, ops::Range};
 
 use bevy::{
     camera::{Camera, Camera3d},
-    core_pipeline::core_3d::Opaque3dBinKey,
     ecs::{
         entity::Entity,
         query::{Has, With},
@@ -22,7 +21,8 @@ use bevy::{
 };
 
 use crate::render::{
-    render_phase::ViewBinnedChunksRenderPhases, Opaque3dChunkBatchSetKey, PointCloudMaterial,
+    render_phase::ViewBinnedChunksRenderPhases, Opaque3dChunkBatchSetKey, Opaque3dChunkBinKey,
+    PointCloudMaterial,
 };
 
 /// Opaque phase of the 3D multipass.
@@ -37,7 +37,7 @@ pub struct Opaque3dChunkMultipass<M: PointCloudMaterial, const PASS: usize> {
     /// if it's enabled and the current platform supports it.
     pub batch_set_key: Opaque3dChunkBatchSetKey,
     /// Information that separates items into bins.
-    pub bin_key: Opaque3dBinKey,
+    pub bin_key: Opaque3dChunkBinKey,
 
     /// An entity from which Bevy fetches data common to all instances in this
     /// batch, such as the mesh.
@@ -94,7 +94,7 @@ impl<M: PointCloudMaterial, const PASS: usize> PhaseItem for Opaque3dChunkMultip
 
 impl<M: PointCloudMaterial, const PASS: usize> BinnedPhaseItem for Opaque3dChunkMultipass<M, PASS> {
     type BatchSetKey = Opaque3dChunkBatchSetKey;
-    type BinKey = Opaque3dBinKey;
+    type BinKey = Opaque3dChunkBinKey;
 
     #[inline]
     fn new(

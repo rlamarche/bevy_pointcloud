@@ -1,8 +1,8 @@
-use std::{hash::Hash, ops::Range};
+use std::{cmp::Ordering, hash::Hash, ops::Range};
 
 use bevy::{
+    asset::UntypedAssetId,
     camera::{Camera, Camera3d},
-    core_pipeline::{core_3d::Opaque3dBinKey, prepass::OpaqueNoLightmap3dBinKey},
     ecs::{
         entity::Entity,
         query::{Has, With},
@@ -42,7 +42,7 @@ pub struct Opaque3dChunk {
     /// if it's enabled and the current platform supports it.
     pub batch_set_key: Opaque3dChunkBatchSetKey,
     /// Information that separates items into bins.
-    pub bin_key: Opaque3dBinKey,
+    pub bin_key: Opaque3dChunkBinKey,
 
     /// An entity from which Bevy fetches data common to all instances in this
     /// batch, such as the mesh.
@@ -96,7 +96,7 @@ impl PhaseItem for Opaque3dChunk {
 
 impl BinnedPhaseItem for Opaque3dChunk {
     type BatchSetKey = Opaque3dChunkBatchSetKey;
-    type BinKey = Opaque3dBinKey;
+    type BinKey = Opaque3dChunkBinKey;
 
     #[inline]
     fn new(
@@ -161,7 +161,7 @@ pub struct AlphaMask3dChunk {
     /// if it's enabled and the current platform supports it.
     pub batch_set_key: OpaqueChunkNoLightmap3dBatchSetKey,
     /// The key, which determines which can be batched.
-    pub bin_key: OpaqueNoLightmap3dBinKey,
+    pub bin_key: OpaqueChunkNoLightmap3dBinKey,
     pub representative_entity: (Entity, MainEntity),
     pub batch_range: Range<u32>,
     pub extra_index: PhaseItemExtraIndex,
@@ -204,7 +204,7 @@ impl PhaseItem for AlphaMask3dChunk {
 }
 
 impl BinnedPhaseItem for AlphaMask3dChunk {
-    type BinKey = OpaqueNoLightmap3dBinKey;
+    type BinKey = OpaqueChunkNoLightmap3dBinKey;
     type BatchSetKey = OpaqueChunkNoLightmap3dBatchSetKey;
 
     #[inline]
@@ -278,4 +278,58 @@ pub fn extract_camera_phase(
 
     opaque_3d_phases.retain(|view_entity, _| live_entities.contains(view_entity));
     alpha_mask_3d_phases.retain(|view_entity, _| live_entities.contains(view_entity));
+}
+
+/// Data that must be identical in order to *batch* phase items together.
+///
+/// Note that a *batch set* (if multi-draw is in use) contains multiple batches.
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct Opaque3dChunkBinKey {
+    /// The asset that this phase item is associated with.
+    ///
+    /// Normally, this is the ID of the mesh, but for non-mesh items it might be
+    /// the ID of another type of asset.
+    pub asset_id: UntypedAssetId,
+    pub depth: u32,
+}
+
+impl PartialOrd for Opaque3dChunkBinKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Opaque3dChunkBinKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.depth
+            .cmp(&other.depth)
+            .then_with(|| self.asset_id.cmp(&other.asset_id))
+    }
+}
+
+/// Data that must be identical in order to *batch* phase items together.
+///
+/// Note that a *batch set* (if multi-draw is in use) contains multiple batches.
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct OpaqueChunkNoLightmap3dBinKey {
+    /// The asset that this phase item is associated with.
+    ///
+    /// Normally, this is the ID of the mesh, but for non-mesh items it might be
+    /// the ID of another type of asset.
+    pub asset_id: UntypedAssetId,
+    pub depth: u32,
+}
+
+impl PartialOrd for OpaqueChunkNoLightmap3dBinKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for OpaqueChunkNoLightmap3dBinKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.depth
+            .cmp(&other.depth)
+            .then_with(|| self.asset_id.cmp(&other.asset_id))
+    }
 }
