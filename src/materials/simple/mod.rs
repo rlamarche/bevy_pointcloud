@@ -400,6 +400,10 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
                 "CLIPPING_PLANES",
             ),
             (
+                PointCloudViewSettingsKey::CLIPPING_PLANES,
+                "POINTCLOUD_NEEDS_WORLD_POSITION",
+            ),
+            (
                 PointCloudViewSettingsKey::CLIPPING_SPHERES,
                 "CLIPPING_SPHERES",
             ),
