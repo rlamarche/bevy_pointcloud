@@ -263,6 +263,16 @@ pub fn handle_internal_point_cloud_events(
                     continue;
                 };
 
+                // The parent may have been evicted while this chunk was in flight. Drop the
+                // result; visibility requests it again once the parent is resident.
+                if let Some(parent_id) = octree.get_node(node_id).and_then(|node| node.parent_id)
+                    && octree
+                        .get_node(parent_id)
+                        .is_none_or(|parent| parent.chunk.is_none())
+                {
+                    continue;
+                }
+
                 let Some(node) = octree.get_node_mut(node_id) else {
                     warn!(
                         "Hierarchy node {:?} not found for asset {:?} when storing chunk.",
@@ -324,7 +334,7 @@ pub fn handle_internal_point_cloud_events(
                             if let Some(aabb) = node.aabb {
                                 entity.insert(aabb);
                             }
-                        } else {
+                        } else if node.parent_id.is_none() {
                             // this is the root chunk, add it to the root component (the one with
                             // the [`PointCloud3d`] component)
                             commands
