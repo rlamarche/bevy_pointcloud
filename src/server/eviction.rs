@@ -6,7 +6,7 @@ use bevy::{
     ecs::{
         message::MessageReader,
         resource::Resource,
-        system::{Commands, Local, Query, Res, ResMut},
+        system::{Commands, Query, Res, ResMut},
     },
     mesh::Mesh,
     platform::collections::HashMap,
@@ -38,9 +38,14 @@ impl PointCloudTotalSize {
     }
 }
 
-/// The eviction frame on which each node, or one of its descendants, was last selected by a view.
+/// The eviction frame on which each resident node, or one of its descendants, was last selected
+/// by a view. A chunk counts as seen on the frame it is first found resident, so a chunk that
+/// has loaded but not yet been drawn is not the first to go.
 #[derive(Resource, Default)]
-pub struct PointCloudNodeLastSeen(HashMap<PointCloudNodeKey, u64>);
+pub struct PointCloudNodeLastSeen {
+    frame: u64,
+    nodes: HashMap<PointCloudNodeKey, u64>,
+}
 
 #[derive(Resource, Default)]
 pub struct PointCloudTracking {
@@ -78,11 +83,10 @@ pub fn evict_point_cloud_chunks(
     instances: Res<PointCloudInstances>,
     mut last_seen: ResMut<PointCloudNodeLastSeen>,
     mut resident: ResMut<PointCloudTotalSize>,
-    mut frame: Local<u64>,
     mut commands: Commands,
 ) {
-    *frame += 1;
-    let frame = *frame;
+    last_seen.frame += 1;
+    let frame = last_seen.frame;
 
     // Inactive cameras keep their last selection, which must not pin nodes.
     let mut point_budget = None;
@@ -111,7 +115,7 @@ pub fn evict_point_cloud_chunks(
                 id,
                 node_id: node.id,
             };
-            let seen = last_seen.0.get(&key).copied().unwrap_or(0);
+            let seen = *last_seen.nodes.entry(key.clone()).or_insert(frame);
             if node.depth > 0 && seen < frame {
                 // Oldest first; among equally old nodes, the deepest frees the least detail.
                 candidates.push((seen, Reverse(node.depth), key));
@@ -158,7 +162,7 @@ pub fn evict_point_cloud_chunks(
     }
 
     // Keep stamps for resident nodes only, so the map stays as small as the cache.
-    last_seen.0.retain(|key, _| {
+    last_seen.nodes.retain(|key, _| {
         point_clouds
             .get(key.id)
             .and_then(|cloud| cloud.topology.as_octree())
@@ -190,7 +194,7 @@ fn mark_seen(
                     id: cloud.asset_id,
                     node_id,
                 };
-                if last_seen.0.insert(key, frame) == Some(frame) {
+                if last_seen.nodes.insert(key, frame) == Some(frame) {
                     break;
                 }
                 next = octree.get_node(node_id).and_then(|node| node.parent_id);
@@ -340,14 +344,38 @@ mod tests {
             .collect()
     }
 
+    /// The first pass only stamps the fixture's freshly loaded chunks.
+    fn evict_twice(fixture: &mut Fixture) {
+        for _ in 0..2 {
+            fixture
+                .world
+                .run_system_once(evict_point_cloud_chunks)
+                .unwrap();
+        }
+    }
+
     #[test]
-    fn evicts_unseen_subtrees_until_under_the_cap() {
-        // Four 100-byte chunks against a 250-byte cap; only `b` is selected.
-        let mut fixture = fixture(250, &[3]);
+    fn freshly_loaded_chunks_survive_their_first_pass() {
+        // Over the cap with nothing selected: chunks that have not been drawn yet stay
+        // for one pass, then go.
+        let mut fixture = fixture(0, &[]);
         fixture
             .world
             .run_system_once(evict_point_cloud_chunks)
             .unwrap();
+        assert_eq!(resident(&fixture), [true; 4]);
+        fixture
+            .world
+            .run_system_once(evict_point_cloud_chunks)
+            .unwrap();
+        assert_eq!(resident(&fixture), [true, false, false, false]);
+    }
+
+    #[test]
+    fn evicts_unseen_subtrees_until_under_the_cap() {
+        // Four 100-byte chunks against a 250-byte cap; only `b` is selected.
+        let mut fixture = fixture(250, &[3]);
+        evict_twice(&mut fixture);
 
         // `a0` then `a` go; `b` is selected and the root is never evicted.
         assert_eq!(resident(&fixture), [true, false, false, true]);
@@ -361,10 +389,7 @@ mod tests {
         // Selecting `a0` pins `a` too, leaving only `b` to evict, even though
         // the cache stays over its cap.
         let mut fixture = fixture(0, &[2]);
-        fixture
-            .world
-            .run_system_once(evict_point_cloud_chunks)
-            .unwrap();
+        evict_twice(&mut fixture);
 
         assert_eq!(resident(&fixture), [true, true, true, false]);
         let total = fixture.world.resource::<PointCloudTotalSize>();
