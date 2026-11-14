@@ -4,10 +4,7 @@ mod infos;
 mod octree_loader;
 mod task;
 
-use std::{
-    cmp::Reverse,
-    sync::{Arc, PoisonError, RwLockReadGuard, RwLockWriteGuard},
-};
+use std::sync::{Arc, PoisonError, RwLockReadGuard, RwLockWriteGuard};
 
 use bevy::{
     app::{Plugin, PostUpdate},
@@ -28,7 +25,6 @@ use bevy::{
     tasks::IoTaskPool,
 };
 use crossbeam_channel::{Receiver, Sender};
-use priority_queue::PriorityQueue;
 use thiserror::Error;
 
 use crate::{
@@ -59,7 +55,7 @@ impl Plugin for PointCloudServerPlugin {
     fn build(&self, app: &mut bevy::app::App) {
         app.insert_resource(self.settings.clone())
             .init_resource::<PointCloudServer>()
-            .init_resource::<PointCloudServerEvictionQueue>()
+            .init_resource::<PointCloudNodeLastSeen>()
             .init_resource::<PointCloudTotalSize>()
             .init_resource::<PointCloudLoadTasks>()
             .init_resource::<PointCloudTracking>()
@@ -75,9 +71,8 @@ impl Plugin for PointCloudServerPlugin {
                     (handle_internal_point_cloud_events, load_chunk_meshes)
                         .chain()
                         .in_set(PointCloudServerSystems),
-                    process_point_cloud_load_tasks
-                        .after(PointCloudVisibilitySystems::CheckPointCloudNodesVisibility),
-                    update_point_cloud_server_node_eviction_queue
+                    (evict_point_cloud_chunks, process_point_cloud_load_tasks)
+                        .chain()
                         .after(PointCloudVisibilitySystems::CheckPointCloudNodesVisibility),
                 ),
             );
@@ -474,20 +469,12 @@ pub(crate) enum InternalPointCloudEvent {
     },
 }
 
-/// This resource contains a priority queue to determine which nodes to evict first.
-/// Nodes that are seen less recently are first in this queue.
-#[derive(Resource, Default)]
-pub struct PointCloudEvictionQueue {
-    pub eviction_queue: PriorityQueue<PointCloudNodeKey, Reverse<u128>>,
-}
-
 /// Loads the chunk's meshes in the meshes asset, so later in the GPU.
 /// Then add [`Mesh3d`] to all chunks using it.
 fn load_chunk_meshes(
     mut meshes: ResMut<Assets<Mesh>>,
     mut chunks: ResMut<Assets<PointCloudChunk>>,
     point_cloud_instances: Res<PointCloudInstances>,
-    mut point_cloud_total_size: ResMut<PointCloudTotalSize>,
     mut tracking: ResMut<PointCloudTracking>,
     mut commands: Commands,
 ) {
@@ -496,7 +483,6 @@ fn load_chunk_meshes(
             continue;
         };
         let mesh_handle = meshes.add(mesh.clone());
-        point_cloud_total_size.total_size += chunk.vertex_buffer_size;
 
         chunk.mesh_handle = Some(mesh_handle.clone());
 
