@@ -59,7 +59,7 @@ impl Plugin for PointCloudVisiblityPlugin {
         );
         app.register_diagnostic(
             Diagnostic::new(Self::BUDGET)
-                .with_suffix("ms")
+                .with_suffix(" points")
                 .with_max_history_length(DEFAULT_MAX_HISTORY_LENGTH),
         );
 

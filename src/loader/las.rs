@@ -208,6 +208,7 @@ impl AssetLoader for LasAssetLoader {
             PointCloudChunk {
                 topology: crate::PointCloudTopologyKind::Flat,
                 depth: 0,
+                point_count,
                 offset: None,
                 mesh_handle: Some(mesh_handle),
                 aabb: Some(aabb),

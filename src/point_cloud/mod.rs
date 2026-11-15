@@ -34,6 +34,7 @@ impl PointCloud {
 pub struct PointCloudChunk {
     pub topology: PointCloudTopologyKind,
     pub depth: u32,
+    pub point_count: usize,
     /// offset applied to point size
     pub offset: Option<f32>,
     pub mesh_handle: Option<Handle<Mesh>>,

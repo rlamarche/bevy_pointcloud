@@ -12,7 +12,7 @@ use bevy::{
     app::{App, Plugin},
     camera::{Camera, Camera3d, MainPassResolutionOverride, Projection, Viewport},
     core_pipeline::{
-        core_3d::{main_opaque_pass_3d, Opaque3dBinKey},
+        core_3d::main_opaque_pass_3d,
         oit::OrderIndependentTransparencySettings,
         prepass::*,
         tonemapping::{DebandDither, Tonemapping},

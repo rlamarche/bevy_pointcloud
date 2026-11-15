@@ -283,6 +283,7 @@ pub fn handle_internal_point_cloud_events(
                 let chunk_handle = chunks.add(PointCloudChunk {
                     topology,
                     depth: node.depth,
+                    point_count: result.final_point_count,
                     offset: result.offset,
                     mesh_handle: None,
                     aabb: node.aabb,
