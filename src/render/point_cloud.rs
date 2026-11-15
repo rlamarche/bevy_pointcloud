@@ -18,14 +18,14 @@ use bevy::{
 use bitflags::bitflags;
 
 use crate::{
-    PointCloudChunk, PointCloudTopologyKind, PointSizeMode, SplatOrientation, SplatSettings,
-    UVMapping,
+    PointCloudChunk, PointCloudChunkTopology, PointCloudTopologyKind, PointSizeMode,
+    SplatOrientation, SplatSettings, UVMapping,
 };
 
 #[derive(Debug, Clone)]
 pub struct RenderPointCloudChunk {
     pub mesh: Option<Handle<Mesh>>,
-    pub offset: Option<f32>,
+    // pub offset: Option<f32>,
 }
 
 impl RenderAsset for RenderPointCloudChunk {
@@ -41,7 +41,7 @@ impl RenderAsset for RenderPointCloudChunk {
     ) -> Result<Self, bevy::render::render_asset::PrepareAssetError<Self::SourceAsset>> {
         Ok(RenderPointCloudChunk {
             mesh: source_asset.mesh_handle.clone(),
-            offset: source_asset.offset,
+            // offset: source_asset.offset,
         })
     }
 }
@@ -192,8 +192,7 @@ pub struct RenderPointCloudChunkInstance {
     pub root_entity: MainEntity,
     pub is_root: bool,
     pub mesh_asset_id: AssetId<Mesh>,
-    pub topology: PointCloudTopologyKind,
-    pub depth: u32,
+    pub topology: PointCloudChunkTopology,
 }
 
 #[derive(ShaderType, Clone)]

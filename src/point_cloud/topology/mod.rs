@@ -1,6 +1,8 @@
 mod node;
 mod octree;
 
+use std::sync::Arc;
+
 use bevy::{
     asset::Handle,
     reflect::{Reflect, ReflectDeserialize, ReflectSerialize},
@@ -67,4 +69,33 @@ impl From<&PointCloudTopology> for PointCloudTopologyKind {
             PointCloudTopology::Octree(_) => PointCloudTopologyKind::Octree,
         }
     }
+}
+
+#[derive(Clone, Default, Debug, Reflect)]
+#[reflect(Debug, Clone)]
+pub enum PointCloudChunkTopology {
+    #[default]
+    Empty,
+    Flat,
+    OctreeNode(PointCloudChunkOctreeNode),
+}
+
+impl PointCloudChunkTopology {
+    pub fn as_octree(&self) -> Option<&PointCloudChunkOctreeNode> {
+        match self {
+            PointCloudChunkTopology::Empty | PointCloudChunkTopology::Flat => None,
+            PointCloudChunkTopology::OctreeNode(node) => Some(node),
+        }
+    }
+}
+
+#[derive(Clone, Default, Debug, Reflect)]
+#[reflect(Debug, Clone)]
+pub struct PointCloudChunkOctreeNode {
+    pub node_id: NodeId,
+    pub parent_id: Option<NodeId>,
+    pub depth: u32,
+    pub child_index: ChildIndex,
+    pub name: Arc<str>,
+    pub offset: Option<f32>,
 }

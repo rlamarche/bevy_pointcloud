@@ -1311,14 +1311,10 @@ pub fn queue_multipass_material_meshes<M: PointCloudMaterial, const PASS: usize>
                     //     .lightmap_slab_index()
                     //     .map(|index| *index),
                 };
-                let bin_key = Opaque3dChunkBinKey {
-                    asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
-                    depth: render_point_cloud_chunk_instance.depth,
-                };
 
                 opaque_phase.add(
                     batch_set_key,
-                    bin_key,
+                    Opaque3dChunkBinKey::from(render_point_cloud_chunk_instance),
                     (
                         *render_entity,
                         // use the root entity here to correctly handle

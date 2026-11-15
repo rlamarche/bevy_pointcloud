@@ -56,7 +56,6 @@ use crate::{
 pub fn extract_visible_point_cloud_chunks(
     views: Extract<Query<(RenderEntity, &VisiblePointCloudOctreeEntities), With<Camera>>>,
     mut removed_main_entities: Extract<RemovedComponents<PointCloud3d>>,
-    mut removed_render_entities: RemovedComponents<PointCloud3d>,
     mut extracted_views: Query<&mut RenderVisiblePointCloudEntities, With<ExtractedView>>,
     mapper: Extract<Query<&RenderEntity>>,
     render_point_cloud_instances: Res<RenderPointCloudInstances>,
@@ -69,9 +68,7 @@ pub fn extract_visible_point_cloud_chunks(
         .collect::<Vec<_>>();
     for removed_main_entity in &removed_main_entities {
         prepared_point_cloud_uniforms.remove(removed_main_entity);
-    }
-    for removed_render_entity in removed_render_entities.read() {
-        render_octree_index.remove(&removed_render_entity);
+        render_octree_index.remove(&removed_main_entity.id());
     }
 
     for (render_entity, visible_point_cloud_octree_entities) in views.iter() {
@@ -204,7 +201,7 @@ fn compute_visible_entities(
         ) {
             // makes sure an index exists for this entity (used in visible texture
             // nodes)
-            render_octree_index.add(render_entity.id());
+            render_octree_index.add(main_entity.id());
         }
 
         // get the render entry
@@ -372,6 +369,7 @@ pub fn extract_pointcloud_instances(
 /// [`RenderPointCloudChunkInstances`] resource, which contains a [`RenderPointCloudChunkInstance`]
 /// for each visible [`PointCloudChunk3d`].
 /// Note: for the moment, invisible [`PointCloudChunk3d`] are also extracted.
+/// TODO: extract only changed entities
 pub fn extract_pointcloud_chunk_instances(
     mut render_point_cloud_chunk_instances: ResMut<RenderPointCloudChunkInstances>,
     mut render_point_cloud_chunk_instance_queues: Local<
@@ -428,8 +426,7 @@ pub fn extract_pointcloud_chunk_instances(
                     is_root,
                     root_entity: root_entity.into(),
                     mesh_asset_id: mesh_handle.id(),
-                    topology: chunk.topology,
-                    depth: chunk.depth,
+                    topology: chunk.topology.clone(),
                 },
             ));
         },

@@ -21,8 +21,9 @@ use ordered_float::OrderedFloat;
 use crate::{
     ChildChunkOf, ErasedOctreeHierarchy, InsertNodeParams, InternalPointCloudEvent, NodeId,
     OctreeTopology, PointCloud, PointCloudChunk, PointCloudChunk3d, PointCloudChunkKey,
-    PointCloudInstances, PointCloudNodeKey, PointCloudNodeStatus, PointCloudServer,
-    PointCloudServerSettings, PointCloudTotalSize, PointCloudTracking,
+    PointCloudChunkOctreeNode, PointCloudChunkTopology, PointCloudInstances, PointCloudNodeKey,
+    PointCloudNodeStatus, PointCloudServer, PointCloudServerSettings, PointCloudTotalSize,
+    PointCloudTracking,
 };
 
 #[derive(Resource, Default)]
@@ -254,7 +255,6 @@ pub fn handle_internal_point_cloud_events(
                     continue;
                 };
 
-                let topology = (&point_cloud.topology).into();
                 let Some(octree) = point_cloud.topology.as_octree_mut() else {
                     warn!(
                         "Point cloud {:?} is not an octree, unable to store node data.",
@@ -281,10 +281,15 @@ pub fn handle_internal_point_cloud_events(
                 let vertex_buffer_size = mesh.get_vertex_buffer_size();
 
                 let chunk_handle = chunks.add(PointCloudChunk {
-                    topology,
-                    depth: node.depth,
+                    topology: PointCloudChunkTopology::OctreeNode(PointCloudChunkOctreeNode {
+                        node_id,
+                        parent_id: node.parent_id,
+                        depth: node.depth,
+                        child_index: node.child_index,
+                        name: node.name.clone(),
+                        offset: result.offset,
+                    }),
                     point_count: result.final_point_count,
-                    offset: result.offset,
                     mesh_handle: None,
                     aabb: node.aabb,
                     vertex_buffer_size,

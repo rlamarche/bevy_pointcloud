@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, hash::Hash, ops::Range};
+use std::{cmp::Ordering, hash::Hash, ops::Range, sync::Arc};
 
 use bevy::{
     asset::UntypedAssetId,
@@ -26,8 +26,12 @@ use bevy::{
     },
 };
 
-use crate::render::{
-    prepass::OpaqueChunkNoLightmap3dBatchSetKey, render_phase::ViewBinnedChunksRenderPhases,
+use crate::{
+    render::{
+        prepass::OpaqueChunkNoLightmap3dBatchSetKey, render_phase::ViewBinnedChunksRenderPhases,
+        RenderPointCloudChunkInstance,
+    },
+    PointCloudChunkTopology,
 };
 
 /// Opaque phase of the 3D multipass.
@@ -291,6 +295,7 @@ pub struct Opaque3dChunkBinKey {
     /// the ID of another type of asset.
     pub asset_id: UntypedAssetId,
     pub depth: u32,
+    pub name: Arc<str>,
 }
 
 impl PartialOrd for Opaque3dChunkBinKey {
@@ -303,7 +308,24 @@ impl Ord for Opaque3dChunkBinKey {
     fn cmp(&self, other: &Self) -> Ordering {
         self.depth
             .cmp(&other.depth)
-            .then_with(|| self.asset_id.cmp(&other.asset_id))
+            .then_with(|| self.name.cmp(&other.name))
+    }
+}
+
+impl From<&RenderPointCloudChunkInstance> for Opaque3dChunkBinKey {
+    fn from(value: &RenderPointCloudChunkInstance) -> Self {
+        match &value.topology {
+            PointCloudChunkTopology::Empty | PointCloudChunkTopology::Flat => Self {
+                asset_id: value.mesh_asset_id.into(),
+                depth: 0,
+                name: Arc::from("r"),
+            },
+            PointCloudChunkTopology::OctreeNode(node) => Self {
+                asset_id: value.mesh_asset_id.into(),
+                depth: node.depth,
+                name: node.name.clone(),
+            },
+        }
     }
 }
 
@@ -318,6 +340,7 @@ pub struct OpaqueChunkNoLightmap3dBinKey {
     /// the ID of another type of asset.
     pub asset_id: UntypedAssetId,
     pub depth: u32,
+    pub name: Arc<str>,
 }
 
 impl PartialOrd for OpaqueChunkNoLightmap3dBinKey {
@@ -330,6 +353,23 @@ impl Ord for OpaqueChunkNoLightmap3dBinKey {
     fn cmp(&self, other: &Self) -> Ordering {
         self.depth
             .cmp(&other.depth)
-            .then_with(|| self.asset_id.cmp(&other.asset_id))
+            .then_with(|| self.name.cmp(&other.name))
+    }
+}
+
+impl From<&RenderPointCloudChunkInstance> for OpaqueChunkNoLightmap3dBinKey {
+    fn from(value: &RenderPointCloudChunkInstance) -> Self {
+        match &value.topology {
+            PointCloudChunkTopology::Empty | PointCloudChunkTopology::Flat => Self {
+                asset_id: value.mesh_asset_id.into(),
+                depth: 0,
+                name: Arc::from("r"),
+            },
+            PointCloudChunkTopology::OctreeNode(node) => Self {
+                asset_id: value.mesh_asset_id.into(),
+                depth: node.depth,
+                name: node.name.clone(),
+            },
+        }
     }
 }
