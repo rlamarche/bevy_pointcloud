@@ -240,7 +240,6 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
     }
     fn fragment_shader() -> ShaderRef {
         shader_ref(bevy::asset::embedded_path!("pbr.wgsl"))
-        // "shaders/pbr_dev.wgsl".into()
     }
 
     fn alpha_mode(&self) -> bevy::material::prelude::AlphaMode {
@@ -265,7 +264,6 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
 
     fn prepass_fragment_shader() -> ShaderRef {
         shader_ref(bevy::asset::embedded_path!("pbr_prepass.wgsl"))
-        // "shaders/pbr_prepass_dev.wgsl".into()
     }
 
     fn deferred_vertex_shader() -> ShaderRef {
@@ -274,7 +272,6 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
 
     fn deferred_fragment_shader() -> ShaderRef {
         shader_ref(bevy::asset::embedded_path!("pbr.wgsl"))
-        // "shaders/pbr_dev.wgsl".into()
     }
 
     fn pass_descriptor(pass: &Self::PassId) -> PassDescriptor<Self::PassId> {
