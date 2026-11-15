@@ -37,6 +37,7 @@ impl RenderVisiblePointCloudEntities {
             self.entities
                 .entry(main_entity)
                 .or_insert_with(|| RenderVisiblePointCloudEntity {
+                    main_entity,
                     entity: render_entity.id(),
                     asset_id,
                     chunk_entities: Vec::new(),
@@ -65,6 +66,7 @@ pub struct RenderShadowMapVisiblePointCloudEntities {
 
 #[derive(Clone, Debug)]
 pub struct RenderVisiblePointCloudEntity {
+    pub main_entity: MainEntity,
     /// a render entity
     pub entity: Entity,
     pub asset_id: AssetId<PointCloud>,

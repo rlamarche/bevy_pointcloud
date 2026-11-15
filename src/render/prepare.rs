@@ -1,3 +1,5 @@
+#[cfg(feature = "trace")]
+use bevy::log::info_span;
 use bevy::{
     core_pipeline::core_3d::Transparent3d,
     ecs::{
@@ -93,7 +95,7 @@ pub fn prepare_point_cloud_uniforms(
             PointCloudTopologyKind::Octree
         ) {
             let Some(octree_index) = render_octree_instances_index
-                .get(&point_cloud_instance.render_entity)
+                .get(&point_cloud_instance.entity.id())
                 .map(|octree_index| octree_index.index())
             else {
                 continue;
@@ -308,6 +310,7 @@ fn prepare_visible_nodes_texture(
     fallback_visible_nodes_texture: &FallbackVisibleNodesTexture,
 ) {
     let octrees_count = visible_nodes.entities.len();
+    // let octrees_count = view_render_phase.chunk_items.len();
 
     // if the visible nodes texture is not yet allocated or needs to be resized
     if !visible_nodes_texture
@@ -376,6 +379,7 @@ fn prepare_visible_nodes_texture(
 
     let mut node_index =
         vec![HashMap::<NodeId, u32>::default(); render_octree_index.max_index() as usize + 1];
+
     for (_main_entity, visible_point_cloud) in &visible_nodes.entities {
         let mut sorted_octree_nodes = visible_point_cloud.chunk_entities.clone();
 
@@ -416,13 +420,12 @@ fn prepare_visible_nodes_texture(
         let mut render_node_index = HashMap::<NodeId, usize>::new();
 
         let octree_index = render_octree_index
-            .get(&visible_point_cloud.entity)
+            .get(&visible_point_cloud.main_entity.id())
             .expect("octree index out of bounds")
             .index() as usize;
 
         let node_mapping = &mut node_index[octree_index];
 
-        // let mut chunk_entities: Vec<VisibleOctreeNodeUniform> = Vec::new();
         let base_offset = octree_index * MAX_NODES;
 
         for (i, node_entity) in sorted_octree_nodes.into_iter().enumerate() {
@@ -460,6 +463,10 @@ fn prepare_visible_nodes_texture(
             node_mapping.insert(node_entity.id, i as u32);
         }
     }
+
+    #[cfg(feature = "trace")]
+    let write_visible_nodes_texture_span = info_span!("write_visible_nodes_texture",).entered();
+
     render_queue.write_texture(
         texture.texture.as_image_copy(),
         bytemuck::cast_slice(&*visible_nodes_buffer),
@@ -474,6 +481,10 @@ fn prepare_visible_nodes_texture(
             depth_or_array_layers: 1,
         },
     );
+
+    #[cfg(feature = "trace")]
+    drop(write_visible_nodes_texture_span);
+
     commands.entity(entity).insert(visible_nodes_texture);
 }
 

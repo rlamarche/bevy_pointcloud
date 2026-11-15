@@ -292,14 +292,10 @@ pub fn queue_material_meshes(
                         //     .lightmap_slab_index()
                         //     .map(|index| *index),
                     };
-                    let bin_key = Opaque3dChunkBinKey {
-                        asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
-                        depth: render_point_cloud_chunk_instance.depth,
-                    };
 
                     opaque_phase.add(
                         batch_set_key,
-                        bin_key,
+                        Opaque3dChunkBinKey::from(render_point_cloud_chunk_instance),
                         (
                             *render_entity,
                             // use the root entity here to correctly handle
@@ -326,13 +322,9 @@ pub fn queue_material_meshes(
                         slabs: mesh_slabs,
                         root_entity: render_point_cloud_chunk_instance.root_entity,
                     };
-                    let bin_key = OpaqueChunkNoLightmap3dBinKey {
-                        asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
-                        depth: render_point_cloud_chunk_instance.depth,
-                    };
                     alpha_mask_phase.add(
                         batch_set_key,
-                        bin_key,
+                        OpaqueChunkNoLightmap3dBinKey::from(render_point_cloud_chunk_instance),
                         (
                             *render_entity,
                             // use the root entity here to correctly handle

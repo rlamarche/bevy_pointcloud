@@ -13,8 +13,8 @@ use thiserror::Error;
 
 use crate::{
     ByteSource, ByteSourceError, ChunkLoadResult, InsertNodeParams, OctreeError,
-    OctreeHierarchyBuilder, OctreeLoader, PointCloud, PointCloudChunk, PointCloudNodeStatus,
-    PointCloudTopology,
+    OctreeHierarchyBuilder, OctreeLoader, PointCloud, PointCloudChunk, PointCloudChunkTopology,
+    PointCloudNodeStatus, PointCloudTopology,
 };
 
 /// Naive implementation of a las loader because it loads the las file completely in memory
@@ -206,10 +206,8 @@ impl AssetLoader for LasAssetLoader {
         let chunk_handle = load_context.add_labeled_asset(
             "chunk",
             PointCloudChunk {
-                topology: crate::PointCloudTopologyKind::Flat,
-                depth: 0,
+                topology: PointCloudChunkTopology::Flat,
                 point_count,
-                offset: None,
                 mesh_handle: Some(mesh_handle),
                 aabb: Some(aabb),
                 vertex_buffer_size,

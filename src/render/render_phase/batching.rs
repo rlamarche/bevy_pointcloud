@@ -60,6 +60,7 @@ where
         phase.chunk_items.sort_unstable_keys();
         for chunk_item in phase.chunk_items.values_mut() {
             // this sorts chunk nodes from root to leaf
+            // TODO: remove this un-needed sort ? or use a binary heap like structure ?
             chunk_item.entities.sort_unstable_keys();
         }
     }
@@ -125,6 +126,7 @@ pub fn batch_and_prepare_binned_render_phase<BPI, GFBD>(
                 RenderMultidrawableChunk {
                     representative_entity,
                     indirect_parameters,
+                    ..
                 },
             ) in chunks.entities.iter_mut()
             {

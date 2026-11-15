@@ -71,7 +71,7 @@ pub mod wrapper {
 
 impl_node_id_wrapper!(NodeId);
 
-#[derive(Copy, Clone, Debug, Default, Deref, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, Default, Deref, PartialEq, Eq, PartialOrd, Ord, Hash, Reflect)]
 pub struct ChildIndex(u8);
 
 impl TryFrom<u8> for ChildIndex {

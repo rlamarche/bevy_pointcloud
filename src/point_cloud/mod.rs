@@ -32,14 +32,20 @@ impl PointCloud {
 #[derive(Asset, Debug, Clone, Default, Reflect)]
 #[reflect(Debug, FromWorld, Clone, Default)]
 pub struct PointCloudChunk {
-    pub topology: PointCloudTopologyKind,
-    pub depth: u32,
+    pub topology: PointCloudChunkTopology,
     pub point_count: usize,
-    /// offset applied to point size
-    pub offset: Option<f32>,
     pub mesh_handle: Option<Handle<Mesh>>,
     pub aabb: Option<Aabb>,
     pub vertex_buffer_size: usize,
+}
+
+impl PointCloudChunk {
+    pub fn depth(&self) -> u32 {
+        match &self.topology {
+            PointCloudChunkTopology::Empty | PointCloudChunkTopology::Flat => 0,
+            PointCloudChunkTopology::OctreeNode(node) => node.depth,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]

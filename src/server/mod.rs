@@ -502,7 +502,7 @@ fn load_chunk_meshes(
 
         // Spawn [`Mesh3d`] entity only for the root chunk, so we have a
         // [`RenderMeshInstanceCpu`] or [`RenderMeshInstanceGpu`] available later.
-        if chunk.depth == 0
+        if chunk.depth() == 0
             && let Some(point_cloud_entities) = point_cloud_instances.get(&key.id)
         {
             for (_, chunks) in point_cloud_entities.iter() {

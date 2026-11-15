@@ -1695,10 +1695,7 @@ pub fn queue_prepass_material_meshes(
                                 slabs: mesh_slabs,
                                 root_entity: render_point_cloud_chunk_instance.root_entity,
                             },
-                            OpaqueChunkNoLightmap3dBinKey {
-                                asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
-                                depth: render_point_cloud_chunk_instance.depth,
-                            },
+                            OpaqueChunkNoLightmap3dBinKey::from(render_point_cloud_chunk_instance),
                             (
                                 *render_entity,
                                 // use the root entity here to correctly handle
@@ -1727,10 +1724,7 @@ pub fn queue_prepass_material_meshes(
                                 slabs: mesh_slabs,
                                 root_entity: render_point_cloud_chunk_instance.root_entity,
                             },
-                            OpaqueChunkNoLightmap3dBinKey {
-                                asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
-                                depth: render_point_cloud_chunk_instance.depth,
-                            },
+                            OpaqueChunkNoLightmap3dBinKey::from(render_point_cloud_chunk_instance),
                             (
                                 *render_entity,
                                 // use the root entity here to correctly handle
@@ -1752,10 +1746,7 @@ pub fn queue_prepass_material_meshes(
                                 slabs: mesh_slabs,
                                 root_entity: render_point_cloud_chunk_instance.root_entity,
                             },
-                            OpaqueChunkNoLightmap3dBinKey {
-                                asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
-                                depth: render_point_cloud_chunk_instance.depth,
-                            },
+                            OpaqueChunkNoLightmap3dBinKey::from(render_point_cloud_chunk_instance),
                             (
                                 *render_entity,
                                 // use the root entity here to correctly handle
@@ -1774,10 +1765,7 @@ pub fn queue_prepass_material_meshes(
                                 slabs: mesh_slabs,
                                 root_entity: render_point_cloud_chunk_instance.root_entity,
                             },
-                            OpaqueChunkNoLightmap3dBinKey {
-                                asset_id: render_point_cloud_chunk_instance.mesh_asset_id.into(),
-                                depth: render_point_cloud_chunk_instance.depth,
-                            },
+                            OpaqueChunkNoLightmap3dBinKey::from(render_point_cloud_chunk_instance),
                             (
                                 *render_entity,
                                 // use the root entity here to correctly handle
