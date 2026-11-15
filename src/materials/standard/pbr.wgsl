@@ -99,9 +99,11 @@ fn fragment(
 #ifdef SHAPE_UVS_A
     #ifdef SPLAT_RADIUS
         // Perfect circle
-        let dist = distance(vertex_output.shape_uv, vec2<f32>(0.5, 0.5));
+        let diff = vertex_output.shape_uv - vec2<f32>(0.5, 0.5);
+        let dist_sq = dot(diff, diff);
+        let radius_sq = pointcloud.radius * pointcloud.radius;
 
-        if dist > pointcloud.radius {
+        if dist_sq > radius_sq {
             discard;
         }
     #endif // SIMPLE_MATERIAL_SHAPE_RADIUS
@@ -228,7 +230,9 @@ fn fragment(
     // TODO: do not compute on the single pass path
     #ifdef WEIGHTED_SPLATS_ENABLED
         #ifdef SHAPE_UVS_A
-            #ifndef SPLAT_RADIUS
+            #ifdef SPLAT_RADIUS
+                let dist = sqrt(dist_sq);
+            #else
                 let dist = distance(vertex_output.shape_uv, vec2<f32>(0.5, 0.5));
             #endif
 

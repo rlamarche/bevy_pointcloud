@@ -486,10 +486,6 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
             _ => panic!("Invalid pass in simple material specialization."),
         };
 
-        if !should_render {
-            return Ok(false);
-        }
-
         let vertex_shader_defs = &mut descriptor.vertex.shader_defs;
 
         if point_cloud_material_key
@@ -665,7 +661,9 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
             depth_stencil.bias.constant =
                 (material_key.bits() >> STANDARD_MATERIAL_KEY_DEPTH_BIAS_SHIFT) as i32;
         }
-        Ok(true)
+
+        // if `!should_render`, the prepass will still render, having all correct shaderdefs.
+        Ok(should_render)
     }
 }
 
