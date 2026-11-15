@@ -96,18 +96,16 @@ fn fragment(
 // BEGIN CUSTOM PATCH: [PointCloudPlugin] - Point size and depth attenuation
 // ============================================================================
 
-#ifdef SHAPE_UVS_A
-    #ifdef SPLAT_RADIUS
-        // Perfect circle
-        let diff = vertex_output.shape_uv - vec2<f32>(0.5, 0.5);
-        let dist_sq = dot(diff, diff);
-        let radius_sq = pointcloud.radius * pointcloud.radius;
+#ifdef SPLAT_RADIUS
+    // Perfect circle
+    let diff = vertex_output.shape_uv - vec2<f32>(0.5, 0.5);
+    let dist_sq = dot(diff, diff);
+    let radius_sq = pointcloud.radius * pointcloud.radius;
 
-        if dist_sq > radius_sq {
-            discard;
-        }
-    #endif // SIMPLE_MATERIAL_SHAPE_RADIUS
-#endif // SHAPE_UVS_A
+    if dist_sq > radius_sq {
+        discard;
+    }
+#endif // SIMPLE_MATERIAL_SHAPE_RADIUS
 
 #ifdef POINTCLOUD_VIEW_SETTINGS
     #ifdef CLIPPING_PLANES
@@ -229,18 +227,14 @@ fn fragment(
 
     // TODO: do not compute on the single pass path
     #ifdef WEIGHTED_SPLATS_ENABLED
-        #ifdef SHAPE_UVS_A
-            #ifdef SPLAT_RADIUS
-                let dist = sqrt(dist_sq);
-            #else
-                let dist = distance(vertex_output.shape_uv, vec2<f32>(0.5, 0.5));
-            #endif
+        #ifdef SPLAT_RADIUS
+            let dist = sqrt(dist_sq);
+        #else
+            let dist = distance(vertex_output.shape_uv, vec2<f32>(0.5, 0.5));
+        #endif
 
-            var weight = max(0.0, 1.0 - dist * 2.0);
-            weight = pow(weight, 1.5);
-        #else // SHAPE_UVS_A
-            let weight = 1.0;
-        #endif // SHAPE_UVS_A
+        var weight = max(0.0, 1.0 - dist * 2.0);
+        weight = pow(weight, 1.5);
     #else // WEIGHTED_SPLATS_ENABLED
         let weight = 1.0;
     #endif // WEIGHTED_SPLATS_ENABLED

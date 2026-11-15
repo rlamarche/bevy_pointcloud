@@ -138,20 +138,22 @@ fn vertex(
         let vertex_uv = vec2<f32>(0.0);
     #endif
 
+    #ifdef SHAPE_UVS_A
+        out.shape_uv = shape.uv;
+    #else // SHAPE_UVS_A
+        out.shape_uv = shape.position.xy + vec2(0.5);
+    #endif // SHAPE_UVS_A
+
     #ifdef POINTCLOUD_NEEDS_UVS
         out.uv = pointcloud_functions::compute_point_uv(
             vertex_uv,
-            shape.uv,
+            out.shape_uv,
             shape_normal,
             tangent,
             pos.world_position,
             radius,
         );
     #endif
-
-    #ifdef SHAPE_UVS_A
-        out.shape_uv = shape.uv;
-    #endif // SHAPE_UVS_A
 
     return out;
 }

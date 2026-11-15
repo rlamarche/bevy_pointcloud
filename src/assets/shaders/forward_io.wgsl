@@ -74,9 +74,7 @@ struct VertexOutput {
 #ifdef VISIBILITY_RANGE_DITHER
     @location(11) @interpolate(flat) visibility_range_dither: i32,
 #endif
-#ifdef SHAPE_UVS_A
     @location(12) shape_uv: vec2<f32>,
-#endif
 }
 
 // struct FragmentOutput {

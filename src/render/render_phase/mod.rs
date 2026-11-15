@@ -82,9 +82,9 @@ pub struct RenderMultidrawableChunks<BPI>
 where
     BPI: BinnedPhaseItem,
 {
-    pub(crate) entities: IndexMap<BPI::BinKey, RenderMultidrawableChunk>,
+    pub entities: IndexMap<BPI::BinKey, RenderMultidrawableChunk>,
     /// The range in the indirect buffer
-    pub(crate) range: Option<Range<u32>>,
+    pub range: Option<Range<u32>>,
 }
 
 #[derive(Clone)]
@@ -455,7 +455,10 @@ fn remove_entity_from_bin<BPI>(
     if let indexmap::map::Entry::Occupied(mut bin_entry) =
         chunk_items.entry(entity_bin_key.batch_set_key.clone())
     {
-        bin_entry.get_mut().entities.remove(&entity_bin_key.bin_key);
+        bin_entry
+            .get_mut()
+            .entities
+            .swap_remove(&entity_bin_key.bin_key);
 
         // If the bin is now empty, remove the bin.
         if bin_entry.get_mut().entities.is_empty() {

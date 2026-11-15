@@ -36,7 +36,6 @@ fn fragment(in: VertexOutput)
     -> FragmentOutput
 #endif // PREPASS_FRAGMENT
 {
-#ifdef SHAPE_UVS_A
     #ifdef SPLAT_RADIUS
         // Perfect circle
         let diff = in.shape_uv - vec2<f32>(0.5, 0.5);
@@ -47,7 +46,6 @@ fn fragment(in: VertexOutput)
             discard;
         }
     #endif // SPLAT_RADIUS
-#endif // SHAPE_UVS_A
 
 #ifdef POINTCLOUD_VIEW_SETTINGS
     #ifdef CLIPPING_PLANES

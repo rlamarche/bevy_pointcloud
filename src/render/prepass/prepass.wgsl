@@ -195,16 +195,16 @@ fn fragment(in: VertexOutput)
     -> FragmentOutput
 #endif // PREPASS_FRAGMENT
 {
-#ifdef SHAPE_UVS_A
-    #ifdef SPLAT_RADIUS
-        // Perfect circle
-        let dist = distance(in.shape_uv, vec2<f32>(0.5, 0.5));
+#ifdef SPLAT_RADIUS
+    // Perfect circle
+    let diff = vertex_output.shape_uv - vec2<f32>(0.5, 0.5);
+    let dist_sq = dot(diff, diff);
+    let radius_sq = pointcloud.radius * pointcloud.radius;
 
-        if dist > pointcloud.radius {
-            discard;
-        }
-    #endif // SPLAT_RADIUS
-#endif // SHAPE_UVS_A
+    if dist_sq > radius_sq {
+        discard;
+    }
+#endif // SPLAT_RADIUS
 
 #ifdef PREPASS_FRAGMENT
     var out: FragmentOutput;
