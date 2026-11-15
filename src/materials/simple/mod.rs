@@ -381,10 +381,6 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
             _ => panic!("Invalid pass in simple material specialization."),
         };
 
-        if !should_render {
-            return Ok(false);
-        }
-
         // Collect all shader defs for both vertex and fragment stages
         let mut shader_defs = Vec::new();
 
@@ -505,7 +501,8 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
             _ => None,
         };
 
-        Ok(true)
+        // if `!should_render`, the prepass will still render, having all correct shaderdefs.
+        Ok(should_render)
     }
 }
 

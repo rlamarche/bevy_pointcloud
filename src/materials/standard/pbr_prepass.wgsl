@@ -20,7 +20,14 @@
 }
 
 #import bevy_pointcloud::prepass_io::VertexOutput
-#import bevy_pointcloud::pointcloud_bindings::pointcloud
+#import bevy_pointcloud::{
+    pointcloud_bindings::pointcloud,
+    simple_material_types as material_types,
+}
+
+#ifdef POINTCLOUD_VIEW_SETTINGS
+@group(#{POINTCLOUD_BIND_GROUP}) @binding(3) var<uniform> view_settings: material_types::PointCloudViewSettings;
+#endif // POINTCLOUD_VIEW_SETTINGS
 
 // ============================================================================
 // END CUSTOM PATCH: [PointCloudPlugin]
@@ -39,13 +46,26 @@ fn fragment(
 #ifdef SHAPE_UVS_A
     #ifdef SPLAT_RADIUS
         // Perfect circle
-        let dist = distance(vertex_output.shape_uv, vec2<f32>(0.5, 0.5));
+        let diff = vertex_output.shape_uv - vec2<f32>(0.5, 0.5);
+        let dist_sq = dot(diff, diff);
+        let radius_sq = pointcloud.radius * pointcloud.radius;
 
-        if dist > pointcloud.radius {
+        if dist_sq > radius_sq {
             discard;
         }
     #endif // SIMPLE_MATERIAL_SHAPE_RADIUS
 #endif // SHAPE_UVS_A
+
+#ifdef POINTCLOUD_VIEW_SETTINGS
+    #ifdef CLIPPING_PLANES
+        for (var i: u32 = 0u; i < view_settings.nb_clipping_planes; i ++) {
+            let clip_dist = dot(vertex_output.world_position.xyz, view_settings.clipping_planes[i].xyz) + view_settings.clipping_planes[i].w;
+            if (clip_dist < 0.0) {
+                discard;
+            }
+        }
+    #endif // CLIPPING_PLANES
+#endif // POINTCLOUD_VIEW_SETTINGS
 
     var in: PbrVertexOutput;
 
