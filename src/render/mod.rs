@@ -311,7 +311,10 @@ impl FromWorld for SplatMeshes {
         let mut meshes = world.resource_mut::<Assets<Mesh>>();
 
         let quad_mesh = meshes.add(Rectangle::new(1.0, 1.0));
-        let triangle_mesh = meshes.add(create_equilateral_disk_triangle_mesh());
+        let triangle_mesh = meshes.add(create_equilateral_disk_triangle_mesh(
+            0.5,
+            RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
+        ));
 
         Self {
             quad_mesh,
@@ -332,36 +335,31 @@ pub fn shader_ref(path: PathBuf) -> ShaderRef {
     ShaderRef::Path(AssetPath::from_path_buf(path).with_source("embedded"))
 }
 
-fn create_equilateral_disk_triangle_mesh() -> Mesh {
-    let mut mesh = Mesh::new(
-        PrimitiveTopology::TriangleList,
-        RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
-    );
+fn create_equilateral_disk_triangle_mesh(radius: f32, asset_usage: RenderAssetUsages) -> Mesh {
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, asset_usage);
 
-    // Local vertex positions scaled so that the inner UV [0, 1] square
-    // produces a disk with a true diameter of 1.0 unit (matching a 1.0x1.0 quad).
+    // Equilateral triangle centered at (0, 0) with inscribed circle of `radius`.
+    let half_base = radius * 3.0_f32.sqrt();
+    let y_bottom = -radius;
+    let y_top = 2.0 * radius;
+
     let positions = vec![
-        [-1.299, -0.75, 0.0], // Bottom-left vertex
-        [1.299, -0.75, 0.0],  // Bottom-right vertex
-        [0.0, 1.5, 0.0],      // Top vertex (centered around the disk origin)
+        [-half_base, y_bottom, 0.0],
+        [half_base, y_bottom, 0.0],
+        [0.0, y_top, 0.0],
     ];
 
-    // UV coordinates mapped to fully enclose the [0, 1] x [0, 1] unit square
-    // right in the middle of the triangle.
-    let uvs = vec![
-        [-0.799, -0.25], // Maps to bottom-left position
-        [1.799, -0.25],  // Maps to bottom-right position
-        [0.5, 2.0],      // Maps to top position
-    ];
+    // Centers (0, 0) at UV (0.5, 0.5) so `in.uv - (0.5, 0.5)` matches local `positions`.
+    let uvs = positions
+        .iter()
+        .map(|p| [p[0] + 0.5, p[1] + 0.5])
+        .collect::<Vec<_>>();
 
-    let normals = vec![[0.0, 0.0, 1.0], [0.0, 0.0, 1.0], [0.0, 0.0, 1.0]];
-
-    let indices = vec![0, 1, 2];
+    let normals = vec![[0.0, 0.0, 1.0]; 3];
 
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
-    mesh.insert_indices(Indices::U32(indices));
 
     mesh
 }
