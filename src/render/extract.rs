@@ -196,7 +196,6 @@ pub fn extract_pointcloud_instances(
 /// [`RenderPointCloudChunkInstances`] resource, which contains a [`RenderPointCloudChunkInstance`]
 /// for each visible [`PointCloudChunk3d`].
 /// Note: for the moment, invisible [`PointCloudChunk3d`] are also extracted.
-/// TODO: extract only changed entities
 pub fn extract_pointcloud_chunk_instances(
     mut render_point_cloud_chunk_instances: ResMut<RenderPointCloudChunkInstances>,
     mut render_point_cloud_chunk_instance_queues: Local<
@@ -204,14 +203,16 @@ pub fn extract_pointcloud_chunk_instances(
     >,
     mapper: Extract<Query<&RenderEntity>>,
     chunks_query: Extract<
-        Query<(
-            Entity,
-            &PointCloudChunk3d,
-            Option<&ChildOf>,
-            &ViewVisibility,
-            // to determine if it is a root
-            Has<PointCloud3d>,
-        )>,
+        Query<
+            (
+                Entity,
+                &PointCloudChunk3d,
+                Option<&ChildOf>,
+                // to determine if it is a root
+                Has<PointCloud3d>,
+            ),
+            Changed<PointCloudChunk3d>,
+        >,
     >,
     chunks: Extract<Res<Assets<PointCloudChunk>>>,
 ) {
@@ -220,7 +221,7 @@ pub fn extract_pointcloud_chunk_instances(
     // remove it from the phase when looking up for the root entity).
     chunks_query.par_iter().for_each_init(
         || render_point_cloud_chunk_instance_queues.borrow_local_mut(),
-        |queue, (entity, point_cloud_chunk_3d, maybe_child_of, _view_visibility, is_root)| {
+        |queue, (entity, point_cloud_chunk_3d, maybe_child_of, is_root)| {
             // we keep invisible instances for the moment because we need the instance to remove
             // phases
             // if !view_visibility.get() {
@@ -259,16 +260,10 @@ pub fn extract_pointcloud_chunk_instances(
         },
     );
 
-    // destructure for double mutable borrow
-    let RenderPointCloudChunkInstances {
-        entities, previous, ..
-    } = &mut *render_point_cloud_chunk_instances;
-
     // keep previous extracted render point cloud chunk instances
-    std::mem::swap(entities, previous);
+    render_point_cloud_chunk_instances.sync_previous_chunk_instances();
 
     // Collect the render mesh instances
-    render_point_cloud_chunk_instances.clear();
     for queue in render_point_cloud_chunk_instance_queues.iter_mut() {
         for (entity, render_point_cloud_chunk_instance) in queue.drain(..) {
             let Ok(render_entity) = mapper.get(entity) else {
