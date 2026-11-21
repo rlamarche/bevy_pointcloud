@@ -184,8 +184,22 @@ pub struct RenderPointCloudChunkInstances {
     pub previous: EntityHashMap<RenderPointCloudChunkInstance>,
 }
 
+impl RenderPointCloudChunkInstances {
+    pub fn sync_previous_chunk_instances(&mut self) {
+        self.previous.retain(|k, _| self.entities.contains_key(k));
+
+        for (entity, chunk) in &self.entities {
+            self.previous
+                .entry(*entity)
+                .and_modify(|existing| existing.clone_from(chunk))
+                .or_insert_with(|| chunk.clone());
+        }
+    }
+}
+
 /// CPU data that the render world keeps for each entity, when *not* using GPU
 /// mesh uniform building.
+#[derive(Clone)]
 pub struct RenderPointCloudChunkInstance {
     /// The entity that point to the root chunk entity, used for loading the corresponding
     /// [`PreparedPointCloudUniform`] in the draw command [`crate::SetPointCloudUniformGroup`].
