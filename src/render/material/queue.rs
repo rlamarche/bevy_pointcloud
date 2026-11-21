@@ -25,7 +25,8 @@ use crate::{
         Opaque3dChunkBatchSetKey, Opaque3dChunkBinKey, OpaqueChunkNoLightmap3dBinKey,
         PendingPointCloudMaterialQueues, PointCloudDirtySpecializations,
         PreparedPointCloudMaterial, RenderPointCloudChunkInstances, RenderPointCloudInstances,
-        RenderPointCloudMaterialInstances, SpecializedPointCloudMaterialPipelineCache,
+        RenderPointCloudMaterialInstances, RenderVisiblePointCloudChunkEntity,
+        RenderVisiblePointCloudEntities, SpecializedPointCloudMaterialPipelineCache,
     },
     PointCloudChunk3d,
 };
@@ -48,12 +49,16 @@ pub fn queue_material_meshes(
     mut transmissive_render_phases: ResMut<ViewSortedRenderPhases<Transmissive3d>>,
     mut transparent_render_phases: ResMut<ViewSortedRenderPhases<Transparent3d>>,
     mut pending_mesh_material_queues: ResMut<PendingPointCloudMaterialQueues>,
-    views: Query<(&ExtractedView, &RenderVisibleEntities)>,
+    mut views: Query<(
+        &ExtractedView,
+        &RenderVisibleEntities,
+        &mut RenderVisiblePointCloudEntities,
+    )>,
     // don't know why it is `ResMut` here, but I suspect it is to have exclusive read access
     specialized_material_pipeline_cache: ResMut<SpecializedPointCloudMaterialPipelineCache>,
     dirty_specializations: Res<PointCloudDirtySpecializations>,
 ) {
-    for (view, visible_entities) in &views {
+    for (view, visible_entities, mut render_visible_point_cloud_entities) in &mut views {
         let (
             Some(opaque_phase),
             Some(alpha_mask_phase),
@@ -117,6 +122,10 @@ pub fn queue_material_meshes(
                 *render_entity,
                 render_point_cloud_chunk_instance.root_entity,
             );
+
+            // Updates the visible point cloud entities.
+            render_visible_point_cloud_entities
+                .remove_visible_chunk(render_point_cloud_chunk_instance.root_entity, *main_entity);
         }
 
         // Fetch the pending mesh material queues for this view.
@@ -259,6 +268,15 @@ pub fn queue_material_meshes(
                         // Filled in later.
                         distance: 0.0,
                     });
+                    // Updates the visible point cloud entities.
+                    render_visible_point_cloud_entities.add_visible_chunk(
+                        RenderVisiblePointCloudChunkEntity {
+                            topology: render_point_cloud_chunk_instance.topology.clone(),
+                            entity: *render_entity,
+                            main_entity: *visible_entity,
+                            root_entity: render_point_cloud_chunk_instance.root_entity,
+                        },
+                    );
                 }
                 RenderPhaseType::Opaque => {
                     if material.properties.render_method == OpaqueRendererMethod::Deferred {
@@ -304,6 +322,15 @@ pub fn queue_material_meshes(
                             render_point_cloud_chunk_instance.root_entity,
                         ),
                     );
+                    // Updates the visible point cloud entities.
+                    render_visible_point_cloud_entities.add_visible_chunk(
+                        RenderVisiblePointCloudChunkEntity {
+                            topology: render_point_cloud_chunk_instance.topology.clone(),
+                            entity: *render_entity,
+                            main_entity: *visible_entity,
+                            root_entity: render_point_cloud_chunk_instance.root_entity,
+                        },
+                    );
                 }
                 // Alpha mask
                 RenderPhaseType::AlphaMask => {
@@ -332,6 +359,15 @@ pub fn queue_material_meshes(
                             // in binned render phases
                             render_point_cloud_chunk_instance.root_entity,
                         ),
+                    );
+                    // Updates the visible point cloud entities.
+                    render_visible_point_cloud_entities.add_visible_chunk(
+                        RenderVisiblePointCloudChunkEntity {
+                            topology: render_point_cloud_chunk_instance.topology.clone(),
+                            entity: *render_entity,
+                            main_entity: *visible_entity,
+                            root_entity: render_point_cloud_chunk_instance.root_entity,
+                        },
                     );
                 }
                 RenderPhaseType::Transparent => {
@@ -374,6 +410,15 @@ pub fn queue_material_meshes(
                         // Filled in later.
                         distance: 0.0,
                     });
+                    // Updates the visible point cloud entities.
+                    render_visible_point_cloud_entities.add_visible_chunk(
+                        RenderVisiblePointCloudChunkEntity {
+                            topology: render_point_cloud_chunk_instance.topology.clone(),
+                            entity: *render_entity,
+                            main_entity: *visible_entity,
+                            root_entity: render_point_cloud_chunk_instance.root_entity,
+                        },
+                    );
                 }
             }
         }

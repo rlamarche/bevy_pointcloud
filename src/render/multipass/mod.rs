@@ -89,7 +89,8 @@ use crate::{
         PointCloudChunk3d, PointCloudDirtySpecializations, PointCloudMaterial,
         PointCloudMaterialPipeline, PointCloudMaterialProperties, PointCloudPipeline,
         PreparedPointCloudMaterial, RenderPointCloudChunkInstances, RenderPointCloudInstances,
-        RenderPointCloudMaterialInstances, SetMaterialBindGroup, SplatPipelineKey,
+        RenderPointCloudMaterialInstances, RenderVisiblePointCloudChunkEntity,
+        RenderVisiblePointCloudEntities, SetMaterialBindGroup, SplatPipelineKey,
     },
     PointCloudTopologyKind,
 };
@@ -1140,26 +1141,28 @@ pub fn queue_multipass_material_meshes<M: PointCloudMaterial, const PASS: usize>
     mut opaque_multipass_render_phases: ResMut<
         ViewBinnedChunksRenderPhases<Opaque3dChunkMultipass<M, PASS>>,
     >,
-    views: Query<(&ExtractedView, &RenderVisibleEntities)>,
+    mut views: Query<(
+        &ExtractedView,
+        &RenderVisibleEntities,
+        &mut RenderVisiblePointCloudEntities,
+    )>,
     specialized_material_pipeline_cache: Res<SpecializedMultipassMaterialPipelineCache<M>>,
     mut pending_multipass_mesh_material_queues: ResMut<PendingMultipassMeshMaterialQueues<M>>,
     dirty_specializations: Res<PointCloudDirtySpecializations>,
     draw_functions: Res<DrawFunctions<Opaque3dChunkMultipass<M, PASS>>>,
 ) {
-    for (view, visible_entities) in &views {
-        let mut opaque_phase = opaque_multipass_render_phases.get_mut(&view.retained_view_entity);
+    for (view, visible_entities, mut render_visible_point_cloud_entities) in &mut views {
+        let Some(opaque_phase) = opaque_multipass_render_phases.get_mut(&view.retained_view_entity)
+        else {
+            warn!("no phase for pass {}", PASS);
+            continue;
+        };
 
         let Some(view_specialized_material_pipeline_cache) =
             specialized_material_pipeline_cache.get(&(view.retained_view_entity, PASS))
         else {
             continue;
         };
-
-        // Skip if there's no place to put the mesh.
-        if opaque_phase.is_none() {
-            warn!("no phase for pass {}", PASS);
-            continue;
-        }
 
         let Some(visible_entities_class) = visible_entities.get::<PointCloudChunk3d>() else {
             warn!("no visible entities for pass {}", PASS);
@@ -1185,12 +1188,14 @@ pub fn queue_multipass_material_meshes<M: PointCloudMaterial, const PASS: usize>
                 continue;
             };
 
-            if let Some(ref mut opaque_phase) = opaque_phase {
-                opaque_phase.remove(
-                    *render_entity,
-                    render_point_cloud_chunk_instance.root_entity,
-                );
-            }
+            opaque_phase.remove(
+                *render_entity,
+                render_point_cloud_chunk_instance.root_entity,
+            );
+
+            // Updates the visible point cloud entities.
+            render_visible_point_cloud_entities
+                .remove_visible_chunk(render_point_cloud_chunk_instance.root_entity, *main_entity);
         }
 
         // Fetch the pending mesh material queues for this view.
@@ -1283,47 +1288,54 @@ pub fn queue_multipass_material_meshes<M: PointCloudMaterial, const PASS: usize>
                 continue;
             };
 
-            if let Some(opaque_phase) = opaque_phase.as_mut() {
-                if material.properties.render_method == OpaqueRendererMethod::Deferred {
-                    // Even though we aren't going to insert the entity into
-                    // a bin, we still want to update its cache entry. That
-                    // way, we know we don't need to re-examine it in future
-                    // frames.
-                    opaque_phase.update_cache(
-                        *render_entity,
-                        render_point_cloud_chunk_instance.root_entity,
-                        None,
-                    );
-                    continue;
-                }
-
-                let draw_function = draw_functions.read().id::<DrawMultipass<M, PASS>>();
-
-                let batch_set_key = Opaque3dChunkBatchSetKey {
-                    pipeline: pipeline_id,
-                    draw_function,
-                    material_bind_group_index: Some(material.binding.group.0),
-                    splat_slabs,
-                    slabs: mesh_slabs,
-                    root_entity: render_point_cloud_chunk_instance.root_entity,
-                    // lightmap_slab: mesh_instance
-                    //     .shared
-                    //     .lightmap_slab_index()
-                    //     .map(|index| *index),
-                };
-
-                opaque_phase.add(
-                    batch_set_key,
-                    Opaque3dChunkBinKey::from(render_point_cloud_chunk_instance),
-                    (
-                        *render_entity,
-                        // use the root entity here to correctly handle
-                        // [`GetFullBatchData::get_binned_index`]
-                        // in binned render phases
-                        render_point_cloud_chunk_instance.root_entity,
-                    ),
+            if material.properties.render_method == OpaqueRendererMethod::Deferred {
+                // Even though we aren't going to insert the entity into
+                // a bin, we still want to update its cache entry. That
+                // way, we know we don't need to re-examine it in future
+                // frames.
+                opaque_phase.update_cache(
+                    *render_entity,
+                    render_point_cloud_chunk_instance.root_entity,
+                    None,
                 );
+                continue;
             }
+
+            let draw_function = draw_functions.read().id::<DrawMultipass<M, PASS>>();
+
+            let batch_set_key = Opaque3dChunkBatchSetKey {
+                pipeline: pipeline_id,
+                draw_function,
+                material_bind_group_index: Some(material.binding.group.0),
+                splat_slabs,
+                slabs: mesh_slabs,
+                root_entity: render_point_cloud_chunk_instance.root_entity,
+                // lightmap_slab: mesh_instance
+                //     .shared
+                //     .lightmap_slab_index()
+                //     .map(|index| *index),
+            };
+
+            opaque_phase.add(
+                batch_set_key,
+                Opaque3dChunkBinKey::from(render_point_cloud_chunk_instance),
+                (
+                    *render_entity,
+                    // use the root entity here to correctly handle
+                    // [`GetFullBatchData::get_binned_index`]
+                    // in binned render phases
+                    render_point_cloud_chunk_instance.root_entity,
+                ),
+            );
+            // Updates the visible point cloud entities.
+            render_visible_point_cloud_entities.add_visible_chunk(
+                RenderVisiblePointCloudChunkEntity {
+                    topology: render_point_cloud_chunk_instance.topology.clone(),
+                    entity: *render_entity,
+                    main_entity: *visible_entity,
+                    root_entity: render_point_cloud_chunk_instance.root_entity,
+                },
+            );
         }
     }
 }

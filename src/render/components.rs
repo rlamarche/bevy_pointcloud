@@ -1,59 +1,109 @@
-use std::{any::TypeId, sync::Arc};
+use std::{any::TypeId, cmp::Ordering, hash::Hash};
 
 use bevy::{
-    asset::AssetId,
     ecs::{component::Component, entity::Entity},
-    platform::{collections::HashMap, hash::NoOpHash},
+    platform::{
+        collections::{HashMap, HashSet},
+        hash::NoOpHash,
+    },
     render::{
         render_resource::BindGroup,
-        sync_world::{MainEntity, MainEntityHashMap, RenderEntity},
+        sync_world::{MainEntity, MainEntityHashMap},
         texture::CachedTexture,
         view::RetainedViewEntity,
     },
 };
 
-use crate::{ChildIndex, NodeId, PointCloud, PointCloudChunk};
+use crate::{NodeId, PointCloudChunkTopology};
+
+pub type ChunkKey = (MainEntity, MainEntity);
 
 /// This component stores the visible nodes for each point cloud at view level (camera) in "render
 /// world".
 #[derive(Debug, Component, Default, Clone)]
 pub struct RenderVisiblePointCloudEntities {
-    pub entities: MainEntityHashMap<RenderVisiblePointCloudEntity>,
+    // Indexed by `root_entity`; each `Vec` is kept sorted by `(depth, name)`.
+    pub entities: MainEntityHashMap<Vec<RenderVisiblePointCloudChunkEntity>>,
+    // Reused across frames via `.clear()` to avoid heap allocations.
+    pub added_this_frame: HashSet<RenderVisiblePointCloudChunkEntity>,
+    pub removed_this_frame: HashSet<ChunkKey>,
     pub changed_this_frame: bool,
 }
 
 impl RenderVisiblePointCloudEntities {
-    pub fn get(&self, main_entity: &MainEntity) -> Option<&RenderVisiblePointCloudEntity> {
-        self.entities.get(main_entity)
+    pub fn prepare_for_new_frame(&mut self) {
+        self.added_this_frame.clear();
+        self.removed_this_frame.clear();
+        self.changed_this_frame = false;
     }
 
-    pub fn get_or_insert_mut(
-        &mut self,
-        main_entity: MainEntity,
-        render_entity: RenderEntity,
-        asset_id: AssetId<PointCloud>,
-    ) -> &mut RenderVisiblePointCloudEntity {
-        let entry =
-            self.entities
-                .entry(main_entity)
-                .or_insert_with(|| RenderVisiblePointCloudEntity {
-                    main_entity,
-                    entity: render_entity.id(),
-                    asset_id,
-                    chunk_entities: Vec::new(),
-                });
-        entry.entity = render_entity.id();
-        entry.asset_id = asset_id;
-        entry
+    pub fn add_visible_chunk(&mut self, chunk: RenderVisiblePointCloudChunkEntity) {
+        self.added_this_frame.replace(chunk);
+    }
+
+    pub fn remove_visible_chunk(&mut self, root_entity: MainEntity, main_entity: MainEntity) {
+        self.removed_this_frame.insert((root_entity, main_entity));
+    }
+
+    pub fn update_visible_chunks(&mut self) {
+        if self.added_this_frame.is_empty() && self.removed_this_frame.is_empty() {
+            self.changed_this_frame = false;
+            return;
+        }
+
+        // Remove chunks that were not also added this frame (`add` always wins over `remove`).
+        for &(root_entity, main_entity) in &self.removed_this_frame {
+            let was_added = self
+                .added_this_frame
+                .iter()
+                .any(|c| c.root_entity == root_entity && c.main_entity == main_entity);
+
+            if !was_added && let Some(chunks) = self.entities.get_mut(&root_entity) {
+                chunks.retain(|c| c.main_entity != main_entity);
+            }
+        }
+
+        // Insert or update added chunks while preventing duplicates.
+        for chunk in self.added_this_frame.drain() {
+            let chunks = self.entities.entry(chunk.root_entity).or_default();
+            if let Some(existing) = chunks.iter_mut().find(|c| *c == &chunk) {
+                *existing = chunk;
+            } else {
+                chunks.push(chunk);
+            }
+        }
+
+        self.removed_this_frame.clear();
+
+        // Drop point clouds with no visible chunks left, and re-sort active ones.
+        self.entities.retain(|_, chunks| !chunks.is_empty());
+        for chunks in self.entities.values_mut() {
+            chunks.sort_unstable_by(|a, b| {
+                let (Some(a), Some(b)) = (a.topology.as_octree(), b.topology.as_octree()) else {
+                    return Ordering::Equal;
+                };
+
+                a.depth.cmp(&b.depth).then_with(|| a.name.cmp(&b.name))
+            });
+        }
+
+        self.changed_this_frame = true;
+    }
+
+    pub fn get(&self, main_entity: &MainEntity) -> Option<&[RenderVisiblePointCloudChunkEntity]> {
+        self.entities.get(main_entity).map(Vec::as_slice)
     }
 
     pub fn clear_all(&mut self) {
-        // Don't just nuke the hash table; we want to reuse allocations.
-        for render_point_cloud_entities in self.entities.values_mut() {
-            render_point_cloud_entities.asset_id = Default::default();
-            render_point_cloud_entities.chunk_entities.clear();
+        let had_items = self.entities.values().any(|chunks| !chunks.is_empty());
+        // Keep `Vec` and map capacities so allocations are reused on subsequent frames.
+        for chunks in self.entities.values_mut() {
+            chunks.clear();
         }
-        self.changed_this_frame = true;
+        self.entities.retain(|_, chunks| !chunks.is_empty());
+        if had_items {
+            self.changed_this_frame = true;
+        }
     }
 }
 
@@ -64,28 +114,43 @@ pub struct RenderShadowMapVisiblePointCloudEntities {
     pub subviews: HashMap<RetainedViewEntity, RenderVisiblePointCloudEntities>,
 }
 
-#[derive(Clone, Debug)]
-pub struct RenderVisiblePointCloudEntity {
-    pub main_entity: MainEntity,
-    /// a render entity
-    pub entity: Entity,
-    pub asset_id: AssetId<PointCloud>,
-    pub chunk_entities: Vec<RenderVisiblePointCloudChunkEntity>,
+impl RenderShadowMapVisiblePointCloudEntities {
+    pub fn prepare_for_new_frame(&mut self) {
+        for item in self.subviews.values_mut() {
+            item.prepare_for_new_frame();
+        }
+    }
+
+    pub fn update_visible_chunks(&mut self) {
+        for item in self.subviews.values_mut() {
+            item.update_visible_chunks();
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct RenderVisiblePointCloudChunkEntity {
-    /// the corresponding chunk entity, if available
-    pub id: NodeId,
-    pub chunk_id: AssetId<PointCloudChunk>,
-    pub name: Arc<str>,
-    pub parent_id: Option<NodeId>,
-    pub depth: u32,
-    /// offset applied to point size
-    pub offset: Option<f32>,
-    pub child_index: ChildIndex,
+    pub topology: PointCloudChunkTopology,
     pub entity: Entity,
+    // the chunk's main entity
     pub main_entity: MainEntity,
+    // the point cloud's main entity
+    pub root_entity: MainEntity,
+}
+
+impl PartialEq for RenderVisiblePointCloudChunkEntity {
+    fn eq(&self, other: &Self) -> bool {
+        self.main_entity == other.main_entity && self.root_entity == other.root_entity
+    }
+}
+
+impl Eq for RenderVisiblePointCloudChunkEntity {}
+
+impl Hash for RenderVisiblePointCloudChunkEntity {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.root_entity.hash(state);
+        self.main_entity.hash(state);
+    }
 }
 
 /// Stores visible nodes and mapping textures for each view

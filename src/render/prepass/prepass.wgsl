@@ -197,7 +197,7 @@ fn fragment(in: VertexOutput)
 {
 #ifdef SPLAT_RADIUS
     // Perfect circle
-    let diff = vertex_output.shape_uv - vec2<f32>(0.5, 0.5);
+    let diff = in.shape_uv - vec2<f32>(0.5, 0.5);
     let dist_sq = dot(diff, diff);
     let radius_sq = pointcloud.radius * pointcloud.radius;
 

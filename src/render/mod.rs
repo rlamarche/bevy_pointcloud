@@ -167,7 +167,8 @@ impl Plugin for RenderPointCloudPlugin {
                 (
                     PointCloudExtractionSystems::ExtractPointClouds,
                     PointCloudExtractionSystems::ExtractVisiblePointCloudChunks,
-                ).chain()
+                )
+                    .chain(),
             )
             .init_resource::<RenderPointCloudInstances>()
             .init_resource::<RenderPointCloudChunkInstances>()
@@ -194,11 +195,9 @@ impl Plugin for RenderPointCloudPlugin {
                     extract_lights_visible_point_cloud_chunks
                         .in_set(PointCloudExtractionSystems::ExtractPointClouds)
                         .before(extract_lights),
-                    extract_visible_point_cloud_chunks
+                    update_render_octree_index
                         .in_set(PointCloudExtractionSystems::ExtractVisiblePointCloudChunks)
                         .after(extract_cameras),
-                    extract_cascade_visible_point_cloud_chunks.in_set(PointCloudExtractionSystems::ExtractVisiblePointCloudChunks)
-                        .after(extract_lights),
                     // TODO: remove if effectively done in free_removed_point_cloud_materials
                     // free_removed_point_cloud_uniforms,
                 ),
@@ -206,9 +205,23 @@ impl Plugin for RenderPointCloudPlugin {
             .add_systems(
                 Render,
                 (
-                    // [`prepare_cascades_visible_nodes_texture`] after [`prepare_camera_visible_nodes_texture`] because it can use the same visible nodes texture
-                    // TODO: do it
-                    (prepare_camera_visible_nodes_texture, prepare_cascades_visible_nodes_texture)
+                    (
+                        prepare_point_cloud_visible_entities,
+                        prepare_shadow_map_point_cloud_visible_entities,
+                    )
+                        .in_set(RenderSystems::Specialize),
+                    (
+                        update_point_cloud_visible_entities,
+                        update_shadow_map_point_cloud_visible_entities,
+                    )
+                        .in_set(RenderSystems::Prepare),
+                    // [`prepare_cascades_visible_nodes_texture`] after
+                    // [`prepare_camera_visible_nodes_texture`] because it can use the same visible
+                    // nodes texture TODO: do it
+                    (
+                        prepare_camera_visible_nodes_texture,
+                        prepare_cascades_visible_nodes_texture,
+                    )
                         .in_set(RenderSystems::PrepareResources)
                         .chain(),
                     prepare_point_cloud_uniforms.in_set(RenderSystems::PrepareResources),
@@ -216,8 +229,7 @@ impl Plugin for RenderPointCloudPlugin {
                         .in_set(RenderSystems::PrepareAssets)
                         .after(bevy::pbr::check_views_need_specialization)
                         .before(RenderSystems::Specialize),
-                    mark_visible_nodes_texture_not_changed
-                        .in_set(RenderSystems::PrepareBindGroups)
+                    mark_visible_nodes_texture_not_changed.in_set(RenderSystems::PrepareBindGroups),
                 ),
             )
             .add_systems(
@@ -229,20 +241,16 @@ impl Plugin for RenderPointCloudPlugin {
             // prepass
             .add_systems(
                 Core3d,
-                (
-                    (
-                        early_chunk_prepass.after(early_prepass),
-                        early_chunk_deferred_prepass
-                            .after(early_downsample_depth),
-                        // TODO: if `early_deferred_prepass` gets public, uncomment the following line and remove the previous one
-                            // .after(early_deferred_prepass),
-                        late_chunk_prepass.after(late_prepass),
-                        late_chunk_deferred_prepass
-                            .after(late_deferred_prepass),
-                    )
-                        .chain()
-                        .in_set(Core3dSystems::Prepass),
-                ),
+                ((
+                    early_chunk_prepass.after(early_prepass),
+                    early_chunk_deferred_prepass.after(early_downsample_depth),
+                    // TODO: if `early_deferred_prepass` gets public, uncomment the following line
+                    // and remove the previous one .after(early_deferred_prepass),
+                    late_chunk_prepass.after(late_prepass),
+                    late_chunk_deferred_prepass.after(late_deferred_prepass),
+                )
+                    .chain()
+                    .in_set(Core3dSystems::Prepass),),
             )
             // render shadow maps
             .add_systems(

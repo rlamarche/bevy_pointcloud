@@ -46,7 +46,8 @@ use crate::{
         ErasedPointCloudMaterialPipelineKey, ErasedSplatPipelineKey, ErasedViewSettingsKey,
         PointCloudChunk3d, PointCloudDirtySpecializations, PointCloudMaterialProperties,
         PreparedPointCloudMaterial, RenderPointCloudChunkInstances, RenderPointCloudInstances,
-        RenderPointCloudMaterialInstances, ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction,
+        RenderPointCloudMaterialInstances, RenderShadowMapVisiblePointCloudEntities,
+        RenderVisiblePointCloudChunkEntity, ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction,
         SplatPipelineKey,
     },
     PointCloudTopologyKind,
@@ -442,17 +443,40 @@ pub fn queue_shadows(
     _gpu_preprocessing_support: Res<GpuPreprocessingSupport>,
     mesh_allocator: Res<MeshAllocator>,
     view_light_entities: Query<(&LightEntity, &ExtractedView, Option<&RenderLayers>)>,
+    mut shadow_map_visible_entities: Query<&mut RenderShadowMapVisiblePointCloudEntities>,
     shadow_map_visible_entities_query: Query<&RenderShadowMapVisibleEntities>,
     specialized_material_pipeline_cache: Res<SpecializedShadowMaterialPipelineCache>,
     mut pending_shadow_queues: ResMut<PendingShadowQueues>,
     dirty_specializations: Res<PointCloudDirtySpecializations>,
 ) {
-    for (light_entity, extracted_view_light, maybe_view_render_layers) in &view_light_entities {
+    for (light_entity, extracted_view_light, maybe_view_render_layers) in view_light_entities {
         let Some(shadow_phase) =
             shadow_render_phases.get_mut(&extracted_view_light.retained_view_entity)
         else {
             continue;
         };
+
+        let LightEntity::Directional {
+            light_entity: directional_light_entity,
+            cascade_index: _,
+        } = light_entity
+        else {
+            continue;
+        };
+
+        let Ok(mut shadow_map_visible_entities) =
+            shadow_map_visible_entities.get_mut(*directional_light_entity)
+        else {
+            warn!(
+                "RenderShadowMapVisiblePointCloudEntities not found for light entity {:?}",
+                directional_light_entity
+            );
+            continue;
+        };
+        let render_visible_point_cloud_entities = shadow_map_visible_entities
+            .subviews
+            .entry(extracted_view_light.retained_view_entity)
+            .or_default();
 
         let Some(view_specialized_material_pipeline_cache) =
             specialized_material_pipeline_cache.get(&extracted_view_light.retained_view_entity)
@@ -503,6 +527,10 @@ pub fn queue_shadows(
                 *render_entity,
                 render_point_cloud_chunk_instance.root_entity,
             );
+
+            // Updates the visible point cloud entities.
+            render_visible_point_cloud_entities
+                .remove_visible_chunk(render_point_cloud_chunk_instance.root_entity, *main_entity);
         }
 
         // Now iterate through all newly-visible entities and those needing respecialization.
@@ -634,6 +662,15 @@ pub fn queue_shadows(
                     // in binned render phases
                     render_point_cloud_chunk_instance.root_entity,
                 ),
+            );
+            // Updates the visible point cloud entities.
+            render_visible_point_cloud_entities.add_visible_chunk(
+                RenderVisiblePointCloudChunkEntity {
+                    topology: render_point_cloud_chunk_instance.topology.clone(),
+                    entity: *render_entity,
+                    main_entity: *visible_entity,
+                    root_entity: render_point_cloud_chunk_instance.root_entity,
+                },
             );
         }
     }

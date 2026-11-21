@@ -87,7 +87,8 @@ use crate::{
         PreparedPointCloudMaterial, PrepassAlphaMaskDrawFunction, PrepassFragmentShader,
         PrepassOpaqueDepthOnlyDrawFunction, PrepassOpaqueDrawFunction, PrepassVertexShader,
         RenderPointCloudChunkInstances, RenderPointCloudInstances,
-        RenderPointCloudMaterialInstances, SetMaterialBindGroup, SetPointCloudBindGroup,
+        RenderPointCloudMaterialInstances, RenderVisiblePointCloudChunkEntity,
+        RenderVisiblePointCloudEntities, SetMaterialBindGroup, SetPointCloudBindGroup,
         SpecializedPointCloudPipeline, SpecializedPointCloudPipelines, SplatPipelineKey,
     },
     PointCloudTopologyKind,
@@ -1503,12 +1504,16 @@ pub fn queue_prepass_material_meshes(
     mut alpha_mask_deferred_render_phases: ResMut<
         ViewBinnedChunksRenderPhases<AlphaMask3dChunkDeferred>,
     >,
-    views: Query<(&ExtractedView, &RenderVisibleEntities)>,
+    mut views: Query<(
+        &ExtractedView,
+        &RenderVisibleEntities,
+        &mut RenderVisiblePointCloudEntities,
+    )>,
     specialized_material_pipeline_cache: Res<SpecializedPrepassMaterialPipelineCache>,
     mut pending_prepass_mesh_material_queues: ResMut<PendingPrepassMeshMaterialQueues>,
     dirty_specializations: Res<PointCloudDirtySpecializations>,
 ) {
-    for (extracted_view, visible_entities) in &views {
+    for (extracted_view, visible_entities, mut render_visible_point_cloud_entities) in &mut views {
         let (
             mut opaque_phase,
             mut alpha_mask_phase,
@@ -1593,6 +1598,10 @@ pub fn queue_prepass_material_meshes(
                     render_point_cloud_chunk_instance.root_entity,
                 );
             }
+
+            // Updates the visible point cloud entities.
+            render_visible_point_cloud_entities
+                .remove_visible_chunk(render_point_cloud_chunk_instance.root_entity, *main_entity);
         }
 
         // Now iterate through all newly-visible entities and those needing respecialization.
@@ -1704,6 +1713,15 @@ pub fn queue_prepass_material_meshes(
                                 render_point_cloud_chunk_instance.root_entity,
                             ),
                         );
+                        // Updates the visible point cloud entities.
+                        render_visible_point_cloud_entities.add_visible_chunk(
+                            RenderVisiblePointCloudChunkEntity {
+                                topology: render_point_cloud_chunk_instance.topology.clone(),
+                                entity: *render_entity,
+                                main_entity: *visible_entity,
+                                root_entity: render_point_cloud_chunk_instance.root_entity,
+                            },
+                        );
                     } else if let Some(opaque_phase) = opaque_phase.as_mut() {
                         let depth_only_draw_function = material
                             .properties
@@ -1733,6 +1751,15 @@ pub fn queue_prepass_material_meshes(
                                 render_point_cloud_chunk_instance.root_entity,
                             ),
                         );
+                        // Updates the visible point cloud entities.
+                        render_visible_point_cloud_entities.add_visible_chunk(
+                            RenderVisiblePointCloudChunkEntity {
+                                topology: render_point_cloud_chunk_instance.topology.clone(),
+                                entity: *render_entity,
+                                main_entity: *visible_entity,
+                                root_entity: render_point_cloud_chunk_instance.root_entity,
+                            },
+                        );
                     }
                 }
                 RenderPhaseType::AlphaMask => {
@@ -1755,6 +1782,15 @@ pub fn queue_prepass_material_meshes(
                                 render_point_cloud_chunk_instance.root_entity,
                             ),
                         );
+                        // Updates the visible point cloud entities.
+                        render_visible_point_cloud_entities.add_visible_chunk(
+                            RenderVisiblePointCloudChunkEntity {
+                                topology: render_point_cloud_chunk_instance.topology.clone(),
+                                entity: *render_entity,
+                                main_entity: *visible_entity,
+                                root_entity: render_point_cloud_chunk_instance.root_entity,
+                            },
+                        );
                     } else if let Some(alpha_mask_phase) = alpha_mask_phase.as_mut() {
                         alpha_mask_phase.add(
                             OpaqueChunkNoLightmap3dBatchSetKey {
@@ -1773,6 +1809,15 @@ pub fn queue_prepass_material_meshes(
                                 // in binned render phases
                                 render_point_cloud_chunk_instance.root_entity,
                             ),
+                        );
+                        // Updates the visible point cloud entities.
+                        render_visible_point_cloud_entities.add_visible_chunk(
+                            RenderVisiblePointCloudChunkEntity {
+                                topology: render_point_cloud_chunk_instance.topology.clone(),
+                                entity: *render_entity,
+                                main_entity: *visible_entity,
+                                root_entity: render_point_cloud_chunk_instance.root_entity,
+                            },
                         );
                     }
                 }
