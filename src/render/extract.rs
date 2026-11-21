@@ -8,7 +8,6 @@ use bevy::{
             CascadesVisibleEntities, NoFrustumCulling, RenderLayers, ViewVisibility,
             VisibilityRange,
         },
-        Camera,
     },
     ecs::{
         entity::{ContainsEntity, Entity},
@@ -22,14 +21,12 @@ use bevy::{
         TransmittedShadowReceiver, VolumetricLight,
     },
     log::{debug, warn},
-    pbr::{ExtractedDirectionalLight, MeshFlags, MeshTransforms, PreviousGlobalTransform},
+    pbr::{MeshFlags, MeshTransforms, PreviousGlobalTransform},
     render::{
-        mesh::{allocator::MeshAllocator, RenderMesh},
         occlusion_culling::OcclusionCulling,
-        render_asset::RenderAssets,
         sync_world::{MainEntity, RenderEntity},
         view::{
-            ExtractedView, RenderExtractedShadowMapVisibleEntities, RenderShadowMapVisibleEntities,
+            RenderExtractedShadowMapVisibleEntities, RenderShadowMapVisibleEntities,
             RenderVisibilityRanges, RetainedViewEntity, VisibilityExtractionSystemParam,
         },
         Extract,
@@ -41,24 +38,17 @@ use nonmax::NonMaxU16;
 
 use crate::{
     render::{
-        PreparedPointCloudUniforms, RenderOctreeInstancesIndex, RenderPointCloudChunk,
-        RenderPointCloudChunkInstance, RenderPointCloudChunkInstances, RenderPointCloudInstance,
-        RenderPointCloudInstances, RenderShadowMapVisiblePointCloudEntities,
-        RenderVisiblePointCloudChunkEntity, RenderVisiblePointCloudEntities, SplatMeshes,
+        PreparedPointCloudUniforms, RenderOctreeInstancesIndex, RenderPointCloudChunkInstance,
+        RenderPointCloudChunkInstances, RenderPointCloudInstance, RenderPointCloudInstances,
+        SplatMeshes,
     },
     CascadesVisiblePointCloudEntities, PointCloud, PointCloud3d, PointCloudChunk,
-    PointCloudChunk3d, PointCloudTopologyKind, SplatSettings, VisiblePointCloudOctreeEntities,
+    PointCloudChunk3d, SplatSettings,
 };
 
-/// This system extracts the visible point cloud chunk entities into the render world while
-/// preserving the hierarchy, it also computes `first_child_index` and `children_mask` specific for
-/// each views, for later visible nodes texture generation.
-pub fn extract_visible_point_cloud_chunks(
-    views: Extract<Query<(RenderEntity, &VisiblePointCloudOctreeEntities), With<Camera>>>,
+pub fn update_render_octree_index(
+    visible_point_clouds: Extract<Query<Entity, (With<PointCloud3d>, With<ViewVisibility>)>>,
     mut removed_main_entities: Extract<RemovedComponents<PointCloud3d>>,
-    mut extracted_views: Query<&mut RenderVisiblePointCloudEntities, With<ExtractedView>>,
-    mapper: Extract<Query<&RenderEntity>>,
-    render_point_cloud_instances: Res<RenderPointCloudInstances>,
     mut render_octree_index: ResMut<RenderOctreeInstancesIndex>,
     mut prepared_point_cloud_uniforms: ResMut<PreparedPointCloudUniforms>,
 ) {
@@ -71,171 +61,8 @@ pub fn extract_visible_point_cloud_chunks(
         render_octree_index.remove(&removed_main_entity.id());
     }
 
-    for (render_entity, visible_point_cloud_octree_entities) in views.iter() {
-        let Ok(mut render_visible_point_cloud_entities) = extracted_views.get_mut(render_entity)
-        else {
-            warn!("Missing RenderVisiblePointCloudEntities for extracted view");
-            continue;
-        };
-
-        // clear removed entities from `VisiblePointCloudOctreeEntities` component
-        for removed_main_entity in &removed_main_entities {
-            render_visible_point_cloud_entities
-                .entities
-                .remove(removed_main_entity);
-        }
-
-        compute_visible_entities(
-            &mapper,
-            &render_point_cloud_instances,
-            &mut render_octree_index,
-            visible_point_cloud_octree_entities,
-            &mut render_visible_point_cloud_entities,
-        );
-    }
-}
-
-/// This system extracts the visible point cloud chunk entities for each light, view & cascade, into
-/// the render world while preserving the hierarchy, it also computes `first_child_index` and
-/// `children_mask` specific for each views, for later visible nodes texture generation.
-pub fn extract_cascade_visible_point_cloud_chunks(
-    views: Extract<
-        Query<(Entity, RenderEntity, &CascadesVisiblePointCloudEntities), With<DirectionalLight>>,
-    >,
-    mut removed_entities: Extract<RemovedComponents<PointCloud3d>>,
-    // mut extracted_views: Query<&mut RenderShadowMapVisiblePointCloudEntities,
-    // With<ExtractedView>>,
-    mut extracted_directional_lights: Query<(
-        Entity,
-        &MainEntity,
-        &ExtractedDirectionalLight,
-        &RenderLayers,
-        &mut RenderShadowMapVisiblePointCloudEntities,
-    )>,
-    mapper: Extract<Query<&RenderEntity>>,
-    render_point_cloud_instances: Res<RenderPointCloudInstances>,
-    _render_point_cloud_chunks: Res<RenderAssets<RenderPointCloudChunk>>,
-    _render_meshes: Res<RenderAssets<RenderMesh>>,
-    _mesh_allocator: Res<MeshAllocator>,
-    mut render_octree_index: ResMut<RenderOctreeInstancesIndex>,
-) {
-    let removed_entities = removed_entities.read().collect::<Vec<_>>();
-
-    for (main_entity, render_entity, cascade_visible_point_cloud_entities) in views.iter() {
-        let Ok((_, _, _, _, mut render_shadow_map_visible_point_cloud_entities)) =
-            extracted_directional_lights.get_mut(render_entity)
-        else {
-            warn!("Missing extracted directional light {:?}", render_entity);
-            continue;
-        };
-
-        for (&main_auxiliary_entity, visible_point_cloud_entities) in
-            &cascade_visible_point_cloud_entities.entities
-        {
-            for (subview_index, (_, visible_point_cloud_octree_entities)) in
-                visible_point_cloud_entities.iter().enumerate()
-            {
-                let retained_view_entity = RetainedViewEntity {
-                    main_entity: MainEntity::from(main_entity),
-                    auxiliary_entity: MainEntity::from(main_auxiliary_entity),
-                    subview_index: subview_index as u32,
-                };
-
-                let render_visible_point_cloud_entities =
-                    render_shadow_map_visible_point_cloud_entities
-                        .subviews
-                        .entry(retained_view_entity)
-                        .or_default();
-
-                // clear removed entities from `VisiblePointCloudOctreeEntities` component
-                for &removed_entity in &removed_entities {
-                    render_visible_point_cloud_entities
-                        .entities
-                        .remove(&MainEntity::from(removed_entity));
-                }
-
-                compute_visible_entities(
-                    &mapper,
-                    &render_point_cloud_instances,
-                    &mut render_octree_index,
-                    visible_point_cloud_octree_entities,
-                    render_visible_point_cloud_entities,
-                );
-            }
-        }
-    }
-}
-
-/// Computes visible nodes and add them to `render_visible_point_cloud_entities` while calculating
-/// the new visible nodes mask and first child index. The nodes are sorted by depth then child index
-/// order.
-fn compute_visible_entities(
-    mapper: &Extract<'_, '_, Query<'_, '_, &RenderEntity>>,
-    render_point_cloud_instances: &RenderPointCloudInstances,
-    render_octree_index: &mut RenderOctreeInstancesIndex,
-    visible_point_cloud_octree_entities: &VisiblePointCloudOctreeEntities,
-    render_visible_point_cloud_entities: &mut RenderVisiblePointCloudEntities,
-) {
-    if !visible_point_cloud_octree_entities.changed_this_frame {
-        render_visible_point_cloud_entities.changed_this_frame = false;
-        return;
-    }
-    // reset
-    render_visible_point_cloud_entities.clear_all();
-
-    for (&main_entity, point_cloud_entity) in &visible_point_cloud_octree_entities.entities {
-        let Ok(&render_entity) = mapper.get(main_entity) else {
-            warn!("Render entity for PointCloud3d {} not found", main_entity);
-            continue;
-        };
-        let main_entity = MainEntity::from(main_entity);
-
-        let Some(render_point_cloud_instance) = render_point_cloud_instances.get(&main_entity)
-        else {
-            continue;
-        };
-
-        if matches!(
-            render_point_cloud_instance.topology,
-            PointCloudTopologyKind::Octree
-        ) {
-            // makes sure an index exists for this entity (used in visible texture
-            // nodes)
-            render_octree_index.add(main_entity.id());
-        }
-
-        // get the render entry
-        let render_visible_point_cloud_chunk_entity = render_visible_point_cloud_entities
-            .get_or_insert_mut(main_entity, render_entity, point_cloud_entity.asset_id);
-
-        for node_entity in &point_cloud_entity.node_entities {
-            if let (Some(chunk_entity), Some(chunk_id)) = (node_entity.entity, node_entity.chunk_id)
-            {
-                let _current_index = render_visible_point_cloud_chunk_entity.chunk_entities.len();
-
-                let render_entity = mapper
-                    .get(chunk_entity)
-                    .expect("render entity not available for a chunk entity")
-                    .id();
-
-                let main_entity = MainEntity::from(chunk_entity);
-
-                // insert the visible chunk in
-                render_visible_point_cloud_chunk_entity.chunk_entities.push(
-                    RenderVisiblePointCloudChunkEntity {
-                        id: node_entity.id,
-                        chunk_id,
-                        name: node_entity.name.clone(),
-                        parent_id: node_entity.parent_id,
-                        depth: node_entity.depth,
-                        offset: node_entity.offset,
-                        child_index: node_entity.child_index,
-                        entity: render_entity,
-                        main_entity,
-                    },
-                );
-            }
-        }
+    for visible_point_cloud in visible_point_clouds.into_iter() {
+        render_octree_index.add(visible_point_cloud);
     }
 }
 
