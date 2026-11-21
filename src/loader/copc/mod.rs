@@ -51,7 +51,7 @@ impl From<ByteSourceError> for CopcError {
     }
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CopcLoaderSettings {
     // whether to compute offset to adjust point sizes depending on density
     pub compute_offset: bool,
@@ -60,6 +60,19 @@ pub struct CopcLoaderSettings {
     pub min_color: f32,
     pub max_color: f32,
     pub filter_classification: FilterClassification,
+}
+
+impl Default for CopcLoaderSettings {
+    fn default() -> Self {
+        Self {
+            compute_offset: false,
+            load_normals: false,
+            load_colors: true,
+            min_color: 0.0,
+            max_color: 65535.0,
+            filter_classification: FilterClassification::None,
+        }
+    }
 }
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
