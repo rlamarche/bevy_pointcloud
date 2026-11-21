@@ -86,8 +86,11 @@ impl Plugin for PointCloudPlugin {
         });
         app.add_plugins(PointCloudVisiblityPlugin);
         app.add_plugins(RenderPointCloudPlugin::new(self.debug_flags));
+
+        // TODO: do not laod all materials by default
         app.add_plugins(SimplePointCloudMaterialPlugin);
         app.add_plugins(StandardPointCloudMaterialPlugin);
+        app.add_plugins(MinimalPointCloudMaterialPlugin);
 
         app.add_systems(
             Last,

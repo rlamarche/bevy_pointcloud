@@ -1,3 +1,4 @@
+mod minimal;
 mod simple;
 mod standard;
 
@@ -9,9 +10,11 @@ use bevy::{
     render::{extract_component::ExtractComponent, render_resource::*},
 };
 use bitflags::bitflags;
+pub use minimal::*;
 use serde::{Deserialize, Serialize};
 pub use simple::*;
 pub use standard::*;
+
 use strum::{EnumIter, FromRepr};
 
 use crate::ViewSettings;
