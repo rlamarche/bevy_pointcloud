@@ -151,37 +151,26 @@ fn vertex(
 
 #ifdef IS_OCTREE
     // Get the fov from projection matrix
-    let f = view_bindings::view.clip_from_view[1][1];
-    let fov = 2.0 * atan(1.0 / f);
-    let slope = tan(fov / 2.0);
-    var proj_factor = -0.5 * viewport[3] / (slope * view_position.z);
-
-    // TODO precalculate it on cpu
-    let model_view = view_bindings::view.view_from_world * pointcloud.world_from_local;
-
-    // let scale = length(
-    //   model_view * vec4(0, 0, 0, 1) -
-    //   model_view * vec4(octree_node.spacing, 0, 0, 1)
-    // ) / octree_node.spacing;
+    // let f = view_bindings::view.clip_from_view[1][1];
+    // let fov = 2.0 * atan(1.0 / f);
+    // let slope = tan(fov / 2.0);
+    // var proj_factor = -0.5 * viewport[3] / (slope * view_position.z);
 
     let max_relative_depth = get_max_relative_depth(center);
     let attenuation = exp2(max_relative_depth);
     //let attenuation = pow(2.0, max_relative_depth);
 
     // Base screen-space radius driven by spacing and LOD attenuation
-    var radius_screen = pointcloud.spacing * 1.7 / attenuation;
-    radius_screen = radius_screen * proj_factor * transform_scale;
+    // var radius_screen = pointcloud.spacing * 1.7 / attenuation;
+    // radius_screen = radius_screen * proj_factor * transform_scale;
 
     // radius_screen = max(material.min_point_size, radius_screen);
     // radius_screen = min(material.max_point_size, radius_screen);
+    // let radius = radius_screen / proj_factor;
 
-
-    let radius = radius_screen / proj_factor;
+    let radius = pointcloud.spacing * transform_scale * 1.7 / attenuation;
 #else
-    let point_size = pointcloud.point_size * transform_scale;
-
-    // Compute radius to size the point correctly with viewport size
-    let radius = point_size / min(viewport[2], viewport[3]);
+    let radius = pointcloud.point_size * transform_scale;
 #endif
 
     // Compute the offset to apply for creating a quad
