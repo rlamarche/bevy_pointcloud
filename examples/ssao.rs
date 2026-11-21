@@ -125,22 +125,25 @@ fn load_sphere_point_cloud(
     });
 
     // 2. Create the Point Cloud Material
-    let pbr_pc_material_handle =
-        pc_standard_materials.add(StandardPointCloudMaterial(StandardMaterial {
+    let pbr_pc_material_handle = pc_standard_materials.add(StandardPointCloudMaterial {
+        material: StandardMaterial {
             base_color: RED.into(),
             cull_mode: None,
             perceptual_roughness: 0.8,
             reflectance: 0.2,
             ..default()
-        }));
-
-    let pc_material_handle = pc_simple_materials.add(SimplePointCloudMaterial {
-        base_color: RED.into(),
-        cull_mode: None,
-        // perceptual_roughness: 0.8,
-        // reflectance: 0.2,
+        },
+        weighted_splats: false,
         ..default()
     });
+
+    // let pc_material_handle = pc_simple_materials.add(SimplePointCloudMaterial {
+    //     base_color: RED.into(),
+    //     cull_mode: None,
+    //     // perceptual_roughness: 0.8,
+    //     // reflectance: 0.2,
+    //     ..default()
+    // });
 
     // 3. Spawn entity with Cubes as Splats
     commands.spawn((
@@ -193,20 +196,22 @@ fn load_sphere_point_cloud(
                 // PointCloudMaterial3d(
                 //     pc_standard_materials.add(StandardPointCloudMaterial(Color::from(RED).
                 // into())) ),
-                PointCloudMaterial3d(pc_standard_materials.add(StandardPointCloudMaterial(
-                    StandardMaterial {
+                PointCloudMaterial3d(pc_standard_materials.add(StandardPointCloudMaterial {
+                    material: StandardMaterial {
                         base_color: RED.into(),
                         // cull_mode: None,
                         perceptual_roughness: 0.8,
                         reflectance: 0.2,
                         ..default()
-                    }
-                ))),
+                    },
+                    weighted_splats: false,
+                    ..default()
+                })),
                 // PointCloudMaterial3d(pc_simple_materials.add(Color::from(RED))),
                 SplatSettings {
                     // splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
                     point_size_mode: PointSizeMode::LocalSpace,
-                    point_size: 0.5,
+                    point_size: 1.0,
                     radius: Some(0.5),
                     orientation: SplatOrientation::Billboard,
                     // orientation: SplatOrientation::FaceNormal,
@@ -229,19 +234,21 @@ fn load_sphere_point_cloud(
                 //     pc_standard_materials
                 //         .add(StandardPointCloudMaterial(Color::from(GREEN).into()))
                 // ),
-                PointCloudMaterial3d(pc_standard_materials.add(StandardPointCloudMaterial(
-                    StandardMaterial {
+                PointCloudMaterial3d(pc_standard_materials.add(StandardPointCloudMaterial {
+                    material: StandardMaterial {
                         base_color: GREEN.into(),
                         // cull_mode: None,
                         perceptual_roughness: 0.8,
                         reflectance: 0.2,
                         ..default()
-                    }
-                ))),
+                    },
+                    weighted_splats: false,
+                    ..default()
+                })),
                 SplatSettings {
                     // splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
                     point_size_mode: PointSizeMode::LocalSpace,
-                    point_size: 0.5,
+                    point_size: 1.0,
                     radius: Some(0.5),
                     orientation: SplatOrientation::Billboard,
                     // orientation: SplatOrientation::FaceNormal,

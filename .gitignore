@@ -24,3 +24,6 @@ Cargo.lock
 # Assets
 /assets/pointclouds
 /assets/shaders
+/assets/potree
+/book
+/wasm

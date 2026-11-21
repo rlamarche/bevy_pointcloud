@@ -19,7 +19,7 @@ use bevy::{
     math::VectorSpace,
     pbr::diagnostic::MaterialAllocatorDiagnosticPlugin,
     prelude::*,
-    render::{diagnostic::MeshAllocatorDiagnosticPlugin, view::NoIndirectDrawing},
+    render::diagnostic::MeshAllocatorDiagnosticPlugin,
     window::PresentMode,
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
@@ -27,8 +27,8 @@ use bevy_pointcloud::{
     potree::{PotreeAssetSource, PotreeLoader},
     prelude::*,
     render::SplatMeshes,
-    PointSizeModeTemplate, RenderMode, RenderModes, SplatOrientationTemplate,
-    StandardPointCloudMaterial,
+    PointCloudServerSettings, PointCloudVisiblityPlugin, PointSizeModeTemplate, RenderMode,
+    RenderModes, SplatOrientationTemplate, StandardPointCloudMaterial,
 };
 
 use crate::ui::{
@@ -76,7 +76,9 @@ struct MyPointCloud;
 fn main() {
     let mut app = App::new();
 
-    app.add_plugins(DefaultPlugins)
+    app
+        // .insert_resource(DefaultOpaqueRendererMethod::deferred())
+        .add_plugins(DefaultPlugins)
         .add_plugins((
             FrameTimeDiagnosticsPlugin::default(),
             MeshAllocatorDiagnosticPlugin,
@@ -99,7 +101,7 @@ fn main() {
                 init_shared_state,
                 setup_camera,
                 setup_scene.after(init_shared_state),
-                setup_sun,
+                // setup_sun,
             ),
         )
         // Update Systems
@@ -112,6 +114,11 @@ fn main() {
         .add_observer(set_splat_orientation_observer);
 
     app.insert_resource(UiTheme(create_dark_theme()));
+    app.insert_resource(PointCloudServerSettings {
+        max_size: 50 * 1024 * 1024, // 1 MB
+        max_concurrent_hierarchy_load_task: 1,
+        max_concurrent_chunks_load_task: 1,
+    });
 
     app.run();
 }
@@ -130,7 +137,7 @@ fn init_shared_state(
 ) -> Result<()> {
     let std_material = pc_standard_materials.add(StandardMaterial {
         cull_mode: None,
-        // opaque_render_method: bevy::material::OpaqueRendererMethod::Deferred,
+        opaque_render_method: bevy::material::OpaqueRendererMethod::Forward,
         // alpha_mode: AlphaMode::Blend,
         ..default()
     });
@@ -195,6 +202,8 @@ fn setup_camera(mut commands: Commands) {
             FrameTimeDiagnosticsPlugin::FPS.into(),
             FrameTimeDiagnosticsPlugin::FRAME_TIME.into(),
             EntityCountDiagnosticsPlugin::ENTITY_COUNT.into(),
+            PointCloudVisiblityPlugin::VISIBILITY_CHECK_TIME.into(),
+            PointCloudVisiblityPlugin::BUDGET.into(),
             // DiagnosticsOverlayItem {
             //     path: FrameTimeDiagnosticsPlugin::FRAME_COUNT,
             //     statistic: DiagnosticsOverlayStatistic::Smoothed,
@@ -221,13 +230,15 @@ fn setup_camera(mut commands: Commands) {
         },
         PointCloudViewSettings {
             render_modes: RenderModes::all(),
-            clipping_planes: vec![
-                Vec4::new(0.0, -1.0, 0.0, -20.0),
-                Vec4::new(0.0, 1.0, 0.0, 20.0),
-            ],
+            // clipping_planes: vec![
+            //     Vec4::new(0.0, -1.0, 0.0, -20.0),
+            //     Vec4::new(0.0, 1.0, 0.0, 20.0),
+            // ],
             edl_enabled: false,
             ..default()
         },
+        // DepthPrepass,
+        // DeferredPrepass,
         // NoIndirectDrawing,
     ));
 }
@@ -304,29 +315,27 @@ fn point_cloud_scene(shared_state: &SharedState) -> impl Scene {
 }
 
 fn setup_sun(mut commands: Commands) {
-    // commands.spawn((
-    //     DirectionalLight {
-    //         color: Color::WHITE,
-    //         illuminance: light_consts::lux::AMBIENT_DAYLIGHT, // ~10,000 lux
-    //         shadow_maps_enabled: true,
-    //         ..default()
-    //     },
-    //     Transform::from_rotation(Quat::from_rotation_x(-PI / 4.0)),
-    //     PointCloudVisibilitySettings {
-    //         min_radius: Some(30.0),
-    //         point_budget: Some(1_000_000),
-    //         ..default()
-    //     },
-    //     PointCloudViewSettings {
-    //         render_modes: RenderModes::all(),
-    //         clipping_planes: vec![
-    //             Vec4::new(0.0, -1.0, 0.0, -20.0),
-    //             Vec4::new(0.0, 1.0, 0.0, 20.0),
-    //         ],
-    //         edl_enabled: false,
-    //         ..default()
-    //     },
-    // ));
+    commands.spawn((
+        DirectionalLight {
+            color: Color::WHITE,
+            illuminance: light_consts::lux::AMBIENT_DAYLIGHT, // ~10,000 lux
+            shadow_maps_enabled: true,
+            ..default()
+        },
+        Transform::from_rotation(Quat::from_rotation_x(-PI / 4.0)),
+        PointCloudVisibilitySettings {
+            min_radius: Some(30.0),
+            point_budget: Some(1_000_000),
+            ..default()
+        },
+        PointCloudViewSettings {
+            clipping_planes: vec![
+                Vec4::new(0.0, -1.0, 0.0, -20.0),
+                Vec4::new(0.0, 1.0, 0.0, 20.0),
+            ],
+            ..default()
+        },
+    ));
 }
 
 /// Toggles the sun movement when Spacebar is pressed
@@ -470,6 +479,7 @@ fn update_camera_control(
     ui_state: Res<UiState>,
     ui_settings: Res<UiSettings>,
     mut simple_materials: ResMut<Assets<SimplePointCloudMaterial>>,
+    mut std_materials: ResMut<Assets<StandardPointCloudMaterial>>,
     shared_state: Res<SharedState>,
     mut xray_enabled: Local<bool>,
     mut weighted_splats: Local<bool>,
@@ -483,8 +493,13 @@ fn update_camera_control(
     }
 
     for mut view_settings in view_settings {
-        view_settings.clipping_planes[0].w = ui_settings.plane_distance_0;
-        view_settings.clipping_planes[1].w = ui_settings.plane_distance_1;
+        if !view_settings.clipping_planes.is_empty() {
+            view_settings.clipping_planes[0].w = ui_settings.plane_distance_0;
+            if view_settings.clipping_planes.len() > 1 {
+                view_settings.clipping_planes[1].w = ui_settings.plane_distance_1;
+            }
+        }
+
         view_settings.edl_enabled = ui_settings.edl_enabled;
     }
     for mut visibility_settings in lights {
@@ -492,19 +507,27 @@ fn update_camera_control(
         visibility_settings.min_radius = Some(ui_settings.light_min_node_size);
     }
 
-    if let Some(mut simple_material) = simple_materials.get_mut(shared_state.simple_material.id()) {
-        if *xray_enabled != ui_settings.xray {
-            *xray_enabled = ui_settings.xray;
+    if *xray_enabled != ui_settings.xray || *weighted_splats != ui_settings.weighted_splats {
+        if let Some(mut simple_material) =
+            simple_materials.get_mut(shared_state.simple_material.id())
+        {
             simple_material.render_mode = match ui_settings.xray {
                 true => RenderMode::XRay,
                 false => RenderMode::Normal,
             };
-        }
-        if *weighted_splats != ui_settings.weighted_splats {
-            *weighted_splats = ui_settings.weighted_splats;
             simple_material.weighted_splats = ui_settings.weighted_splats;
         }
+        if let Some(mut std_material) = std_materials.get_mut(shared_state.std_material.id()) {
+            std_material.render_mode = match ui_settings.xray {
+                true => RenderMode::XRay,
+                false => RenderMode::Normal,
+            };
+            std_material.weighted_splats = ui_settings.weighted_splats;
+        }
     }
+
+    *xray_enabled = ui_settings.xray;
+    *weighted_splats = ui_settings.weighted_splats;
 }
 
 fn despawn_observer(

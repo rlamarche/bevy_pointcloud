@@ -43,9 +43,23 @@ pub enum LasLoaderError {
     Octree(#[from] OctreeError),
 }
 
-#[derive(Default, serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct LasLoaderSettings {
     pub load_normals: bool,
+    pub load_colors: bool,
+    pub min_color: f32,
+    pub max_color: f32,
+}
+
+impl Default for LasLoaderSettings {
+    fn default() -> Self {
+        Self {
+            load_normals: false,
+            load_colors: true,
+            min_color: 0.0,
+            max_color: 65535.0,
+        }
+    }
 }
 
 #[derive(TypePath)]
@@ -231,9 +245,15 @@ fn load_points_as_mesh(
     las_reader: &mut las::Reader,
     settings: &LasLoaderSettings,
 ) -> Result<Mesh, las::Error> {
-    let mut positions = Vec::with_capacity(point_count);
-    let mut colors = Vec::with_capacity(point_count);
     let header = las_reader.header();
+
+    let mut positions = Vec::with_capacity(point_count);
+    let mut maybe_colors = if header.point_format().has_color {
+        Some(Vec::with_capacity(point_count))
+    } else {
+        None
+    };
+
     let mut maybe_normals: Option<Vec<[f32; 3]>> =
         // assume normals are stored in extra bytes in f32 format
         // TODO: add an option to load normals from double ?
@@ -242,6 +262,8 @@ fn load_points_as_mesh(
         } else {
             None
         };
+
+    let color_diff = settings.max_color - settings.min_color;
 
     for point in las_reader.read_all()?.points() {
         let point = match point {
@@ -253,15 +275,17 @@ fn load_points_as_mesh(
         };
 
         positions.push([point.x as f32, point.y as f32, point.z as f32]);
-        if let Some(color) = &point.color {
-            colors.push([
-                color.red as f32 / u16::MAX as f32,
-                color.green as f32 / u16::MAX as f32,
-                color.blue as f32 / u16::MAX as f32,
-                1.0,
-            ]);
-        } else {
-            colors.push([0.0, 0.0, 0.0, 0.0]);
+        if let Some(colors) = &mut maybe_colors {
+            if let Some(color) = &point.color {
+                colors.push([
+                    (color.red as f32 - settings.min_color) / color_diff,
+                    (color.green as f32 - settings.min_color) / color_diff,
+                    (color.blue as f32 - settings.min_color) / color_diff,
+                    1.0,
+                ]);
+            } else {
+                colors.push([0.0, 0.0, 0.0, 0.0]);
+            }
         }
         if let Some(normals) = &mut maybe_normals {
             if point.extra_bytes.len() > size_of::<f32>() * 3 {
@@ -281,11 +305,14 @@ fn load_points_as_mesh(
     .with_inserted_attribute(
         Mesh::ATTRIBUTE_POSITION,
         VertexAttributeValues::Float32x3(positions),
-    )
-    .with_inserted_attribute(
-        Mesh::ATTRIBUTE_COLOR,
-        VertexAttributeValues::Float32x4(colors),
     );
+
+    if let Some(colors) = maybe_colors {
+        mesh.insert_attribute(
+            Mesh::ATTRIBUTE_COLOR,
+            VertexAttributeValues::Float32x4(colors),
+        );
+    }
 
     if let Some(normals) = maybe_normals {
         mesh.insert_attribute(

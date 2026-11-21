@@ -157,6 +157,8 @@ opt-level = 1
 opt-level = 3
 debug = 1
 
+[profile.release.package."*"]
+opt-level = 3
 
 # Optimize for size in the wasm-release profile to reduce load times and bandwidth usage on web.
 [profile.wasm-release]

@@ -3,14 +3,12 @@
 use bevy::{
     camera_controller::free_camera::{FreeCamera, FreeCameraPlugin},
     prelude::*,
-    remote::{http::RemoteHttpPlugin, RemotePlugin},
 };
 use bevy_pointcloud::{las::LasLoader, prelude::*};
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugins((RemotePlugin::default(), RemoteHttpPlugin::default()))
         .add_plugins(FreeCameraPlugin)
         .add_plugins(PointCloudPlugin::default())
         .add_systems(Startup, (setup, load_point_cloud))

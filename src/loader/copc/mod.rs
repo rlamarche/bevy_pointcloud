@@ -1,4 +1,4 @@
-// mod density;
+mod density;
 
 use std::{collections::VecDeque, sync::Arc};
 
@@ -17,8 +17,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    BuilderNodeId, ByteSource, ByteSourceError, ChildIndex, ChunkLoadResult, InsertNodeParams,
-    OctreeError, OctreeHierarchyBuilder, OctreeLoader, OctreeMetadata, PointCloudNodeStatus,
+    loader::copc::density::compute_density, BuilderNodeId, ByteSource, ByteSourceError, ChildIndex,
+    ChunkLoadResult, InsertNodeParams, OctreeError, OctreeHierarchyBuilder, OctreeLoader,
+    OctreeMetadata, PointCloudNodeStatus,
 };
 
 /// An error that occurs when loading a glTF file.
@@ -52,7 +53,12 @@ impl From<ByteSourceError> for CopcError {
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct CopcLoaderSettings {
+    // whether to compute offset to adjust point sizes depending on density
+    pub compute_offset: bool,
     pub load_normals: bool,
+    pub load_colors: bool,
+    pub min_color: f32,
+    pub max_color: f32,
     pub filter_classification: FilterClassification,
 }
 
@@ -211,7 +217,7 @@ impl<S: ByteSource> OctreeLoader for CopcLoader<S> {
 
         let header = reader.header().las_header();
 
-        let has_color = header.point_format().has_color;
+        let load_colors = header.point_format().has_color && self.settings.load_colors;
 
         // assume normals are stored in extra bytes in f32 format
         // TODO: add an option to load normals from double ?
@@ -219,19 +225,19 @@ impl<S: ByteSource> OctreeLoader for CopcLoader<S> {
             && header.point_format().extra_bytes > 3 * size_of::<f32>() as u16;
 
         // let spacing = reader.copc_info().spacing;
-        // let aabb = node.key.bounds(&reader.copc_info().root_bounds());
+        let aabb = node.key.bounds(&reader.copc_info().root_bounds());
         let points = reader.fetch_points(&key).await?;
 
         drop(reader);
 
-        // let level = node.key.level as f64;
-
-        // let density = compute_density(&points, &aabb);
-
-        // let spacing = (spacing / level.exp2()) as f32;
-
-        // // magic formula from Potree
-        // let offset = (density as f32).log2() / 2.0 - 1.5;
+        let offset = if self.settings.compute_offset {
+            let density = compute_density(&points, &aabb);
+            // magic formula from Potree
+            let offset = (density as f32).log2() / 2.0 - 1.5;
+            Some(offset)
+        } else {
+            None
+        };
 
         let mut point_count = node.point_count as usize;
 
@@ -263,7 +269,7 @@ impl<S: ByteSource> OctreeLoader for CopcLoader<S> {
         let mut positions: Vec<[f32; 3]> = Vec::with_capacity(point_count);
 
         // will be allocated if a color is found
-        let mut maybe_colors: Option<Vec<[f32; 4]>> = match has_color {
+        let mut maybe_colors: Option<Vec<[f32; 4]>> = match load_colors {
             true => Some(Vec::with_capacity(point_count)),
             false => None,
         };
@@ -276,6 +282,8 @@ impl<S: ByteSource> OctreeLoader for CopcLoader<S> {
             } else {
                 None
             };
+
+        let color_diff = self.settings.max_color - self.settings.min_color;
 
         // TODO load more attributes
         for point in points {
@@ -293,9 +301,9 @@ impl<S: ByteSource> OctreeLoader for CopcLoader<S> {
             if let Some(colors) = maybe_colors.as_mut() {
                 if let Some(color) = point.color {
                     colors.push([
-                        (color.red as f64 / 65535.0) as f32,
-                        (color.green as f64 / 65535.0) as f32,
-                        (color.blue as f64 / 65535.0) as f32,
+                        (color.red as f32 - self.settings.min_color) / color_diff,
+                        (color.green as f32 - self.settings.min_color) / color_diff,
+                        (color.blue as f32 - self.settings.min_color) / color_diff,
                         1.0,
                     ]);
                 } else {
@@ -339,7 +347,7 @@ impl<S: ByteSource> OctreeLoader for CopcLoader<S> {
 
         Ok(ChunkLoadResult {
             mesh: Some(mesh),
-            offset: None, // TODO compute density then offset
+            offset,
             final_point_count: point_count,
         })
     }

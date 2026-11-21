@@ -14,7 +14,7 @@ use bevy::{
         CascadeShadowConfigBuilder, SunDisk, VolumetricFog,
     },
     math::{Affine2, VectorSpace},
-    pbr::AtmosphereSettings,
+    pbr::{AtmosphereSettings, ScreenSpaceAmbientOcclusion},
     platform::collections::HashSet,
     post_process::bloom::Bloom,
     prelude::*,
@@ -54,24 +54,24 @@ struct CopcPointCloud;
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_plugins(FpsOverlayPlugin {
-            config: FpsOverlayConfig {
-                text_config: TextFont {
-                    font_size: FontSize::Px(42.0),
-                    font: default(),
-                    font_smoothing: FontSmoothing::default(),
-                    ..default()
-                },
-                text_color: GREEN.into(),
-                refresh_interval: core::time::Duration::from_millis(100),
-                enabled: true,
-                frame_time_graph_config: FrameTimeGraphConfig {
-                    enabled: true,
-                    min_fps: 30.0,
-                    target_fps: 144.0,
-                },
-            },
-        })
+        // .add_plugins(FpsOverlayPlugin {
+        //     config: FpsOverlayConfig {
+        //         text_config: TextFont {
+        //             font_size: FontSize::Px(42.0),
+        //             font: default(),
+        //             font_smoothing: FontSmoothing::default(),
+        //             ..default()
+        //         },
+        //         text_color: GREEN.into(),
+        //         refresh_interval: core::time::Duration::from_millis(100),
+        //         enabled: true,
+        //         frame_time_graph_config: FrameTimeGraphConfig {
+        //             enabled: true,
+        //             min_fps: 30.0,
+        //             target_fps: 144.0,
+        //         },
+        //     },
+        // })
         .add_plugins(FreeCameraPlugin)
         .add_plugins(PointCloudPlugin::default())
         // Initialization and Resources
@@ -114,6 +114,11 @@ fn setup(mut commands: Commands, mut scattering_mediums: ResMut<Assets<Scatterin
             ..default()
         },
         Msaa::Off,
+        ScreenSpaceAmbientOcclusion::default(),
+        // ScreenSpaceAmbientOcclusion {
+        //     quality_level: bevy::pbr::ScreenSpaceAmbientOcclusionQualityLevel::High,
+        //     constant_object_thickness: 1000.0,
+        // },
     ));
 }
 
@@ -127,8 +132,9 @@ fn setup_sun(mut commands: Commands) {
         },
         SunDisk::EARTH,
         CascadeShadowConfigBuilder {
-            maximum_distance: 2000.0,
-            first_cascade_far_bound: 1.0,
+            num_cascades: 1,
+            maximum_distance: 1000.0,
+            first_cascade_far_bound: 10.0,
             ..default()
         }
         .build(),
@@ -149,35 +155,41 @@ fn load_point_cloud(
     point_cloud_server: Res<PointCloudServer>,
     mut commands: Commands,
 ) -> Result<()> {
-    let texture_handle = asset_server
-        .load_builder()
-        .with_settings(|settings: &mut ImageLoaderSettings| {
-            settings.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
-                address_mode_u: ImageAddressMode::Repeat,
-                address_mode_v: ImageAddressMode::Repeat,
-                ..default()
-            });
-        })
-        .load("branding/bevy_icon.png");
+    // let texture_handle = asset_server
+    //     .load_builder()
+    //     .with_settings(|settings: &mut ImageLoaderSettings| {
+    //         settings.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+    //             address_mode_u: ImageAddressMode::Repeat,
+    //             address_mode_v: ImageAddressMode::Repeat,
+    //             ..default()
+    //         });
+    //     })
+    //     .load("branding/bevy_icon.png");
 
     let textured_material_handle = pc_standard_materials.add(StandardMaterial {
-        base_color_texture: Some(texture_handle),
+        // base_color_texture: Some(texture_handle),
         cull_mode: None,
+        // metallic: 1.0,
         ..default()
     });
 
-    let point_cloud_vegetation_handle = point_cloud_server.load_with_settings::<CopcLoader<_>>(FileSource::open(
-        "/home/romain/Documents/PointClouds/LidarHD/LHD_FXX_0893_6238_PTS_LAMB93_IGN69.copc.laz",
-    )?, |settings| {
-        settings.filter_classification = FilterClassification::Include(HashSet::from([
-            Classification::HighVegetation.as_u8(),
-            Classification::LowVegetation.as_u8(),
-        ]));
-    });
+    // let point_cloud_vegetation_handle =
+    // point_cloud_server.load_with_settings::<CopcLoader<_>>(FileSource::open(     // "/home/
+    // romain/Documents/PointClouds/LidarHD/LHD_FXX_0893_6238_PTS_LAMB93_IGN69.copc.laz",
+    //     "/home/romain/Documents/PointClouds/LidarHD/LHD_FXX_0893_6238_PTS_LAMB93_IGN69_normals.
+    // copc.laz", )?, |settings| {
+    //     settings.load_normals = true;
+    //     settings.filter_classification = FilterClassification::Include(HashSet::from([
+    //         Classification::HighVegetation.as_u8(),
+    //         Classification::LowVegetation.as_u8(),
+    //     ]));
+    // });
 
     let point_cloud_other_handle = point_cloud_server.load_with_settings::<CopcLoader<_>>(FileSource::open(
-        "/home/romain/Documents/PointClouds/LidarHD/LHD_FXX_0893_6238_PTS_LAMB93_IGN69.copc.laz",
+        // "/home/romain/Documents/PointClouds/LidarHD/LHD_FXX_0893_6238_PTS_LAMB93_IGN69.copc.laz",
+         "/home/romain/Documents/PointClouds/LidarHD/LHD_FXX_0893_6238_PTS_LAMB93_IGN69_normals.copc.laz",
     )?, |settings| {
+        settings.load_normals = true;
         settings.filter_classification = FilterClassification::Exclude(HashSet::from([
             Classification::HighVegetation.as_u8(),
             Classification::LowVegetation.as_u8(),
@@ -197,8 +209,9 @@ fn load_point_cloud(
                                               * into())) */
                 ),
                 SplatSettings {
-                    splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+                    // splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
                     point_size_mode: PointSizeMode::LocalSpace,
+                    point_size: 1.0,
                     // radius: Some(0.5),
                     // orientation: SplatOrientation::Billboard,
                     orientation: SplatOrientation::FaceNormal,
@@ -214,31 +227,31 @@ fn load_point_cloud(
                     ..default()
                 }
             ),
-            (
-                CopcPointCloud,
-                PointCloud3d(point_cloud_vegetation_handle),
-                PointCloudMaterial3d(
-                    pc_standard_materials
-                        .add(StandardPointCloudMaterial(Color::from(GREEN).into()))
-                ),
-                SplatSettings {
-                    splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-                    point_size_mode: PointSizeMode::LocalSpace,
-                    // radius: Some(0.5),
-                    // orientation: SplatOrientation::Billboard,
-                    orientation: SplatOrientation::FaceNormal,
-                    default_normal: Vec3::new(0.0, 0.0, 1.0),
-                    // uv_mapping: UVMapping::Planar,
-                    // uv_u: Vec3::new(0.0, 1.0, 0.0),
-                    // uv_v: Vec3::new(1.0, 0.0, 0.0),
-                    // uv_transform: Affine2::from_scale_angle_translation(
-                    //     Vec2 { x: 10.0, y: 10.0 },
-                    //     0.0,
-                    //     Vec2::ZERO,
-                    // ),
-                    ..default()
-                }
-            )
+            // (
+            //     CopcPointCloud,
+            //     PointCloud3d(point_cloud_vegetation_handle),
+            //     PointCloudMaterial3d(
+            //         pc_standard_materials
+            //             .add(StandardPointCloudMaterial(Color::from(GREEN).into()))
+            //     ),
+            //     SplatSettings {
+            //         // splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+            //         point_size_mode: PointSizeMode::LocalSpace,
+            //         // radius: Some(0.5),
+            //         // orientation: SplatOrientation::Billboard,
+            //         orientation: SplatOrientation::FaceNormal,
+            //         default_normal: Vec3::new(0.0, 0.0, 1.0),
+            //         // uv_mapping: UVMapping::Planar,
+            //         // uv_u: Vec3::new(0.0, 1.0, 0.0),
+            //         // uv_v: Vec3::new(1.0, 0.0, 0.0),
+            //         // uv_transform: Affine2::from_scale_angle_translation(
+            //         //     Vec2 { x: 10.0, y: 10.0 },
+            //         //     0.0,
+            //         //     Vec2::ZERO,
+            //         // ),
+            //         ..default()
+            //     }
+            // )
         ],
     ));
 

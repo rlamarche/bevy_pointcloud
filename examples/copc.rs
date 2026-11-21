@@ -7,6 +7,7 @@ use bevy::{
     color::palettes::css::RED,
     feathers::FeathersPlugins,
     image::{ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor},
+    light::SunDisk,
     math::Affine2,
     prelude::*,
     transform::systems::propagate_parent_transforms,
@@ -22,9 +23,16 @@ fn main() {
         .add_plugins(PointCloudPlugin::default())
         // .add_plugins(MyUiPlugin)
         // .insert_resource(UiTheme(create_dark_theme()))
-        .add_systems(Startup, (setup, load_point_cloud))
+        .add_systems(
+            Startup,
+            (
+                setup,
+                load_point_cloud,
+                // setup_sun
+            ),
+        )
         .add_systems(PostUpdate, setup_point_cloud)
-        .add_systems(PreUpdate, draw_gizmos.after(propagate_parent_transforms))
+        // .add_systems(PreUpdate, draw_gizmos.after(propagate_parent_transforms))
         .run();
 }
 
@@ -35,7 +43,38 @@ fn setup(mut commands: Commands) {
         Transform::from_xyz(1.0, 0.0, 0.0).looking_at(Vec3::ZERO, Vec3::Y),
         FreeCamera::default(),
         PointCloudVisibilitySettings {
-            max_depth: Some(3),
+            min_radius: Some(30.0),
+            point_budget: Some(10_000_000),
+            // max_depth: Some(3),
+            ..default()
+        },
+        PointCloudViewSettings {
+            edl_enabled: true,
+            ..default()
+        },
+    ));
+}
+
+fn setup_sun(mut commands: Commands) {
+    commands.spawn((
+        DirectionalLight {
+            color: Color::WHITE,
+            illuminance: light_consts::lux::AMBIENT_DAYLIGHT, // ~10,000 lux
+            shadow_maps_enabled: true,
+            ..default()
+        },
+        SunDisk::EARTH,
+        Transform::from_rotation(Quat::from_rotation_x(-PI / 4.0)),
+        PointCloudVisibilitySettings {
+            min_radius: Some(30.0),
+            point_budget: Some(1_000_000),
+            ..default()
+        },
+        PointCloudViewSettings {
+            clipping_planes: vec![
+                Vec4::new(-1.0, 0.0, 0.0, 0.0),
+                Vec4::new(1.0, 0.0, 0.0, 4.0),
+            ],
             ..default()
         },
     ));
@@ -48,27 +87,29 @@ fn load_point_cloud(
     point_cloud_server: Res<PointCloudServer>,
     mut commands: Commands,
 ) -> Result<()> {
-    let point_cloud_handle = point_cloud_server.load::<CopcLoader<_>>(FileSource::open(
+    let point_cloud_handle = point_cloud_server.load_with_settings::<CopcLoader<_>>(FileSource::open(
         // "assets/pointclouds/lion_takanawa.copc.laz",
-        "/home/romain/Documents/PointClouds/LidarHD/LHD_FXX_0893_6238_PTS_LAMB93_IGN69.copc.laz",
-    )?);
+        // "/home/romain/Documents/PointClouds/LidarHD/LHD_FXX_0893_6238_PTS_LAMB93_IGN69.copc.laz",
+        "/home/romain/Documents/PointClouds/LidarHD/LHD_FXX_0893_6238_PTS_LAMB93_IGN69_normals.copc.laz",
+    )?, |settings| { settings.load_normals =true; });
 
-    let texture_handle = asset_server
-        .load_builder()
-        .with_settings(|settings: &mut ImageLoaderSettings| {
-            settings.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
-                address_mode_u: ImageAddressMode::Repeat,
-                address_mode_v: ImageAddressMode::Repeat,
-                ..default()
-            });
-        })
-        .load("branding/bevy_icon.png");
+    // let texture_handle = asset_server
+    //     .load_builder()
+    //     .with_settings(|settings: &mut ImageLoaderSettings| {
+    //         settings.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
+    //             address_mode_u: ImageAddressMode::Repeat,
+    //             address_mode_v: ImageAddressMode::Repeat,
+    //             ..default()
+    //         });
+    //     })
+    //     .load("branding/bevy_icon.png");
 
     let material_handle = materials.add(SimplePointCloudMaterial {
         // min_point_size: Some(2.0),
         // max_point_size: Some(50.0),
+        weighted_splats: true,
         base_color: Color::srgb(0.0, 0.2, 0.4), // Deep Blue
-        base_color_texture: Some(texture_handle.clone()),
+        // base_color_texture: Some(texture_handle.clone()),
         color_stops: vec![
             ColorStop {
                 color: Color::srgb(0.0, 0.5, 0.7),
@@ -116,10 +157,10 @@ fn load_point_cloud(
             PointCloud3d(point_cloud_handle),
             PointCloudMaterial3d(material_handle),
             SplatSettings {
-                splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-                // radius: Some(0.5),
+                // splat: Some(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
+                radius: Some(0.5),
                 point_size_mode: PointSizeMode::LocalSpace,
-                point_size: 0.5,
+                point_size: 1.0,
                 uv_mapping: UVMapping::Planar,
                 uv_u: Vec3::new(1.0, 0.0, 0.0),
                 uv_v: Vec3::new(0.0, 1.0, 0.0),
@@ -128,6 +169,7 @@ fn load_point_cloud(
                     PI / 2.0,
                     Vec2::ZERO,
                 ),
+                orientation: SplatOrientation::FaceNormal,
                 // uv_transform: Some(UVTransform {
                 //     // offset: Vec2 { x: -0.5, y: -0.5 },
                 //     scale: Vec2 { x: 10.0, y: 10.0 },

@@ -7,12 +7,11 @@ use bevy::{
     color::palettes::css::GREEN,
     dev_tools::fps_overlay::{FpsOverlayConfig, FpsOverlayPlugin, FrameTimeGraphConfig},
     image::{ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor},
-    light::CascadeShadowConfigBuilder,
     math::Affine2,
     prelude::*,
     render::render_resource::Face,
 };
-use bevy_pointcloud::{las::LasLoader, prelude::*};
+use bevy_pointcloud::prelude::*;
 
 // --- RESOURCES AND STRUCTURE ---
 
@@ -271,9 +270,7 @@ fn load_point_cloud(
         ..Default::default()
     });
 
-    let point_cloud_handle = point_cloud_server.load::<LasLoader<_>>(FileSource::open(
-        "assets/pointclouds/lion_takanawa.copc.laz",
-    )?);
+    let point_cloud_handle = asset_server.load("pointclouds/lion_takanawa.copc.laz");
 
     commands.spawn((
         MyPlan,
