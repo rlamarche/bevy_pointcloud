@@ -91,41 +91,14 @@ pub fn queue_material_meshes(
         for (render_entity, main_entity) in
             dirty_specializations.iter_to_dequeue(view.retained_view_entity, visible_entities_class)
         {
-            let Some(render_point_cloud_chunk_instance) = (match render_point_cloud_chunk_instances
-                .previous
-                .get(render_entity)
-            {
-                Some(value) => Some(value),
-                None => render_point_cloud_chunk_instances.get(render_entity),
-            }) else {
-                warn!(
-                    "RenderPointCloudChunkInstance not found for entity {:?} when removing phase",
-                    main_entity
-                );
-                continue;
-            };
+            opaque_phase.remove(*render_entity, *main_entity);
+            alpha_mask_phase.remove(*render_entity, *main_entity);
+            transmissive_phase.remove(*render_entity, *main_entity);
 
-            opaque_phase.remove(
-                *render_entity,
-                render_point_cloud_chunk_instance.root_entity,
-            );
-            alpha_mask_phase.remove(
-                *render_entity,
-                render_point_cloud_chunk_instance.root_entity,
-            );
-            transmissive_phase.remove(
-                *render_entity,
-                render_point_cloud_chunk_instance.root_entity,
-            );
-
-            transparent_phase.remove(
-                *render_entity,
-                render_point_cloud_chunk_instance.root_entity,
-            );
+            transparent_phase.remove(*render_entity, *main_entity);
 
             // Updates the visible point cloud entities.
-            render_visible_point_cloud_entities
-                .remove_visible_chunk(render_point_cloud_chunk_instance.root_entity, *main_entity);
+            render_visible_point_cloud_entities.remove_visible_chunk(*main_entity);
         }
 
         // Fetch the pending mesh material queues for this view.
@@ -256,9 +229,7 @@ pub fn queue_material_meshes(
                         entity: (
                             // Bevy sends PLACEHOLDER here, why ?
                             *render_entity,
-                            // use the root entity here to correctly handle `RenderMeshInstances`
-                            // in binned render phases
-                            render_point_cloud_chunk_instance.root_entity,
+                            *visible_entity,
                         ),
                         draw_function,
                         pipeline: pipeline_id,
@@ -314,13 +285,7 @@ pub fn queue_material_meshes(
                     opaque_phase.add(
                         batch_set_key,
                         Opaque3dChunkBinKey::from(render_point_cloud_chunk_instance),
-                        (
-                            *render_entity,
-                            // use the root entity here to correctly handle
-                            // [`GetFullBatchData::get_binned_index`]
-                            // in binned render phases
-                            render_point_cloud_chunk_instance.root_entity,
-                        ),
+                        (*render_entity, *visible_entity),
                     );
                     // Updates the visible point cloud entities.
                     render_visible_point_cloud_entities.add_visible_chunk(
@@ -352,13 +317,7 @@ pub fn queue_material_meshes(
                     alpha_mask_phase.add(
                         batch_set_key,
                         OpaqueChunkNoLightmap3dBinKey::from(render_point_cloud_chunk_instance),
-                        (
-                            *render_entity,
-                            // use the root entity here to correctly handle
-                            // [`GetFullBatchData::get_binned_index`]
-                            // in binned render phases
-                            render_point_cloud_chunk_instance.root_entity,
-                        ),
+                        (*render_entity, *visible_entity),
                     );
                     // Updates the visible point cloud entities.
                     render_visible_point_cloud_entities.add_visible_chunk(
@@ -397,10 +356,7 @@ pub fn queue_material_meshes(
                         entity: (
                             // Bevy sends PLACEHOLDER here, why ?
                             *render_entity,
-                            // use the root entity here to correctly handle
-                            // [`GetFullBatchData::get_binned_index`]
-                            // in binned render phases
-                            render_point_cloud_chunk_instance.root_entity,
+                            *visible_entity,
                         ),
                         draw_function,
                         pipeline: pipeline_id,

@@ -35,7 +35,7 @@ use bevy::{
         world::{FromWorld, World},
     },
     math::primitives::Rectangle,
-    mesh::{Indices, Mesh, PrimitiveTopology},
+    mesh::{Mesh, PrimitiveTopology},
     pbr::{
         extract_lights, main_build_indirect_parameters, per_view_shadow_pass, shared_shadow_pass,
         ExtractedDirectionalLight, MeshPipelineSystems,

@@ -260,9 +260,6 @@ pub fn extract_pointcloud_chunk_instances(
         },
     );
 
-    // keep previous extracted render point cloud chunk instances
-    render_point_cloud_chunk_instances.sync_previous_chunk_instances();
-
     // Collect the render mesh instances
     for queue in render_point_cloud_chunk_instance_queues.iter_mut() {
         for (entity, render_point_cloud_chunk_instance) in queue.drain(..) {

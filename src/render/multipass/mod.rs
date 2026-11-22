@@ -1176,28 +1176,10 @@ pub fn queue_multipass_material_meshes<M: PointCloudMaterial, const PASS: usize>
         for (render_entity, main_entity) in
             dirty_specializations.iter_to_dequeue(view.retained_view_entity, visible_entities_class)
         {
-            let Some(render_point_cloud_chunk_instance) = (match render_point_cloud_chunk_instances
-                .previous
-                .get(render_entity)
-            {
-                Some(value) => Some(value),
-                None => render_point_cloud_chunk_instances.get(render_entity),
-            }) else {
-                warn!(
-                    "RenderPointCloudChunkInstance not found for entity {:?} when removing multipass phase",
-                    main_entity
-                );
-                continue;
-            };
-
-            opaque_phase.remove(
-                *render_entity,
-                render_point_cloud_chunk_instance.root_entity,
-            );
+            opaque_phase.remove(*render_entity, *main_entity);
 
             // Updates the visible point cloud entities.
-            render_visible_point_cloud_entities
-                .remove_visible_chunk(render_point_cloud_chunk_instance.root_entity, *main_entity);
+            render_visible_point_cloud_entities.remove_visible_chunk(*main_entity);
         }
 
         // Fetch the pending mesh material queues for this view.
@@ -1321,13 +1303,7 @@ pub fn queue_multipass_material_meshes<M: PointCloudMaterial, const PASS: usize>
             opaque_phase.add(
                 batch_set_key,
                 Opaque3dChunkBinKey::from(render_point_cloud_chunk_instance),
-                (
-                    *render_entity,
-                    // use the root entity here to correctly handle
-                    // [`GetFullBatchData::get_binned_index`]
-                    // in binned render phases
-                    render_point_cloud_chunk_instance.root_entity,
-                ),
+                (*render_entity, *visible_entity),
             );
             // Updates the visible point cloud entities.
             render_visible_point_cloud_entities.add_visible_chunk(

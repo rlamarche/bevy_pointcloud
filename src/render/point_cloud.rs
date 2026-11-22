@@ -179,22 +179,6 @@ impl From<SplatPipelineKey> for u64 {
 pub struct RenderPointCloudChunkInstances {
     #[deref]
     pub entities: EntityHashMap<RenderPointCloudChunkInstance>,
-
-    /// stores the previous render point cloud chunk instances for handling the removing of phases
-    pub previous: EntityHashMap<RenderPointCloudChunkInstance>,
-}
-
-impl RenderPointCloudChunkInstances {
-    pub fn sync_previous_chunk_instances(&mut self) {
-        self.previous.retain(|k, _| self.entities.contains_key(k));
-
-        for (entity, chunk) in &self.entities {
-            self.previous
-                .entry(*entity)
-                .and_modify(|existing| existing.clone_from(chunk))
-                .or_insert_with(|| chunk.clone());
-        }
-    }
 }
 
 /// CPU data that the render world keeps for each entity, when *not* using GPU

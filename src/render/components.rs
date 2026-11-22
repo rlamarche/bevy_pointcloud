@@ -16,17 +16,21 @@ use bevy::{
 
 use crate::{NodeId, PointCloudChunkTopology};
 
-pub type ChunkKey = (MainEntity, MainEntity);
-
 /// This component stores the visible nodes for each point cloud at view level (camera) in "render
 /// world".
 #[derive(Debug, Component, Default, Clone)]
 pub struct RenderVisiblePointCloudEntities {
     // Indexed by `root_entity`; each `Vec` is kept sorted by `(depth, name)`.
     pub entities: MainEntityHashMap<Vec<RenderVisiblePointCloudChunkEntity>>,
+
+    // A cache to store a mapping from a chunk main entity to its root, to allow remove by main
+    // entity only.
+    pub cached_chunk_entities_to_root: MainEntityHashMap<MainEntity>,
+
     // Reused across frames via `.clear()` to avoid heap allocations.
     pub added_this_frame: HashSet<RenderVisiblePointCloudChunkEntity>,
-    pub removed_this_frame: HashSet<ChunkKey>,
+    // The chunks removed this rame
+    pub removed_this_frame: HashSet<MainEntity>,
     pub changed_this_frame: bool,
 }
 
@@ -41,8 +45,8 @@ impl RenderVisiblePointCloudEntities {
         self.added_this_frame.replace(chunk);
     }
 
-    pub fn remove_visible_chunk(&mut self, root_entity: MainEntity, main_entity: MainEntity) {
-        self.removed_this_frame.insert((root_entity, main_entity));
+    pub fn remove_visible_chunk(&mut self, main_entity: MainEntity) {
+        self.removed_this_frame.insert(main_entity);
     }
 
     pub fn update_visible_chunks(&mut self) {
@@ -52,13 +56,16 @@ impl RenderVisiblePointCloudEntities {
         }
 
         // Remove chunks that were not also added this frame (`add` always wins over `remove`).
-        for &(root_entity, main_entity) in &self.removed_this_frame {
+        for &main_entity in &self.removed_this_frame {
             let was_added = self
                 .added_this_frame
                 .iter()
-                .any(|c| c.root_entity == root_entity && c.main_entity == main_entity);
+                .any(|c| c.main_entity == main_entity);
 
-            if !was_added && let Some(chunks) = self.entities.get_mut(&root_entity) {
+            if !was_added
+                && let Some(root_entity) = self.cached_chunk_entities_to_root.remove(&main_entity)
+                && let Some(chunks) = self.entities.get_mut(&root_entity)
+            {
                 chunks.retain(|c| c.main_entity != main_entity);
             }
         }
@@ -67,8 +74,14 @@ impl RenderVisiblePointCloudEntities {
         for chunk in self.added_this_frame.drain() {
             let chunks = self.entities.entry(chunk.root_entity).or_default();
             if let Some(existing) = chunks.iter_mut().find(|c| *c == &chunk) {
+                // update the chunk in place
+                // TODO: is this needed ?
                 *existing = chunk;
             } else {
+                // append to the cache
+                self.cached_chunk_entities_to_root
+                    .insert(chunk.main_entity, chunk.root_entity);
+
                 chunks.push(chunk);
             }
         }
@@ -77,6 +90,7 @@ impl RenderVisiblePointCloudEntities {
 
         // Drop point clouds with no visible chunks left, and re-sort active ones.
         self.entities.retain(|_, chunks| !chunks.is_empty());
+
         for chunks in self.entities.values_mut() {
             chunks.sort_unstable_by(|a, b| {
                 let (Some(a), Some(b)) = (a.topology.as_octree(), b.topology.as_octree()) else {
