@@ -230,18 +230,19 @@ fn fragment(
 
 
     // TODO: do not compute on the single pass path
-    #ifdef WEIGHTED_SPLATS_ENABLED
-        #ifdef SPLAT_RADIUS
-            let dist = sqrt(dist_sq);
-        #else
-            let dist = distance(vertex_output.shape_uv, vec2<f32>(0.5, 0.5));
-        #endif
+    #ifndef PREPASS_PIPELINE
+        #ifdef WEIGHTED_SPLATS_ENABLED
+            #ifdef SPLAT_RADIUS
+                let dist = sqrt(dist_sq);
+            #else
+                let dist = distance(vertex_output.shape_uv, vec2<f32>(0.5, 0.5));
+            #endif
 
-        var weight = max(0.0, 1.0 - dist * 2.0);
-        weight = pow(weight, 1.5);
-        out.color.a = weight;
-    #endif // WEIGHTED_SPLATS_ENABLED
-
+            var weight = max(0.0, 1.0 - dist * 2.0);
+            weight = pow(weight, 1.5);
+            out.color.a = weight;
+        #endif // WEIGHTED_SPLATS_ENABLED
+    #endif // PREPASS_PIPELINE
 #endif // POINTCLOUD_PASS_DEPTH
 
     return out;
