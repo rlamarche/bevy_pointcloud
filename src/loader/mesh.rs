@@ -42,7 +42,7 @@ impl OctreeLoader for PointCloudMeshLoader {
         builder: &mut OctreeHierarchyBuilder<Self::Hierarchy>,
     ) -> Result<(), Self::Error> {
         let point_count = self.mesh.count_vertices();
-        let aabb = self.mesh.compute_aabb();
+        let aabb = self.mesh.get_aabb();
 
         builder.insert_root(
             InsertNodeParams {

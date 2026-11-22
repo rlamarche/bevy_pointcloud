@@ -6,10 +6,11 @@ use bevy::{
     render::{
         extract_component::ExtractComponent,
         render_resource::{encase::private::WriteInto, ShaderType},
+        RenderApp,
     },
 };
 
-pub trait ViewSettings: Clone + Component + ExtractComponent + Default {
+pub trait ViewSettings: Clone + Component + ExtractComponent<RenderApp> + Default {
     type Key: Hash + Eq + PartialEq + Clone + Send + Sync + 'static;
     type Data: Send + Sync + 'static + ShaderType + WriteInto + Default;
 
@@ -18,6 +19,7 @@ pub trait ViewSettings: Clone + Component + ExtractComponent + Default {
 }
 
 #[derive(Component, ExtractComponent, Clone, Default)]
+#[extract_app(RenderApp)]
 #[extract_component_filter(Changed<EmptyViewSettings>)]
 pub struct EmptyViewSettings;
 

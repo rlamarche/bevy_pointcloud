@@ -7,9 +7,10 @@ use bevy::{
     },
     math::{Affine2, Affine3Ext, Vec4},
     mesh::Mesh,
-    pbr::{MaterialBindGroupSlot, MeshTransforms, MeshUniform},
+    pbr::{MeshTransforms, MeshUniform},
     prelude::{Deref, DerefMut},
     render::{
+        material_bind_groups::MaterialBindGroupSlot,
         render_asset::RenderAsset,
         render_resource::{GpuArrayBuffer, ShaderType, UniformBuffer},
         sync_world::{MainEntity, MainEntityHashMap},

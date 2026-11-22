@@ -33,12 +33,12 @@ pub struct SimplePointCloudMaterialPlugin;
 
 impl Plugin for SimplePointCloudMaterialPlugin {
     fn build(&self, app: &mut bevy::app::App) {
-        load_shader_library!(app, "simple_bindings.wgsl");
-        load_shader_library!(app, "simple_functions.wgsl");
-        load_shader_library!(app, "simple_types.wgsl");
-        embedded_asset!(app, "simple.wgsl");
-        embedded_asset!(app, "simple_prepass.wgsl");
-        embedded_asset!(app, "normalize.wgsl");
+        load_shader_library!(app, "simple_bindings.wesl");
+        load_shader_library!(app, "simple_functions.wesl");
+        load_shader_library!(app, "simple_types.wesl");
+        embedded_asset!(app, "simple.wesl");
+        embedded_asset!(app, "simple_prepass.wesl");
+        embedded_asset!(app, "normalize.wesl");
 
         app.add_plugins(PointCloudMaterialPlugin::<SimplePointCloudMaterial>::default());
     }
@@ -164,11 +164,11 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
     type ViewSettings = PointCloudViewSettings;
 
     fn fragment_shader() -> ShaderRef {
-        shader_ref(bevy::asset::embedded_path!("simple.wgsl"))
+        shader_ref(bevy::asset::embedded_path!("simple.wesl"))
     }
 
     fn prepass_fragment_shader() -> ShaderRef {
-        shader_ref(bevy::asset::embedded_path!("simple_prepass.wgsl"))
+        shader_ref(bevy::asset::embedded_path!("simple_prepass.wesl"))
     }
 
     fn enable_prepass() -> bool {
@@ -274,7 +274,7 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
             }
             StandardPasses::XRayNormalize | StandardPasses::EDLNormalize => Some(PassParams {
                 vertex_shader: ShaderRef::Default,
-                fragment_shader: shader_ref(bevy::asset::embedded_path!("normalize.wgsl")),
+                fragment_shader: shader_ref(bevy::asset::embedded_path!("normalize.wesl")),
                 inputs: vec![
                     PassInput {
                         source_pass: StandardPasses::Depth.into(),
@@ -519,7 +519,7 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
     }
 }
 
-// NOTE: These must match the bit flags in bevy_pbr/src/render/pbr_types.wgsl!
+// NOTE: These must match the bit flags in bevy_pbr/src/render/pbr_types.wesl!
 bitflags::bitflags! {
     /// Bitflags info about the material a shader is currently rendering.
     /// This is accessible in the shader in the [`SimplePointCloudMaterialUniform`]
@@ -600,7 +600,7 @@ impl AsBindGroupShaderType<SimplePointCloudMaterialUniform> for SimplePointCloud
 
         match self.alpha_mode {
             AlphaMode::Opaque => flags |= SimplePointCloudMaterialFlags::ALPHA_MODE_OPAQUE,
-            AlphaMode::Mask(c) => {
+            AlphaMode::Mask(_c) => {
                 // alpha_cutoff = c;
                 flags |= SimplePointCloudMaterialFlags::ALPHA_MODE_MASK;
             }

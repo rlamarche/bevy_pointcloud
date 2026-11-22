@@ -12,7 +12,7 @@ use bevy::{
     mesh::Mesh,
     prelude::{Deref, DerefMut},
     reflect::{std_traits::ReflectDefault, Reflect, ReflectDeserialize, ReflectSerialize},
-    render::{extract_component::ExtractComponent, sync_component::SyncComponent},
+    render::{extract_component::ExtractComponent, sync_component::SyncComponent, RenderApp},
     transform::components::Transform,
 };
 use derive_more::derive::From;
@@ -21,9 +21,21 @@ use serde::{Deserialize, Serialize};
 use crate::{render::PointCloudMaterial, PointCloud, PointCloudChunk};
 
 #[derive(
-    Component, FromTemplate, Clone, Debug, Default, Deref, DerefMut, PartialEq, Eq, From, Reflect,
+    Component,
+    ExtractComponent,
+    FromTemplate,
+    Clone,
+    Debug,
+    Default,
+    Deref,
+    DerefMut,
+    PartialEq,
+    Eq,
+    From,
+    Reflect,
 )]
 #[component(immutable)]
+#[extract_app(RenderApp)]
 #[require(Transform, SplatSettings)]
 #[reflect(Component, PartialEq, Debug, FromWorld, Clone, Default)]
 pub struct PointCloud3d(pub Handle<PointCloud>);
@@ -33,20 +45,6 @@ impl AsAssetId for PointCloud3d {
 
     fn as_asset_id(&self) -> AssetId<Self::Asset> {
         self.into()
-    }
-}
-
-impl SyncComponent for PointCloud3d {
-    type Target = Self;
-}
-
-impl ExtractComponent for PointCloud3d {
-    type QueryData = &'static PointCloud3d;
-    type QueryFilter = ();
-    type Out = Self;
-
-    fn extract_component(item: QueryItem<'_, '_, Self::QueryData>) -> Option<Self::Out> {
-        Some(item.clone())
     }
 }
 
@@ -63,8 +61,20 @@ impl From<&PointCloud3d> for UntypedAssetId {
 }
 
 #[derive(
-    Component, FromTemplate, Clone, Debug, Default, Deref, DerefMut, PartialEq, Eq, From, Reflect,
+    Component,
+    ExtractComponent,
+    FromTemplate,
+    Clone,
+    Debug,
+    Default,
+    Deref,
+    DerefMut,
+    PartialEq,
+    Eq,
+    From,
+    Reflect,
 )]
+#[extract_app(RenderApp)]
 #[reflect(Component, PartialEq, Debug, FromWorld, Clone)]
 pub struct PointCloudChunk3d(pub Handle<PointCloudChunk>);
 
@@ -73,20 +83,6 @@ impl AsAssetId for PointCloudChunk3d {
 
     fn as_asset_id(&self) -> AssetId<Self::Asset> {
         self.into()
-    }
-}
-
-impl SyncComponent for PointCloudChunk3d {
-    type Target = Self;
-}
-
-impl ExtractComponent for PointCloudChunk3d {
-    type QueryData = &'static PointCloudChunk3d;
-    type QueryFilter = ();
-    type Out = Self;
-
-    fn extract_component(item: QueryItem<'_, '_, Self::QueryData>) -> Option<Self::Out> {
-        Some(item.clone())
     }
 }
 
@@ -104,6 +100,7 @@ impl From<&PointCloudChunk3d> for UntypedAssetId {
 
 #[derive(
     Component,
+    ExtractComponent,
     FromTemplate,
     Clone,
     Debug,
@@ -114,6 +111,7 @@ impl From<&PointCloudChunk3d> for UntypedAssetId {
     serde::Deserialize,
 )]
 #[require(Transform)]
+#[extract_app(RenderApp)]
 #[reflect(Component, PartialEq, Debug, FromWorld, Clone, Default)]
 pub struct SplatSettings {
     // --- Sizing ---
@@ -203,20 +201,6 @@ impl Default for SplatSettings {
     }
 }
 
-impl SyncComponent for SplatSettings {
-    type Target = Self;
-}
-
-impl ExtractComponent for SplatSettings {
-    type QueryData = &'static SplatSettings;
-    type QueryFilter = ();
-    type Out = Self;
-
-    fn extract_component(item: QueryItem<'_, '_, Self::QueryData>) -> Option<Self::Out> {
-        Some(item.clone())
-    }
-}
-
 #[derive(Component, FromTemplate, Clone, PartialEq, Eq, Debug, Reflect, Serialize, Deserialize)]
 #[reflect(Component, PartialEq, Debug, FromWorld, Clone, Serialize, Deserialize)]
 #[relationship(relationship_target = ChildrenChunks)]
@@ -282,7 +266,7 @@ pub struct ChildrenChunks(Vec<Entity>);
 #[reflect(Component, Default, Clone, PartialEq)]
 pub struct PointCloudMaterial3d<M: PointCloudMaterial>(pub Handle<M>);
 
-impl<M: PointCloudMaterial> SyncComponent for PointCloudMaterial3d<M> {
+impl<M: PointCloudMaterial> SyncComponent<RenderApp> for PointCloudMaterial3d<M> {
     type Target = Self;
 }
 
@@ -292,7 +276,7 @@ impl<M: PointCloudMaterial> Default for PointCloudMaterial3d<M> {
     }
 }
 
-impl<M: PointCloudMaterial> ExtractComponent for PointCloudMaterial3d<M> {
+impl<M: PointCloudMaterial> ExtractComponent<RenderApp> for PointCloudMaterial3d<M> {
     type QueryData = &'static PointCloudMaterial3d<M>;
     type QueryFilter = ();
     type Out = Self;

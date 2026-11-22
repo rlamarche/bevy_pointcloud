@@ -1,0 +1,111 @@
+import bevy_pbr::render::{
+    morph,
+    prepass_bindings,
+    skinning,
+    mesh_view_bindings::view,
+    view_transformations::position_world_to_view
+};
+import package::materials::minimal::minimal_types as material_types;
+
+@if(PREPASS_FRAGMENT)
+import bevy_pbr::prepass::io::FragmentOutput;
+
+import package::render::{
+    functions,
+    pointcloud_functions,
+    pointcloud_bindings::pointcloud,
+    prepass::prepass_io::{InstanceInput, ShapeInput, VertexOutput}
+};
+
+@if(DEFERRED_PREPASS)
+import bevy_pbr::render::rgb9e5;
+
+@if(POINTCLOUD_VIEW_SETTINGS)
+@group(constants::POINTCLOUD_BIND_GROUP) @binding(3)
+var<uniform> view_settings: material_types::PointCloudViewSettings;
+
+@if(PREPASS_FRAGMENT)
+@fragment
+fn fragment(in: VertexOutput) -> FragmentOutput {
+    @if(SPLAT_RADIUS) {
+        // Perfect circle
+        let diff = in.shape_uv - vec2<f32>(0.5, 0.5);
+        let dist_sq = dot(diff, diff);
+        let radius_sq = pointcloud.radius * pointcloud.radius;
+
+        if dist_sq > radius_sq {
+            discard;
+        }
+    }
+
+    @if(POINTCLOUD_VIEW_SETTINGS && CLIPPING_PLANES) {
+        for(var i: u32 = 0u; i < view_settings.nb_clipping_planes; i++) {
+            let clip_dist = dot(in.world_position.xyz, view_settings.clipping_planes[i].xyz)
+                + view_settings.clipping_planes[i].w;
+            if clip_dist < 0.0 {
+                discard;
+            }
+        }
+    }
+
+    var out: FragmentOutput;
+
+    @if(NORMAL_PREPASS) {
+        out.normal = vec4(in.world_normal * 0.5 + vec3(0.5), 1.0);
+    }
+
+    @if(UNCLIPPED_DEPTH_ORTHO_EMULATION) {
+        out.frag_depth = in.unclipped_depth;
+    }
+
+    @if(MOTION_VECTOR_PREPASS) {
+        let clip_position_t = view.unjittered_clip_from_world * in.world_position;
+        let clip_position = clip_position_t.xy / clip_position_t.w;
+        let previous_clip_position_t = prepass_bindings::previous_view_uniforms.clip_from_world
+            * in.previous_world_position;
+        let previous_clip_position = previous_clip_position_t.xy / previous_clip_position_t.w;
+        // These motion vectors are used as offsets to UV positions and are stored
+        // in the range -1,1 to allow offsetting from the one corner to the
+        // diagonally-opposite corner in UV coordinates, in either direction.
+        // A difference between diagonally-opposite corners of clip space is in the
+        // range -2,2, so this needs to be scaled by 0.5. And the V direction goes
+        // down where clip space y goes up, so y needs to be flipped.
+        out.motion_vector = (clip_position - previous_clip_position) * vec2(0.5, -0.5);
+    }
+
+    @if(DEFERRED_PREPASS) {
+        // There isn't any material info available for this default prepass shader so we are just writing
+        // emissive magenta out to the deferred gbuffer to be rendered by the first deferred lighting pass layer.
+        // This is here so if the default prepass fragment is used for deferred magenta will be rendered, and also
+        // as an example to show that a user could write to the deferred gbuffer if they were to start from this shader.
+        out.deferred = vec4(0u, bevy_pbr::rgb9e5::vec3_to_rgb9e5_(vec3(1.0, 0.0, 1.0)), 0u, 0u);
+        out.deferred_lighting_pass_id = 1u;
+    }
+
+    return out;
+}
+
+@if(!PREPASS_FRAGMENT)
+@fragment
+fn fragment(in: VertexOutput) {
+    @if(SPLAT_RADIUS) {
+        // Perfect circle
+        let diff = in.shape_uv - vec2<f32>(0.5, 0.5);
+        let dist_sq = dot(diff, diff);
+        let radius_sq = pointcloud.radius * pointcloud.radius;
+
+        if dist_sq > radius_sq {
+            discard;
+        }
+    }
+
+    @if(POINTCLOUD_VIEW_SETTINGS && CLIPPING_PLANES) {
+        for(var i: u32 = 0u; i < view_settings.nb_clipping_planes; i++) {
+            let clip_dist = dot(in.world_position.xyz, view_settings.clipping_planes[i].xyz)
+                + view_settings.clipping_planes[i].w;
+            if clip_dist < 0.0 {
+                discard;
+            }
+        }
+    }
+}

@@ -12,6 +12,7 @@ use bevy::{
     platform::collections::{hash_map::Entry, HashMap},
     render::{
         camera::ExtractedCamera,
+        material_bind_groups::MaterialBindingId,
         mesh::allocator::MeshAllocator,
         render_phase::ViewSortedRenderPhases,
         render_resource::{
@@ -65,10 +66,15 @@ pub fn prepare_point_cloud_uniforms(
         };
 
         let point_cloud_material = mesh_material_ids.point_cloud_material(*main_entity);
-        let material_bindings_index = render_material_bindings
-            .get(&point_cloud_material)
-            .copied()
-            .unwrap_or_default();
+        let material_bindings_index = if let Some(point_cloud_material) = point_cloud_material {
+            render_material_bindings
+                .get(&point_cloud_material)
+                .copied()
+                .unwrap_or_default()
+        } else {
+            // Use a dummy material binding ID.
+            MaterialBindingId::default()
+        };
 
         let Some(mesh_asset_id) = mesh_instances.mesh_asset_id(*main_entity) else {
             warn!("Mesh asset id missing for point cloud {:?}", main_entity);
@@ -79,6 +85,10 @@ pub fn prepare_point_cloud_uniforms(
             None => 0,
         };
 
+        let metadata_index = mesh_allocator
+            .mesh_metadata_slice(&mesh_asset_id)
+            .map(|mesh_metadata_slice| mesh_metadata_slice.range.start);
+
         let mesh_uniform = MeshUniform::new(
             &point_cloud_instance.transforms,
             first_vertex_index,
@@ -87,6 +97,7 @@ pub fn prepare_point_cloud_uniforms(
             None,
             None,
             None,
+            metadata_index,
         );
 
         let octree_index = if matches!(

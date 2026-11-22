@@ -58,7 +58,7 @@ pub fn init_point_cloud_pipeline(
     mesh_pipeline: Res<MeshPipeline>,
 ) {
     commands.insert_resource(PointCloudPipeline {
-        shader: load_embedded_asset!(asset_server.as_ref(), "pointcloud.wgsl"),
+        shader: load_embedded_asset!(asset_server.as_ref(), "pointcloud.wesl"),
         mesh_pipeline: mesh_pipeline.clone(),
         empty_layout: BindGroupLayoutDescriptor::new("pointcloud_empty_layout", &[]),
         point_cloud_layout: BindGroupLayoutDescriptor::new(
@@ -270,22 +270,18 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             shader_defs.push("CONTACT_SHADOWS".into());
         }
 
+        if key.contains(MeshPipelineKey::OIT_ENABLED) {
+            shader_defs.push("OIT_ENABLED".into());
+        }
+
         let mut instance_buffer_layout = instance_layout.0.get_layout(&vertex_attributes)?;
         // don't forget to set step_mode mode to instance
         instance_buffer_layout.step_mode = VertexStepMode::Instance;
 
         let (label, blend, depth_write_enabled);
         let pass = key.intersection(MeshPipelineKey::BLEND_RESERVED_BITS);
-        let (mut is_opaque, mut alpha_to_coverage_enabled) = (false, false);
-        if key.contains(MeshPipelineKey::OIT_ENABLED) && pass == MeshPipelineKey::BLEND_ALPHA {
-            label = "oit_pointcloud_pipeline".into();
-            // TODO tail blending would need alpha blending
-            blend = None;
-            shader_defs.push("OIT_ENABLED".into());
-            // TODO it should be possible to use this to combine MSAA and OIT
-            // alpha_to_coverage_enabled = true;
-            depth_write_enabled = false;
-        } else if pass == MeshPipelineKey::BLEND_ALPHA {
+        let mut alpha_to_coverage_enabled = false;
+        if pass == MeshPipelineKey::BLEND_ALPHA {
             label = "alpha_blend_pointcloud_pipeline".into();
             blend = Some(BlendState::ALPHA_BLENDING);
             // For the transparent pass, fragments that are closer will be alpha blended
@@ -323,7 +319,6 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             // the current fragment value in the output and the depth is written to the
             // depth buffer
             depth_write_enabled = true;
-            is_opaque = !key.contains(MeshPipelineKey::READS_VIEW_TRANSMISSION_TEXTURE);
             alpha_to_coverage_enabled = true;
             shader_defs.push("ALPHA_TO_COVERAGE".into());
         } else {
@@ -335,7 +330,6 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             // the current fragment value in the output and the depth is written to the
             // depth buffer
             depth_write_enabled = true;
-            is_opaque = !key.contains(MeshPipelineKey::READS_VIEW_TRANSMISSION_TEXTURE);
         }
 
         if key.contains(MeshPipelineKey::NORMAL_PREPASS) {
@@ -362,7 +356,7 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
             shader_defs.push("DEFERRED_PREPASS".into());
         }
 
-        if key.contains(MeshPipelineKey::NORMAL_PREPASS) && key.msaa_samples() == 1 && is_opaque {
+        if key.contains(MeshPipelineKey::NORMAL_PREPASS) && key.msaa_samples() == 1 {
             shader_defs.push("LOAD_PREPASS_NORMALS".into());
         }
 
@@ -394,8 +388,8 @@ impl SpecializedPointCloudPipeline for PointCloudPipeline {
 
             let method = key.intersection(MeshPipelineKey::TONEMAP_METHOD_RESERVED_BITS);
 
-            if method == MeshPipelineKey::TONEMAP_METHOD_NONE {
-                shader_defs.push("TONEMAP_METHOD_NONE".into());
+            if method == MeshPipelineKey::TONEMAP_METHOD_LINEAR {
+                shader_defs.push("TONEMAP_METHOD_LINEAR".into());
             } else if method == MeshPipelineKey::TONEMAP_METHOD_REINHARD {
                 shader_defs.push("TONEMAP_METHOD_REINHARD".into());
             } else if method == MeshPipelineKey::TONEMAP_METHOD_REINHARD_LUMINANCE {

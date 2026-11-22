@@ -1,9 +1,10 @@
 use bevy::{
     ecs::system::{lifetimeless::SRes, SystemParamItem},
     log::{info, warn},
-    pbr::{MaterialBindGroupAllocators, SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup},
+    pbr::{SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup},
     render::{
         erased_render_asset::ErasedRenderAssets,
+        material_bind_groups::MaterialBindGroupAllocators,
         render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
     },
 };

@@ -21,22 +21,20 @@ use bevy::{
         },
         AlphaMode, OpaqueRendererMethod, RenderPhaseType,
     },
-    pbr::{
-        DirectionalLightViewEntities, MaterialBindGroupAllocators, MeshPipelineKey, Transmissive3d,
-    },
-    platform::{
-        collections::{hash_map::Entry, HashMap},
-        hash::NoOpHash,
-    },
+    pbr::{DirectionalLightViewEntities, MeshPipelineKey, Transmissive3d},
+    platform::{collections::HashMap, hash::NoOpHash},
     prelude::Deref,
     render::{
         erased_render_asset::{ErasedRenderAsset, PrepareAssetError},
+        material_bind_groups::{FallbackBuffer, MaterialBindGroupAllocators},
+        render_asset::RenderAssets,
         render_phase::DrawFunctions,
         render_resource::{
-            binding_types::uniform_buffer, AsBindGroupError, BindGroupEntries,
-            BindGroupLayoutEntry, PipelineCache, ShaderStages,
+            binding_types::uniform_buffer, BindGroupEntries, BindGroupLayoutEntry, PipelineCache,
+            ShaderStages,
         },
         renderer::{RenderDevice, RenderQueue},
+        storage::GpuShaderBuffer,
         sync_world::MainEntity,
         view::ExtractedView,
     },
@@ -57,16 +55,15 @@ use crate::{
         prepass::{
             AlphaMask3dChunkPrepass, DrawDepthOnlyPrepass, DrawPrepass, Opaque3dChunkPrepass,
         },
-        AlphaMask3dChunk, BaseSpecializeFn, DeferredAlphaMaskDrawFunction, DeferredFragmentShader,
-        DeferredOpaqueDrawFunction, DeferredVertexShader, DrawPointCloudMaterial,
-        DrawPointCloudMaterialBatched, ErasedViewSettingsKey, MainPassAlphaMaskDrawFunction,
-        MainPassOpaqueDrawFunction, MainPassTransmissiveDrawFunction,
-        MainPassTransparentDrawFunction, MaterialFragmentShader, MaterialVertexShader,
-        Opaque3dChunk, PassKind, PassProperties, PointCloudDirtySpecializations,
-        PointCloudMaterial, PointCloudPipeline, PreparedPointCloudMaterial,
-        PreparedPointCloudUniforms, PreparedViewSettingsUniform, PrepassAlphaMaskDrawFunction,
-        PrepassFragmentShader, PrepassOpaqueDepthOnlyDrawFunction, PrepassOpaqueDrawFunction,
-        PrepassSpecializeFn, PrepassVertexShader, RenderMaterialBindings, ShadowChunk,
+        AlphaMask3dChunk, BaseSpecializeFn, DeferredAlphaMaskDrawFunction,
+        DeferredOpaqueDrawFunction, DrawPointCloudMaterial, DrawPointCloudMaterialBatched,
+        ErasedViewSettingsKey, MainPassAlphaMaskDrawFunction, MainPassOpaqueDrawFunction,
+        MainPassTransmissiveDrawFunction, MainPassTransparentDrawFunction, MaterialFragmentShader,
+        MaterialShaders, MaterialVertexShader, Opaque3dChunk, PassKind, PassProperties,
+        PointCloudDirtySpecializations, PointCloudMaterial, PointCloudPipeline,
+        PreparedPointCloudMaterial, PreparedPointCloudUniforms, PreparedViewSettingsUniform,
+        PrepassAlphaMaskDrawFunction, PrepassOpaqueDepthOnlyDrawFunction,
+        PrepassOpaqueDrawFunction, PrepassSpecializeFn, RenderMaterialBindings, ShadowChunk,
         ShadowsDepthOnlyDrawFunction, ShadowsDrawFunction, UserSpecializeFn,
         ViewPointCloudBindGroups, VisibleNodesTexture,
     },
@@ -103,10 +100,10 @@ pub struct PointCloudMaterialProperties {
     /// Backing array is a size of 4 because the [`StandardMaterial`](https://docs.rs/bevy/latest/bevy/pbr/struct.StandardMaterial.html)
     /// needs 4 draw functions by default
     pub draw_functions: SmallVec<[(InternedDrawFunctionLabel, DrawFunctionId); 4]>,
-    /// Backing array is a size of 3 because the [`StandardMaterial`](https://docs.rs/bevy/latest/bevy/pbr/struct.StandardMaterial.html)
-    /// has 3 custom shaders (`frag`, `prepass_frag`, `deferred_frag`) which is the
+    /// Backing array is a size of 6 because the [`StandardPointCloudMaterial`]
+    /// has 6 custom shaders (Vertex/Fragment for Main, Prepass, and Deferred passes) which is the
     /// most common use case
-    pub shaders: SmallVec<[(InternedShaderLabel, Handle<Shader>); 3]>,
+    pub shaders: SmallVec<[(InternedShaderLabel, Handle<Shader>); 6]>,
     /// Whether this material *actually* uses bindless resources, taking the
     /// platform support (or lack thereof) of bindless resources into account.
     pub bindless: bool,
@@ -121,6 +118,8 @@ pub struct PointCloudMaterialProperties {
     pub shadows_enabled: bool,
     /// Whether prepass is enabled for this material
     pub prepass_enabled: bool,
+    /// Whether OIT is enabled for this material
+    pub oit_enabled: bool,
 
     pub view_settings_layout_entry: Option<BindGroupLayoutEntry>,
 }
@@ -165,6 +164,9 @@ where
     type Param = (
         SRes<RenderDevice>,
         SRes<PipelineCache>,
+        // SRes<DefaultOpaqueRendererMethod>,
+        SRes<FallbackBuffer>,
+        SRes<RenderAssets<GpuShaderBuffer>>,
         SResMut<MaterialBindGroupAllocators>,
         SResMut<RenderMaterialBindings>,
         (
@@ -179,6 +181,7 @@ where
             SRes<DrawFunctions<ShadowChunk>>,
         ),
         SRes<AssetServer>,
+        SRes<MaterialShaders<M>>,
         M::Param,
     );
 
@@ -189,6 +192,8 @@ where
             render_device,
             pipeline_cache,
             // default_opaque_render_method,
+            fallback_buffer,
+            shader_buffer_assets,
             bind_group_allocators,
             render_material_bindings,
             (
@@ -204,66 +209,24 @@ where
                 shadow_draw_functions,
             ),
             asset_server,
+            material_shaders,
             material_param,
         ): &mut SystemParamItem<Self::Param>,
     ) -> Result<Self::ErasedAsset, PrepareAssetError<Self::SourceAsset>> {
         let material_layout = M::bind_group_layout_descriptor(render_device);
         let actual_material_layout = pipeline_cache.get_bind_group_layout(&material_layout);
 
-        let binding = match material.unprepared_bind_group(
-            &actual_material_layout,
-            render_device,
+        let binding = render_material_bindings.prepare_material(
+            &material,
+            material_id,
             material_param,
-            false,
-        ) {
-            Ok(unprepared) => {
-                let bind_group_allocator =
-                    bind_group_allocators.get_mut(&TypeId::of::<M>()).unwrap();
-                // Allocate or update the material.
-                match render_material_bindings.entry(material_id.into()) {
-                    Entry::Occupied(mut occupied_entry) => {
-                        // TODO: Have a fast path that doesn't require
-                        // recreating the bind group if only buffer contents
-                        // change. For now, we just delete and recreate the bind
-                        // group.
-                        bind_group_allocator.free(*occupied_entry.get());
-                        let new_binding =
-                            bind_group_allocator.allocate_unprepared(unprepared, &material_layout);
-                        *occupied_entry.get_mut() = new_binding;
-                        new_binding
-                    }
-                    Entry::Vacant(vacant_entry) => *vacant_entry.insert(
-                        bind_group_allocator.allocate_unprepared(unprepared, &material_layout),
-                    ),
-                }
-            }
-            Err(AsBindGroupError::RetryNextUpdate) => {
-                return Err(PrepareAssetError::RetryNextUpdate(material))
-            }
-            Err(AsBindGroupError::CreateBindGroupDirectly) => {
-                match material.as_bind_group(
-                    &material_layout,
-                    render_device,
-                    pipeline_cache,
-                    material_param,
-                ) {
-                    Ok(prepared_bind_group) => {
-                        let bind_group_allocator =
-                            bind_group_allocators.get_mut(&TypeId::of::<M>()).unwrap();
-                        // Store the resulting bind group directly in the slot.
-                        let material_binding_id =
-                            bind_group_allocator.allocate_prepared(prepared_bind_group);
-                        render_material_bindings.insert(material_id.into(), material_binding_id);
-                        material_binding_id
-                    }
-                    Err(AsBindGroupError::RetryNextUpdate) => {
-                        return Err(PrepareAssetError::RetryNextUpdate(material))
-                    }
-                    Err(other) => return Err(PrepareAssetError::AsBindGroupError(other)),
-                }
-            }
-            Err(other) => return Err(PrepareAssetError::AsBindGroupError(other)),
-        };
+            &material_layout,
+            bind_group_allocators,
+            render_device,
+            pipeline_cache,
+            fallback_buffer,
+            shader_buffer_assets,
+        )?;
 
         let shadows_enabled = M::enable_shadows();
         let prepass_enabled = M::enable_prepass();
@@ -333,47 +296,22 @@ where
             OpaqueRendererMethod::Deferred => OpaqueRendererMethod::Deferred,
             // OpaqueRendererMethod::Auto => default_opaque_render_method.0,
         };
+        let alpha_mode = material.alpha_mode();
+        let reads_view_transmission_texture = material.reads_view_transmission_texture();
 
-        let mut mesh_pipeline_key_bits = MeshPipelineKey::empty();
-        mesh_pipeline_key_bits.set(
-            MeshPipelineKey::READS_VIEW_TRANSMISSION_TEXTURE,
-            material.reads_view_transmission_texture(),
-        );
-
-        let reads_view_transmission_texture =
-            mesh_pipeline_key_bits.contains(MeshPipelineKey::READS_VIEW_TRANSMISSION_TEXTURE);
-
+        let mesh_pipeline_key_bits = MeshPipelineKey::empty();
         let mesh_pipeline_key_bits = ErasedMeshPipelineKey::new(mesh_pipeline_key_bits);
 
-        let render_phase_type = match material.alpha_mode() {
+        let render_phase_type = match alpha_mode {
+            _ if reads_view_transmission_texture => RenderPhaseType::Transmissive,
             AlphaMode::Blend | AlphaMode::Premultiplied | AlphaMode::Add | AlphaMode::Multiply => {
                 RenderPhaseType::Transparent
             }
-            _ if reads_view_transmission_texture => RenderPhaseType::Transmissive,
             AlphaMode::Opaque | AlphaMode::AlphaToCoverage => RenderPhaseType::Opaque,
             AlphaMode::Mask(_) => RenderPhaseType::AlphaMask,
         };
 
-        let mut shaders = SmallVec::new();
-        let mut add_shader = |label: InternedShaderLabel, shader_ref: ShaderRef| {
-            let mayber_shader = match shader_ref {
-                ShaderRef::Default => None,
-                ShaderRef::Handle(handle) => Some(handle),
-                ShaderRef::Path(path) => Some(asset_server.load(path)),
-            };
-            if let Some(shader) = mayber_shader {
-                shaders.push((label, shader));
-            }
-        };
-        add_shader(MaterialVertexShader.intern(), M::vertex_shader());
-        add_shader(MaterialFragmentShader.intern(), M::fragment_shader());
-        add_shader(PrepassVertexShader.intern(), M::prepass_vertex_shader());
-        add_shader(PrepassFragmentShader.intern(), M::prepass_fragment_shader());
-        add_shader(DeferredVertexShader.intern(), M::deferred_vertex_shader());
-        add_shader(
-            DeferredFragmentShader.intern(),
-            M::deferred_fragment_shader(),
-        );
+        let shaders = material_shaders.shaders.clone();
 
         let bindless = material_uses_bindless_resources::<M>(render_device);
         let bind_group_data = material.bind_group_data();
@@ -402,6 +340,7 @@ where
                 material_key,
                 shadows_enabled,
                 prepass_enabled,
+                oit_enabled: M::enable_oit(),
                 view_settings_layout_entry: Some(view_settings_layout_entry),
             }),
         })
@@ -409,16 +348,11 @@ where
 
     fn unload_asset(
         source_asset: AssetId<Self::SourceAsset>,
-        (_, _, bind_group_allocators, render_material_bindings, ..): &mut SystemParamItem<
+        (_, _, _, _, bind_group_allocators, render_material_bindings, ..): &mut SystemParamItem<
             Self::Param,
         >,
     ) {
-        let Some(material_binding_id) = render_material_bindings.remove(&source_asset.untyped())
-        else {
-            return;
-        };
-        let bind_group_allactor = bind_group_allocators.get_mut(&TypeId::of::<M>()).unwrap();
-        bind_group_allactor.free(material_binding_id);
+        render_material_bindings.unload_material(source_asset, bind_group_allocators);
     }
 }
 

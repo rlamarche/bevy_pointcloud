@@ -7,7 +7,7 @@ use bevy::{
     ecs::{component::Component, query::Changed},
     math::Vec4,
     reflect::{prelude::ReflectDefault, Reflect, ReflectDeserialize, ReflectSerialize},
-    render::{extract_component::ExtractComponent, render_resource::*},
+    render::{extract_component::ExtractComponent, render_resource::*, RenderApp},
 };
 use bitflags::bitflags;
 pub use minimal::*;
@@ -76,6 +76,7 @@ pub enum RenderMode {
 }
 
 #[derive(Component, Clone, ExtractComponent)]
+#[extract_app(RenderApp)]
 #[extract_component_filter(Changed<PointCloudViewSettings>)]
 pub struct PointCloudViewSettings {
     pub render_modes: RenderModes,

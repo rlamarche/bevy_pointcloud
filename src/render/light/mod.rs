@@ -658,12 +658,13 @@ fn get_shadow_map_visible_entities<'w, 's: 'w>(
     match light_entity {
         LightEntity::Directional { light_entity, .. } => {
             let retained_view_entity = extracted_view_light.retained_view_entity;
-            shadow_map_visible_entities_query
+            &shadow_map_visible_entities_query
                 .get(*light_entity)
                 .expect("Failed to get directional light visible entities")
                 .subviews
                 .get(&retained_view_entity)
                 .expect("Failed to get directional light visible entities for cascade")
+                .1
         }
         LightEntity::Point {
             light_entity,
@@ -674,15 +675,16 @@ fn get_shadow_map_visible_entities<'w, 's: 'w>(
             // currently share the same set of visible entities.
             let retained_view_entity = RetainedViewEntity {
                 main_entity: extracted_view_light.retained_view_entity.main_entity,
-                auxiliary_entity: MainEntity::from(Entity::PLACEHOLDER),
+                auxiliary_entity: None,
                 subview_index: *face_index as u32,
             };
-            shadow_map_visible_entities_query
+            &shadow_map_visible_entities_query
                 .get(*light_entity)
                 .expect("Failed to get point light visible entities")
                 .subviews
                 .get(&retained_view_entity)
                 .expect("Failed to get point light visible entity for face")
+                .1
         }
         LightEntity::Spot { light_entity } => {
             // We replace the auxiliary entity with `PLACEHOLDER`
@@ -690,15 +692,16 @@ fn get_shadow_map_visible_entities<'w, 's: 'w>(
             // currently share the same set of visible entities.
             let retained_view_entity = RetainedViewEntity {
                 main_entity: extracted_view_light.retained_view_entity.main_entity,
-                auxiliary_entity: MainEntity::from(Entity::PLACEHOLDER),
+                auxiliary_entity: None,
                 subview_index: 0,
             };
-            shadow_map_visible_entities_query
+            &shadow_map_visible_entities_query
                 .get(*light_entity)
                 .expect("Failed to get spot light visible entities")
                 .subviews
                 .get(&retained_view_entity)
                 .expect("Failed to get spot light visible entity for view")
+                .1
         }
     }
 }

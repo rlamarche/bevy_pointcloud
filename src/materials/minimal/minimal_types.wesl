@@ -1,5 +1,3 @@
-#define_import_path bevy_pointcloud::minimal_material_types
-
 struct PointCloudViewSettings {
     nb_clipping_planes: u32,
     nb_edl_neighbours: u32,
@@ -21,4 +19,4 @@ struct ColorStop {
     point: f32,
 }
 
-const MINIMAL_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT: u32            = 1u << 0u;
+const MINIMAL_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT: u32 = 1u << 0u;

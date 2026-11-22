@@ -9,8 +9,9 @@ use bevy::{
     render::{
         render_asset::RenderAssets,
         render_resource::{
-            AsBindGroup, AsBindGroupShaderType, BindlessSlabResourceLimit, BlendComponent,
-            BlendFactor, BlendOperation, BlendState, Face, ShaderStages, TextureFormat,
+            AsBindGroup, AsBindGroupShaderType, BindGroupBuilder, BindlessSlabResourceLimit,
+            BlendComponent, BlendFactor, BlendOperation, BlendState, Face, ShaderStages,
+            TextureFormat,
         },
         texture::GpuImage,
     },
@@ -34,9 +35,9 @@ pub struct StandardPointCloudMaterialPlugin;
 
 impl Plugin for StandardPointCloudMaterialPlugin {
     fn build(&self, app: &mut bevy::app::App) {
-        embedded_asset!(app, "pbr.wgsl");
-        embedded_asset!(app, "pbr_prepass.wgsl");
-        embedded_asset!(app, "pbr_normalize.wgsl");
+        embedded_asset!(app, "pbr.wesl");
+        embedded_asset!(app, "pbr_prepass.wesl");
+        embedded_asset!(app, "pbr_normalize.wesl");
 
         app.add_plugins(PointCloudMaterialPlugin::<StandardPointCloudMaterial>::default());
     }
@@ -121,22 +122,21 @@ impl AsBindGroup for StandardPointCloudMaterial {
         )
     }
 
-    fn unprepared_bind_group(
+    fn build_bind_group(
         &self,
         layout: &bevy::render::render_resource::BindGroupLayout,
         render_device: &bevy::render::renderer::RenderDevice,
         param: &mut bevy::ecs::system::SystemParamItem<'_, '_, Self::Param>,
         _force_no_bindless: bool,
-    ) -> Result<
-        bevy::render::render_resource::UnpreparedBindGroup,
-        bevy::render::render_resource::AsBindGroupError,
-    > {
-        <StandardMaterial as AsBindGroup>::unprepared_bind_group(
+        output: &mut BindGroupBuilder,
+    ) -> Result<(), bevy::render::render_resource::AsBindGroupError> {
+        <StandardMaterial as AsBindGroup>::build_bind_group(
             &self.material,
             layout,
             render_device,
             param,
             true,
+            output,
         )
     }
 
@@ -148,39 +148,6 @@ impl AsBindGroup for StandardPointCloudMaterial {
         Self: Sized,
     {
         <StandardMaterial as AsBindGroup>::bind_group_layout_entries(render_device, true)
-    }
-
-    fn as_bind_group(
-        &self,
-        layout_descriptor: &bevy::material::descriptor::BindGroupLayoutDescriptor,
-        render_device: &bevy::render::renderer::RenderDevice,
-        pipeline_cache: &bevy::render::render_resource::PipelineCache,
-        param: &mut bevy::ecs::system::SystemParamItem<'_, '_, Self::Param>,
-    ) -> Result<
-        bevy::render::render_resource::PreparedBindGroup,
-        bevy::render::render_resource::AsBindGroupError,
-    > {
-        let layout = &pipeline_cache.get_bind_group_layout(layout_descriptor);
-
-        let bevy::render::render_resource::UnpreparedBindGroup { bindings } =
-            Self::unprepared_bind_group(self, layout, render_device, param, true)?;
-
-        let entries = bindings
-            .iter()
-            .map(
-                |(index, binding)| bevy::render::render_resource::BindGroupEntry {
-                    binding: *index,
-                    resource: binding.get_binding(),
-                },
-            )
-            .collect::<Vec<_>>();
-
-        let bind_group = render_device.create_bind_group(Self::label(), layout, &entries);
-
-        Ok(bevy::render::render_resource::PreparedBindGroup {
-            bindings,
-            bind_group,
-        })
     }
 
     fn bind_group_layout(
@@ -239,7 +206,7 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
         ShaderRef::Default
     }
     fn fragment_shader() -> ShaderRef {
-        shader_ref(bevy::asset::embedded_path!("pbr.wgsl"))
+        shader_ref(bevy::asset::embedded_path!("pbr.wesl"))
     }
 
     fn alpha_mode(&self) -> bevy::material::prelude::AlphaMode {
@@ -263,7 +230,7 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
     }
 
     fn prepass_fragment_shader() -> ShaderRef {
-        shader_ref(bevy::asset::embedded_path!("pbr_prepass.wgsl"))
+        shader_ref(bevy::asset::embedded_path!("pbr_prepass.wesl"))
     }
 
     fn deferred_vertex_shader() -> ShaderRef {
@@ -271,7 +238,7 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
     }
 
     fn deferred_fragment_shader() -> ShaderRef {
-        shader_ref(bevy::asset::embedded_path!("pbr.wgsl"))
+        shader_ref(bevy::asset::embedded_path!("pbr.wesl"))
     }
 
     fn pass_descriptor(pass: &Self::PassId) -> PassDescriptor<Self::PassId> {
@@ -363,7 +330,7 @@ impl PointCloudMaterial for StandardPointCloudMaterial {
             }
             StandardPasses::XRayNormalize | StandardPasses::EDLNormalize => Some(PassParams {
                 vertex_shader: ShaderRef::Default,
-                fragment_shader: shader_ref(bevy::asset::embedded_path!("pbr_normalize.wgsl")),
+                fragment_shader: shader_ref(bevy::asset::embedded_path!("pbr_normalize.wesl")),
                 inputs: vec![
                     PassInput {
                         source_pass: StandardPasses::Depth.into(),
