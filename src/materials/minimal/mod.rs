@@ -420,7 +420,7 @@ impl AsBindGroupShaderType<MinimalPointCloudMaterialUniform> for MinimalPointClo
         &self,
         _images: &RenderAssets<GpuImage>,
     ) -> MinimalPointCloudMaterialUniform {
-        let mut flags = MinimalPointCloudMaterialFlags::NONE;
+        let flags = MinimalPointCloudMaterialFlags::NONE;
 
         MinimalPointCloudMaterialUniform {
             base_color: LinearRgba::from(self.base_color).to_vec4(),
