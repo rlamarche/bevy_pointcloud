@@ -49,9 +49,11 @@
 #import bevy_pbr::meshlet_visibility_buffer_resolve::resolve_vertex_output
 #endif
 
+#ifndef POINTCLOUD_PASS
 #ifdef OIT_ENABLED
 #import bevy_core_pipeline::oit::oit_draw
 #endif // OIT_ENABLED
+#endif // POINTCLOUD_PASS
 
 #ifdef FORWARD_DECAL
 #import bevy_pbr::decal::forward::get_forward_decal_info
@@ -201,14 +203,16 @@ fn fragment(
     out.color = main_pass_post_lighting_processing(pbr_input, out.color);
 #endif
 
-#ifdef OIT_ENABLED
-    let alpha_mode = pbr_input.material.flags & pbr_types::STANDARD_MATERIAL_FLAGS_ALPHA_MODE_RESERVED_BITS;
-    if alpha_mode != pbr_types::STANDARD_MATERIAL_FLAGS_ALPHA_MODE_OPAQUE {
-        // The fragments will only be drawn during the oit resolve pass.
-        oit_draw(in.position, out.color);
-        discard;
-    }
-#endif // OIT_ENABLED
+#ifndef POINTCLOUD_PASS
+    #ifdef OIT_ENABLED
+        let alpha_mode = pbr_input.material.flags & pbr_types::STANDARD_MATERIAL_FLAGS_ALPHA_MODE_RESERVED_BITS;
+        if alpha_mode != pbr_types::STANDARD_MATERIAL_FLAGS_ALPHA_MODE_OPAQUE {
+            // The fragments will only be drawn during the oit resolve pass.
+            oit_draw(in.position, out.color);
+            discard;
+        }
+    #endif // OIT_ENABLED
+#endif // POINTCLOUD_PASS
 
 #ifdef FORWARD_DECAL
         out.color.a = min(forward_decal_info.alpha, out.color.a);
@@ -235,11 +239,8 @@ fn fragment(
 
         var weight = max(0.0, 1.0 - dist * 2.0);
         weight = pow(weight, 1.5);
-    #else // WEIGHTED_SPLATS_ENABLED
-        let weight = 1.0;
+        out.color.a = weight;
     #endif // WEIGHTED_SPLATS_ENABLED
-
-    out.color.a = weight;
 
 #endif // POINTCLOUD_PASS_DEPTH
 

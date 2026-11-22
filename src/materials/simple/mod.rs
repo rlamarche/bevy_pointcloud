@@ -3,6 +3,7 @@ use bevy::{
     asset::{embedded_asset, Asset, Handle},
     color::{Color, ColorToComponents, LinearRgba},
     image::Image,
+    material::AlphaMode,
     math::{Affine2, Vec3, Vec4},
     pbr::MeshPipelineKey,
     reflect::{std_traits::ReflectDefault, Reflect},
@@ -100,6 +101,11 @@ pub struct SimplePointCloudMaterial {
     #[reflect(ignore, clone)]
     pub cull_mode: Option<Face>,
 
+    /// How to apply the alpha channel of the `base_color_texture`.
+    ///
+    /// See [`AlphaMode`] for details. Defaults to [`AlphaMode::Opaque`].
+    pub alpha_mode: AlphaMode,
+
     /// The texture component of the material's color before lighting.
     /// The actual pre-lighting color is `base_color * this_texture`.
     ///
@@ -137,6 +143,7 @@ impl Default for SimplePointCloudMaterial {
             gradient_end: None,
             end_color: None,
             cull_mode: None,
+            alpha_mode: AlphaMode::Opaque,
             base_color_texture: None,
             uv_transform: Affine2::IDENTITY,
         }
@@ -170,6 +177,12 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
 
     fn enable_shadows() -> bool {
         true
+    }
+
+    /// Returns this material's [`AlphaMode`]. Defaults to [`AlphaMode::Opaque`].
+    #[inline]
+    fn alpha_mode(&self) -> AlphaMode {
+        self.alpha_mode
     }
 
     fn pass_descriptor(pass: &Self::PassId) -> PassDescriptor<Self::PassId> {
@@ -513,9 +526,24 @@ bitflags::bitflags! {
     #[repr(transparent)]
     pub struct SimplePointCloudMaterialFlags: u32 {
         const BASE_COLOR_TEXTURE         = 1 << 0;
+
+        const ALPHA_MODE_RESERVED_BITS   = Self::ALPHA_MODE_MASK_BITS << Self::ALPHA_MODE_SHIFT_BITS; // ← Bitmask reserving bits for the `AlphaMode`
+        const ALPHA_MODE_OPAQUE          = 0 << Self::ALPHA_MODE_SHIFT_BITS;                          // ← Values are just sequential values bitshifted into
+        const ALPHA_MODE_MASK            = 1 << Self::ALPHA_MODE_SHIFT_BITS;                          //   the bitmask, and can range from 0 to 7.
+        const ALPHA_MODE_BLEND           = 2 << Self::ALPHA_MODE_SHIFT_BITS;                          //
+        const ALPHA_MODE_PREMULTIPLIED   = 3 << Self::ALPHA_MODE_SHIFT_BITS;                          //
+        const ALPHA_MODE_ADD             = 4 << Self::ALPHA_MODE_SHIFT_BITS;                          //   Right now only values 0–5 are used, which still gives
+        const ALPHA_MODE_MULTIPLY        = 5 << Self::ALPHA_MODE_SHIFT_BITS;                          // ← us "room" for two more modes without adding more bits
+        const ALPHA_MODE_ALPHA_TO_COVERAGE = 6 << Self::ALPHA_MODE_SHIFT_BITS;
+
         const NONE                       = 0;
         const UNINITIALIZED              = 0xFFFF;
     }
+}
+
+impl SimplePointCloudMaterialFlags {
+    const ALPHA_MODE_MASK_BITS: u32 = 0b111;
+    const ALPHA_MODE_SHIFT_BITS: u32 = 32 - Self::ALPHA_MODE_MASK_BITS.count_ones();
 }
 
 /// The GPU representation of the uniform data of a [`StandardMaterial`].
@@ -569,6 +597,24 @@ impl AsBindGroupShaderType<SimplePointCloudMaterialUniform> for SimplePointCloud
             uv_mat.col(1).y,
         );
         let uv_transform_b = Vec4::new(uv_trans.x, uv_trans.y, 0.0, 0.0);
+
+        match self.alpha_mode {
+            AlphaMode::Opaque => flags |= SimplePointCloudMaterialFlags::ALPHA_MODE_OPAQUE,
+            AlphaMode::Mask(c) => {
+                // alpha_cutoff = c;
+                flags |= SimplePointCloudMaterialFlags::ALPHA_MODE_MASK;
+            }
+            AlphaMode::Blend => flags |= SimplePointCloudMaterialFlags::ALPHA_MODE_BLEND,
+            AlphaMode::Premultiplied => {
+                flags |= SimplePointCloudMaterialFlags::ALPHA_MODE_PREMULTIPLIED;
+            }
+
+            AlphaMode::Add => flags |= SimplePointCloudMaterialFlags::ALPHA_MODE_ADD,
+            AlphaMode::Multiply => flags |= SimplePointCloudMaterialFlags::ALPHA_MODE_MULTIPLY,
+            AlphaMode::AlphaToCoverage => {
+                flags |= SimplePointCloudMaterialFlags::ALPHA_MODE_ALPHA_TO_COVERAGE;
+            }
+        };
 
         SimplePointCloudMaterialUniform {
             base_color: LinearRgba::from(self.base_color).to_vec4(),

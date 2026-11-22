@@ -36,3 +36,12 @@ struct ColorStop {
 }
 
 const SIMPLE_MATERIAL_FLAGS_BASE_COLOR_TEXTURE_BIT: u32            = 1u << 0u;
+
+const SIMPLE_MATERIAL_FLAGS_ALPHA_MODE_RESERVED_BITS: u32          = 7u << 29u; // (0b111u << 29u)
+const SIMPLE_MATERIAL_FLAGS_ALPHA_MODE_OPAQUE: u32                 = 0u << 29u;
+const SIMPLE_MATERIAL_FLAGS_ALPHA_MODE_MASK: u32                   = 1u << 29u;
+const SIMPLE_MATERIAL_FLAGS_ALPHA_MODE_BLEND: u32                  = 2u << 29u;
+const SIMPLE_MATERIAL_FLAGS_ALPHA_MODE_PREMULTIPLIED: u32          = 3u << 29u;
+const SIMPLE_MATERIAL_FLAGS_ALPHA_MODE_ADD: u32                    = 4u << 29u;
+const SIMPLE_MATERIAL_FLAGS_ALPHA_MODE_MULTIPLY: u32               = 5u << 29u;
+const SIMPLE_MATERIAL_FLAGS_ALPHA_MODE_ALPHA_TO_COVERAGE: u32      = 6u << 29u;

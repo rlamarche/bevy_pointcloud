@@ -12,7 +12,7 @@ use bevy::{
     app::{App, Plugin},
     camera::{Camera, Camera3d, MainPassResolutionOverride, Projection, Viewport},
     core_pipeline::{
-        core_3d::main_opaque_pass_3d,
+        core_3d::{main_opaque_pass_3d, main_transparent_pass_3d},
         oit::OrderIndependentTransparencySettings,
         prepass::*,
         tonemapping::{DebandDither, Tonemapping},
@@ -271,7 +271,8 @@ macro_rules! add_pass_system {
             Core3d,
             main_opaque_multipass_3d::<$M, 0>
                 .in_set(Core3dSystems::MainPass)
-                .after(main_opaque_pass_3d),
+                .after(main_opaque_pass_3d)
+                .before(main_transparent_pass_3d),
         );
     };
     ($app:expr, $M:ty, $curr:expr, $prev:expr) => {
@@ -279,7 +280,8 @@ macro_rules! add_pass_system {
             Core3d,
             main_opaque_multipass_3d::<$M, $curr>
                 .in_set(Core3dSystems::MainPass)
-                .after(main_opaque_multipass_3d::<$M, $prev>),
+                .after(main_opaque_multipass_3d::<$M, $prev>)
+                .before(main_transparent_pass_3d),
         );
     };
 }

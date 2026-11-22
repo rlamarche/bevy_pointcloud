@@ -95,9 +95,9 @@ pub struct PointCloudViewSettings {
 impl Default for PointCloudViewSettings {
     fn default() -> Self {
         Self {
-            render_modes: Default::default(),
-            clipping_planes: Default::default(),
-            clipping_spheres: Default::default(),
+            render_modes: RenderModes::all(),
+            clipping_planes: Vec::new(),
+            clipping_spheres: Vec::new(),
             edl_enabled: false,
             edl_neighbours: (0..8)
                 .step_by(2)

@@ -16,6 +16,11 @@
 @group(#{POINTCLOUD_BIND_GROUP}) @binding(3) var<uniform> view_settings: material_types::PointCloudViewSettings;
 #endif // POINTCLOUD_VIEW_SETTINGS
 
+#ifndef POINTCLOUD_PASS
+#ifdef OIT_ENABLED
+#import bevy_core_pipeline::oit::oit_draw
+#endif // OIT_ENABLED
+#endif // POINTCLOUD_PASS
 
 struct FragmentOutput {
 #ifdef POINTCLOUD_PASS_DEPTH
@@ -125,11 +130,24 @@ fn fragment(
 
         #ifdef VERTEX_COLORS
             let color = functions::srgb_to_rgb_simple(in.color.xyz * base_color.xyz);
+            let alpha = in.color.a * base_color.a;
         #else
             let color = functions::srgb_to_rgb_simple(base_color.xyz);
+            let alpha = base_color.a;
         #endif
 
-        out.color = vec4(color, weight);
+        out.color = vec4(color, alpha * weight);
+
+        #ifndef POINTCLOUD_PASS
+            #ifdef OIT_ENABLED
+                let alpha_mode = material_bindings::material.flags & material_types::SIMPLE_MATERIAL_FLAGS_ALPHA_MODE_RESERVED_BITS;
+                if alpha_mode != material_types::SIMPLE_MATERIAL_FLAGS_ALPHA_MODE_OPAQUE {
+                    // The fragments will only be drawn during the oit resolve pass.
+                    oit_draw(in.position, out.color);
+                    discard;
+                }
+            #endif // OIT_ENABLED
+        #endif // POINTCLOUD_PASS
 
     #endif // POINTCLOUD_PASS_DEPTH
 
