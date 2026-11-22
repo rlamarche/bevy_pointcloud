@@ -49,6 +49,7 @@ fn setup(mut commands: Commands) {
             ..default()
         },
         PointCloudViewSettings {
+            render_modes: RenderModes::MULTIPASS,
             edl_enabled: true,
             ..default()
         },
