@@ -142,16 +142,17 @@ fn fragment(vertex_output: VertexOutput) -> FragmentOutput {
         out.color = vec4(color, alpha * weight);
 
         @if(!POINTCLOUD_PASS && MATERIAL_OIT_ENABLED) {
-            let alpha_mode = pbr_input.material.flags
+            let alpha_mode = material_bindings::material.flags
                 & material_types::SIMPLE_MATERIAL_FLAGS_ALPHA_MODE_RESERVED_BITS;
             if alpha_mode == material_types::SIMPLE_MATERIAL_FLAGS_ALPHA_MODE_BLEND {
                 // The fragments will only be drawn during the oit resolve pass.
                 oit_draw(in.position, vec4(out.color.rgb * out.color.a, out.color.a));
                 discard;
             }
+
             // Both `Premultiplied` and `Add` colors are premultiplied in `premultiply_alpha()`
-            if alpha_mode == pbr_types::STANDARD_MATERIAL_FLAGS_ALPHA_MODE_PREMULTIPLIED
-                || alpha_mode == pbr_types::STANDARD_MATERIAL_FLAGS_ALPHA_MODE_ADD {
+            if alpha_mode == material_types::SIMPLE_MATERIAL_FLAGS_ALPHA_MODE_PREMULTIPLIED
+                || alpha_mode == material_types::SIMPLE_MATERIAL_FLAGS_ALPHA_MODE_ADD {
                 // The fragments will only be drawn during the oit resolve pass.
                 oit_draw(in.position, out.color);
                 discard;
