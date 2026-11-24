@@ -125,10 +125,6 @@ impl PointCloudMaterial for MinimalPointCloudMaterial {
         shader_ref(bevy::asset::embedded_path!("minimal.wesl"))
     }
 
-    fn prepass_vertex_shader() -> ShaderRef {
-        shader_ref(bevy::asset::embedded_path!("minimal.wesl"))
-    }
-
     fn prepass_fragment_shader() -> ShaderRef {
         shader_ref(bevy::asset::embedded_path!("minimal_prepass.wesl"))
     }
