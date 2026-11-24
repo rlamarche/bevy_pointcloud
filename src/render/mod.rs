@@ -34,7 +34,6 @@ use bevy::{
         schedule::{IntoScheduleConfigs, SystemSet},
         world::{FromWorld, World},
     },
-    math::primitives::Rectangle,
     mesh::{Mesh, PrimitiveTopology},
     pbr::{
         extract_lights, main_build_indirect_parameters, per_view_shadow_pass, shared_shadow_pass,
@@ -52,6 +51,7 @@ use bevy::{
         RenderSystems,
     },
     shader::ShaderRef,
+    shape::Rectangle,
 };
 pub use camera::*;
 pub use components::*;
@@ -106,7 +106,7 @@ pub enum PointCloudExtractionSystems {
 
 impl Plugin for RenderPointCloudPlugin {
     fn build(&self, app: &mut bevy::app::App) {
-        embedded_asset!(app, "pointcloud.wgsl");
+        embedded_asset!(app, "pointcloud.wesl");
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
@@ -301,7 +301,8 @@ impl Plugin for RenderPointCloudPlugin {
     }
 }
 
-#[derive(Resource, Clone)]
+#[derive(Resource, ExtractResource, Clone)]
+#[extract_app(RenderApp)]
 pub struct SplatMeshes {
     pub quad_mesh: Handle<Mesh>,
     pub triangle_mesh: Handle<Mesh>,
@@ -321,14 +322,6 @@ impl FromWorld for SplatMeshes {
             quad_mesh,
             triangle_mesh,
         }
-    }
-}
-
-impl ExtractResource for SplatMeshes {
-    type Source = Self;
-
-    fn extract_resource(source: &Self::Source) -> Self {
-        source.clone()
     }
 }
 

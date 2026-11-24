@@ -9,5 +9,5 @@ imports_granularity = "Crate"
 normalize_comments = true
 
 # these options seem poorly implemented and cause churn, so, try to avoid them
-wrap_comments = true
-comment_width = 100
+# wrap_comments = true
+# comment_width = 100

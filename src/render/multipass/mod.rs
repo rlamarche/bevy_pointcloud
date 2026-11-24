@@ -30,7 +30,7 @@ use bevy::{
     light::{EnvironmentMapLight, IrradianceVolume, ShadowFilteringMethod},
     log::{debug, error, warn},
     material::{key::ErasedMeshPipelineKey, OpaqueRendererMethod},
-    math::{Mat4, Vec4},
+    math::Vec4,
     mesh::MeshVertexBufferLayoutRef,
     pbr::{
         alpha_mode_pipeline_key, skins_use_uniform_buffers, tonemapping_pipeline_key,
@@ -38,7 +38,6 @@ use bevy::{
         MeshPipelineKey, MeshViewBindGroup, RenderMeshInstanceFlags, RenderMeshInstances,
         RenderViewLightProbes, ScreenSpaceAmbientOcclusion, ScreenSpaceReflectionsUniform,
         ScreenSpaceTransmission, SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup,
-        ShadowView,
     },
     prelude::{Deref, DerefMut},
     render::{
@@ -55,11 +54,11 @@ use bevy::{
             },
             *,
         },
-        renderer::{RenderAdapter, RenderContext, RenderDevice, RenderQueue, ViewQuery},
+        renderer::{RenderAdapter, RenderContext, RenderDevice, ViewQuery},
         sync_world::RenderEntity,
         view::{
             ExtractedView, Msaa, RenderVisibilityRanges, RenderVisibleEntities, RetainedViewEntity,
-            ViewDepthTexture, ViewTarget, ViewUniform, ViewUniforms,
+            ViewDepthStencilTexture, ViewTarget, ViewUniform, ViewUniforms,
             VISIBILITY_RANGES_STORAGE_BUFFER_COUNT,
         },
         Extract, GpuResourceAppExt, Render, RenderApp, RenderDebugFlags, RenderStartup,
@@ -448,50 +447,6 @@ pub fn extract_camera_previous_view_data(
         } else {
             entity.remove::<PreviousViewData>();
         }
-    }
-}
-
-pub fn prepare_previous_view_uniforms(
-    mut commands: Commands,
-    render_device: Res<RenderDevice>,
-    render_queue: Res<RenderQueue>,
-    mut previous_view_uniforms: ResMut<PreviousViewUniforms>,
-    views: Query<
-        (Entity, &ExtractedView, Option<&PreviousViewData>),
-        Or<(With<Camera3d>, With<ShadowView>)>,
-    >,
-) {
-    let views_iter = views.iter();
-    let view_count = views_iter.len();
-    let Some(mut writer) =
-        previous_view_uniforms
-            .uniforms
-            .get_writer(view_count, &render_device, &render_queue)
-    else {
-        return;
-    };
-
-    for (entity, camera, maybe_previous_view_uniforms) in views_iter {
-        let prev_view_data = match maybe_previous_view_uniforms {
-            Some(previous_view) => previous_view.clone(),
-            None => {
-                let world_from_view = camera.world_from_view.affine();
-                let view_from_world = Mat4::from(world_from_view.inverse());
-                let view_from_clip = camera.clip_from_view.inverse();
-
-                PreviousViewData {
-                    view_from_world,
-                    clip_from_world: camera.clip_from_view * view_from_world,
-                    clip_from_view: camera.clip_from_view,
-                    world_from_clip: Mat4::from(world_from_view) * view_from_clip,
-                    view_from_clip,
-                }
-            }
-        };
-
-        commands.entity(entity).insert(PreviousViewUniformOffset {
-            offset: writer.write(&prev_view_data),
-        });
     }
 }
 
@@ -1372,7 +1327,7 @@ pub fn main_opaque_multipass_3d<M: PointCloudMaterial, const PASS: usize>(
         &ExtractedCamera,
         &ExtractedView,
         &ViewTarget,
-        &ViewDepthTexture,
+        &ViewDepthStencilTexture,
         &ErasedMaterialPreparedPasses,
         &ViewMultipassTextures<M>,
         &MeshViewBindGroup,

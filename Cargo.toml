@@ -108,7 +108,7 @@ copc-streaming = {
 async-lock = { version = "3.0", default-features = false, optional = true }
 
 [dependencies.bevy]
-version = "0.19"
+version = "0.20"
 # path = "../bevy"
 default-features = false
 features = [
@@ -127,7 +127,7 @@ features = [
 
 [dev-dependencies]
 bevy = {
-    version = "0.19",
+    version = "0.20",
     features = [
         "free_camera",
         "pan_camera",
@@ -144,7 +144,7 @@ bevy = {
 # bevy_remote = { version = "0.19.0" }
 bytemuck = "1"
 
-bevy_panorbit_camera = "0.35.0"
+bevy_panorbit_camera = "0.36.0"
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]

@@ -1,17 +1,8 @@
-#define_import_path bevy_pointcloud::functions
-
-#import bevy_pbr::{
+import bevy_pbr::render::{
     mesh_view_bindings::view,
-    view_transformations::{
-        position_world_to_clip,
-        position_world_to_view,
-        position_view_to_clip,
-    },
-}
-#import bevy_pointcloud::{
-    types,
-    forward_io::{ShapeInput, InstanceInput},
-}
+    view_transformations::{position_view_to_clip, position_world_to_clip, position_world_to_view}
+};
+import package::{types, forward_io::{InstanceInput, ShapeInput}};
 
 const F32_MAX: f32 = 3.4028234663852886e+38;
 
@@ -20,7 +11,6 @@ fn clamp_point_size(point_size: f32, min: f32, max: f32) -> f32 {
 
     return clamp(point_size, min, checked_max);
 }
-
 
 /// Computes the final World-Space quad size for a point configured in Screen-Space (pixel) units.
 fn compute_screen_space_point_size(
@@ -56,8 +46,6 @@ fn compute_world_space_point_size(
 
     return select(projected_world_size, point_size_world, proj_factor < 0.0001);
 }
-
-
 
 fn srgb_to_rgb_simple(color: vec3<f32>) -> vec3<f32> {
     return pow(color, vec3<f32>(2.2));
@@ -103,10 +91,10 @@ fn compute_world_vertex_position_oriented(
     let world_normal = normalize((world_from_local * vec4<f32>(normal, 0.0)).xyz);
 
     let up_ref = select(
-        vec3<f32>(0.0, 1.0, 0.0),
-        vec3<f32>(1.0, 0.0, 0.0),
-        abs(world_normal.y) > 0.99
-    );
+            vec3<f32>(0.0, 1.0, 0.0),
+            vec3<f32>(1.0, 0.0, 0.0),
+            abs(world_normal.y) > 0.99,
+        );
 
     // World tangent (Local X-Axis)
     let world_tangent = normalize(cross(up_ref, world_normal));
@@ -114,15 +102,12 @@ fn compute_world_vertex_position_oriented(
     let world_bitangent = cross(world_normal, world_tangent);
 
     // Offset the instance center using all 3 axes of the shape
-    let offset = (world_tangent * shape_position.x)
-               + (world_bitangent * shape_position.y)
-               + (world_normal * shape_position.z);
+    let offset = (world_tangent * shape_position.x) + (world_bitangent * shape_position.y)
+        + (world_normal * shape_position.z);
 
     // Apply the scale and point size to the 3D offset, then add to the center
     return world_position + offset * radius;
 }
-
-
 
 /// This function computes the world position of the point using the 3D shape vertex oriented by the point's normal and tangent.
 /// params:
@@ -153,9 +138,8 @@ fn compute_world_vertex_position_oriented_with_tangent(
     // - shape_position.x moves along the Tangent (X)
     // - shape_position.y moves along the Bitangent (Y)
     // - shape_position.z moves along the Normal (Z) -> Crutial for 3D shapes like spheres!
-    let offset = (world_tangent * shape_position.x)
-               + (world_bitangent * shape_position.y)
-               + (world_normal * shape_position.z);
+    let offset = (world_tangent * shape_position.x) + (world_bitangent * shape_position.y)
+        + (world_normal * shape_position.z);
 
     // Apply the scale and point size to the 3D offset, then add to the center
     let world_vertex_position = world_position + offset * radius;
@@ -163,23 +147,15 @@ fn compute_world_vertex_position_oriented_with_tangent(
     return world_vertex_position;
 }
 
-
-fn compute_tangent_and_bitangent(
-    normal: vec3<f32>,
-) -> mat2x3<f32> {
+fn compute_tangent_and_bitangent(normal: vec3<f32>) -> mat2x3<f32> {
     // Build the remaining orthonormal basis (Tangent & Bitangent)
-    let up_ref = select(
-        vec3<f32>(0.0, 1.0, 0.0),
-        vec3<f32>(1.0, 0.0, 0.0),
-        abs(normal.y) > 0.99
-    );
+    let up_ref = select(vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(1.0, 0.0, 0.0), abs(normal.y) > 0.99);
 
     let tangent = normalize(cross(up_ref, normal));
     let bitangent = cross(normal, tangent);
 
     return mat2x3<f32>(tangent, bitangent);
 }
-
 
 fn compute_world_vertex_normal_oriented_with_tangent(
     normal: vec3<f32>,
@@ -191,14 +167,18 @@ fn compute_world_vertex_normal_oriented_with_tangent(
     let T = normalize(tangent);
     let B = normalize(cross(N, T));
 
-    let tbn = mat3x3<f32>(T, B, N);
+    let tbn = mat3x3<f32>(
+            T,
+            B,
+            N,
+        );
     let local_normal = tbn * shape_normal;
 
     let world_rot = mat3x3<f32>(
-        world_from_local[0].xyz,
-        world_from_local[1].xyz,
-        world_from_local[2].xyz
-    );
+            world_from_local[0].xyz,
+            world_from_local[1].xyz,
+            world_from_local[2].xyz,
+        );
 
     return normalize(world_rot * local_normal);
 }
@@ -214,12 +194,14 @@ fn compute_world_vertex_normal_oriented(
     let tb = compute_tangent_and_bitangent(world_normal);
 
     // Build the full 3x3 TBN basis matrix and transform shape_normal in one step
-    let tbn = mat3x3<f32>(tb[0], tb[1], world_normal);
+    let tbn = mat3x3<f32>(
+            tb[0],
+            tb[1],
+            world_normal,
+        );
 
     return normalize(tbn * shape_normal);
 }
-
-
 
 fn is_bit_set(number: u32, index: u32) -> bool {
     return (number & (1u << index)) != 0u;
@@ -239,5 +221,5 @@ fn count_bits_before(mask: u32, index: u32) -> u32 {
 
     // TODO add ifdef to use native version if available
     return count_one_bits_compat(mask & before_mask);
-//    return countOneBits(mask & before_mask);
+    //    return countOneBits(mask & before_mask);
 }

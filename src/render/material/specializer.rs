@@ -5,6 +5,7 @@ use bevy::{
     material::{
         descriptor::{CachedRenderPipelineId, RenderPipelineDescriptor},
         specialize::SpecializedMeshPipelineError,
+        AlphaMode,
     },
     mesh::MeshVertexBufferLayoutRef,
     pbr::MeshPipelineKey,
@@ -89,6 +90,30 @@ impl SpecializedPointCloudPipeline for PointCloudMaterialPipelineSpecializer {
                 descriptor.vertex.shader = vertex_shader.clone();
             } else if let Some(vertex_shader) = self.properties.get_shader(MaterialVertexShader) {
                 descriptor.vertex.shader = vertex_shader.clone();
+            }
+
+            if key
+                .mesh_key
+                .downcast::<MeshPipelineKey>()
+                .contains(MeshPipelineKey::OIT_ENABLED)
+                && self.properties.oit_enabled
+                && matches!(
+                    self.properties.alpha_mode,
+                    AlphaMode::Blend | AlphaMode::Premultiplied | AlphaMode::Add
+                )
+            {
+                descriptor.label = Some("oit_pointcloud_pipeline".into());
+                let frag = descriptor.fragment.as_mut().unwrap();
+                // TODO tail blending would need alpha blending
+                frag.targets[0].as_mut().unwrap().blend = None;
+                frag.shader_defs.push("MATERIAL_OIT_ENABLED".into());
+                // TODO it should be possible to use this to combine MSAA and OIT
+                // alpha_to_coverage_enabled = true;
+                descriptor
+                    .depth_stencil
+                    .as_mut()
+                    .unwrap()
+                    .depth_write_enabled = Some(false);
             }
 
             if let Some(fragment) = descriptor.fragment.as_mut() {

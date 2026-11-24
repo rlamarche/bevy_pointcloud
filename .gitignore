@@ -27,3 +27,6 @@ Cargo.lock
 /assets/potree
 /book
 /wasm
+
+# WESL
+/wesl.toml

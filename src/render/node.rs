@@ -9,7 +9,7 @@ use bevy::{
         diagnostic::RecordDiagnostics,
         render_resource::{RenderPassDescriptor, StoreOp},
         renderer::{RenderContext, ViewQuery},
-        view::{ExtractedView, ViewDepthTexture, ViewTarget},
+        view::{ExtractedView, ViewDepthStencilTexture, ViewTarget},
     },
 };
 
@@ -21,7 +21,7 @@ pub fn main_opaque_pass_3d_chunk(
         &ExtractedCamera,
         &ExtractedView,
         &ViewTarget,
-        &ViewDepthTexture,
+        &ViewDepthStencilTexture,
         Option<&MainPassResolutionOverride>,
     )>,
     opaque_phases: Res<ViewBinnedChunksRenderPhases<Opaque3dChunk>>,

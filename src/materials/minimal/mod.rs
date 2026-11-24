@@ -53,11 +53,11 @@ pub struct MinimalPointCloudMaterialPlugin;
 
 impl Plugin for MinimalPointCloudMaterialPlugin {
     fn build(&self, app: &mut bevy::app::App) {
-        load_shader_library!(app, "minimal_bindings.wgsl");
-        load_shader_library!(app, "minimal_types.wgsl");
-        embedded_asset!(app, "minimal.wgsl");
-        embedded_asset!(app, "minimal_prepass.wgsl");
-        embedded_asset!(app, "minimal_normalize.wgsl");
+        load_shader_library!(app, "minimal_bindings.wesl");
+        load_shader_library!(app, "minimal_types.wesl");
+        embedded_asset!(app, "minimal.wesl");
+        embedded_asset!(app, "minimal_prepass.wesl");
+        embedded_asset!(app, "minimal_normalize.wesl");
 
         app.add_plugins(PointCloudMaterialPlugin::<MinimalPointCloudMaterial>::default());
     }
@@ -118,19 +118,15 @@ impl PointCloudMaterial for MinimalPointCloudMaterial {
     type ViewSettings = PointCloudViewSettings;
 
     fn vertex_shader() -> ShaderRef {
-        shader_ref(bevy::asset::embedded_path!("minimal.wgsl"))
+        shader_ref(bevy::asset::embedded_path!("minimal.wesl"))
     }
 
     fn fragment_shader() -> ShaderRef {
-        shader_ref(bevy::asset::embedded_path!("minimal.wgsl"))
-    }
-
-    fn prepass_vertex_shader() -> ShaderRef {
-        shader_ref(bevy::asset::embedded_path!("minimal.wgsl"))
+        shader_ref(bevy::asset::embedded_path!("minimal.wesl"))
     }
 
     fn prepass_fragment_shader() -> ShaderRef {
-        shader_ref(bevy::asset::embedded_path!("minimal_prepass.wgsl"))
+        shader_ref(bevy::asset::embedded_path!("minimal_prepass.wesl"))
     }
 
     fn enable_prepass() -> bool {
@@ -215,7 +211,7 @@ impl PointCloudMaterial for MinimalPointCloudMaterial {
             }
             MinimalPasses::EDLNormalize => Some(PassParams {
                 vertex_shader: ShaderRef::Default,
-                fragment_shader: shader_ref(bevy::asset::embedded_path!("minimal_normalize.wgsl")),
+                fragment_shader: shader_ref(bevy::asset::embedded_path!("minimal_normalize.wesl")),
                 inputs: vec![
                     PassInput {
                         source_pass: StandardPasses::Depth.into(),
@@ -392,7 +388,7 @@ impl PointCloudMaterial for MinimalPointCloudMaterial {
     }
 }
 
-// NOTE: These must match the bit flags in bevy_pbr/src/render/pbr_types.wgsl!
+// NOTE: These must match the bit flags in bevy_pbr/src/render/pbr_types.wesl!
 bitflags::bitflags! {
     /// Bitflags info about the material a shader is currently rendering.
     /// This is accessible in the shader in the [`MINIMALPointCloudMaterialUniform`]

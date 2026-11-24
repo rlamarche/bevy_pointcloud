@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use bevy::{
     feathers::{
         controls::{FeathersButton, FeathersCheckbox, FeathersSlider},
+        display::caption,
         theme::{ThemeBackgroundColor, ThemedText},
         tokens,
     },
@@ -12,7 +13,7 @@ use bevy::{
     ui::Checked,
     ui_widgets::{
         checkbox_self_update, slider_self_update, Activate, SliderPrecision, SliderStep,
-        ValueChange,
+        SliderValue, ValueChange,
     },
 };
 use bevy_pointcloud::SplatOrientation;
@@ -43,11 +44,13 @@ pub fn settings_panel(ui_settings: &UiSettings) -> impl Scene {
             border_radius: BorderRadius::all(Val::Px(10.0)),
         }
         ThemeBackgroundColor(tokens::WINDOW_BG)
-        ui_drag_observer()
-        ui_hover_observer()
+        @ui_drag_observer()
+        @ui_hover_observer()
         Children [
-            settings_title(),
-            settings_section_title("Use <space> to toggle sun movement"),
+            @settings_title()
+            --
+            @settings_section_title("Use <space> to toggle sun movement")
+            --
             // settings_checkbox(),
             // settings_section(
             //     "EDL radius",
@@ -67,13 +70,14 @@ pub fn settings_panel(ui_settings: &UiSettings) -> impl Scene {
             //         ui_settings.edl_neighbour_count = value as u32;
             //     })
             // ),
-            settings_section(
+            @settings_section(
                 "Min Node Size",
                 settings_slider(30.0, 1000.0, ui_settings.min_node_size, 10.0, 0, |ui_settings, value| {
                     ui_settings.min_node_size = value;
                 })
-            ),
-            settings_section(
+            )
+            --
+            @settings_section(
                 "Point Budget",
                 settings_slider(
                     100_000.0,
@@ -85,14 +89,16 @@ pub fn settings_panel(ui_settings: &UiSettings) -> impl Scene {
                         ui_settings.point_budget = value as usize;
                     }
                 )
-            ),
-            settings_section(
+            )
+            --
+            @settings_section(
                 "Light Min Node Size",
                 settings_slider(30.0, 1000.0, ui_settings.light_min_node_size, 10.0, 0, |ui_settings, value| {
                     ui_settings.light_min_node_size = value;
                 })
-            ),
-            settings_section(
+            )
+            --
+            @settings_section(
                 "Light Point Budget",
                 settings_slider(
                     100_000.0,
@@ -104,17 +110,21 @@ pub fn settings_panel(ui_settings: &UiSettings) -> impl Scene {
                         ui_settings.light_point_budget = value as usize;
                     }
                 )
-            ),
-            settings_checkbox("X-Ray", ui_settings.xray, |ui_settings, value| {
+            )
+            --
+            @settings_checkbox("X-Ray", ui_settings.xray, |ui_settings, value| {
                 ui_settings.xray = value;
-            }),
-            settings_checkbox("Eye Dome Lighting", ui_settings.edl_enabled, |ui_settings, value| {
+            })
+            --
+            @settings_checkbox("Eye Dome Lighting", ui_settings.edl_enabled, |ui_settings, value| {
                 ui_settings.edl_enabled = value;
-            }),
-            settings_checkbox("Weighted Splats", ui_settings.weighted_splats, |ui_settings, value| {
+            })
+            --
+            @settings_checkbox("Weighted Splats", ui_settings.weighted_splats, |ui_settings, value| {
                 ui_settings.weighted_splats = value;
-            }),
-            settings_section(
+            })
+            --
+            @settings_section(
                 "Plane distance 1",
                 settings_slider(
                     -20.0,
@@ -126,8 +136,9 @@ pub fn settings_panel(ui_settings: &UiSettings) -> impl Scene {
                         ui_settings.plane_distance_0 = value;
                     }
                 )
-            ),
-            settings_section(
+            )
+            --
+            @settings_section(
                 "Plane distance 2",
                 settings_slider(
                     -20.0,
@@ -139,8 +150,8 @@ pub fn settings_panel(ui_settings: &UiSettings) -> impl Scene {
                         ui_settings.plane_distance_1 = value;
                     }
                 )
-            ),
-            (
+            )
+            --
                 @FeathersButton {
                     @caption: bsn! { Text("Despawn") ThemedText },
                 }
@@ -148,8 +159,7 @@ pub fn settings_panel(ui_settings: &UiSettings) -> impl Scene {
                     info!("Despawn button clicked!");
                     commands.trigger(UiClickDespawnEvent);
                 })
-            ),
-            (
+            --
                 @FeathersButton {
                     @caption: bsn! { Text("Spawn") ThemedText },
                 }
@@ -157,25 +167,22 @@ pub fn settings_panel(ui_settings: &UiSettings) -> impl Scene {
                     info!("Spawn button clicked!");
                     commands.trigger(UiClickSpawnEvent);
                 })
-            ),
-            (
-                @FeathersButton {
-                    @caption: bsn! { Text("Set splat orientation billboard") ThemedText },
-                }
-                on(|_activate: On<Activate>, mut commands: Commands| {
-                    info!("Set splat orientation Billboard clicked!");
-                    commands.trigger(UiClickSetSplatOrientation(SplatOrientation::Billboard));
-                })
-            ),
-            (
-                @FeathersButton {
-                    @caption: bsn! { Text("Set splat orientation face normal") ThemedText },
-                }
-                on(|_activate: On<Activate>, mut commands: Commands| {
-                    info!("Set splat orientation FaceNormal clicked!");
-                    commands.trigger(UiClickSetSplatOrientation(SplatOrientation::FaceNormal));
-                })
-            ),
+            --
+            @FeathersButton {
+                @caption: bsn! { Text("Set splat orientation billboard") ThemedText },
+            }
+            on(|_activate: On<Activate>, mut commands: Commands| {
+                info!("Set splat orientation Billboard clicked!");
+                commands.trigger(UiClickSetSplatOrientation(SplatOrientation::Billboard));
+            })
+            --
+            @FeathersButton {
+                @caption: bsn! { Text("Set splat orientation face normal") ThemedText },
+            }
+            on(|_activate: On<Activate>, mut commands: Commands| {
+                info!("Set splat orientation FaceNormal clicked!");
+                commands.trigger(UiClickSetSplatOrientation(SplatOrientation::FaceNormal));
+            })
         ]
     }
 }
@@ -192,10 +199,9 @@ fn settings_checkbox(
     };
     bsn! {
         @FeathersCheckbox {
-            @caption: bsn! { Text(label) ThemedText }
+            @caption: bsn! { @caption(label) }
         }
-        {checked}
-        AccessibleLabel("Checkbox Example")
+        @{checked}
         on(
             move |change: On<ValueChange<bool>>, mut ui_settings: ResMut<UiSettings>| {
                 callback(&mut ui_settings, change.value);
@@ -226,19 +232,17 @@ fn settings_slider(
         @FeathersSlider {
             @min: min,
             @max: max,
-            @value: value,
-            // @step: step,
-            // @precision: precision,
         }
-        SliderStep(step)
-        SliderPrecision(precision)
+        SliderValue({value})
+        SliderStep({step})
+        SliderPrecision({precision})
         on(
             move |change: On<ValueChange<f32>>, mut ui_settings: ResMut<UiSettings>| {
                 callback(&mut ui_settings, change.value);
             },
         )
         on(slider_self_update)
-        ui_drag_observer()
+        @ui_drag_observer()
     }
 }
 
@@ -254,9 +258,9 @@ fn settings_title() -> impl Scene {
             align_items: AlignItems::Center,         // vertical
         }
         Children [
-            (Text("Settings"))
+            Text("Settings")
         ]
-        drag_handle()
+        @drag_handle()
     }
 }
 
@@ -267,8 +271,9 @@ fn settings_section(title: &str, content: impl Scene) -> impl Scene {
             flex_direction: FlexDirection::Column,
         }
         Children [
-            settings_section_title(title),
-            content,
+            @settings_section_title(title)
+            --
+            @content
         ]
     }
 }
@@ -304,10 +309,10 @@ fn settings_section_title(title: &str) -> impl Scene {
 
 fn ui_hover_observer() -> impl Scene {
     bsn! {
-        on(|_: On<Pointer<Over>>, mut commands: Commands| {
+        on(|_: On<PointerOver>, mut commands: Commands| {
             commands.trigger(UiHoveringEvent(true));
         })
-        on(|_: On<Pointer<Out>>, mut commands: Commands| {
+        on(|_: On<PointerOut>, mut commands: Commands| {
             commands.trigger(UiHoveringEvent(false));
         })
     }
@@ -316,10 +321,10 @@ fn ui_hover_observer() -> impl Scene {
 /// Sends dragging event state to ui state to prevent camera movements while dragging
 fn ui_drag_observer() -> impl Scene {
     bsn! {
-        on(|_: On<Pointer<DragStart>>, mut commands: Commands| {
+        on(|_: On<PointerDragStart>, mut commands: Commands| {
             commands.trigger(UiDraggingEvent(true));
         })
-        on(|_: On<Pointer<DragEnd>>, mut commands: Commands| {
+        on(|_: On<PointerDragEnd>, mut commands: Commands| {
             commands.trigger(UiDraggingEvent(false));
         })
     }
@@ -367,7 +372,7 @@ fn find_descendant<C: Component>(
 fn drag_handle() -> impl Scene {
     bsn! {
         on(
-        |trigger: On<Pointer<Drag>>,
+        |trigger: On<PointerDrag>,
          mut query: Query<&mut UiTransform>,
          parent_query: Query<(&ChildOf, Has<DraggablePanel>)>| {
             if let Some(panel_entity) = find_ancestor(trigger.entity, parent_query)
@@ -385,6 +390,6 @@ fn drag_handle() -> impl Scene {
     }
 }
 
-fn prevent_drag_parent(mut trigger: On<Pointer<Drag>>) {
+fn prevent_drag_parent(mut trigger: On<PointerDrag>) {
     trigger.propagate(false);
 }

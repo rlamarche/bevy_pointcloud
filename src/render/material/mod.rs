@@ -24,8 +24,7 @@ use bevy::{
     mesh::{mark_3d_meshes_as_changed_if_their_assets_changed, MeshVertexBufferLayoutRef},
     pbr::{
         collect_meshes_for_gpu_building, prepare_lights, set_mesh_motion_vector_flags,
-        ExtractedDirectionalLight, MaterialBindGroupAllocator, MaterialBindGroupAllocators,
-        MaterialBindingId, Transmissive3d,
+        ExtractedDirectionalLight, Transmissive3d,
     },
     render::{
         camera::{
@@ -34,6 +33,7 @@ use bevy::{
         },
         erased_render_asset::ErasedRenderAssetPlugin,
         extract_component::ExtractComponentPlugin,
+        material_bind_groups::{MaterialBindGroupAllocators, MaterialBindingId},
         mesh::RenderMesh,
         prelude::*,
         render_asset::prepare_assets,
@@ -204,6 +204,14 @@ pub trait PointCloudMaterial: Asset + AsBindGroup + Clone + Sized {
     /// Controls if shadows are enabled for the Material.
     #[inline]
     fn enable_shadows() -> bool {
+        true
+    }
+
+    /// Controls whether order independent transparency is enabled for the Material.
+    /// This is ignored if the camera does not have [`bevy_core_pipeline::oit::OrderIndependentTransparencySettings`]
+    /// or if [`Self::alpha_mode`] is not supported by OIT.
+    #[inline]
+    fn enable_oit() -> bool {
         true
     }
 
@@ -454,7 +462,10 @@ where
         }
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
+            let shaders = initialize_material_shaders::<M>(render_app.world());
+
             render_app
+                .insert_resource(MaterialShaders::<M>::with_shader_cache(shaders))
                 .add_systems(RenderStartup, add_material_bind_group_allocator::<M>)
                 .add_systems(
                     ExtractSchedule,
@@ -518,21 +529,11 @@ fn add_material_bind_group_allocator<M: PointCloudMaterial>(
     render_device: Res<RenderDevice>,
     mut bind_group_allocators: ResMut<MaterialBindGroupAllocators>,
 ) {
+    bind_group_allocators.add::<M>(&render_device);
     // do not erase an existing bind group allocator
-    if !bind_group_allocators.contains_key(&TypeId::of::<M>()) {
-        bind_group_allocators.insert(
-            TypeId::of::<M>(),
-            MaterialBindGroupAllocator::new(
-                &render_device,
-                M::label(),
-                material_uses_bindless_resources::<M>(&render_device)
-                    .then(|| M::bindless_descriptor())
-                    .flatten(),
-                M::bind_group_layout_descriptor(&render_device),
-                M::bindless_slot_count(),
-            ),
-        );
-    }
+    // if !bind_group_allocators.contains_key(&TypeId::of::<M>()) {
+    //     bind_group_allocators.add::<M>(&render_device);
+    // }
 }
 
 // /// A dummy [`AssetId`] that we use as a placeholder whenever a mesh doesn't
@@ -548,7 +549,7 @@ fn add_material_bind_group_allocator<M: PointCloudMaterial>(
 pub struct MaterialExtractionSystems;
 
 pub(crate) fn on_remove_point_cloud_chunk_3d<M: PointCloudMaterial>(
-    event: On<Remove, PointCloudChunk3d>,
+    event: On<Remove<PointCloudChunk3d>>,
     mapper: Query<&RenderEntity>,
     mut entities_need_specialization: ResMut<EntitiesNeedingSpecialization<M>>,
 ) {
@@ -560,7 +561,7 @@ pub(crate) fn on_remove_point_cloud_chunk_3d<M: PointCloudMaterial>(
 }
 
 pub fn on_remove_point_cloud_material_3d<M: PointCloudMaterial>(
-    event: On<Remove, PointCloudMaterial3d<M>>,
+    event: On<Remove<PointCloudMaterial3d<M>>>,
     mapper: Query<&RenderEntity>,
     mut entities_need_specialization: ResMut<EntitiesNeedingSpecialization<M>>,
 ) {

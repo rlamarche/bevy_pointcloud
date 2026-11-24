@@ -1,5 +1,3 @@
-#define_import_path bevy_pointcloud::pointcloud_types
-
 struct PointCloud {
     aabb_min: vec4<f32>,
     aabb_max: vec4<f32>,
@@ -38,17 +36,17 @@ struct PointCloud {
     // Unpack with mat2x2<f32>(uv_transform_a.xy, uv_transform_a.zw)
     uv_transform_a: vec4<f32>,
     uv_transform_b: vec4<f32>,
-};
+}
 
 struct PointVertexPositions {
     world_position: vec3<f32>,
     view_position: vec3<f32>,
     clip_position: vec4<f32>,
-};
+}
 
 struct PointVertexPositionsNormal {
     world_position: vec3<f32>,
     view_position: vec3<f32>,
     clip_position: vec4<f32>,
     world_normal: vec3<f32>,
-};
+}

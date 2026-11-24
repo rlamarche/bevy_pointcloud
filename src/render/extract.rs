@@ -342,7 +342,8 @@ pub fn extract_lights_visible_point_cloud_chunks(
                 for subview_index in 0..(cascade_config.bounds.len() as u32) {
                     let retained_view_entity = RetainedViewEntity {
                         main_entity: MainEntity::from(main_entity),
-                        auxiliary_entity: MainEntity::from(*main_auxiliary_entity),
+                        auxiliary_entity: (*main_auxiliary_entity != Entity::PLACEHOLDER)
+                            .then_some(MainEntity::from(*main_auxiliary_entity)),
                         subview_index,
                     };
 

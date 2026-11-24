@@ -23,12 +23,12 @@ use bevy::{
     },
     log::{debug, error, warn},
     material::{key::ErasedMeshPipelineKey, AlphaMode, OpaqueRendererMethod, RenderPhaseType},
-    math::{Mat4, Vec4},
+    math::Vec4,
     mesh::{Mesh, MeshVertexBufferLayoutRef},
     pbr::{
         alpha_mode_pipeline_key, collect_meshes_for_gpu_building, set_mesh_motion_vector_flags,
         setup_morph_and_skinning_defs, MeshLayouts, MeshPipeline, MeshPipelineKey, RenderLightmaps,
-        RenderMeshInstanceFlags, RenderMeshInstances, ShadowView, MAX_VIEW_LIGHT_PROBES,
+        RenderMeshInstanceFlags, RenderMeshInstances, MAX_VIEW_LIGHT_PROBES,
     },
     prelude::{Deref, DerefMut},
     render::{
@@ -44,7 +44,7 @@ use bevy::{
             },
             *,
         },
-        renderer::{RenderAdapter, RenderAdapterInfo, RenderDevice, RenderQueue, WgpuWrapper},
+        renderer::{RenderAdapter, RenderAdapterInfo, RenderDevice},
         sync_world::RenderEntity,
         view::{
             ExtractedView, Msaa, RenderVisibilityRanges, RenderVisibleEntities, RetainedViewEntity,
@@ -101,11 +101,10 @@ pub struct PrepassPipelinePlugin;
 
 impl Plugin for PrepassPipelinePlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "prepass.wgsl");
+        embedded_asset!(app, "prepass.wesl");
 
-        load_shader_library!(app, "prepass_bindings.wgsl");
-        load_shader_library!(app, "prepass_utils.wgsl");
-        load_shader_library!(app, "prepass_io.wgsl");
+        load_shader_library!(app, "prepass_bindings.wesl");
+        load_shader_library!(app, "prepass_io.wesl");
 
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
@@ -166,15 +165,6 @@ impl Plugin for PrepassPlugin {
         let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
             return;
         };
-
-        // if no_prepass_plugin_loaded {
-        //     render_app
-        //         .add_systems(ExtractSchedule, extract_camera_previous_view_data)
-        //         .add_systems(
-        //             Render,
-        //             prepare_previous_view_uniforms.in_set(PrepareResources),
-        //         );
-        // }
 
         render_app
             .init_gpu_resource::<ViewKeyPrepassCache>()
@@ -328,7 +318,7 @@ pub(crate) fn binding_arrays_are_usable(
     render_device: &RenderDevice,
     render_adapter: &RenderAdapter,
 ) -> bool {
-    let adapter_info = RenderAdapterInfo(WgpuWrapper::new(render_adapter.get_info()));
+    let adapter_info = RenderAdapterInfo::new(render_adapter.get_info());
 
     !cfg!(feature = "shader_format_glsl")
         && bevy::render::get_adreno_model(&adapter_info).is_none_or(|model| model > 610)
@@ -408,7 +398,7 @@ pub fn init_prepass_pipeline(
         view_layout_motion_vectors,
         view_layout_no_motion_vectors,
         mesh_layouts: mesh_pipeline.mesh_layouts.clone(),
-        default_prepass_shader: load_embedded_asset!(asset_server.as_ref(), "prepass.wgsl"),
+        default_prepass_shader: load_embedded_asset!(asset_server.as_ref(), "prepass.wesl"),
         skins_use_uniform_buffers: skins_use_uniform_buffers(&render_device.limits()),
         depth_clip_control_supported,
         binding_arrays_are_usable: binding_arrays_are_usable(&render_device, &render_adapter),
@@ -858,50 +848,6 @@ pub fn extract_camera_previous_view_data(
         } else {
             entity.remove::<PreviousViewData>();
         }
-    }
-}
-
-pub fn prepare_previous_view_uniforms(
-    mut commands: Commands,
-    render_device: Res<RenderDevice>,
-    render_queue: Res<RenderQueue>,
-    mut previous_view_uniforms: ResMut<PreviousViewUniforms>,
-    views: Query<
-        (Entity, &ExtractedView, Option<&PreviousViewData>),
-        Or<(With<Camera3d>, With<ShadowView>)>,
-    >,
-) {
-    let views_iter = views.iter();
-    let view_count = views_iter.len();
-    let Some(mut writer) =
-        previous_view_uniforms
-            .uniforms
-            .get_writer(view_count, &render_device, &render_queue)
-    else {
-        return;
-    };
-
-    for (entity, camera, maybe_previous_view_uniforms) in views_iter {
-        let prev_view_data = match maybe_previous_view_uniforms {
-            Some(previous_view) => previous_view.clone(),
-            None => {
-                let world_from_view = camera.world_from_view.affine();
-                let view_from_world = Mat4::from(world_from_view.inverse());
-                let view_from_clip = camera.clip_from_view.inverse();
-
-                PreviousViewData {
-                    view_from_world,
-                    clip_from_world: camera.clip_from_view * view_from_world,
-                    clip_from_view: camera.clip_from_view,
-                    world_from_clip: Mat4::from(world_from_view) * view_from_clip,
-                    view_from_clip,
-                }
-            }
-        };
-
-        commands.entity(entity).insert(PreviousViewUniformOffset {
-            offset: writer.write(&prev_view_data),
-        });
     }
 }
 
