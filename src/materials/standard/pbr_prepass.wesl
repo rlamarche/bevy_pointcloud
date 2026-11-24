@@ -1,15 +1,19 @@
-import bevy_pbr::render::{
-    pbr_bindings,
-    pbr_functions,
-    pbr_prepass_functions,
-    pbr_types,
-    prepass_io,
-    mesh_view_bindings::view,
-    pbr_bindings::material,
-    pbr_functions::SampleBias
+import bevy_pbr::{
+    prepass::io as prepass_io,
+    render::{
+        pbr_bindings,
+        pbr_functions,
+        pbr_types,
+        mesh_view_bindings::view,
+        pbr_bindings::material,
+        pbr_functions::SampleBias
+    }
 };
 
 import bevy_render::bindless::{bindless_samplers_filtering, bindless_textures_2d};
+
+@if(BINDLESS)
+import bevy_pbr::render::pbr_bindings::material_indices;
 
 // ============================================================================
 // BEGIN CUSTOM PATCH: [PointCloudPlugin] - Point size and depth attenuation
@@ -20,6 +24,7 @@ import bevy_pbr::prepass::io::{FragmentOutput, VertexOutput as PbrVertexOutput};
 import package::render::prepass::prepass_io::VertexOutput;
 import package::{
     materials::simple::{simple_types as material_types},
+    materials::standard::{pbr_prepass_functions},
     render::pointcloud_bindings::pointcloud
 };
 
@@ -106,9 +111,8 @@ var<uniform> view_settings: material_types::PointCloudViewSettings;
 
         // If we're in the crossfade section of a visibility range, conditionally
         // discard the fragment according to the visibility pattern.
-        @if(VISIBILITY_RANGE_DITHER) {
-            visibility_range_dither(in.position, in.visibility_range_dither);
-        }
+        @if(!MESHLET_MESH_MATERIAL_PASS && VISIBILITY_RANGE_DITHER)
+        pbr_functions::visibility_range_dither(in.position, in.visibility_range_dither);
 
         pbr_prepass_functions::prepass_sample_color_and_alpha_discard(in);
 
@@ -121,10 +125,7 @@ var<uniform> view_settings: material_types::PointCloudViewSettings;
         @if(NORMAL_PREPASS)
         if (flags & pbr_types::STANDARD_MATERIAL_FLAGS_UNLIT_BIT) == 0u {
             let double_sided = (flags & pbr_types::STANDARD_MATERIAL_FLAGS_DOUBLE_SIDED_BIT) != 0u;
-            @if(MESHLET_MESH_MATERIAL_PASS)
-            let mesh_flags = in.mesh_flags;
-            @else
-            let mesh_flags = mesh[in.instance_index].flags;
+            let mesh_flags = pointcloud.mesh_flags;
             let is_logically_front = pbr_functions::winding_corrected_front_facing(
                     mesh_flags,
                     is_front,

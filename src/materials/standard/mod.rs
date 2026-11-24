@@ -15,7 +15,7 @@ use bevy::{
         },
         texture::GpuImage,
     },
-    shader::ShaderRef,
+    shader::{load_shader_library, ShaderRef},
     utils::default,
 };
 
@@ -35,6 +35,7 @@ pub struct StandardPointCloudMaterialPlugin;
 
 impl Plugin for StandardPointCloudMaterialPlugin {
     fn build(&self, app: &mut bevy::app::App) {
+        load_shader_library!(app, "pbr_prepass_functions.wesl");
         embedded_asset!(app, "pbr.wesl");
         embedded_asset!(app, "pbr_prepass.wesl");
         embedded_asset!(app, "pbr_normalize.wesl");
