@@ -4,12 +4,13 @@
 use bevy::{
     app::{App, Last, Plugin},
     asset::{AssetApp, AssetEvent, Assets},
+    camera::primitives::Aabb,
     ecs::{
         entity::Entity,
         hierarchy::ChildOf,
         lifecycle::HookContext,
         message::MessageReader,
-        query::Added,
+        query::{Added, Changed},
         system::{Commands, Query, Res},
         world::DeferredWorld,
     },
@@ -97,6 +98,7 @@ impl Plugin for PointCloudPlugin {
             (
                 spawn_point_cloud_chunks,
                 spawn_splat_point_cloud_chunks_from_asset_loader,
+                spawn_flat_point_cloud_chunks_on_insert,
             ),
         );
 
@@ -333,35 +335,13 @@ fn spawn_splat_point_cloud_chunks_from_asset_loader(
                     continue;
                 };
 
-                let Some(chunk_handle) = point_cloud.topology.as_flat() else {
-                    continue;
-                };
-
-                let Some(chunk) = point_cloud_chunks.get(chunk_handle) else {
-                    continue;
-                };
-
-                // TODO handle the case where the mesh handle is not yet available ?
-                let Some(mesh_handle) = chunk.mesh_handle.as_ref() else {
-                    continue;
-                };
-
-                let Some(aabb) = chunk.aabb.as_ref() else {
+                let Some(bundle) = flat_chunk_bundle(point_cloud, &point_cloud_chunks) else {
                     continue;
                 };
 
                 let insert_batch = instances
                     .keys()
-                    .map(|&entity| {
-                        (
-                            entity,
-                            (
-                                PointCloudChunk3d(chunk_handle.clone()),
-                                Mesh3d(mesh_handle.clone()),
-                                *aabb,
-                            ),
-                        )
-                    })
+                    .map(|&entity| (entity, bundle.clone()))
                     .collect::<Vec<_>>();
 
                 commands.insert_batch(insert_batch);
@@ -376,5 +356,103 @@ fn spawn_splat_point_cloud_chunks_from_asset_loader(
                 // info!("PointCloud unused: {:?}", id);
             }
         }
+    }
+}
+
+/// Components that make a flat point cloud drawable: its single chunk, the chunk's mesh and
+/// bounds. `None` for other topologies, or while the chunk, mesh handle or bounds are missing.
+fn flat_chunk_bundle(
+    point_cloud: &PointCloud,
+    point_cloud_chunks: &Assets<PointCloudChunk>,
+) -> Option<(PointCloudChunk3d, Mesh3d, Aabb)> {
+    let chunk_handle = point_cloud.topology.as_flat()?;
+    let chunk = point_cloud_chunks.get(chunk_handle)?;
+    // TODO handle the case where the mesh handle is not yet available ?
+    let mesh_handle = chunk.mesh_handle.as_ref()?;
+    let aabb = chunk.aabb?;
+    Some((
+        PointCloudChunk3d(chunk_handle.clone()),
+        Mesh3d(mesh_handle.clone()),
+        aabb,
+    ))
+}
+
+/// Attaches the chunk of a flat point cloud when a [`PointCloud3d`] is inserted and its assets
+/// are already there: an asset created with [`Assets::add`], or a second entity spawned on an
+/// asset that loaded earlier. [`AssetEvent::LoadedWithDependencies`] covers only the entities
+/// that exist when an asset finishes loading.
+fn spawn_flat_point_cloud_chunks_on_insert(
+    point_clouds: Res<Assets<PointCloud>>,
+    point_cloud_chunks: Res<Assets<PointCloudChunk>>,
+    query: Query<(Entity, &PointCloud3d), Changed<PointCloud3d>>,
+    mut commands: Commands,
+) {
+    for (entity, point_cloud_comp) in &query {
+        if let Some(point_cloud) = point_clouds.get(point_cloud_comp)
+            && let Some(bundle) = flat_chunk_bundle(point_cloud, &point_cloud_chunks)
+        {
+            commands.entity(entity).insert(bundle);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::{
+        asset::AssetPlugin,
+        math::Vec3,
+        mesh::{Mesh, PrimitiveTopology},
+        prelude::*,
+    };
+
+    use super::*;
+
+    fn flat_cloud(app: &mut App) -> Handle<PointCloud> {
+        let world = app.world_mut();
+        let mesh = world
+            .resource_mut::<Assets<Mesh>>()
+            .add(Mesh::new(PrimitiveTopology::PointList, Default::default()));
+        let aabb = Aabb::from_min_max(Vec3::ZERO, Vec3::ONE);
+        let chunk = world
+            .resource_mut::<Assets<PointCloudChunk>>()
+            .add(PointCloudChunk {
+                topology: PointCloudChunkTopology::Flat,
+                point_count: 0,
+                mesh_handle: Some(mesh),
+                aabb: Some(aabb),
+                vertex_buffer_size: 0,
+            });
+        world.resource_mut::<Assets<PointCloud>>().add(PointCloud {
+            topology: PointCloudTopology::Flat(chunk),
+            spacing: None,
+            aabb: Some(aabb),
+        })
+    }
+
+    fn is_drawable(app: &App, entity: Entity) -> bool {
+        let entity = app.world().entity(entity);
+        entity.contains::<PointCloudChunk3d>()
+            && entity.contains::<Mesh3d>()
+            && entity.contains::<Aabb>()
+    }
+
+    #[test]
+    fn flat_cloud_from_assets_add_gets_its_chunk_also_when_spawned_later() {
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .init_asset::<Mesh>()
+            .init_asset::<PointCloud>()
+            .init_asset::<PointCloudChunk>()
+            .add_systems(Last, spawn_flat_point_cloud_chunks_on_insert);
+
+        let handle = flat_cloud(&mut app);
+        let first = app.world_mut().spawn(PointCloud3d(handle.clone())).id();
+        app.update();
+        assert!(is_drawable(&app, first));
+
+        // A second entity on the same, already present asset, one frame later.
+        let second = app.world_mut().spawn(PointCloud3d(handle)).id();
+        app.update();
+        assert!(is_drawable(&app, second));
     }
 }
