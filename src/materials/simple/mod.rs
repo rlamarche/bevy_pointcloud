@@ -253,7 +253,7 @@ impl PointCloudMaterial for SimplePointCloudMaterial {
                     fragment_shader: ShaderRef::Default,
                     inputs: vec![],
                     output: PassOutput::TransientTarget(TransientTarget {
-                        format: TextureFormat::Rgba32Float,
+                        format: TextureFormat::Rgba16Float,
                     }),
                     blend: Some(BlendState {
                         color: BlendComponent {
