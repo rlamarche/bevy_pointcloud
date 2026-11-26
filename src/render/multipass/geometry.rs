@@ -58,7 +58,6 @@ impl<M: PointCloudMaterial, const PASS: usize> Plugin for GeometryPassPlugin<M, 
             .add_systems(
                 Render,
                 (
-                    // check_multipass_views_need_specialization.in_set(PrepareAssets),
                     specialize_multipass_material_meshes::<M, PASS>
                         .in_set(RenderSystems::PrepareMeshes)
                         .after(prepare_assets::<RenderMesh>)

@@ -56,8 +56,8 @@ use crate::{
         deferred::{AlphaMask3dChunkDeferred, Opaque3dChunkDeferred},
         expire_specializations_for_views, mark_visible_nodes_texture_not_changed,
         multipass::{
-            FullscreenMaterialPassPipeline, MultipassMaterialPlugin, MultipassMaterialsPlugin,
-            MultipassPipelinePlugin, ViewMultipassTextures,
+            FullscreenMaterialPassPipeline, MultipassMaterialPlugin, MultipassPipelinePlugin,
+            ViewMultipassTextures,
         },
         prepare_light_phase,
         prepass::{DrawDepthOnlyPrepass, DrawPrepass, PrepassPipelinePlugin, PrepassPlugin},
@@ -290,7 +290,6 @@ impl Plugin for MaterialsPlugin {
             PrepassPipelinePlugin,
             PrepassPlugin::new(self.debug_flags),
             MultipassPipelinePlugin,
-            MultipassMaterialsPlugin::new(self.debug_flags),
         ));
 
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
