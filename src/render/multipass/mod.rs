@@ -10,12 +10,10 @@ mod specializer;
 use bevy::log::info_span;
 use bevy::{
     app::{App, Plugin},
-    camera::{Camera, Camera3d, MainPassResolutionOverride, Projection, Viewport},
+    camera::{Camera, Camera3d, MainPassResolutionOverride, Viewport},
     core_pipeline::{
         core_3d::{main_opaque_pass_3d, main_transparent_pass_3d},
-        oit::OrderIndependentTransparencySettings,
         prepass::*,
-        tonemapping::{DebandDither, Tonemapping},
         Core3d, Core3dSystems,
     },
     ecs::{
@@ -27,21 +25,18 @@ use bevy::{
             SystemParam, SystemParamItem, SystemState,
         },
     },
-    light::{EnvironmentMapLight, IrradianceVolume, ShadowFilteringMethod},
     log::{debug, error, warn},
     material::{key::ErasedMeshPipelineKey, OpaqueRendererMethod},
     math::Vec4,
     mesh::MeshVertexBufferLayoutRef,
     pbr::{
-        alpha_mode_pipeline_key, skins_use_uniform_buffers, tonemapping_pipeline_key,
-        ContactShadows, DistanceFog, ExtractedAtmosphere, MeshLayouts, MeshPipeline,
+        alpha_mode_pipeline_key, skins_use_uniform_buffers, MeshLayouts, MeshPipeline,
         MeshPipelineKey, MeshViewBindGroup, RenderMeshInstanceFlags, RenderMeshInstances,
-        RenderViewLightProbes, ScreenSpaceAmbientOcclusion, ScreenSpaceReflectionsUniform,
-        ScreenSpaceTransmission, SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup,
+        SetMeshViewBindGroup, SetMeshViewBindingArrayBindGroup, ViewKeyCache,
     },
     prelude::{Deref, DerefMut},
     render::{
-        camera::{ExtractedCamera, PendingQueues, TemporalJitter},
+        camera::{ExtractedCamera, PendingQueues},
         diagnostic::RecordDiagnostics,
         globals::{GlobalsBuffer, GlobalsUniform},
         mesh::{allocator::MeshAllocator, RenderMesh},
@@ -62,7 +57,7 @@ use bevy::{
             VISIBILITY_RANGES_STORAGE_BUFFER_COUNT,
         },
         Extract, GpuResourceAppExt, Render, RenderApp, RenderDebugFlags, RenderStartup,
-        RenderSystems::{self, PrepareAssets},
+        RenderSystems,
     },
 };
 use core::any::TypeId;
@@ -130,34 +125,6 @@ impl Plugin for MultipassPipelinePlugin {
             )
             // .init_gpu_resource::<SpecializedPointCloudPipelines<MultipassPipelineSpecializer>>()
         ;
-    }
-}
-
-#[derive(Default)]
-pub struct MultipassMaterialsPlugin {
-    /// Debugging flags that can optionally be set when constructing the renderer.
-    pub debug_flags: RenderDebugFlags,
-}
-
-impl MultipassMaterialsPlugin {
-    /// Creates a new [`PrepassPlugin`] with the given debug flags.
-    pub fn new(debug_flags: RenderDebugFlags) -> Self {
-        MultipassMaterialsPlugin { debug_flags }
-    }
-}
-
-impl Plugin for MultipassMaterialsPlugin {
-    fn build(&self, app: &mut App) {
-        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
-            return;
-        };
-
-        render_app
-            .init_gpu_resource::<ViewKeyMultipassCache>()
-            .add_systems(
-                Render,
-                check_multipass_views_need_specialization.in_set(PrepareAssets),
-            );
     }
 }
 
@@ -535,158 +502,6 @@ pub struct SpecializedMultipassMaterialViewPipelineCache {
     map: EntityHashMap<CachedRenderPipelineId>,
 }
 
-#[derive(Resource, Deref, DerefMut, Default, Clone)]
-pub struct ViewKeyMultipassCache(HashMap<RetainedViewEntity, MeshPipelineKey>);
-
-pub fn check_multipass_views_need_specialization(
-    mut view_key_cache: ResMut<ViewKeyMultipassCache>,
-    mut dirty_specializations: ResMut<PointCloudDirtySpecializations>,
-    mut views: Query<(
-        &ExtractedView,
-        Option<&ExtractedCamera>,
-        &Msaa,
-        (Option<&Tonemapping>, Option<&DebandDither>),
-        Option<&ShadowFilteringMethod>,
-        Has<ScreenSpaceAmbientOcclusion>,
-        (
-            Has<NormalPrepass>,
-            Has<DepthPrepass>,
-            Has<MotionVectorPrepass>,
-            Has<DeferredPrepass>,
-        ),
-        Option<&ScreenSpaceTransmission>,
-        Has<TemporalJitter>,
-        Option<&Projection>,
-        Has<DistanceFog>,
-        (
-            Has<RenderViewLightProbes<EnvironmentMapLight>>,
-            Has<RenderViewLightProbes<IrradianceVolume>>,
-        ),
-        (
-            Has<OrderIndependentTransparencySettings>,
-            Has<ExtractedAtmosphere>,
-            Has<ScreenSpaceReflectionsUniform>,
-            Has<ContactShadows>,
-        ),
-    )>,
-) {
-    for (
-        view,
-        camera,
-        msaa,
-        (tonemapping, dither),
-        shadow_filter_method,
-        ssao,
-        (normal_prepass, depth_prepass, motion_vector_prepass, deferred_prepass),
-        transmission,
-        temporal_jitter,
-        projection,
-        distance_fog,
-        (has_environment_maps, has_irradiance_volumes),
-        (has_oit, has_atmosphere, has_ssr, has_contact_shadows),
-    ) in views.iter_mut()
-    {
-        let mut view_key = MeshPipelineKey::from_msaa_samples(msaa.samples())
-            | MeshPipelineKey::from_target_format(view.target_format);
-
-        if normal_prepass {
-            view_key |= MeshPipelineKey::NORMAL_PREPASS;
-        }
-
-        if depth_prepass {
-            view_key |= MeshPipelineKey::DEPTH_PREPASS;
-        }
-
-        if motion_vector_prepass {
-            view_key |= MeshPipelineKey::MOTION_VECTOR_PREPASS;
-        }
-
-        if deferred_prepass {
-            view_key |= MeshPipelineKey::DEFERRED_PREPASS;
-        }
-
-        if temporal_jitter {
-            view_key |= MeshPipelineKey::TEMPORAL_JITTER;
-        }
-
-        if has_environment_maps {
-            view_key |= MeshPipelineKey::ENVIRONMENT_MAP;
-        }
-
-        if has_irradiance_volumes {
-            view_key |= MeshPipelineKey::IRRADIANCE_VOLUME;
-        }
-
-        if has_ssr {
-            view_key |= MeshPipelineKey::SCREEN_SPACE_REFLECTIONS;
-        }
-
-        if has_oit {
-            view_key |= MeshPipelineKey::OIT_ENABLED;
-        }
-
-        if has_atmosphere {
-            view_key |= MeshPipelineKey::ATMOSPHERE;
-        }
-
-        if has_contact_shadows {
-            view_key |= MeshPipelineKey::CONTACT_SHADOWS;
-        }
-
-        if view.invert_culling {
-            view_key |= MeshPipelineKey::INVERT_CULLING;
-        }
-
-        if let Some(projection) = projection {
-            view_key |= match projection {
-                Projection::Perspective(_) => MeshPipelineKey::VIEW_PROJECTION_PERSPECTIVE,
-                Projection::Orthographic(_) => MeshPipelineKey::VIEW_PROJECTION_ORTHOGRAPHIC,
-                Projection::Custom(_) => MeshPipelineKey::VIEW_PROJECTION_NONSTANDARD,
-            };
-        }
-
-        match shadow_filter_method.unwrap_or(&ShadowFilteringMethod::default()) {
-            ShadowFilteringMethod::Hardware2x2 => {
-                view_key |= MeshPipelineKey::SHADOW_FILTER_METHOD_HARDWARE_2X2;
-            }
-            ShadowFilteringMethod::Gaussian => {
-                view_key |= MeshPipelineKey::SHADOW_FILTER_METHOD_GAUSSIAN;
-            }
-            ShadowFilteringMethod::Temporal => {
-                view_key |= MeshPipelineKey::SHADOW_FILTER_METHOD_TEMPORAL;
-            }
-        }
-
-        if !camera.is_some_and(|camera| camera.hdr) {
-            if let Some(tonemapping) = tonemapping {
-                view_key |= MeshPipelineKey::TONEMAP_IN_SHADER;
-                view_key |= tonemapping_pipeline_key(*tonemapping);
-            }
-            if let Some(DebandDither::Enabled) = dither {
-                view_key |= MeshPipelineKey::DEBAND_DITHER;
-            }
-        }
-        if ssao {
-            view_key |= MeshPipelineKey::SCREEN_SPACE_AMBIENT_OCCLUSION;
-        }
-        if distance_fog {
-            view_key |= MeshPipelineKey::DISTANCE_FOG;
-        }
-        if let Some(transmission) = transmission {
-            view_key |= transmission.quality.pipeline_key();
-        }
-        if !view_key_cache
-            .get_mut(&view.retained_view_entity)
-            .is_some_and(|current_key| *current_key == view_key)
-        {
-            view_key_cache.insert(view.retained_view_entity, view_key);
-            dirty_specializations
-                .views
-                .insert(view.retained_view_entity);
-        }
-    }
-}
-
 pub(crate) struct MultipassSpecializationWorkItem {
     render_entity: Entity,
     visible_entity: MainEntity,
@@ -746,7 +561,7 @@ pub(crate) struct SpecializeMultipassSystemParam<'w, 's, M: PointCloudMaterial, 
     render_point_cloud_instances: Res<'w, RenderPointCloudInstances>,
     render_point_cloud_chunk_instances: Res<'w, RenderPointCloudChunkInstances>,
     render_visibility_ranges: Res<'w, RenderVisibilityRanges>,
-    view_key_cache: Res<'w, ViewKeyMultipassCache>,
+    view_key_cache: Res<'w, ViewKeyCache>,
     views: Query<
         'w,
         's,
