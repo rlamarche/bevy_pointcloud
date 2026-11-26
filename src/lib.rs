@@ -13,7 +13,7 @@ use bevy::{
         system::{Commands, Query, Res},
         world::DeferredWorld,
     },
-    log::{info, warn},
+    log::{debug, warn},
     mesh::Mesh3d,
     platform::collections::HashMap,
     render::{batching::NoAutomaticBatching, RenderDebugFlags},
@@ -197,8 +197,11 @@ pub fn on_discard_point_cloud_chunk_3d(
                         entity
                     }
                 } else {
-                    // the entity has been despawned, return early
-                    warn!("Parent not found when despawning chunk {:?}", entity);
+                    // The parent was despawned first, return early. A point cloud root
+                    // has nothing to clean up here, so only warn for a child chunk.
+                    if !world.entity(entity).contains::<PointCloud3d>() {
+                        warn!("Parent not found when despawning chunk {:?}", entity);
+                    }
                     return;
                 }
             } else {
@@ -320,10 +323,10 @@ fn spawn_splat_point_cloud_chunks_from_asset_loader(
     for event in events.read() {
         match event {
             AssetEvent::Added { id } => {
-                info!("PointCloud added: {:?}", id);
+                debug!("PointCloud added: {:?}", id);
             }
             AssetEvent::LoadedWithDependencies { id } => {
-                info!("PointCloud loaded with dependencies: {:?}", id);
+                debug!("PointCloud loaded with dependencies: {:?}", id);
 
                 let Some(point_cloud) = point_clouds.get(*id) else {
                     continue;
